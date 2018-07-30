@@ -11,7 +11,7 @@ cd aws-c-common
 mkdir build
 cd build
 
-cmake -DCMAKE_INSTALL_PREFIX=../../install -DENABLE_SANITIZERS=ON ../ || exit 1
+cmake -DCMAKE_INSTALL_PREFIX=../../install -DENABLE_SANITIZERS=ON $@ ../ || exit 1
 make install || exit 1
 
 cd ../..

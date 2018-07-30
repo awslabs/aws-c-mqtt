@@ -3,5 +3,5 @@ version: 0.2
 phases:
   build:
     commands:
-      - .\codebuild\common-windows.bat "Visual Studio 15 2017 Win64"
+      - .\codebuild\common-windows.bat -G "Visual Studio 15 2017 Win64"
 
