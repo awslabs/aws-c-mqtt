@@ -1,0 +1,309 @@
+#ifndef AWS_MQTT_PRIVATE_PACKETS_H
+#define AWS_MQTT_PRIVATE_PACKETS_H
+
+/*
+ * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
+
+#include <aws/common/array_list.h>
+#include <aws/common/byte_buf.h>
+#include <aws/common/string.h>
+
+#include <aws/mqtt/mqtt.h>
+#include <aws/mqtt/private/fixed_header.h>
+
+/**
+ * Used to represent the following MQTT packets:
+ * - PUBACK
+ * - PUBREC
+ * - SUBREL
+ * - SUBCOMP
+ * - SUBACK
+ * - UNSUBACK
+ */
+struct aws_mqtt_packet_ack {
+    /* Fixed header */
+    struct aws_mqtt_fixed_header fixed_header;
+
+    /* Variable header */
+    uint16_t packet_identifier;
+};
+
+/* Represents the MQTT CONNECT packet */
+struct aws_mqtt_packet_connect {
+    /* Fixed header */
+    struct aws_mqtt_fixed_header fixed_header;
+
+    /* Variable header */
+    union {
+        struct {
+            bool /* reserved */ : 1;
+            bool clean_session : 1;
+            bool has_will : 1;
+            uint8_t will_qos : 2;
+            bool will_retain : 1;
+            bool has_password : 1;
+            bool has_username : 1;
+        } flags;
+        uint8_t all;
+    } connect_flags;
+    uint16_t keep_alive_timeout;
+    struct aws_byte_cursor client_identifier;
+
+    /* Payload */
+    struct aws_byte_cursor will_topic;
+    struct aws_byte_cursor will_message;
+    struct aws_byte_cursor username;
+    struct aws_byte_cursor password;
+};
+
+/* Represents the MQTT CONNACK packet */
+struct aws_mqtt_packet_connack {
+    /* Fixed header */
+    struct aws_mqtt_fixed_header fixed_header;
+
+    /* Variable header */
+    union {
+        struct {
+            bool session_present : 1;
+            uint8_t /* reserved */ : 7;
+        } flags;
+        uint8_t all;
+    } connack_flags;
+    uint8_t connect_return_code;
+};
+
+/* Represents the MQTT PUBLISH packet */
+struct aws_mqtt_packet_publish {
+    struct aws_mqtt_fixed_header fixed_header;
+
+    /* Variable header */
+    struct aws_byte_cursor topic_name;
+    uint16_t packet_identifier;
+
+    /* Payload */
+    struct aws_byte_cursor payload;
+};
+
+/* Represents the MQTT SUBSCRIBE packet */
+struct aws_mqtt_packet_subscribe {
+    /* Fixed header */
+    struct aws_mqtt_fixed_header fixed_header;
+
+    /* Variable header */
+    uint16_t packet_identifier;
+
+    /* Payload */
+    /* List of aws_mqtt_subscription_t */
+    struct aws_array_list topic_filters;
+};
+
+/* Represents the MQTT UNSUBSCRIBE packet */
+struct aws_mqtt_packet_unsubscribe {
+    /* Fixed header */
+    struct aws_mqtt_fixed_header fixed_header;
+
+    /* Variable header */
+    uint16_t packet_identifier;
+
+    /* Payload */
+    /* List of aws_byte_cursors */
+    struct aws_array_list topic_filters;
+};
+/**
+ * Used to represent the following MQTT packets:
+ * - PINGREQ
+ * - PINGRESP
+ * - DISCONNECT
+ */
+struct aws_mqtt_packet_connection {
+    /* Fixed header */
+    struct aws_mqtt_fixed_header fixed_header;
+};
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*****************************************************************************/
+/* Ack                                                                       */
+
+AWS_MQTT_API
+int aws_mqtt_packet_ack_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_ack *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_ack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_ack *packet);
+
+/*****************************************************************************/
+/* Connect                                                                   */
+
+AWS_MQTT_API
+void aws_mqtt_packet_connect_init(
+    struct aws_mqtt_packet_connect *packet,
+    struct aws_byte_cursor client_identifier,
+    bool clean_session,
+    uint16_t keep_alive);
+
+AWS_MQTT_API
+void aws_mqtt_packet_connect_add_credentials(
+    struct aws_mqtt_packet_connect *packet,
+    struct aws_byte_cursor username,
+    struct aws_byte_cursor password);
+
+AWS_MQTT_API
+int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connect *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connect *packet);
+
+/*****************************************************************************/
+/* Connack                                                                   */
+
+AWS_MQTT_API
+void aws_mqtt_packet_connack_init(
+    struct aws_mqtt_packet_connack *packet,
+    bool session_present,
+    aws_mqtt_connect_return_code return_code);
+
+AWS_MQTT_API
+int aws_mqtt_packet_connack_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connack *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_connack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connack *packet);
+
+/*****************************************************************************/
+/* Publish                                                                   */
+
+AWS_MQTT_API
+void aws_mqtt_packet_publish_init(
+    struct aws_mqtt_packet_publish *packet,
+    bool retain,
+    aws_mqtt_qos qos,
+    bool dup,
+    struct aws_byte_cursor topic_name,
+    uint16_t packet_identifier,
+    struct aws_byte_cursor payload);
+
+AWS_MQTT_API
+int aws_mqtt_packet_publish_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_publish *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_publish *packet);
+
+/*****************************************************************************/
+/* Puback                                                                    */
+
+AWS_MQTT_API
+void aws_mqtt_packet_puback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
+
+/*****************************************************************************/
+/* Pubrec                                                                    */
+
+AWS_MQTT_API
+void aws_mqtt_packet_pubrec_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
+
+/*****************************************************************************/
+/* Subrel                                                                    */
+
+AWS_MQTT_API
+void aws_mqtt_packet_pubrel_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
+
+/*****************************************************************************/
+/* Subcomp                                                                   */
+
+AWS_MQTT_API
+void aws_mqtt_packet_pubcomp_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
+
+/*****************************************************************************/
+/* Subscribe                                                                 */
+
+AWS_MQTT_API
+void aws_mqtt_packet_subscribe_init(
+    struct aws_mqtt_packet_subscribe *packet,
+    struct aws_allocator *allocator,
+    uint16_t packet_identifier);
+
+AWS_MQTT_API
+void aws_mqtt_packet_subscribe_clean_up(struct aws_mqtt_packet_subscribe *packet);
+
+AWS_MQTT_API
+void aws_mqtt_packet_subscribe_add_topic(
+    struct aws_mqtt_packet_subscribe *packet,
+    struct aws_byte_cursor topic_filter,
+    aws_mqtt_qos qos);
+
+AWS_MQTT_API
+int aws_mqtt_packet_subscribe_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_subscribe *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_subscribe *packet);
+
+/*****************************************************************************/
+/* Suback                                                                    */
+
+AWS_MQTT_API
+void aws_mqtt_packet_suback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
+
+/*****************************************************************************/
+/* Unubscribe                                                                */
+
+AWS_MQTT_API
+void aws_mqtt_packet_unsubscribe_init(
+    struct aws_mqtt_packet_unsubscribe *packet,
+    struct aws_allocator *allocator,
+    uint16_t packet_identifier);
+
+AWS_MQTT_API
+void aws_mqtt_packet_unsubscribe_clean_up(struct aws_mqtt_packet_unsubscribe *packet);
+
+AWS_MQTT_API
+void aws_mqtt_packet_unsubscribe_add_topic(
+    struct aws_mqtt_packet_unsubscribe *packet,
+    struct aws_byte_cursor topic_filter);
+
+AWS_MQTT_API
+int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_unsubscribe *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_unsubscribe_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_unsubscribe *packet);
+
+/*****************************************************************************/
+/* Unsuback                                                                  */
+
+AWS_MQTT_API
+void aws_mqtt_packet_unsuback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
+
+/*****************************************************************************/
+/* Ping request/response, disconnect                                         */
+
+AWS_MQTT_API
+void aws_mqtt_packet_pingreq_init(struct aws_mqtt_packet_connection *packet);
+
+AWS_MQTT_API
+void aws_mqtt_packet_pingresp_init(struct aws_mqtt_packet_connection *packet);
+
+AWS_MQTT_API
+void aws_mqtt_packet_disconnect_init(struct aws_mqtt_packet_connection *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_connection_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connection *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_connection_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connection *packet);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* AWS_MQTT_PRIVATE_PACKETS_H */
