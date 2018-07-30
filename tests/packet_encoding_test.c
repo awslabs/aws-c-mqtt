@@ -186,13 +186,13 @@ enum { PAYLOAD_LEN = sizeof(s_payload) };
 static void mqtt_test_ack_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     /* Init buffer */
-    uint8_t packet_id = fixture->type + 7;
+    uint8_t packet_id = (uint8_t)(fixture->type + 7);
 
     /* clang-format off */
     uint8_t header[] = {
-        fixture->type << 4, /* Packet type */
-        2,                  /* Remaining length */
-        0, packet_id,       /* Packet identifier */
+        (uint8_t)(fixture->type << 4),  /* Packet type */
+        2,                              /* Remaining length */
+        0, packet_id,                   /* Packet identifier */
     };
 
     /* Init packet */
@@ -517,8 +517,8 @@ static void mqtt_test_connection_init(struct packet_test_fixture *fixture, struc
     /* Init buffer */
     /* clang-format off */
     uint8_t header[] = {
-        fixture->type << 4, /* Packet type */
-        0,                  /* Remaining length */
+        (uint8_t)(fixture->type << 4),  /* Packet type */
+        0,                              /* Remaining length */
     };
     /* clang-format on */
 

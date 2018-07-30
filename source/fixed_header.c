@@ -17,9 +17,10 @@
 
 #include <assert.h>
 
-static int s_encode_remaining_length(struct aws_byte_cursor *cur, uint32_t remaining_length) {
+static int s_encode_remaining_length(struct aws_byte_cursor *cur, size_t remaining_length) {
 
     assert(cur);
+    assert(remaining_length < UINT32_MAX);
 
     do {
         uint8_t encoded_byte = remaining_length % 128;
@@ -35,12 +36,12 @@ static int s_encode_remaining_length(struct aws_byte_cursor *cur, uint32_t remai
     return AWS_OP_SUCCESS;
 }
 
-static int s_decode_remaining_length(struct aws_byte_cursor *cur, uint32_t *remaining_length) {
+static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remaining_length) {
 
     assert(cur);
 
     /* Read remaining_length */
-    uint32_t multiplier = 1;
+    size_t multiplier = 1;
     *remaining_length = 0;
     while (true) {
         uint8_t encoded_byte;

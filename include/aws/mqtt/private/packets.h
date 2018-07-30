@@ -48,13 +48,13 @@ struct aws_mqtt_packet_connect {
     /* Variable header */
     union {
         struct {
-            bool /* reserved */ : 1;
-            bool clean_session : 1;
-            bool has_will : 1;
+            unsigned /* reserved */ : 1;
+            unsigned clean_session : 1;
+            unsigned has_will : 1;
             unsigned will_qos : 2;
-            bool will_retain : 1;
-            bool has_password : 1;
-            bool has_username : 1;
+            unsigned will_retain : 1;
+            unsigned has_password : 1;
+            unsigned has_username : 1;
         } flags;
         uint8_t all;
     } connect_flags;
@@ -76,8 +76,8 @@ struct aws_mqtt_packet_connack {
     /* Variable header */
     union {
         struct {
-            bool session_present : 1;
-            uint8_t /* reserved */ : 7;
+            unsigned session_present : 1;
+            unsigned /* reserved */ : 7;
         } flags;
         uint8_t all;
     } connack_flags;

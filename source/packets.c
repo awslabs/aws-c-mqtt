@@ -19,7 +19,7 @@
 
 enum { PROTOCOL_LEVEL = 4 };
 enum { PROTOCOL_NAME_LEN = 4 };
-static uint8_t s_protocol_name[PROTOCOL_NAME_LEN] = "MQTT";
+static uint8_t s_protocol_name[] = "MQTT";
 enum { BIT_1_FLAGS = 0x2 };
 
 static size_t s_sizeof_encoded_buffer(struct aws_byte_cursor *buf) {
@@ -120,7 +120,7 @@ int aws_mqtt_packet_ack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_pack
 
     /* Validate flags */
     struct packet_traits traits = aws_mqtt_get_packet_type_traits(&packet->fixed_header);
-    if (packet->fixed_header.flags != (traits.has_flags ? BIT_1_FLAGS : 0)) {
+    if (packet->fixed_header.flags != (traits.has_flags ? BIT_1_FLAGS : 0u)) {
 
         return aws_raise_error(INT32_MAX);
     }
@@ -368,7 +368,7 @@ void aws_mqtt_packet_connack_init(
     AWS_ZERO_STRUCT(*packet);
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_CONNACK;
-    packet->fixed_header.remaining_length = sizeof(packet->connack_flags) + sizeof(packet->connect_return_code);
+    packet->fixed_header.remaining_length = 1 + sizeof(packet->connect_return_code);
 
     packet->connack_flags.flags.session_present = session_present;
     packet->connect_return_code = return_code;
@@ -524,7 +524,7 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     /*************************************************************************/
     /* Payload                                                               */
 
-    uint32_t payload_size = packet->fixed_header.remaining_length - s_sizeof_encoded_buffer(&packet->topic_name) -
+    size_t payload_size = packet->fixed_header.remaining_length - s_sizeof_encoded_buffer(&packet->topic_name) -
                             sizeof(packet->packet_identifier);
     packet->payload = aws_byte_cursor_advance(cur, payload_size);
     if (packet->payload.len == 0) {
@@ -608,18 +608,17 @@ void aws_mqtt_packet_subscribe_add_topic(
     packet->fixed_header.remaining_length += topic_filter.len + 1;
 
     /* Add to the array list */
-    struct aws_mqtt_subscription subscription = {
-        subscription.filter = topic_filter,
-        subscription.qos = qos,
-    };
+    struct aws_mqtt_subscription subscription;
+    subscription.filter = topic_filter;
+    subscription.qos = qos;
     aws_array_list_push_back(&packet->topic_filters, &subscription);
 }
 
 /* For reading/writing qos bits */
 typedef union s_subscribe_eos {
     struct {
-        uint8_t qos : 2;
-        uint8_t reserved : 6;
+        unsigned qos : 2;
+        unsigned reserved : 6;
     } flags;
     uint8_t byte;
 } s_subscribe_eos_t;
@@ -687,7 +686,7 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
     }
 
     /* Read topic filters */
-    uint32_t remaining_length = packet->fixed_header.remaining_length - sizeof(uint16_t);
+    size_t remaining_length = packet->fixed_header.remaining_length - sizeof(uint16_t);
     while (remaining_length) {
 
         struct aws_mqtt_subscription subscription = {
@@ -824,7 +823,7 @@ int aws_mqtt_packet_unsubscribe_decode(struct aws_byte_cursor *cur, struct aws_m
     }
 
     /* Read topic filters */
-    uint32_t remaining_length = packet->fixed_header.remaining_length - sizeof(uint16_t);
+    size_t remaining_length = packet->fixed_header.remaining_length - sizeof(uint16_t);
     while (remaining_length) {
 
         struct aws_byte_cursor filter;
