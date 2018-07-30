@@ -4,7 +4,7 @@ phases:
   install:
     commands:
       - sudo apt-get update -y
-      - sudo apt-get install gcc g++ cmake3 cppcheck -y
+      - sudo apt-get install gcc gcc-multilib cmake3 cppcheck -y
   pre_build:
     commands:
       - export CC=gcc
@@ -12,7 +12,7 @@ phases:
   build:
     commands:
       - echo Build started on `date`
-      - ./codebuild/common-trusty.sh -DCMAKE_C_FLAGS="-m32"
+      - ./codebuild/common-trusty.sh -DCMAKE_C_FLAGS="-m32" -DCMAKE_LINK_FLAGS="-m32"
   post_build:
     commands:
       - echo Build completed on `date`

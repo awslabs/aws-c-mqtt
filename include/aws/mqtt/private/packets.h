@@ -51,7 +51,7 @@ struct aws_mqtt_packet_connect {
             bool /* reserved */ : 1;
             bool clean_session : 1;
             bool has_will : 1;
-            uint8_t will_qos : 2;
+            unsigned will_qos : 2;
             bool will_retain : 1;
             bool has_password : 1;
             bool has_username : 1;
@@ -174,7 +174,7 @@ AWS_MQTT_API
 void aws_mqtt_packet_connack_init(
     struct aws_mqtt_packet_connack *packet,
     bool session_present,
-    aws_mqtt_connect_return_code return_code);
+    enum aws_mqtt_connect_return_code return_code);
 
 AWS_MQTT_API
 int aws_mqtt_packet_connack_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connack *packet);
@@ -189,7 +189,7 @@ AWS_MQTT_API
 void aws_mqtt_packet_publish_init(
     struct aws_mqtt_packet_publish *packet,
     bool retain,
-    aws_mqtt_qos qos,
+    enum aws_mqtt_qos qos,
     bool dup,
     struct aws_byte_cursor topic_name,
     uint16_t packet_identifier,
@@ -241,7 +241,7 @@ AWS_MQTT_API
 void aws_mqtt_packet_subscribe_add_topic(
     struct aws_mqtt_packet_subscribe *packet,
     struct aws_byte_cursor topic_filter,
-    aws_mqtt_qos qos);
+    enum aws_mqtt_qos qos);
 
 AWS_MQTT_API
 int aws_mqtt_packet_subscribe_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_subscribe *packet);

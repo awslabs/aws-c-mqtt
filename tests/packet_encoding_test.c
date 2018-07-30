@@ -59,7 +59,7 @@ static bool byte_cursor_eq(struct aws_byte_cursor l, struct aws_byte_cursor r) {
 
 /* Contains all of the information required to run a packet's test case */
 struct packet_test_fixture {
-    aws_mqtt_packet_type type;
+    enum aws_mqtt_packet_type type;
     size_t size;
     packet_init_fn *init;
     packet_code_fn *encode;

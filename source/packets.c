@@ -68,7 +68,10 @@ static int s_decode_buffer(struct aws_byte_cursor *cur, struct aws_byte_cursor *
 /*****************************************************************************/
 /* Ack                                                                       */
 
-static void s_ack_init(struct aws_mqtt_packet_ack *packet, enum aws_mqtt_packet_type type, uint16_t packet_identifier) {
+static void s_ack_init(
+    struct aws_mqtt_packet_ack *packet,
+    enum aws_mqtt_packet_type type,
+    uint16_t packet_identifier) {
 
     assert(packet);
 
@@ -149,7 +152,7 @@ void aws_mqtt_packet_connect_init(
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_CONNECT;
     packet->fixed_header.remaining_length =
-        sizeof(packet->connect_flags) + sizeof(packet->keep_alive_timeout) + client_identifier.len;
+        1 + sizeof(packet->keep_alive_timeout) + client_identifier.len;
 
     packet->client_identifier = client_identifier;
     packet->connect_flags.flags.clean_session = clean_session;
@@ -358,7 +361,7 @@ int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
 void aws_mqtt_packet_connack_init(
     struct aws_mqtt_packet_connack *packet,
     bool session_present,
-    aws_mqtt_connect_return_code return_code) {
+    enum aws_mqtt_connect_return_code return_code) {
 
     assert(packet);
 
@@ -433,7 +436,7 @@ int aws_mqtt_packet_connack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
 void aws_mqtt_packet_publish_init(
     struct aws_mqtt_packet_publish *packet,
     bool retain,
-    aws_mqtt_qos qos,
+    enum aws_mqtt_qos qos,
     bool dup,
     struct aws_byte_cursor topic_name,
     uint16_t packet_identifier,
@@ -597,7 +600,7 @@ void aws_mqtt_packet_subscribe_clean_up(struct aws_mqtt_packet_subscribe *packet
 void aws_mqtt_packet_subscribe_add_topic(
     struct aws_mqtt_packet_subscribe *packet,
     struct aws_byte_cursor topic_filter,
-    aws_mqtt_qos qos) {
+    enum aws_mqtt_qos qos) {
 
     assert(packet);
 

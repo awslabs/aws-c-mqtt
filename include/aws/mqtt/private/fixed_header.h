@@ -22,7 +22,7 @@
 
 struct aws_mqtt_fixed_header {
     unsigned flags : 4;
-    aws_mqtt_packet_type packet_type : 4;
+    unsigned packet_type : 4;
     uint32_t remaining_length;
 };
 
@@ -38,20 +38,22 @@ union aws_mqtt_fixed_header_flags {
 
     struct {
         bool retain : 1;
-        uint8_t qos : 2;
+        unsigned qos : 2;
         bool dup : 1;
     } publish;
+};
+
+enum aws_mqtt_has_payload {
+    PACKET_PAYLOAD_NONE,
+    PACKET_PAYLOAD_OPTIONAL,
+    PACKET_PAYLOAD_REQUIRED,
 };
 
 struct packet_traits {
     bool has_flags : 1;
     bool has_variable_header : 1;
     bool has_id : 1; /* Special form of variable_header */
-    enum {
-        PACKET_PAYLOAD_NONE,
-        PACKET_PAYLOAD_OPTIONAL,
-        PACKET_PAYLOAD_REQUIRED,
-    } has_payload : 2;
+    unsigned has_payload : 2;
 };
 
 /**

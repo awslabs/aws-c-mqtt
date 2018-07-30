@@ -18,7 +18,7 @@
 
 #include <aws/mqtt/exports.h>
 
-typedef enum aws_mqtt_packet_type {
+enum aws_mqtt_packet_type {
     /* reserved = 0, */
     AWS_MQTT_PACKET_CONNECT = 1,
     AWS_MQTT_PACKET_CONNACK,
@@ -35,16 +35,16 @@ typedef enum aws_mqtt_packet_type {
     AWS_MQTT_PACKET_PINGRESP,
     AWS_MQTT_PACKET_DISCONNECT,
     /* reserved = 15, */
-} aws_mqtt_packet_type;
+};
 
-typedef enum aws_mqtt_qos {
+enum aws_mqtt_qos {
     AWS_MQTT_QOS_AT_MOST_ONCE = 0,
     AWS_MQTT_QOS_AT_LEAST_ONCE = 1,
     AWS_MQTT_QOS_EXACTLY_ONCE = 2,
     /* reserved = 3 */
-} aws_mqtt_qos;
+};
 
-typedef enum aws_mqtt_connect_return_code {
+enum aws_mqtt_connect_return_code {
     AWS_MQTT_CONNECT_ACCEPTED,
     AWS_MQTT_CONNECT_UNACCEPTABLE_PROTOCOL_VERSION,
     AWS_MQTT_CONNECT_IDENTIFIER_REJECTED,
@@ -52,11 +52,11 @@ typedef enum aws_mqtt_connect_return_code {
     AWS_MQTT_CONNECT_BAD_USERNAME_OR_PASSWORD,
     AWS_MQTT_CONNECT_NOT_AUTHORIZED,
     /* reserved = 6 - 255 */
-} aws_mqtt_connect_return_code;
+};
 
 struct aws_mqtt_subscription {
     struct aws_byte_cursor filter;
-    aws_mqtt_qos qos;
+    enum aws_mqtt_qos qos;
 };
 
 void ignore_me();
