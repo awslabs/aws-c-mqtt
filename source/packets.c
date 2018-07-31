@@ -68,10 +68,7 @@ static int s_decode_buffer(struct aws_byte_cursor *cur, struct aws_byte_cursor *
 /*****************************************************************************/
 /* Ack                                                                       */
 
-static void s_ack_init(
-    struct aws_mqtt_packet_ack *packet,
-    enum aws_mqtt_packet_type type,
-    uint16_t packet_identifier) {
+static void s_ack_init(struct aws_mqtt_packet_ack *packet, enum aws_mqtt_packet_type type, uint16_t packet_identifier) {
 
     assert(packet);
 
@@ -151,8 +148,7 @@ void aws_mqtt_packet_connect_init(
     AWS_ZERO_STRUCT(*packet);
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_CONNECT;
-    packet->fixed_header.remaining_length =
-        1 + sizeof(packet->keep_alive_timeout) + client_identifier.len;
+    packet->fixed_header.remaining_length = 1 + sizeof(packet->keep_alive_timeout) + client_identifier.len;
 
     packet->client_identifier = client_identifier;
     packet->connect_flags.flags.clean_session = clean_session;
@@ -525,7 +521,7 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     /* Payload                                                               */
 
     size_t payload_size = packet->fixed_header.remaining_length - s_sizeof_encoded_buffer(&packet->topic_name) -
-                            sizeof(packet->packet_identifier);
+                          sizeof(packet->packet_identifier);
     packet->payload = aws_byte_cursor_advance(cur, payload_size);
     if (packet->payload.len == 0) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
