@@ -46,18 +46,12 @@ struct aws_mqtt_packet_connect {
     struct aws_mqtt_fixed_header fixed_header;
 
     /* Variable header */
-    union {
-        struct {
-            unsigned /* reserved */ : 1;
-            unsigned clean_session : 1;
-            unsigned has_will : 1;
-            unsigned will_qos : 2;
-            unsigned will_retain : 1;
-            unsigned has_password : 1;
-            unsigned has_username : 1;
-        } flags;
-        uint8_t all;
-    } connect_flags;
+    bool clean_session;
+    bool has_will;
+    enum aws_mqtt_qos will_qos;
+    bool will_retain;
+    bool has_password;
+    bool has_username;
     uint16_t keep_alive_timeout;
     struct aws_byte_cursor client_identifier;
 
@@ -74,13 +68,7 @@ struct aws_mqtt_packet_connack {
     struct aws_mqtt_fixed_header fixed_header;
 
     /* Variable header */
-    union {
-        struct {
-            unsigned session_present : 1;
-            unsigned /* reserved */ : 7;
-        } flags;
-        uint8_t all;
-    } connack_flags;
+    bool session_present;
     uint8_t connect_return_code;
 };
 

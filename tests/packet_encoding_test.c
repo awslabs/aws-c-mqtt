@@ -273,7 +273,9 @@ static bool mqtt_test_connect_eq(void *a, void *b, size_t size) {
     struct aws_mqtt_packet_connect *l = a;
     struct aws_mqtt_packet_connect *r = b;
 
-    return mqtt_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->connect_flags.all == r->connect_flags.all &&
+    return mqtt_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->clean_session == r->clean_session &&
+           l->has_will == r->has_will && l->will_qos == r->will_qos && l->will_retain == r->will_retain &&
+           l->has_password == r->has_password && l->has_username == r->has_username &&
            l->keep_alive_timeout == r->keep_alive_timeout &&
            byte_cursor_eq(l->client_identifier, r->client_identifier) && byte_cursor_eq(l->will_topic, r->will_topic) &&
            byte_cursor_eq(l->username, r->username) && byte_cursor_eq(l->password, r->password);

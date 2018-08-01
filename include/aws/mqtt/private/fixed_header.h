@@ -21,26 +21,9 @@
 #include <aws/mqtt/mqtt.h>
 
 struct aws_mqtt_fixed_header {
-    unsigned flags : 4;
-    unsigned packet_type : 4;
+    uint8_t flags;
+    enum aws_mqtt_packet_type packet_type;
     size_t remaining_length;
-};
-
-/**
- * Cast a aws_mqtt_fixed_header * to a aws_mqtt_fixed_header_flags * to write
- * individual flags.
- *
- * Add more structs to support flags in different packet types.
- * \note No struct my exceed 4 bits in size without causing damage.
- */
-union aws_mqtt_fixed_header_flags {
-    struct aws_mqtt_fixed_header header;
-
-    struct {
-        unsigned retain : 1;
-        unsigned qos : 2;
-        unsigned dup : 1;
-    } publish;
 };
 
 enum aws_mqtt_has_payload {
@@ -50,10 +33,9 @@ enum aws_mqtt_has_payload {
 };
 
 struct packet_traits {
-    unsigned has_flags : 1;
-    unsigned has_variable_header : 1;
-    unsigned has_id : 1; /* Special form of variable_header */
-    unsigned has_payload : 2;
+    bool has_flags;
+    bool has_variable_header;
+    enum aws_mqtt_has_payload has_payload;
 };
 
 /**
@@ -64,11 +46,11 @@ struct packet_traits aws_mqtt_get_packet_type_traits(struct aws_mqtt_fixed_heade
 /**
  * Write a fixed header to a byte stream.
  */
-int aws_mqtt_encode_fixed_header(struct aws_byte_cursor *cur, struct aws_mqtt_fixed_header *header);
+int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, struct aws_mqtt_fixed_header *header);
 
 /**
  * Read a fixed header from a byte stream.
  */
-int aws_mqtt_decode_fixed_header(struct aws_byte_cursor *cur, struct aws_mqtt_fixed_header *header);
+int aws_mqtt_fixed_header_decode(struct aws_byte_cursor *cur, struct aws_mqtt_fixed_header *header);
 
 #endif /* AWS_MQTT_PRIVATE_FIXED_HEADER_H */
