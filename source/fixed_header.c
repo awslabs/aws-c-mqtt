@@ -64,6 +64,10 @@ static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remain
     return AWS_OP_SUCCESS;
 }
 
+enum aws_mqtt_packet_type aws_mqtt_get_packet_type(const uint8_t *buffer) {
+    return *buffer >> 4;
+}
+
 struct packet_traits aws_mqtt_get_packet_type_traits(struct aws_mqtt_fixed_header *header) {
 
     struct packet_traits traits = {
@@ -147,7 +151,7 @@ int aws_mqtt_fixed_header_decode(struct aws_byte_cursor *cur, struct aws_mqtt_fi
     if (!aws_byte_cursor_read_u8(cur, &byte_1)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
-    header->packet_type = byte_1 >> 4;
+    header->packet_type = aws_mqtt_get_packet_type(&byte_1);
     header->flags = byte_1 & 0xF;
 
     /* Read remaining length */

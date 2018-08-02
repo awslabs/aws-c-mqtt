@@ -39,6 +39,11 @@ struct packet_traits {
 };
 
 /**
+ * Get the type of packet from the first byte of the buffer.
+ */
+enum aws_mqtt_packet_type aws_mqtt_get_packet_type(const uint8_t *buffer);
+
+/**
  * Get traits describing a packet described by header.
  */
 struct packet_traits aws_mqtt_get_packet_type_traits(struct aws_mqtt_fixed_header *header);
