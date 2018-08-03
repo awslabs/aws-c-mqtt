@@ -174,7 +174,7 @@ static void mqtt_packet_test_after(struct aws_allocator *allocator, void *ctx) {
 #define PACKET_TEST(e_type, s_name, i, t, e) PACKET_TEST_NAME(e_type, s_name, s_name, i, t, e)
 
 static uint8_t s_client_id[] = "Test Client ID";
-enum { CLIEN_ID_LEN = sizeof(s_client_id) };
+enum { CLIENT_ID_LEN = sizeof(s_client_id) };
 static uint8_t s_topic_name[] = "test/topic";
 enum { TOPIC_NAME_LEN = sizeof(s_topic_name) };
 static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
@@ -245,7 +245,7 @@ static void mqtt_test_connect_init(
     /* Init packet */
     aws_mqtt_packet_connect_init(
         fixture->in_packet,
-        aws_byte_cursor_from_array(s_client_id, CLIEN_ID_LEN),
+        aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN),
         false,
         0);
 
@@ -253,7 +253,7 @@ static void mqtt_test_connect_init(
     /* clang-format off */
     uint8_t header[] = {
         AWS_MQTT_PACKET_CONNECT << 4,   /* Packet type */
-        18,                             /* Remaining length */
+        10 + 2 + CLIENT_ID_LEN,         /* Remaining length */
         0, 4, 'M', 'Q', 'T', 'T',       /* Protocol name */
         4,                              /* Protocol level */
         0,                              /* Connect Flags */
@@ -263,8 +263,8 @@ static void mqtt_test_connect_init(
 
     aws_byte_cursor_write(buffer, header, sizeof(header));
     aws_byte_cursor_write_u8(buffer, 0);
-    aws_byte_cursor_write_u8(buffer, CLIEN_ID_LEN);
-    aws_byte_cursor_write(buffer, s_client_id, CLIEN_ID_LEN);
+    aws_byte_cursor_write_u8(buffer, CLIENT_ID_LEN);
+    aws_byte_cursor_write(buffer, s_client_id, CLIENT_ID_LEN);
 }
 static bool mqtt_test_connect_eq(void *a, void *b, size_t size) {
 

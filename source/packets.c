@@ -18,9 +18,12 @@
 #include <assert.h>
 
 enum { PROTOCOL_LEVEL = 4 };
-enum { PROTOCOL_NAME_LEN = 4 };
-static uint8_t s_protocol_name[] = "MQTT";
 enum { BIT_1_FLAGS = 0x2 };
+
+static struct aws_byte_cursor s_protocol_name = {
+    .ptr = (uint8_t *)"MQTT",
+    .len = 4,
+};
 
 static size_t s_sizeof_encoded_buffer(struct aws_byte_cursor *buf) {
     return sizeof(uint16_t) + buf->len;
@@ -148,7 +151,7 @@ void aws_mqtt_packet_connect_init(
     AWS_ZERO_STRUCT(*packet);
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_CONNECT;
-    packet->fixed_header.remaining_length = 1 + sizeof(packet->keep_alive_timeout) + client_identifier.len;
+    packet->fixed_header.remaining_length = 10 + s_sizeof_encoded_buffer(&client_identifier);
 
     packet->client_identifier = client_identifier;
     packet->clean_session = clean_session;
@@ -201,10 +204,7 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, struct aws_mqtt_
     /* Variable Header                                                       */
 
     /* Write protocol name */
-    if (!aws_byte_cursor_write_be16(cur, PROTOCOL_NAME_LEN)) {
-        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
-    }
-    if (!aws_byte_cursor_write(cur, s_protocol_name, PROTOCOL_NAME_LEN)) {
+    if (s_encode_buffer(cur, s_protocol_name)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -276,21 +276,19 @@ int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     /*************************************************************************/
     /* Variable Header                                                       */
 
-    /* Check protocol name length */
-    uint16_t protocol_name_len;
-    if (!aws_byte_cursor_read_be16(cur, &protocol_name_len)) {
+    /* Check protocol name */
+    struct aws_byte_cursor protocol_name = {
+        .ptr = NULL,
+        .len = 0,
+    };
+    if (s_decode_buffer(cur, &protocol_name)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
-    if (protocol_name_len != PROTOCOL_NAME_LEN) {
+    assert(protocol_name.ptr && protocol_name.len);
+    if (protocol_name.len != s_protocol_name.len) {
         return aws_raise_error(INT32_MAX);
     }
-
-    /* Check protocol name */
-    struct aws_byte_cursor protocol_name = aws_byte_cursor_advance(cur, PROTOCOL_NAME_LEN);
-    if (protocol_name.len == 0) {
-        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
-    }
-    if (memcmp(protocol_name.ptr, s_protocol_name, PROTOCOL_NAME_LEN) != 0) {
+    if (memcmp(protocol_name.ptr, s_protocol_name.ptr, s_protocol_name.len) != 0) {
         return aws_raise_error(INT32_MAX);
     }
 
