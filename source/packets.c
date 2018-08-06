@@ -119,8 +119,8 @@ int aws_mqtt_packet_ack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_pack
     }
 
     /* Validate flags */
-    struct packet_traits traits = aws_mqtt_get_packet_type_traits(&packet->fixed_header);
-    if (packet->fixed_header.flags != (traits.has_flags ? BIT_1_FLAGS : 0u)) {
+    bool has_flags = aws_mqtt_packet_has_flags(&packet->fixed_header);
+    if (packet->fixed_header.flags != (has_flags ? BIT_1_FLAGS : 0u)) {
 
         return aws_raise_error(INT32_MAX);
     }

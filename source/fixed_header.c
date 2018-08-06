@@ -68,51 +68,33 @@ enum aws_mqtt_packet_type aws_mqtt_get_packet_type(const uint8_t *buffer) {
     return *buffer >> 4;
 }
 
-struct packet_traits aws_mqtt_get_packet_type_traits(struct aws_mqtt_fixed_header *header) {
-
-    struct packet_traits traits = {
-        .has_flags = false,
-        .has_variable_header = false,
-        .has_payload = PACKET_PAYLOAD_NONE,
-    };
+bool aws_mqtt_packet_has_flags(struct aws_mqtt_fixed_header *header) {
 
     /* Parse attributes based on packet type */
     switch (header->packet_type) {
-        case AWS_MQTT_PACKET_CONNECT:
-            traits.has_variable_header = true;
-            traits.has_payload = PACKET_PAYLOAD_REQUIRED;
-            break;
-
+        case AWS_MQTT_PACKET_SUBSCRIBE:
+        case AWS_MQTT_PACKET_UNSUBSCRIBE:
         case AWS_MQTT_PACKET_PUBLISH:
-            traits.has_flags = true;
-            traits.has_payload = PACKET_PAYLOAD_OPTIONAL;
-            break;
-
         case AWS_MQTT_PACKET_PUBREL:
-            traits.has_flags = true;
+            return true;
             break;
 
+        case AWS_MQTT_PACKET_CONNECT:
         case AWS_MQTT_PACKET_CONNACK:
         case AWS_MQTT_PACKET_PUBACK:
         case AWS_MQTT_PACKET_PUBREC:
         case AWS_MQTT_PACKET_PUBCOMP:
+        case AWS_MQTT_PACKET_SUBACK:
         case AWS_MQTT_PACKET_UNSUBACK:
         case AWS_MQTT_PACKET_PINGREQ:
         case AWS_MQTT_PACKET_PINGRESP:
         case AWS_MQTT_PACKET_DISCONNECT:
-            break;
+            return false;
 
-        case AWS_MQTT_PACKET_SUBSCRIBE:
-        case AWS_MQTT_PACKET_UNSUBSCRIBE:
-            traits.has_flags = true;
-            /* fallthrough */
-
-        case AWS_MQTT_PACKET_SUBACK:
-            traits.has_payload = PACKET_PAYLOAD_REQUIRED;
-            break;
+        default:
+            assert(0 && "unreachable");
+            return false;
     }
-
-    return traits;
 }
 
 int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, struct aws_mqtt_fixed_header *header) {
@@ -120,10 +102,10 @@ int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, struct aws_mqtt_fi
     assert(cur);
     assert(header);
 
-    struct packet_traits traits = aws_mqtt_get_packet_type_traits(header);
+    bool has_flags = aws_mqtt_packet_has_flags(header);
 
     /* Check that flags are 0 if they must not be present */
-    if (!traits.has_flags && header->flags != 0) {
+    if (!has_flags && header->flags != 0) {
         return aws_raise_error(INT32_MAX);
     }
 
@@ -162,10 +144,10 @@ int aws_mqtt_fixed_header_decode(struct aws_byte_cursor *cur, struct aws_mqtt_fi
         return aws_raise_error(INT32_MAX);
     }
 
-    struct packet_traits traits = aws_mqtt_get_packet_type_traits(header);
+    bool has_flags = aws_mqtt_packet_has_flags(header);
 
     /* Check that flags are 0 if they must not be present */
-    if (!traits.has_flags && header->flags != 0) {
+    if (!has_flags && header->flags != 0) {
         return aws_raise_error(INT32_MAX);
     }
 

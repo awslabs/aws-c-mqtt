@@ -21,21 +21,9 @@
 #include <aws/mqtt/mqtt.h>
 
 struct aws_mqtt_fixed_header {
-    uint8_t flags;
     enum aws_mqtt_packet_type packet_type;
     size_t remaining_length;
-};
-
-enum aws_mqtt_has_payload {
-    PACKET_PAYLOAD_NONE,
-    PACKET_PAYLOAD_OPTIONAL,
-    PACKET_PAYLOAD_REQUIRED,
-};
-
-struct packet_traits {
-    bool has_flags;
-    bool has_variable_header;
-    enum aws_mqtt_has_payload has_payload;
+    uint8_t flags;
 };
 
 /**
@@ -46,7 +34,7 @@ enum aws_mqtt_packet_type aws_mqtt_get_packet_type(const uint8_t *buffer);
 /**
  * Get traits describing a packet described by header.
  */
-struct packet_traits aws_mqtt_get_packet_type_traits(struct aws_mqtt_fixed_header *header);
+bool aws_mqtt_packet_has_flags(struct aws_mqtt_fixed_header *header);
 
 /**
  * Write a fixed header to a byte stream.
