@@ -376,7 +376,7 @@ static int s_test_subscribe_init(struct packet_test_fixture *fixture, struct aws
     aws_byte_cursor_write_u8(
         buffer, (AWS_MQTT_PACKET_SUBSCRIBE << 4) | 0x2); /* Packet type & flags */
     aws_byte_cursor_write_u8(
-        buffer, 2 + TOPIC_NAME_LEN + 1); /* Remaining length */
+        buffer, 4 + TOPIC_NAME_LEN + 1); /* Remaining length */
     aws_byte_cursor_write_u8(
         buffer, 0);
     aws_byte_cursor_write_u8(
@@ -453,7 +453,7 @@ static int s_test_unsubscribe_init(struct packet_test_fixture *fixture, struct a
     aws_byte_cursor_write_u8(
         buffer, (AWS_MQTT_PACKET_SUBSCRIBE << 4) | 0x2); /* Packet type & flags */
     aws_byte_cursor_write_u8(
-        buffer, 2 + TOPIC_NAME_LEN); /* Remaining length */
+        buffer, 4 + TOPIC_NAME_LEN); /* Remaining length */
     aws_byte_cursor_write_u8(
         buffer, 0);
     aws_byte_cursor_write_u8(

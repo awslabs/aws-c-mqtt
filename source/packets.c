@@ -168,6 +168,11 @@ int aws_mqtt_packet_connect_add_credentials(
     assert(packet);
     assert(username.len > 0);
 
+    if (!packet->has_username) {
+        /* If not already username, add size of length field */
+        packet->fixed_header.remaining_length += 2;
+    }
+
     /* Add change in size to remaining_length */
     packet->fixed_header.remaining_length += username.len - packet->username.len;
     packet->has_username = true;
@@ -175,6 +180,11 @@ int aws_mqtt_packet_connect_add_credentials(
     packet->username = username;
 
     if (password.len > 0) {
+
+        if (!packet->has_password) {
+            /* If not already password, add size of length field */
+            packet->fixed_header.remaining_length += 2;
+        }
 
         /* Add change in size to remaining_length */
         packet->fixed_header.remaining_length += password.len - packet->password.len;
@@ -638,7 +648,7 @@ int aws_mqtt_packet_subscribe_add_topic(
     }
 
     /* Add to the remaining length */
-    packet->fixed_header.remaining_length += topic_filter.len + 1;
+    packet->fixed_header.remaining_length += s_sizeof_encoded_buffer(&topic_filter) + 1;
 
     return AWS_OP_SUCCESS;
 }
@@ -726,7 +736,7 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
 
         aws_array_list_push_back(&packet->topic_filters, &subscription);
 
-        remaining_length -= subscription.filter.len + 1;
+        remaining_length -= s_sizeof_encoded_buffer(&subscription.filter) + 1;
     }
 
     return AWS_OP_SUCCESS;
@@ -789,7 +799,7 @@ int aws_mqtt_packet_unsubscribe_add_topic(
     }
 
     /* Add to the remaining length */
-    packet->fixed_header.remaining_length += topic_filter.len;
+    packet->fixed_header.remaining_length += s_sizeof_encoded_buffer(&topic_filter);
 
     return AWS_OP_SUCCESS;
 }
@@ -861,7 +871,7 @@ int aws_mqtt_packet_unsubscribe_decode(struct aws_byte_cursor *cur, struct aws_m
 
         aws_array_list_push_back(&packet->topic_filters, &filter);
 
-        remaining_length -= filter.len;
+        remaining_length -= s_sizeof_encoded_buffer(&filter);
     }
 
     return AWS_OP_SUCCESS;
