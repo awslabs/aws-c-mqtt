@@ -22,29 +22,29 @@ enum { BUFFER_SIZE = 128 };
 struct packet_test_fixture;
 
 /* Function type used to init and cleanup a fixture */
-typedef void(packet_init_fn)(struct packet_test_fixture *, struct aws_byte_cursor *);
+typedef int(packet_init_fn)(struct packet_test_fixture *, struct aws_byte_cursor *);
 /* Function used to encode and decode a packet (this should be set to a function from packets.h) */
 typedef int(packet_code_fn)(struct aws_byte_cursor *, void *);
 /* Function used to check if two packets are equal */
 typedef bool(packet_eq_fn)(void *, void *, size_t);
 
 /* Helper for comparing the fixed headers of packets */
-static bool mqtt_fixed_header_eq(struct aws_mqtt_fixed_header *l, struct aws_mqtt_fixed_header *r) {
+static bool s_fixed_header_eq(struct aws_mqtt_fixed_header *l, struct aws_mqtt_fixed_header *r) {
 
     return l->packet_type == r->packet_type && l->flags == r->flags && l->remaining_length == r->remaining_length;
 }
 
 /* Default packet compare function, checks headers then memcmps the rest */
-static bool mqtt_packet_eq_default(void *a, void *b, size_t size) {
+static bool s_packet_eq_default(void *a, void *b, size_t size) {
 
     static const size_t HEADER_SIZE = sizeof(struct aws_mqtt_fixed_header);
 
-    return mqtt_fixed_header_eq(a, b) &&
+    return s_fixed_header_eq(a, b) &&
            memcmp((uint8_t *)a + HEADER_SIZE, (uint8_t *)b + HEADER_SIZE, size - HEADER_SIZE) == 0;
 }
 
 /* Compares the data inside 2 byte cursors */
-static bool byte_cursor_eq(struct aws_byte_cursor l, struct aws_byte_cursor r) {
+static bool s_byte_cursor_eq(struct aws_byte_cursor l, struct aws_byte_cursor r) {
 
     if (l.len == r.len) {
         if (l.len == 0) {
@@ -73,7 +73,7 @@ struct packet_test_fixture {
     struct aws_byte_buf buffer;
 };
 
-static void mqtt_packet_test_before(struct aws_allocator *allocator, void *ctx) {
+static void s_packet_test_before(struct aws_allocator *allocator, void *ctx) {
 
     struct packet_test_fixture *fixture = ctx;
     fixture->allocator = allocator;
@@ -86,6 +86,11 @@ static void mqtt_packet_test_before(struct aws_allocator *allocator, void *ctx) 
     fixture->out_packet = aws_mem_acquire(allocator, fixture->size);
     assert(fixture->out_packet);
     memset(fixture->out_packet, 0, fixture->size);
+}
+
+static int s_packet_test_run(struct aws_allocator *allocator, void *ctx) {
+
+    struct packet_test_fixture *fixture = ctx;
 
     aws_byte_buf_init(allocator, &fixture->buffer, BUFFER_SIZE);
 
@@ -94,13 +99,8 @@ static void mqtt_packet_test_before(struct aws_allocator *allocator, void *ctx) 
         .ptr = fixture->buffer.buffer,
         .len = fixture->buffer.capacity,
     };
-    fixture->init(fixture, &cursor);
+    ASSERT_SUCCESS(fixture->init(fixture, &cursor));
     fixture->buffer.len = fixture->buffer.capacity - cursor.len;
-}
-
-static int mqtt_packet_test_run(struct aws_allocator *allocator, void *ctx) {
-
-    struct packet_test_fixture *fixture = ctx;
 
     /* Encode */
 
@@ -125,20 +125,20 @@ static int mqtt_packet_test_run(struct aws_allocator *allocator, void *ctx) {
     /* Decode */
 
     /* Decode the buffer */
-    struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&fixture->buffer);
+    cursor = aws_byte_cursor_from_buf(&fixture->buffer);
     ASSERT_SUCCESS(fixture->decode(&cursor, fixture->out_packet));
 
     /* Compare the packets */
     if (fixture->equal) {
         ASSERT_TRUE(fixture->equal(fixture->out_packet, fixture->in_packet, fixture->size));
     } else {
-        ASSERT_TRUE(mqtt_packet_eq_default(fixture->out_packet, fixture->in_packet, fixture->size));
+        ASSERT_TRUE(s_packet_eq_default(fixture->out_packet, fixture->in_packet, fixture->size));
     }
 
     return AWS_OP_SUCCESS;
 }
 
-static void mqtt_packet_test_after(struct aws_allocator *allocator, void *ctx) {
+static void s_packet_test_after(struct aws_allocator *allocator, void *ctx) {
 
     struct packet_test_fixture *fixture = ctx;
 
@@ -166,9 +166,9 @@ static void mqtt_packet_test_after(struct aws_allocator *allocator, void *ctx) {
     };                                                                                                                 \
     AWS_TEST_CASE_FIXTURE(                                                                                             \
         mqtt_packet_##t_name,                                                                                          \
-        mqtt_packet_test_before,                                                                                       \
-        mqtt_packet_test_run,                                                                                          \
-        mqtt_packet_test_after,                                                                                        \
+        s_packet_test_before,                                                                                          \
+        s_packet_test_run,                                                                                             \
+        s_packet_test_after,                                                                                           \
         &mqtt_packet_##t_name##_fixture)
 
 #define PACKET_TEST(e_type, s_name, i, t, e) PACKET_TEST_NAME(e_type, s_name, s_name, i, t, e)
@@ -183,7 +183,7 @@ enum { PAYLOAD_LEN = sizeof(s_payload) };
 /*****************************************************************************/
 /* Ack                                                                       */
 
-static void mqtt_test_ack_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_ack_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     /* Init buffer */
     uint8_t packet_id = (uint8_t)(fixture->type + 7);
@@ -198,24 +198,24 @@ static void mqtt_test_ack_init(struct packet_test_fixture *fixture, struct aws_b
     /* Init packet */
     switch (fixture->type) {
         case AWS_MQTT_PACKET_PUBACK:
-            aws_mqtt_packet_puback_init(fixture->in_packet, packet_id);
+            ASSERT_SUCCESS(aws_mqtt_packet_puback_init(fixture->in_packet, packet_id));
             break;
         case AWS_MQTT_PACKET_PUBREC:
-            aws_mqtt_packet_pubrec_init(fixture->in_packet, packet_id);
+            ASSERT_SUCCESS(aws_mqtt_packet_pubrec_init(fixture->in_packet, packet_id));
             break;
         case AWS_MQTT_PACKET_PUBREL:
-            aws_mqtt_packet_pubrel_init(fixture->in_packet, packet_id);
+            ASSERT_SUCCESS(aws_mqtt_packet_pubrel_init(fixture->in_packet, packet_id));
             /* if pubrel, bit 1 in flags must be set */
             header[0] |= 0x2;
             break;
         case AWS_MQTT_PACKET_PUBCOMP:
-            aws_mqtt_packet_pubcomp_init(fixture->in_packet, packet_id);
+            ASSERT_SUCCESS(aws_mqtt_packet_pubcomp_init(fixture->in_packet, packet_id));
             break;
         case AWS_MQTT_PACKET_SUBACK:
-            aws_mqtt_packet_suback_init(fixture->in_packet, packet_id);
+            ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->in_packet, packet_id));
             break;
         case AWS_MQTT_PACKET_UNSUBACK:
-            aws_mqtt_packet_unsuback_init(fixture->in_packet, packet_id);
+            ASSERT_SUCCESS(aws_mqtt_packet_unsuback_init(fixture->in_packet, packet_id));
             break;
         default:
             assert(false);
@@ -223,10 +223,12 @@ static void mqtt_test_ack_init(struct packet_test_fixture *fixture, struct aws_b
     }
 
     aws_byte_cursor_write(buffer, header, sizeof(header));
+
+    return AWS_OP_SUCCESS;
 }
 #define PACKET_TEST_ACK(e_type, name)                   \
     PACKET_TEST_NAME(                                   \
-    e_type, name, ack, &mqtt_test_ack_init, NULL, NULL)
+    e_type, name, ack, &s_test_ack_init, NULL, NULL)
 PACKET_TEST_ACK(PUBACK, puback)
 PACKET_TEST_ACK(PUBREC, pubrec)
 PACKET_TEST_ACK(PUBREL, pubrel)
@@ -238,16 +240,16 @@ PACKET_TEST_ACK(UNSUBACK, unsuback)
 /*****************************************************************************/
 /* Connect                                                                   */
 
-static void mqtt_test_connect_init(
+static int s_test_connect_init(
     struct packet_test_fixture *fixture,
     struct aws_byte_cursor *buffer) {
 
     /* Init packet */
-    aws_mqtt_packet_connect_init(
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
         fixture->in_packet,
         aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN),
         false,
-        0);
+        0));
 
     /* Init buffer */
     /* clang-format off */
@@ -265,30 +267,33 @@ static void mqtt_test_connect_init(
     aws_byte_cursor_write_u8(buffer, 0);
     aws_byte_cursor_write_u8(buffer, CLIENT_ID_LEN);
     aws_byte_cursor_write(buffer, s_client_id, CLIENT_ID_LEN);
+
+    return AWS_OP_SUCCESS;
 }
-static bool mqtt_test_connect_eq(void *a, void *b, size_t size) {
+static bool s_test_connect_eq(void *a, void *b, size_t size) {
 
     (void)size;
 
     struct aws_mqtt_packet_connect *l = a;
     struct aws_mqtt_packet_connect *r = b;
 
-    return mqtt_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->clean_session == r->clean_session &&
+    return s_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->clean_session == r->clean_session &&
            l->has_will == r->has_will && l->will_qos == r->will_qos && l->will_retain == r->will_retain &&
            l->has_password == r->has_password && l->has_username == r->has_username &&
            l->keep_alive_timeout == r->keep_alive_timeout &&
-           byte_cursor_eq(l->client_identifier, r->client_identifier) && byte_cursor_eq(l->will_topic, r->will_topic) &&
-           byte_cursor_eq(l->username, r->username) && byte_cursor_eq(l->password, r->password);
+           s_byte_cursor_eq(l->client_identifier, r->client_identifier) &&
+           s_byte_cursor_eq(l->will_topic, r->will_topic) && s_byte_cursor_eq(l->username, r->username) &&
+           s_byte_cursor_eq(l->password, r->password);
 }
-PACKET_TEST(CONNECT, connect, &mqtt_test_connect_init, NULL, &mqtt_test_connect_eq)
+PACKET_TEST(CONNECT, connect, &s_test_connect_init, NULL, &s_test_connect_eq)
 
 /*****************************************************************************/
 /* Connect                                                                   */
 
-static void mqtt_test_connack_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_connack_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     /* Init packet */
-    aws_mqtt_packet_connack_init(fixture->in_packet, true, AWS_MQTT_CONNECT_ACCEPTED);
+    ASSERT_SUCCESS(aws_mqtt_packet_connack_init(fixture->in_packet, true, AWS_MQTT_CONNECT_ACCEPTED));
 
     /* Init buffer */
     /* clang-format off */
@@ -301,23 +306,25 @@ static void mqtt_test_connack_init(struct packet_test_fixture *fixture, struct a
     /* clang-format on */
 
     aws_byte_cursor_write(buffer, header, sizeof(header));
+
+    return AWS_OP_SUCCESS;
 }
-PACKET_TEST(CONNACK, connack, &mqtt_test_connack_init, NULL, NULL)
+PACKET_TEST(CONNACK, connack, &s_test_connack_init, NULL, NULL)
 
 /*****************************************************************************/
 /* Publish                                                                   */
 
-static void mqtt_test_publish_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_publish_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     /* Init packet */
-    aws_mqtt_packet_publish_init(
+    ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
         fixture->in_packet,
         false,
         AWS_MQTT_QOS_EXACTLY_ONCE,
         false,
         aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
         7,
-        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN));
+        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
 
     /* Init buffer */
     /* clang-format off */
@@ -338,30 +345,32 @@ static void mqtt_test_publish_init(struct packet_test_fixture *fixture, struct a
     aws_byte_cursor_write(
         buffer, s_payload, PAYLOAD_LEN); /* payload */
     /* clang-format on */
+
+    return AWS_OP_SUCCESS;
 }
-static bool mqtt_test_publish_eq(void *a, void *b, size_t size) {
+static bool s_test_publish_eq(void *a, void *b, size_t size) {
 
     (void)size;
 
     struct aws_mqtt_packet_publish *l = a;
     struct aws_mqtt_packet_publish *r = b;
 
-    return mqtt_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->packet_identifier == r->packet_identifier &&
-           byte_cursor_eq(l->topic_name, r->topic_name) && byte_cursor_eq(l->payload, r->payload);
+    return s_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->packet_identifier == r->packet_identifier &&
+           s_byte_cursor_eq(l->topic_name, r->topic_name) && s_byte_cursor_eq(l->payload, r->payload);
 }
-PACKET_TEST(PUBLISH, publish, &mqtt_test_publish_init, NULL, &mqtt_test_publish_eq)
+PACKET_TEST(PUBLISH, publish, &s_test_publish_init, NULL, &s_test_publish_eq)
 
 /*****************************************************************************/
 /* Subscribe                                                                 */
 
-static void mqtt_test_subscribe_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_subscribe_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     /* Init packets */
-    aws_mqtt_packet_subscribe_init(fixture->in_packet, fixture->allocator, 7);
-    aws_mqtt_packet_subscribe_init(fixture->out_packet, fixture->allocator, 0);
+    ASSERT_SUCCESS(aws_mqtt_packet_subscribe_init(fixture->in_packet, fixture->allocator, 7));
+    ASSERT_SUCCESS(aws_mqtt_packet_subscribe_init(fixture->out_packet, fixture->allocator, 0));
 
-    aws_mqtt_packet_subscribe_add_topic(
-        fixture->in_packet, aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN), AWS_MQTT_QOS_EXACTLY_ONCE);
+    ASSERT_SUCCESS(aws_mqtt_packet_subscribe_add_topic(
+        fixture->in_packet, aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN), AWS_MQTT_QOS_EXACTLY_ONCE));
 
     /* Init buffer */ /* clang-format off */
     aws_byte_cursor_write_u8(
@@ -381,22 +390,26 @@ static void mqtt_test_subscribe_init(struct packet_test_fixture *fixture, struct
     aws_byte_cursor_write_u8(
         buffer, AWS_MQTT_QOS_EXACTLY_ONCE);
     /* clang-format on */
+
+    return AWS_OP_SUCCESS;
 }
-static void mqtt_test_subscribe_clean_up(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_subscribe_clean_up(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     (void)buffer;
 
     aws_mqtt_packet_subscribe_clean_up(fixture->in_packet);
     aws_mqtt_packet_subscribe_clean_up(fixture->out_packet);
+
+    return AWS_OP_SUCCESS;
 }
-static bool mqtt_test_subscribe_eq(void *a, void *b, size_t size) {
+static bool s_test_subscribe_eq(void *a, void *b, size_t size) {
 
     (void)size;
 
     struct aws_mqtt_packet_subscribe *l = a;
     struct aws_mqtt_packet_subscribe *r = b;
 
-    if (!mqtt_fixed_header_eq(&l->fixed_header, &r->fixed_header) || l->packet_identifier != r->packet_identifier) {
+    if (!s_fixed_header_eq(&l->fixed_header, &r->fixed_header) || l->packet_identifier != r->packet_identifier) {
         return false;
     }
 
@@ -414,25 +427,26 @@ static bool mqtt_test_subscribe_eq(void *a, void *b, size_t size) {
         if (lt->qos != rt->qos) {
             return false;
         }
-        if (!byte_cursor_eq(lt->filter, rt->filter)) {
+        if (!s_byte_cursor_eq(lt->filter, rt->filter)) {
             return false;
         }
     }
 
     return true;
 }
-PACKET_TEST(SUBSCRIBE, subscribe, &mqtt_test_subscribe_init, &mqtt_test_subscribe_clean_up, &mqtt_test_subscribe_eq)
+PACKET_TEST(SUBSCRIBE, subscribe, &s_test_subscribe_init, &s_test_subscribe_clean_up, &s_test_subscribe_eq)
 
 /*****************************************************************************/
 /* Unsubscribe                                                               */
 
-static void mqtt_test_unsubscribe_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_unsubscribe_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     /* Init packet */
-    aws_mqtt_packet_unsubscribe_init(fixture->in_packet, fixture->allocator, 7);
-    aws_mqtt_packet_unsubscribe_init(fixture->out_packet, fixture->allocator, 0);
+    ASSERT_SUCCESS(aws_mqtt_packet_unsubscribe_init(fixture->in_packet, fixture->allocator, 7));
+    ASSERT_SUCCESS(aws_mqtt_packet_unsubscribe_init(fixture->out_packet, fixture->allocator, 0));
 
-    aws_mqtt_packet_unsubscribe_add_topic(fixture->in_packet, aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN));
+    ASSERT_SUCCESS(aws_mqtt_packet_unsubscribe_add_topic(
+        fixture->in_packet, aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN)));
 
     /* Init buffer */
     /* clang-format off */
@@ -451,22 +465,26 @@ static void mqtt_test_unsubscribe_init(struct packet_test_fixture *fixture, stru
     aws_byte_cursor_write(
         buffer, s_topic_name, TOPIC_NAME_LEN);
     /* clang-format on */
+
+    return AWS_OP_SUCCESS;
 }
-static void mqtt_test_unsubscribe_clean_up(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_unsubscribe_clean_up(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     (void)buffer;
 
     aws_mqtt_packet_unsubscribe_clean_up(fixture->in_packet);
     aws_mqtt_packet_unsubscribe_clean_up(fixture->out_packet);
+
+    return AWS_OP_SUCCESS;
 }
-static bool mqtt_test_unsubscribe_eq(void *a, void *b, size_t size) {
+static bool s_test_unsubscribe_eq(void *a, void *b, size_t size) {
 
     (void)size;
 
     struct aws_mqtt_packet_unsubscribe *l = a;
     struct aws_mqtt_packet_unsubscribe *r = b;
 
-    if (!mqtt_fixed_header_eq(&l->fixed_header, &r->fixed_header) || l->packet_identifier != r->packet_identifier) {
+    if (!s_fixed_header_eq(&l->fixed_header, &r->fixed_header) || l->packet_identifier != r->packet_identifier) {
         return false;
     }
 
@@ -481,35 +499,30 @@ static bool mqtt_test_unsubscribe_eq(void *a, void *b, size_t size) {
         struct aws_byte_cursor *rt;
         aws_array_list_get_at_ptr(&r->topic_filters, (void **)&rt, i);
 
-        if (!byte_cursor_eq(*lt, *rt)) {
+        if (!s_byte_cursor_eq(*lt, *rt)) {
             return false;
         }
     }
 
     return true;
 }
-PACKET_TEST(
-    UNSUBSCRIBE,
-    unsubscribe,
-    &mqtt_test_unsubscribe_init,
-    &mqtt_test_unsubscribe_clean_up,
-    &mqtt_test_unsubscribe_eq)
+PACKET_TEST(UNSUBSCRIBE, unsubscribe, &s_test_unsubscribe_init, &s_test_unsubscribe_clean_up, &s_test_unsubscribe_eq)
 
 /*****************************************************************************/
 /* Connection                                                                */
 
-static void mqtt_test_connection_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_connection_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
 
     /* Init packet */
     switch (fixture->type) {
         case AWS_MQTT_PACKET_PINGREQ:
-            aws_mqtt_packet_pingreq_init(fixture->in_packet);
+            ASSERT_SUCCESS(aws_mqtt_packet_pingreq_init(fixture->in_packet));
             break;
         case AWS_MQTT_PACKET_PINGRESP:
-            aws_mqtt_packet_pingresp_init(fixture->in_packet);
+            ASSERT_SUCCESS(aws_mqtt_packet_pingresp_init(fixture->in_packet));
             break;
         case AWS_MQTT_PACKET_DISCONNECT:
-            aws_mqtt_packet_disconnect_init(fixture->in_packet);
+            ASSERT_SUCCESS(aws_mqtt_packet_disconnect_init(fixture->in_packet));
             break;
         default:
             assert(false);
@@ -525,9 +538,11 @@ static void mqtt_test_connection_init(struct packet_test_fixture *fixture, struc
     /* clang-format on */
 
     aws_byte_cursor_write(buffer, header, sizeof(header));
+
+    return AWS_OP_SUCCESS;
 }
 #define PACKET_TEST_CONNETION(e_type, name)                                                                            \
-    PACKET_TEST_NAME(e_type, name, connection, &mqtt_test_connection_init, NULL, NULL)
+    PACKET_TEST_NAME(e_type, name, connection, &s_test_connection_init, NULL, NULL)
 PACKET_TEST_CONNETION(PINGREQ, pingreq)
 PACKET_TEST_CONNETION(PINGRESP, pingresp)
 PACKET_TEST_CONNETION(DISCONNECT, disconnect)
