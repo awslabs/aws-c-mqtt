@@ -83,7 +83,7 @@ static void s_ack_init(struct aws_mqtt_packet_ack *packet, enum aws_mqtt_packet_
     packet->packet_identifier = packet_identifier;
 }
 
-int aws_mqtt_packet_ack_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_ack *packet) {
+int aws_mqtt_packet_ack_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_ack *packet) {
 
     assert(cur);
     assert(packet);
@@ -139,7 +139,7 @@ int aws_mqtt_packet_ack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_pack
 /*****************************************************************************/
 /* Connect                                                                   */
 
-void aws_mqtt_packet_connect_init(
+int aws_mqtt_packet_connect_init(
     struct aws_mqtt_packet_connect *packet,
     struct aws_byte_cursor client_identifier,
     bool clean_session,
@@ -156,9 +156,11 @@ void aws_mqtt_packet_connect_init(
     packet->client_identifier = client_identifier;
     packet->clean_session = clean_session;
     packet->keep_alive_timeout = keep_alive;
+
+    return AWS_OP_SUCCESS;
 }
 
-void aws_mqtt_packet_connect_add_credentials(
+int aws_mqtt_packet_connect_add_credentials(
     struct aws_mqtt_packet_connect *packet,
     struct aws_byte_cursor username,
     struct aws_byte_cursor password) {
@@ -180,9 +182,11 @@ void aws_mqtt_packet_connect_add_credentials(
 
         packet->password = password;
     }
+
+    return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connect *packet) {
+int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_connect *packet) {
 
     assert(cur);
     assert(packet);
@@ -214,10 +218,10 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, struct aws_mqtt_
     }
 
     /* Write connect flags */
-    uint8_t connect_clags = packet->clean_session << 1 | packet->has_will << 2 | (uint8_t)packet->will_qos << 3 |
+    uint8_t connect_flags = packet->clean_session << 1 | packet->has_will << 2 | (uint8_t)packet->will_qos << 3 |
                             packet->will_retain << 5 | packet->has_password << 6 | packet->has_username << 7;
 
-    if (!aws_byte_cursor_write_u8(cur, connect_clags)) {
+    if (!aws_byte_cursor_write_u8(cur, connect_flags)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -362,7 +366,7 @@ int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
 /*****************************************************************************/
 /* Connack                                                                   */
 
-void aws_mqtt_packet_connack_init(
+int aws_mqtt_packet_connack_init(
     struct aws_mqtt_packet_connack *packet,
     bool session_present,
     enum aws_mqtt_connect_return_code return_code) {
@@ -376,9 +380,11 @@ void aws_mqtt_packet_connack_init(
 
     packet->session_present = session_present;
     packet->connect_return_code = return_code;
+
+    return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_connack_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connack *packet) {
+int aws_mqtt_packet_connack_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_connack *packet) {
 
     assert(cur);
     assert(packet);
@@ -440,7 +446,7 @@ int aws_mqtt_packet_connack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
 /*****************************************************************************/
 /* Publish                                                                   */
 
-void aws_mqtt_packet_publish_init(
+int aws_mqtt_packet_publish_init(
     struct aws_mqtt_packet_publish *packet,
     bool retain,
     enum aws_mqtt_qos qos,
@@ -464,9 +470,11 @@ void aws_mqtt_packet_publish_init(
     packet->topic_name = topic_name;
     packet->packet_identifier = packet_identifier;
     packet->payload = payload;
+
+    return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_publish_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_publish *packet) {
+int aws_mqtt_packet_publish_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_publish *packet) {
 
     assert(cur);
     assert(packet);
@@ -542,40 +550,48 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
 /*****************************************************************************/
 /* Puback                                                                    */
 
-void aws_mqtt_packet_puback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
+int aws_mqtt_packet_puback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
 
     s_ack_init(packet, AWS_MQTT_PACKET_PUBACK, packet_identifier);
+
+    return AWS_OP_SUCCESS;
 }
 
 /*****************************************************************************/
 /* Pubrec                                                                    */
 
-void aws_mqtt_packet_pubrec_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
+int aws_mqtt_packet_pubrec_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
 
     s_ack_init(packet, AWS_MQTT_PACKET_PUBREC, packet_identifier);
+
+    return AWS_OP_SUCCESS;
 }
 
 /*****************************************************************************/
 /* Pubrel                                                                    */
 
-void aws_mqtt_packet_pubrel_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
+int aws_mqtt_packet_pubrel_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
 
     s_ack_init(packet, AWS_MQTT_PACKET_PUBREL, packet_identifier);
     packet->fixed_header.flags = BIT_1_FLAGS;
+
+    return AWS_OP_SUCCESS;
 }
 
 /*****************************************************************************/
 /* Pubcomp                                                                   */
 
-void aws_mqtt_packet_pubcomp_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
+int aws_mqtt_packet_pubcomp_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
 
     s_ack_init(packet, AWS_MQTT_PACKET_PUBCOMP, packet_identifier);
+
+    return AWS_OP_SUCCESS;
 }
 
 /*****************************************************************************/
 /* Subscribe                                                                 */
 
-void aws_mqtt_packet_subscribe_init(
+int aws_mqtt_packet_subscribe_init(
     struct aws_mqtt_packet_subscribe *packet,
     struct aws_allocator *allocator,
     uint16_t packet_identifier) {
@@ -590,7 +606,11 @@ void aws_mqtt_packet_subscribe_init(
 
     packet->packet_identifier = packet_identifier;
 
-    aws_array_list_init_dynamic(&packet->topic_filters, allocator, 1, sizeof(struct aws_mqtt_subscription));
+    if (aws_array_list_init_dynamic(&packet->topic_filters, allocator, 1, sizeof(struct aws_mqtt_subscription))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 void aws_mqtt_packet_subscribe_clean_up(struct aws_mqtt_packet_subscribe *packet) {
@@ -602,24 +622,28 @@ void aws_mqtt_packet_subscribe_clean_up(struct aws_mqtt_packet_subscribe *packet
     AWS_ZERO_STRUCT(*packet);
 }
 
-void aws_mqtt_packet_subscribe_add_topic(
+int aws_mqtt_packet_subscribe_add_topic(
     struct aws_mqtt_packet_subscribe *packet,
     struct aws_byte_cursor topic_filter,
     enum aws_mqtt_qos qos) {
 
     assert(packet);
 
-    /* Add to the remaining length */
-    packet->fixed_header.remaining_length += topic_filter.len + 1;
-
     /* Add to the array list */
     struct aws_mqtt_subscription subscription;
     subscription.filter = topic_filter;
     subscription.qos = qos;
-    aws_array_list_push_back(&packet->topic_filters, &subscription);
+    if (aws_array_list_push_back(&packet->topic_filters, &subscription)) {
+        return AWS_OP_ERR;
+    }
+
+    /* Add to the remaining length */
+    packet->fixed_header.remaining_length += topic_filter.len + 1;
+
+    return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_subscribe_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_subscribe *packet) {
+int aws_mqtt_packet_subscribe_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_subscribe *packet) {
 
     assert(cur);
     assert(packet);
@@ -711,15 +735,17 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
 /*****************************************************************************/
 /* Suback                                                                    */
 
-void aws_mqtt_packet_suback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
+int aws_mqtt_packet_suback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
 
     s_ack_init(packet, AWS_MQTT_PACKET_SUBACK, packet_identifier);
+
+    return AWS_OP_SUCCESS;
 }
 
 /*****************************************************************************/
 /* Unubscribe                                                                */
 
-void aws_mqtt_packet_unsubscribe_init(
+int aws_mqtt_packet_unsubscribe_init(
     struct aws_mqtt_packet_unsubscribe *packet,
     struct aws_allocator *allocator,
     uint16_t packet_identifier) {
@@ -735,7 +761,11 @@ void aws_mqtt_packet_unsubscribe_init(
 
     packet->packet_identifier = packet_identifier;
 
-    aws_array_list_init_dynamic(&packet->topic_filters, allocator, 1, sizeof(struct aws_byte_cursor));
+    if (aws_array_list_init_dynamic(&packet->topic_filters, allocator, 1, sizeof(struct aws_byte_cursor))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 void aws_mqtt_packet_unsubscribe_clean_up(struct aws_mqtt_packet_unsubscribe *packet) {
@@ -747,20 +777,24 @@ void aws_mqtt_packet_unsubscribe_clean_up(struct aws_mqtt_packet_unsubscribe *pa
     AWS_ZERO_STRUCT(*packet);
 }
 
-void aws_mqtt_packet_unsubscribe_add_topic(
+int aws_mqtt_packet_unsubscribe_add_topic(
     struct aws_mqtt_packet_unsubscribe *packet,
     struct aws_byte_cursor topic_filter) {
 
     assert(packet);
 
+    /* Add to the array list */
+    if (aws_array_list_push_back(&packet->topic_filters, &topic_filter)) {
+        return AWS_OP_ERR;
+    }
+
     /* Add to the remaining length */
     packet->fixed_header.remaining_length += topic_filter.len;
 
-    /* Add to the array list */
-    aws_array_list_push_back(&packet->topic_filters, &topic_filter);
+    return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_unsubscribe *packet) {
+int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_unsubscribe *packet) {
 
     assert(cur);
     assert(packet);
@@ -836,9 +870,11 @@ int aws_mqtt_packet_unsubscribe_decode(struct aws_byte_cursor *cur, struct aws_m
 /*****************************************************************************/
 /* Unsuback                                                                  */
 
-void aws_mqtt_packet_unsuback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
+int aws_mqtt_packet_unsuback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
 
     s_ack_init(packet, AWS_MQTT_PACKET_UNSUBACK, packet_identifier);
+
+    return AWS_OP_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -852,22 +888,28 @@ static void s_connection_init(struct aws_mqtt_packet_connection *packet, enum aw
     packet->fixed_header.packet_type = type;
 }
 
-void aws_mqtt_packet_pingreq_init(struct aws_mqtt_packet_connection *packet) {
+int aws_mqtt_packet_pingreq_init(struct aws_mqtt_packet_connection *packet) {
 
     s_connection_init(packet, AWS_MQTT_PACKET_PINGREQ);
+
+    return AWS_OP_SUCCESS;
 }
 
-void aws_mqtt_packet_pingresp_init(struct aws_mqtt_packet_connection *packet) {
+int aws_mqtt_packet_pingresp_init(struct aws_mqtt_packet_connection *packet) {
 
     s_connection_init(packet, AWS_MQTT_PACKET_PINGRESP);
+
+    return AWS_OP_SUCCESS;
 }
 
-void aws_mqtt_packet_disconnect_init(struct aws_mqtt_packet_connection *packet) {
+int aws_mqtt_packet_disconnect_init(struct aws_mqtt_packet_connection *packet) {
 
     s_connection_init(packet, AWS_MQTT_PACKET_DISCONNECT);
+
+    return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_connection_encode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connection *packet) {
+int aws_mqtt_packet_connection_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_connection *packet) {
 
     assert(cur);
     assert(packet);

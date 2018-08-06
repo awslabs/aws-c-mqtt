@@ -18,6 +18,8 @@
 
 #include <aws/mqtt/exports.h>
 
+#include <aws/common/byte_buf.h>
+
 enum aws_mqtt_packet_type {
     /* reserved = 0, */
     AWS_MQTT_PACKET_CONNECT = 1,
