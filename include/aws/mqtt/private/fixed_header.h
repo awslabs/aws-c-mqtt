@@ -20,6 +20,9 @@
 
 #include <aws/mqtt/mqtt.h>
 
+/**
+ * Represents the fixed header [MQTT-2.2].
+ */
 struct aws_mqtt_fixed_header {
     enum aws_mqtt_packet_type packet_type;
     size_t remaining_length;
@@ -27,12 +30,12 @@ struct aws_mqtt_fixed_header {
 };
 
 /**
- * Get the type of packet from the first byte of the buffer.
+ * Get the type of packet from the first byte of the buffer [MQTT-2.2.1].
  */
 enum aws_mqtt_packet_type aws_mqtt_get_packet_type(const uint8_t *buffer);
 
 /**
- * Get traits describing a packet described by header.
+ * Get traits describing a packet described by header [MQTT-2.2.2].
  */
 bool aws_mqtt_packet_has_flags(const struct aws_mqtt_fixed_header *header);
 

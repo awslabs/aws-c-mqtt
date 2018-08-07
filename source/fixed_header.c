@@ -17,6 +17,12 @@
 
 #include <assert.h>
 
+/**
+ * Implements encoding & decoding of the remaining_length field across 1-4 bytes [MQTT-2.2.3].
+ *
+ * Any number less than or equal to 127 (7 bit max) can be written into a single byte, where any number larger than 128
+ * may be written into multiple bytes, using the most significant bit (128) as a continuation flag.
+ */
 static int s_encode_remaining_length(struct aws_byte_cursor *cur, size_t remaining_length) {
 
     assert(cur);
@@ -35,7 +41,6 @@ static int s_encode_remaining_length(struct aws_byte_cursor *cur, size_t remaini
 
     return AWS_OP_SUCCESS;
 }
-
 static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remaining_length) {
 
     assert(cur);
@@ -102,10 +107,8 @@ int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, const struct aws_m
     assert(cur);
     assert(header);
 
-    bool has_flags = aws_mqtt_packet_has_flags(header);
-
     /* Check that flags are 0 if they must not be present */
-    if (!has_flags && header->flags != 0) {
+    if (!aws_mqtt_packet_has_flags(header) && header->flags != 0) {
         return aws_raise_error(INT32_MAX);
     }
 
@@ -144,10 +147,8 @@ int aws_mqtt_fixed_header_decode(struct aws_byte_cursor *cur, struct aws_mqtt_fi
         return aws_raise_error(INT32_MAX);
     }
 
-    bool has_flags = aws_mqtt_packet_has_flags(header);
-
     /* Check that flags are 0 if they must not be present */
-    if (!has_flags && header->flags != 0) {
+    if (!aws_mqtt_packet_has_flags(header) && header->flags != 0) {
         return aws_raise_error(INT32_MAX);
     }
 

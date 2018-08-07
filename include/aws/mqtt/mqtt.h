@@ -20,6 +20,7 @@
 
 #include <aws/common/byte_buf.h>
 
+/* Represents the types of the MQTT control packets [MQTT-2.2.1]. */
 enum aws_mqtt_packet_type {
     /* reserved = 0, */
     AWS_MQTT_PACKET_CONNECT = 1,
@@ -39,6 +40,7 @@ enum aws_mqtt_packet_type {
     /* reserved = 15, */
 };
 
+/* Quality of Service associated with a publish action or subscription [MQTT-4.3]. */
 enum aws_mqtt_qos {
     AWS_MQTT_QOS_AT_MOST_ONCE = 0,
     AWS_MQTT_QOS_AT_LEAST_ONCE = 1,
@@ -46,6 +48,7 @@ enum aws_mqtt_qos {
     /* reserved = 3 */
 };
 
+/* Result of a connect request [MQTT-3.2.2.3]. */
 enum aws_mqtt_connect_return_code {
     AWS_MQTT_CONNECT_ACCEPTED,
     AWS_MQTT_CONNECT_UNACCEPTABLE_PROTOCOL_VERSION,
@@ -57,10 +60,10 @@ enum aws_mqtt_connect_return_code {
 };
 
 struct aws_mqtt_subscription {
-    struct aws_byte_cursor filter;
+    /* Topic filte to subscribe to [MQTT-4.7]. */
+    struct aws_byte_cursor topic_filter;
+    /* Maximum QoS of messages to receive [MQTT-4.3]. */
     enum aws_mqtt_qos qos;
 };
-
-void ignore_me();
 
 #endif /* AWS_MQTT_MQTT_H */

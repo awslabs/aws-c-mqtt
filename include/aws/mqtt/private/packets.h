@@ -23,6 +23,13 @@
 #include <aws/common/byte_buf.h>
 #include <aws/common/string.h>
 
+/*
+ * General MQTT Control Packet Format [MQTT-2]:
+ *     1. Fixed header, present in all packets
+ *     2. Variable header, present in some packets
+ *     3. Payload, preset in some packets
+ */
+
 /**
  * Used to represent the following MQTT packets:
  * - PUBACK

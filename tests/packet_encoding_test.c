@@ -17,7 +17,7 @@
 
 #include <aws/mqtt/private/packets.h>
 
-enum { BUFFER_SIZE = 128 };
+enum { S_BUFFER_SIZE = 128 };
 
 struct packet_test_fixture;
 
@@ -92,7 +92,7 @@ static int s_packet_test_run(struct aws_allocator *allocator, void *ctx) {
 
     struct packet_test_fixture *fixture = ctx;
 
-    aws_byte_buf_init(allocator, &fixture->buffer, BUFFER_SIZE);
+    aws_byte_buf_init(allocator, &fixture->buffer, S_BUFFER_SIZE);
 
     /* Init the in_packet & buffer */
     struct aws_byte_cursor cursor = {
@@ -106,7 +106,7 @@ static int s_packet_test_run(struct aws_allocator *allocator, void *ctx) {
 
     /* Create the output buffer */
     struct aws_byte_buf output_buffer;
-    ASSERT_SUCCESS(aws_byte_buf_init(allocator, &output_buffer, BUFFER_SIZE));
+    ASSERT_SUCCESS(aws_byte_buf_init(allocator, &output_buffer, S_BUFFER_SIZE));
     struct aws_byte_cursor output_cursor = {
         .ptr = output_buffer.buffer,
         .len = output_buffer.capacity,
@@ -427,7 +427,7 @@ static bool s_test_subscribe_eq(void *a, void *b, size_t size) {
         if (lt->qos != rt->qos) {
             return false;
         }
-        if (!s_byte_cursor_eq(lt->filter, rt->filter)) {
+        if (!s_byte_cursor_eq(lt->topic_filter, rt->topic_filter)) {
             return false;
         }
     }

@@ -17,8 +17,8 @@
 
 #include <assert.h>
 
-enum { PROTOCOL_LEVEL = 4 };
-enum { BIT_1_FLAGS = 0x2 };
+enum { S_PROTOCOL_LEVEL = 4 };
+enum { S_BIT_1_FLAGS = 0x2 };
 
 static struct aws_byte_cursor s_protocol_name = {
     .ptr = (uint8_t *)"MQTT",
@@ -119,8 +119,7 @@ int aws_mqtt_packet_ack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_pack
     }
 
     /* Validate flags */
-    bool has_flags = aws_mqtt_packet_has_flags(&packet->fixed_header);
-    if (packet->fixed_header.flags != (has_flags ? BIT_1_FLAGS : 0u)) {
+    if (packet->fixed_header.flags != (aws_mqtt_packet_has_flags(&packet->fixed_header) ? S_BIT_1_FLAGS : 0u)) {
 
         return aws_raise_error(INT32_MAX);
     }
@@ -151,6 +150,7 @@ int aws_mqtt_packet_connect_init(
     AWS_ZERO_STRUCT(*packet);
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_CONNECT;
+    /* [MQTT-3.1.1] */
     packet->fixed_header.remaining_length = 10 + s_sizeof_encoded_buffer(&client_identifier);
 
     packet->client_identifier = client_identifier;
@@ -223,11 +223,11 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws
     }
 
     /* Write protocol level */
-    if (!aws_byte_cursor_write_u8(cur, PROTOCOL_LEVEL)) {
+    if (!aws_byte_cursor_write_u8(cur, S_PROTOCOL_LEVEL)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
-    /* Write connect flags */
+    /* Write connect flags [MQTT-3.1.2.3] */
     uint8_t connect_flags = packet->clean_session << 1 | packet->has_will << 2 | (uint8_t)packet->will_qos << 3 |
                             packet->will_retain << 5 | packet->has_password << 6 | packet->has_username << 7;
 
@@ -311,11 +311,11 @@ int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     if (protocol_level.len == 0) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
-    if (*protocol_level.ptr != PROTOCOL_LEVEL) {
+    if (*protocol_level.ptr != S_PROTOCOL_LEVEL) {
         return aws_raise_error(INT32_MAX);
     }
 
-    /* Read connect flags */
+    /* Read connect flags [MQTT-3.1.2.3] */
     uint8_t connect_flags = 0;
     if (!aws_byte_cursor_read_u8(cur, &connect_flags)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
@@ -474,6 +474,7 @@ int aws_mqtt_packet_publish_init(
     packet->fixed_header.remaining_length =
         s_sizeof_encoded_buffer(&topic_name) + sizeof(packet->packet_identifier) + payload.len;
 
+    /* [MQTT-2.2.2] */
     uint8_t publish_flags = (retain & 0x1) | (qos & 0x3) << 1 | (dup & 0x1) << 3;
     packet->fixed_header.flags = publish_flags;
 
@@ -583,7 +584,7 @@ int aws_mqtt_packet_pubrec_init(struct aws_mqtt_packet_ack *packet, uint16_t pac
 int aws_mqtt_packet_pubrel_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
 
     s_ack_init(packet, AWS_MQTT_PACKET_PUBREL, packet_identifier);
-    packet->fixed_header.flags = BIT_1_FLAGS;
+    packet->fixed_header.flags = S_BIT_1_FLAGS;
 
     return AWS_OP_SUCCESS;
 }
@@ -611,7 +612,7 @@ int aws_mqtt_packet_subscribe_init(
     AWS_ZERO_STRUCT(*packet);
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_SUBSCRIBE;
-    packet->fixed_header.flags = BIT_1_FLAGS;
+    packet->fixed_header.flags = S_BIT_1_FLAGS;
     packet->fixed_header.remaining_length = sizeof(uint16_t);
 
     packet->packet_identifier = packet_identifier;
@@ -641,7 +642,7 @@ int aws_mqtt_packet_subscribe_add_topic(
 
     /* Add to the array list */
     struct aws_mqtt_subscription subscription;
-    subscription.filter = topic_filter;
+    subscription.topic_filter = topic_filter;
     subscription.qos = qos;
     if (aws_array_list_push_back(&packet->topic_filters, &subscription)) {
         return AWS_OP_ERR;
@@ -682,7 +683,7 @@ int aws_mqtt_packet_subscribe_encode(struct aws_byte_cursor *cur, const struct a
 
             return AWS_OP_ERR;
         }
-        s_encode_buffer(cur, subscription->filter);
+        s_encode_buffer(cur, subscription->topic_filter);
 
         uint8_t eos_byte = subscription->qos & 0x3;
         if (!aws_byte_cursor_write_u8(cur, eos_byte)) {
@@ -718,10 +719,10 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
     while (remaining_length) {
 
         struct aws_mqtt_subscription subscription = {
-            .filter = {.ptr = NULL, .len = 0},
+            .topic_filter = {.ptr = NULL, .len = 0},
             .qos = 0,
         };
-        if (s_decode_buffer(cur, &subscription.filter)) {
+        if (s_decode_buffer(cur, &subscription.topic_filter)) {
             return AWS_OP_ERR;
         }
 
@@ -736,7 +737,7 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
 
         aws_array_list_push_back(&packet->topic_filters, &subscription);
 
-        remaining_length -= s_sizeof_encoded_buffer(&subscription.filter) + 1;
+        remaining_length -= s_sizeof_encoded_buffer(&subscription.topic_filter) + 1;
     }
 
     return AWS_OP_SUCCESS;
@@ -766,7 +767,7 @@ int aws_mqtt_packet_unsubscribe_init(
     AWS_ZERO_STRUCT(*packet);
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_SUBSCRIBE;
-    packet->fixed_header.flags = BIT_1_FLAGS;
+    packet->fixed_header.flags = S_BIT_1_FLAGS;
     packet->fixed_header.remaining_length = sizeof(uint16_t);
 
     packet->packet_identifier = packet_identifier;
@@ -828,12 +829,12 @@ int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_cursor *cur, const struct
     const size_t num_filters = aws_array_list_length(&packet->topic_filters);
     for (size_t i = 0; i < num_filters; ++i) {
 
-        struct aws_byte_cursor filter;
-        if (aws_array_list_get_at(&packet->topic_filters, (void *)&filter, i)) {
+        struct aws_byte_cursor topic_filter;
+        if (aws_array_list_get_at(&packet->topic_filters, (void *)&topic_filter, i)) {
 
             return AWS_OP_ERR;
         }
-        s_encode_buffer(cur, filter);
+        s_encode_buffer(cur, topic_filter);
     }
 
     return AWS_OP_SUCCESS;
@@ -863,15 +864,15 @@ int aws_mqtt_packet_unsubscribe_decode(struct aws_byte_cursor *cur, struct aws_m
     size_t remaining_length = packet->fixed_header.remaining_length - sizeof(uint16_t);
     while (remaining_length) {
 
-        struct aws_byte_cursor filter;
-        AWS_ZERO_STRUCT(filter);
-        if (s_decode_buffer(cur, &filter)) {
+        struct aws_byte_cursor topic_filter;
+        AWS_ZERO_STRUCT(topic_filter);
+        if (s_decode_buffer(cur, &topic_filter)) {
             return AWS_OP_ERR;
         }
 
-        aws_array_list_push_back(&packet->topic_filters, &filter);
+        aws_array_list_push_back(&packet->topic_filters, &topic_filter);
 
-        remaining_length -= s_sizeof_encoded_buffer(&filter);
+        remaining_length -= s_sizeof_encoded_buffer(&topic_filter);
     }
 
     return AWS_OP_SUCCESS;
