@@ -27,8 +27,8 @@
  * Used to represent the following MQTT packets:
  * - PUBACK
  * - PUBREC
- * - SUBREL
- * - SUBCOMP
+ * - PUBREL
+ * - PUBCOMP
  * - SUBACK
  * - UNSUBACK
  */
@@ -202,13 +202,13 @@ AWS_MQTT_API
 int aws_mqtt_packet_pubrec_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
 
 /*****************************************************************************/
-/* Subrel                                                                    */
+/* Pubrel                                                                    */
 
 AWS_MQTT_API
 int aws_mqtt_packet_pubrel_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
 
 /*****************************************************************************/
-/* Subcomp                                                                   */
+/* Pubcomp                                                                   */
 
 AWS_MQTT_API
 int aws_mqtt_packet_pubcomp_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
