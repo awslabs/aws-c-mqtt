@@ -66,4 +66,31 @@ struct aws_mqtt_subscription {
     enum aws_mqtt_qos qos;
 };
 
+enum aws_mqtt_error {
+    AWS_ERROR_MQTT_INVALID_RESERVED_BITS = 0x1400,
+    AWS_ERROR_MQTT_BUFFER_TOO_BIG,
+    AWS_ERROR_MQTT_INVALID_REMAINING_LENGTH,
+    AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_NAME,
+    AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_LEVEL,
+    AWS_ERROR_MQTT_INVALID_CREDENTIALS,
+    AWS_ERROR_MQTT_INVALID_QOS,
+    AWS_ERROR_MQTT_PROTOCOL_ERROR,
+
+    AWS_ERROR_END_MQTT_RANGE = 0x1800,
+};
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+ * Loads error strings for debugging and logging purposes.
+ */
+AWS_MQTT_API
+void aws_mqtt_load_error_strings();
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* AWS_MQTT_MQTT_H */

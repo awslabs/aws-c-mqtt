@@ -35,7 +35,7 @@ static int s_encode_buffer(struct aws_byte_cursor *cur, const struct aws_byte_cu
 
     /* Make sure the buffer isn't too big */
     if (buf.len > UINT16_MAX) {
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_BUFFER_TOO_BIG);
     }
 
     /* Write the length */
@@ -121,7 +121,7 @@ int aws_mqtt_packet_ack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_pack
     /* Validate flags */
     if (packet->fixed_header.flags != (aws_mqtt_packet_has_flags(&packet->fixed_header) ? S_BIT_1_FLAGS : 0u)) {
 
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_RESERVED_BITS);
     }
 
     /*************************************************************************/
@@ -204,7 +204,7 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws
     /* Do validation */
     if (packet->has_password && !packet->has_username) {
 
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_CREDENTIALS);
     }
 
     /*************************************************************************/
@@ -300,10 +300,10 @@ int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     }
     assert(protocol_name.ptr && protocol_name.len);
     if (protocol_name.len != s_protocol_name.len) {
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_NAME);
     }
     if (memcmp(protocol_name.ptr, s_protocol_name.ptr, s_protocol_name.len) != 0) {
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_NAME);
     }
 
     /* Check protocol level */
@@ -312,7 +312,7 @@ int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
     if (*protocol_level.ptr != S_PROTOCOL_LEVEL) {
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_LEVEL);
     }
 
     /* Read connect flags [MQTT-3.1.2.3] */
@@ -367,7 +367,7 @@ int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     /* Do validation */
     if (packet->has_password && !packet->has_username) {
 
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_CREDENTIALS);
     }
 
     return AWS_OP_SUCCESS;
@@ -731,7 +731,10 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }
         if ((eos_byte >> 2) != 0) {
-            return aws_raise_error(INT32_MAX);
+            return aws_raise_error(AWS_ERROR_MQTT_INVALID_RESERVED_BITS);
+        }
+        if (eos_byte == 0x3) {
+            return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
         }
         subscription.qos = eos_byte & 0x3;
 

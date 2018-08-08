@@ -62,7 +62,7 @@ static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remain
         }
         if (multiplier > 128 * 128 * 128) {
             /* If high order bit is set on last byte, value is malformed */
-            return aws_raise_error(INT32_MAX);
+            return aws_raise_error(AWS_ERROR_MQTT_INVALID_REMAINING_LENGTH);
         }
     }
 
@@ -109,7 +109,7 @@ int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, const struct aws_m
 
     /* Check that flags are 0 if they must not be present */
     if (!aws_mqtt_packet_has_flags(header) && header->flags != 0) {
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_RESERVED_BITS);
     }
 
     /* Write packet type and flags */
@@ -144,12 +144,12 @@ int aws_mqtt_fixed_header_decode(struct aws_byte_cursor *cur, struct aws_mqtt_fi
         return AWS_OP_ERR;
     }
     if (cur->len < header->remaining_length) {
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
     /* Check that flags are 0 if they must not be present */
     if (!aws_mqtt_packet_has_flags(header) && header->flags != 0) {
-        return aws_raise_error(INT32_MAX);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_RESERVED_BITS);
     }
 
     return AWS_OP_SUCCESS;
