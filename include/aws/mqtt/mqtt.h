@@ -19,6 +19,12 @@
 #include <aws/mqtt/exports.h>
 
 #include <aws/common/byte_buf.h>
+#include <aws/common/string.h>
+
+/* forward declares */
+struct aws_client_bootstrap;
+struct aws_socket_endpoint;
+struct aws_socket_options;
 
 /* Represents the types of the MQTT control packets [MQTT-2.2.1]. */
 enum aws_mqtt_packet_type {
@@ -65,6 +71,15 @@ struct aws_mqtt_subscription {
     /* Maximum QoS of messages to receive [MQTT-4.3]. */
     enum aws_mqtt_qos qos;
 };
+typedef void(publish_recieved_fn)(const struct aws_string *filter, struct aws_byte_cursor payload);
+
+struct aws_mqtt_client {
+    /* Callbacks (optional) */
+    void (*on_connect)(enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data);
+    void (*on_disconnect)(int error_code, void *user_data);
+
+    void *impl;
+};
 
 enum aws_mqtt_error {
     AWS_ERROR_MQTT_INVALID_RESERVED_BITS = 0x1400,
@@ -82,6 +97,29 @@ enum aws_mqtt_error {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+AWS_MQTT_API
+struct aws_mqtt_client *aws_mqtt_client_new(struct aws_allocator *allocator, void *user_data);
+
+AWS_MQTT_API
+int aws_mqtt_client_connect(
+    struct aws_mqtt_client *client,
+    struct aws_client_bootstrap *client_bootstrap,
+    struct aws_socket_endpoint *endpoint,
+    struct aws_socket_options *options,
+    struct aws_byte_cursor client_id,
+    bool clean_session,
+    uint16_t keep_alive_time);
+
+AWS_MQTT_API
+int aws_mqtt_client_subscribe(
+    struct aws_mqtt_client *client,
+    const struct aws_string *filter,
+    enum aws_mqtt_qos qos,
+    publish_recieved_fn *callback);
+
+AWS_MQTT_API
+int aws_mqtt_client_disconnect(struct aws_mqtt_client *client);
 
 /*
  * Loads error strings for debugging and logging purposes.

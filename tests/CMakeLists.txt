@@ -29,3 +29,12 @@ add_test(mqtt_packet_unsubscribe ${TEST_BINARY_NAME} mqtt_packet_unsubscribe)
 add_test(mqtt_packet_pingreq ${TEST_BINARY_NAME} mqtt_packet_pingreq)
 add_test(mqtt_packet_pingresp ${TEST_BINARY_NAME} mqtt_packet_pingresp)
 add_test(mqtt_packet_disconnect ${TEST_BINARY_NAME} mqtt_packet_disconnect)
+
+set(TEST_PAHO_CLIENT_BINARY_NAME ${CMAKE_PROJECT_NAME}-paho-client)
+
+add_executable(${TEST_PAHO_CLIENT_BINARY_NAME} "paho_client_test.c")
+target_link_libraries(${TEST_PAHO_CLIENT_BINARY_NAME} PRIVATE ${CMAKE_PROJECT_NAME})
+aws_set_common_properties(${TEST_PAHO_CLIENT_BINARY_NAME})
+aws_add_sanitizers(${TEST_PAHO_CLIENT_BINARY_NAME} ${${CMAKE_PROJECT_NAME}_SANITIZERS})
+target_compile_definitions(${TEST_PAHO_CLIENT_BINARY_NAME} PRIVATE AWS_UNSTABLE_TESTING_API=1)
+target_include_directories(${TEST_PAHO_CLIENT_BINARY_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
