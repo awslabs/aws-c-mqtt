@@ -10,11 +10,10 @@ phases:
   pre_build:
     commands:
       - export CC=clang-3.9
-      - export CXX=clang++-3.9
   build:
     commands:
       - echo Build started on `date`
-      - ./codebuild/common-trusty.sh -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - ./codebuild/common-linux.sh -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
       - clang-tidy-3.9 -p=build **/*.c
   post_build:
     commands:

@@ -1,5 +1,7 @@
 #!/bin/sh -x
 
+set -e
+
 for path in "$@"
 do
     INCLUDE_PATHS="$INCLUDE_PATHS -I $path"
