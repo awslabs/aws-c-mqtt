@@ -142,9 +142,6 @@ static void s_destroy(struct aws_channel_handler *handler) {
 
     struct aws_mqtt_client *client = handler->impl;
 
-    /* Clear all state from the connection */
-    aws_hash_table_clear(&client->subscriptions);
-
     /* Free all of the active subscriptions */
     aws_hash_table_clean_up(&client->subscriptions);
 
