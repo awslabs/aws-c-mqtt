@@ -22,13 +22,10 @@
 
 #include <aws/io/channel.h>
 
-struct aws_mqtt_client_impl {
+struct aws_mqtt_client {
 
-    /* User-facing struct, contains callbacks */
-    struct aws_mqtt_client *client;
-
-    /* User-data passed to callbacks */
-    void *user_data;
+    /* User callbacks */
+    struct aws_mqtt_client_callbacks callbacks;
 
     struct aws_allocator *allocator;
 
@@ -45,8 +42,6 @@ struct aws_mqtt_client_impl {
     uint16_t keep_alive_time;
 };
 
-int aws_mqtt_client_channel_handler_init(
-    struct aws_channel_handler *handler,
-    struct aws_mqtt_client_impl *client_impl);
+extern struct aws_channel_handler_vtable aws_mqtt_client_channel_vtable;
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H */

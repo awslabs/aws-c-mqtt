@@ -73,12 +73,12 @@ struct aws_mqtt_subscription {
 };
 typedef void(publish_recieved_fn)(const struct aws_string *filter, struct aws_byte_cursor payload);
 
-struct aws_mqtt_client {
+struct aws_mqtt_client_callbacks {
     /* Callbacks (optional) */
     void (*on_connect)(enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data);
     void (*on_disconnect)(int error_code, void *user_data);
 
-    void *impl;
+    void *user_data;
 };
 
 enum aws_mqtt_error {
@@ -94,16 +94,16 @@ enum aws_mqtt_error {
     AWS_ERROR_END_MQTT_RANGE = 0x1800,
 };
 
+struct aws_mqtt_client;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 AWS_MQTT_API
-struct aws_mqtt_client *aws_mqtt_client_new(struct aws_allocator *allocator, void *user_data);
-
-AWS_MQTT_API
-int aws_mqtt_client_connect(
-    struct aws_mqtt_client *client,
+struct aws_mqtt_client *aws_mqtt_client_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_callbacks callbacks,
     struct aws_client_bootstrap *client_bootstrap,
     struct aws_socket_endpoint *endpoint,
     struct aws_socket_options *options,

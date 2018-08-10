@@ -21,6 +21,7 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
+#include <aws/common/thread.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -58,7 +59,7 @@ static void s_mqtt_on_connection(enum aws_mqtt_connect_return_code return_code, 
 
     aws_mqtt_client_subscribe(args->client, s_subscribe_topic, AWS_MQTT_QOS_EXACTLY_ONCE, NULL);
 
-    sleep(3);
+    aws_thread_current_sleep(3000);
 
     aws_mqtt_client_disconnect(args->client);
 }
@@ -103,18 +104,18 @@ int main(int argc, char **argv) {
     struct aws_client_bootstrap client_bootstrap;
     ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, args.allocator, &el_group));
 
-    args.client = aws_mqtt_client_new(args.allocator, &args);
-    /* Set callbacks */
-    args.client->on_connect = &s_mqtt_on_connection;
-    args.client->on_disconnect = &s_mqtt_on_disconnect;
-    aws_mqtt_client_connect(args.client, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
+    struct aws_mqtt_client_callbacks callbacks;
+    AWS_ZERO_STRUCT(callbacks);
+    callbacks.on_connect = &s_mqtt_on_connection;
+    callbacks.on_disconnect = &s_mqtt_on_disconnect;
+    callbacks.user_data = &args;
+
+    args.client =
+        aws_mqtt_client_new(args.allocator, callbacks, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
 
-    args.client = aws_mqtt_client_new(args.allocator, &args);
-    /* Set callbacks */
-    args.client->on_connect = &s_mqtt_on_connection;
-    args.client->on_disconnect = &s_mqtt_on_disconnect;
-    aws_mqtt_client_connect(args.client, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
+    args.client =
+        aws_mqtt_client_new(args.allocator, callbacks, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
 
     args.client = NULL;

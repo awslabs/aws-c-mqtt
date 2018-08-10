@@ -27,7 +27,7 @@ static int s_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    struct aws_mqtt_client_impl *impl = handler->impl;
+    struct aws_mqtt_client *client = handler->impl;
 
     if (message->message_type != AWS_IO_MESSAGE_APPLICATION_DATA || message->message_data.len < 1) {
         return AWS_OP_ERR;
@@ -42,8 +42,9 @@ static int s_process_read_message(
             struct aws_mqtt_packet_connack connack;
             aws_mqtt_packet_connack_decode(&message_cursor, &connack);
 
-            if (impl->client->on_connect) {
-                impl->client->on_connect(connack.connect_return_code, connack.session_present, impl->user_data);
+            if (client->callbacks.on_connect) {
+                client->callbacks.on_connect(
+                    connack.connect_return_code, connack.session_present, client->callbacks.user_data);
             } else if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
                 /* TODO: aws_mqtt_disconnect() */
             }
@@ -71,8 +72,7 @@ static int s_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    struct aws_mqtt_client_impl *client_impl = handler->impl;
-    struct aws_mqtt_client *client = client_impl->client;
+    struct aws_mqtt_client *client = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!free_scarce_resources_immediately) {
@@ -102,8 +102,8 @@ static int s_shutdown(
         }
 
         /* Alert the client we've shutdown */
-        if (client->on_disconnect) {
-            client->on_disconnect(error_code, client_impl->user_data);
+        if (client->callbacks.on_disconnect) {
+            client->callbacks.on_disconnect(error_code, client->callbacks.user_data);
         }
     }
 
@@ -119,23 +119,19 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 
 static void s_destroy(struct aws_channel_handler *handler) {
 
-    /* This function should not do anything, as all shutdown will be handled by the channel shutdown routine. */
-    (void)handler;
-
-    struct aws_mqtt_client_impl *client_impl = handler->impl;
-    struct aws_mqtt_client *client = client_impl->client;
+    struct aws_mqtt_client *client = handler->impl;
 
     /* Clear all state from the connection */
-    aws_hash_table_clear(&client_impl->subscriptions);
+    aws_hash_table_clear(&client->subscriptions);
 
     /* Free all of the active subscriptions */
-    aws_hash_table_clean_up(&client_impl->subscriptions);
+    aws_hash_table_clean_up(&client->subscriptions);
 
     /* Frees all allocated memory */
-    aws_mem_release(client_impl->allocator, client);
+    aws_mem_release(client->allocator, client);
 }
 
-struct aws_channel_handler_vtable vtable = {
+struct aws_channel_handler_vtable aws_mqtt_client_channel_vtable = {
     .process_read_message = &s_process_read_message,
     .process_write_message = NULL,
     .increment_read_window = NULL,
@@ -143,16 +139,3 @@ struct aws_channel_handler_vtable vtable = {
     .initial_window_size = &s_initial_window_size,
     .destroy = &s_destroy,
 };
-
-int aws_mqtt_client_channel_handler_init(
-    struct aws_channel_handler *handler,
-    struct aws_mqtt_client_impl *client_impl) {
-
-    AWS_ZERO_STRUCT(*handler);
-
-    handler->alloc = client_impl->allocator;
-    handler->vtable = vtable;
-    handler->impl = client_impl;
-
-    return AWS_OP_SUCCESS;
-}
