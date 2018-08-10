@@ -140,6 +140,8 @@ int aws_mqtt_client_disconnect(struct aws_mqtt_client *client) {
     assert(client);
     assert(client && client->slot);
 
+    client->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+
     if (aws_channel_shutdown(client->slot->channel, AWS_OP_SUCCESS)) {
         return AWS_OP_ERR;
     }

@@ -93,8 +93,6 @@ static int s_shutdown(
 
     struct aws_mqtt_client *client = handler->impl;
 
-    client->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
-
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         /* On closing write direction, send out disconnect packet before closing connection. */
 
