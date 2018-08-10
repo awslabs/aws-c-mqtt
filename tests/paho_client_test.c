@@ -18,18 +18,18 @@
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/packets.h>
 
+#include <aws/io/channel.h>
+#include <aws/io/channel_bootstrap.h>
+#include <aws/io/event_loop.h>
+#include <aws/io/socket.h>
+#include <aws/io/socket_channel_handler.h>
+
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
 
 #include <aws/testing/aws_test_harness.h>
-
-#include <aws/io/channel.h>
-#include <aws/io/channel_bootstrap.h>
-#include <aws/io/event_loop.h>
-#include <aws/io/socket.h>
-#include <aws/io/socket_channel_handler.h>
 
 #include <stdio.h>
 #include <stdlib.h>

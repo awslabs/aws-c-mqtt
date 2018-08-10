@@ -15,11 +15,11 @@
 
 #include <aws/mqtt/private/client_channel_handler.h>
 
-#include <aws/common/task_scheduler.h>
+#include <aws/mqtt/private/packets.h>
 
 #include <aws/io/channel.h>
 
-#include <aws/mqtt/private/packets.h>
+#include <aws/common/task_scheduler.h>
 
 #define CALL_CALLBACK(client_ptr, callback, ...)                                                                       \
     do {                                                                                                               \

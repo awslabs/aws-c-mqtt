@@ -15,12 +15,12 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/mqtt/private/client_channel_handler.h>
+#include <aws/mqtt/private/packets.h>
+
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/socket.h>
-
-#include <aws/mqtt/private/client_channel_handler.h>
-#include <aws/mqtt/private/packets.h>
 
 #include <assert.h>
 
