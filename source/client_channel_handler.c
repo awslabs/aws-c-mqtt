@@ -19,6 +19,13 @@
 
 #include <aws/mqtt/private/packets.h>
 
+#define CALL_CALLBACK(client_ptr, callback, ...)                                                                       \
+    do {                                                                                                               \
+        if (client_ptr->callbacks.callback) {                                                                          \
+            client->callbacks.callback(__VA_ARGS__, client_ptr->callbacks.user_data);                                  \
+        }                                                                                                              \
+    } while (false)
+
 /**
  * Handles incoming messages from the server.
  */
@@ -42,12 +49,7 @@ static int s_process_read_message(
             struct aws_mqtt_packet_connack connack;
             aws_mqtt_packet_connack_decode(&message_cursor, &connack);
 
-            if (client->callbacks.on_connect) {
-                client->callbacks.on_connect(
-                    connack.connect_return_code, connack.session_present, client->callbacks.user_data);
-            } else if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
-                /* TODO: aws_mqtt_disconnect() */
-            }
+            CALL_CALLBACK(client, on_connect, connack.connect_return_code, connack.session_present);
 
             break;
         }
@@ -75,6 +77,8 @@ static int s_shutdown(
     struct aws_mqtt_client *client = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
+        /* On closing write direction, send out disconnect packet before closing connection. */
+
         if (!free_scarce_resources_immediately) {
 
             /* Send the disconnect message */
@@ -102,9 +106,7 @@ static int s_shutdown(
         }
 
         /* Alert the client we've shutdown */
-        if (client->callbacks.on_disconnect) {
-            client->callbacks.on_disconnect(error_code, client->callbacks.user_data);
-        }
+        CALL_CALLBACK(client, on_disconnect, error_code);
     }
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
