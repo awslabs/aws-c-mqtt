@@ -22,12 +22,21 @@
 
 #include <aws/io/channel.h>
 
+enum aws_mqtt_client_state {
+    AWS_MQTT_CLIENT_STATE_CONNECTING,
+    AWS_MQTT_CLIENT_STATE_CONNECTED,
+    AWS_MQTT_CLIENT_STATE_DISCONNECTING,
+};
+
 struct aws_mqtt_client {
+
+    struct aws_allocator *allocator;
 
     /* User callbacks */
     struct aws_mqtt_client_callbacks callbacks;
 
-    struct aws_allocator *allocator;
+    /* The state of the connection */
+    enum aws_mqtt_client_state state;
 
     /* Channel handler information */
     struct aws_channel_handler handler;

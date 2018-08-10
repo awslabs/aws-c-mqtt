@@ -40,8 +40,6 @@ static struct aws_byte_cursor s_client_id = {
     .len = 10,
 };
 
-AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
-
 struct connection_args {
     struct aws_allocator *allocator;
 
@@ -54,12 +52,9 @@ static void s_mqtt_on_connection(enum aws_mqtt_connect_return_code return_code, 
 
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
-
     struct connection_args *args = user_data;
 
-    aws_mqtt_client_subscribe(args->client, s_subscribe_topic, AWS_MQTT_QOS_EXACTLY_ONCE, NULL);
-
-    aws_thread_current_sleep(3000);
+    sleep(3);
 
     aws_mqtt_client_disconnect(args->client);
 }
@@ -112,11 +107,17 @@ int main(int argc, char **argv) {
 
     args.client =
         aws_mqtt_client_new(args.allocator, callbacks, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
+
+    aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    aws_mutex_unlock(&mutex);
 
     args.client =
         aws_mqtt_client_new(args.allocator, callbacks, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
+
+    aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    aws_mutex_unlock(&mutex);
 
     args.client = NULL;
 

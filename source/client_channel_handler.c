@@ -15,6 +15,8 @@
 
 #include <aws/mqtt/private/client_channel_handler.h>
 
+#include <aws/common/task_scheduler.h>
+
 #include <aws/io/channel.h>
 
 #include <aws/mqtt/private/packets.h>
@@ -40,16 +42,31 @@ static int s_process_read_message(
         return AWS_OP_ERR;
     }
 
-    struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
-
     enum aws_mqtt_packet_type type = aws_mqtt_get_packet_type(message->message_data.buffer);
+
+    /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
+    if (type != AWS_MQTT_PACKET_CONNACK && client->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
+
+        aws_mqtt_client_disconnect(client);
+        return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+    }
+
+    struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
     switch (type) {
         case AWS_MQTT_PACKET_CONNACK: {
 
             struct aws_mqtt_packet_connack connack;
-            aws_mqtt_packet_connack_decode(&message_cursor, &connack);
+            if (aws_mqtt_packet_connack_decode(&message_cursor, &connack)) {
+                return AWS_OP_ERR;
+            }
+
+            client->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
 
             CALL_CALLBACK(client, on_connect, connack.connect_return_code, connack.session_present);
+
+            if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
+                aws_mqtt_client_disconnect(client);
+            }
 
             break;
         }
@@ -76,10 +93,12 @@ static int s_shutdown(
 
     struct aws_mqtt_client *client = handler->impl;
 
+    client->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         /* On closing write direction, send out disconnect packet before closing connection. */
 
-        if (!free_scarce_resources_immediately) {
+        if (error_code == AWS_OP_SUCCESS && !free_scarce_resources_immediately) {
 
             /* Send the disconnect message */
             struct aws_mqtt_packet_connection disconnect;

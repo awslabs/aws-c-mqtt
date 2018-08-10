@@ -71,11 +71,12 @@ struct aws_mqtt_subscription {
     /* Maximum QoS of messages to receive [MQTT-4.3]. */
     enum aws_mqtt_qos qos;
 };
-typedef void(publish_recieved_fn)(const struct aws_string *filter, struct aws_byte_cursor payload);
 
 struct aws_mqtt_client_callbacks {
-    /* Callbacks (optional) */
+    /* Called when a connection acknowlegement is received.
+     * If return_code is not ACCEPT, the connetion is automatically closed. */
     void (*on_connect)(enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data);
+    /* Called when a connection is closed, right before any resources are deleted. */
     void (*on_disconnect)(int error_code, void *user_data);
 
     void *user_data;
@@ -110,13 +111,6 @@ struct aws_mqtt_client *aws_mqtt_client_new(
     struct aws_byte_cursor client_id,
     bool clean_session,
     uint16_t keep_alive_time);
-
-AWS_MQTT_API
-int aws_mqtt_client_subscribe(
-    struct aws_mqtt_client *client,
-    const struct aws_string *filter,
-    enum aws_mqtt_qos qos,
-    publish_recieved_fn *callback);
 
 AWS_MQTT_API
 int aws_mqtt_client_disconnect(struct aws_mqtt_client *client);
