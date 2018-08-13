@@ -45,7 +45,7 @@ struct connection_args {
 
     struct aws_condition_variable *condition_variable;
 
-    struct aws_mqtt_client *client;
+    struct aws_mqtt_client_connection *client;
 };
 
 static void s_mqtt_on_connection(enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data) {
@@ -56,7 +56,7 @@ static void s_mqtt_on_connection(enum aws_mqtt_connect_return_code return_code, 
 
     sleep(3);
 
-    aws_mqtt_client_disconnect(args->client);
+    aws_mqtt_client_connection_disconnect(args->client);
 }
 
 static void s_mqtt_on_disconnect(int error_code, void *user_data) {
@@ -99,21 +99,21 @@ int main(int argc, char **argv) {
     struct aws_client_bootstrap client_bootstrap;
     ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, args.allocator, &el_group));
 
-    struct aws_mqtt_client_callbacks callbacks;
+    struct aws_mqtt_client_connection_callbacks callbacks;
     AWS_ZERO_STRUCT(callbacks);
     callbacks.on_connect = &s_mqtt_on_connection;
     callbacks.on_disconnect = &s_mqtt_on_disconnect;
     callbacks.user_data = &args;
 
     args.client =
-        aws_mqtt_client_new(args.allocator, callbacks, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
+        aws_mqtt_client_connection_new(args.allocator, callbacks, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
     args.client =
-        aws_mqtt_client_new(args.allocator, callbacks, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
+        aws_mqtt_client_connection_new(args.allocator, callbacks, &client_bootstrap, &endpoint, &options, s_client_id, true, 0);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));

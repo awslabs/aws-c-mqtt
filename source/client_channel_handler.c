@@ -36,7 +36,7 @@ static int s_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    struct aws_mqtt_client *client = handler->impl;
+    struct aws_mqtt_client_connection *client = handler->impl;
 
     if (message->message_type != AWS_IO_MESSAGE_APPLICATION_DATA || message->message_data.len < 1) {
         return AWS_OP_ERR;
@@ -47,7 +47,7 @@ static int s_process_read_message(
     /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
     if (type != AWS_MQTT_PACKET_CONNACK && client->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
 
-        aws_mqtt_client_disconnect(client);
+        aws_mqtt_client_connection_disconnect(client);
         return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
@@ -65,7 +65,7 @@ static int s_process_read_message(
             CALL_CALLBACK(client, on_connect, connack.connect_return_code, connack.session_present);
 
             if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
-                aws_mqtt_client_disconnect(client);
+                aws_mqtt_client_connection_disconnect(client);
             }
 
             break;
@@ -135,7 +135,7 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 
 static void s_destroy(struct aws_channel_handler *handler) {
 
-    struct aws_mqtt_client *client = handler->impl;
+    struct aws_mqtt_client_connection *client = handler->impl;
 
     /* Free all of the active subscriptions */
     aws_hash_table_clean_up(&client->subscriptions);

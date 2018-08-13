@@ -36,7 +36,7 @@ static int s_mqtt_client_init(
         return AWS_OP_ERR;
     }
 
-    struct aws_mqtt_client *client = user_data;
+    struct aws_mqtt_client_connection *client = user_data;
 
     /* Create the slot and handler */
     client->slot = aws_channel_slot_new(channel);
@@ -77,7 +77,7 @@ static int s_mqtt_client_shutdown(
     (void)bootstrap;
     (void)channel;
 
-    struct aws_mqtt_client *client = user_data;
+    struct aws_mqtt_client_connection *client = user_data;
 
     /* Alert the client we've shutdown */
     if (client->callbacks.on_disconnect) {
@@ -87,9 +87,9 @@ static int s_mqtt_client_shutdown(
     return AWS_OP_SUCCESS;
 }
 
-struct aws_mqtt_client *aws_mqtt_client_new(
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_allocator *allocator,
-    struct aws_mqtt_client_callbacks callbacks,
+    struct aws_mqtt_client_connection_callbacks callbacks,
     struct aws_client_bootstrap *client_bootstrap,
     struct aws_socket_endpoint *endpoint,
     struct aws_socket_options *options,
@@ -99,7 +99,7 @@ struct aws_mqtt_client *aws_mqtt_client_new(
 
     assert(allocator);
 
-    struct aws_mqtt_client *client = aws_mem_acquire(allocator, sizeof(struct aws_mqtt_client));
+    struct aws_mqtt_client_connection *client = aws_mem_acquire(allocator, sizeof(struct aws_mqtt_client_connection));
 
     if (!client) {
 
@@ -140,7 +140,7 @@ struct aws_mqtt_client *aws_mqtt_client_new(
     return client;
 }
 
-int aws_mqtt_client_disconnect(struct aws_mqtt_client *client) {
+int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *client) {
 
     assert(client);
     assert(client && client->slot);
