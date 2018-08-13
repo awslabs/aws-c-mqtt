@@ -120,7 +120,7 @@ static int s_shutdown(
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         /* On closing write direction, send out disconnect packet before closing connection. */
 
-        if (error_code == AWS_OP_SUCCESS && !free_scarce_resources_immediately) {
+        if (!free_scarce_resources_immediately) {
 
             /* Send the disconnect message */
             struct aws_mqtt_packet_connection disconnect;
