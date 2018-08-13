@@ -14,7 +14,6 @@ EXIT /B %ERRORLEVEL%
 cd ../
 mkdir install
 
-CALL :install_library s2n
 CALL :install_library aws-c-common
 CALL :install_library aws-c-io
 

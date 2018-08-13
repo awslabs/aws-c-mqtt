@@ -20,7 +20,6 @@ cd ../
 
 mkdir install
 
-install_library s2n
 install_library aws-c-common
 install_library aws-c-io
 
