@@ -28,6 +28,51 @@
         }                                                                                                              \
     } while (false)
 
+typedef int (packet_handler_fn)(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor);
+
+int s_packet_handler_default(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor) {
+    (void)client;
+    (void)message_cursor;
+
+    return AWS_OP_ERR;
+}
+
+int s_packet_handler_connack(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor) {
+
+    struct aws_mqtt_packet_connack connack;
+    if (aws_mqtt_packet_connack_decode(&message_cursor, &connack)) {
+        return AWS_OP_ERR;
+    }
+
+    client->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+
+    CALL_CALLBACK(client, on_connect, connack.connect_return_code, connack.session_present);
+
+    if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
+        aws_mqtt_client_connection_disconnect(client);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+packet_handler_fn *s_packet_handlers[] = {
+    &s_packet_handler_default, /* Reserved */
+    &s_packet_handler_default, /* CONNECT */
+    &s_packet_handler_connack, /* CONNACK */
+    &s_packet_handler_default, /* PUBLISH */
+    &s_packet_handler_default, /* PUBACK */
+    &s_packet_handler_default, /* PUBREC */
+    &s_packet_handler_default, /* PUBREL */
+    &s_packet_handler_default, /* PUBCOMP */
+    &s_packet_handler_default, /* SUBSCRIBE */
+    &s_packet_handler_default, /* SUBACK */
+    &s_packet_handler_default, /* UNSUBSCRIBE */
+    &s_packet_handler_default, /* UNSUBACK */
+    &s_packet_handler_default, /* PINGREQ */
+    &s_packet_handler_default, /* PINGRESP */
+    &s_packet_handler_default, /* DISCONNECT */
+};
+
 /**
  * Handles incoming messages from the server.
  */
@@ -45,43 +90,22 @@ static int s_process_read_message(
     enum aws_mqtt_packet_type type = aws_mqtt_get_packet_type(message->message_data.buffer);
 
     /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
-    if (type != AWS_MQTT_PACKET_CONNACK && client->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
+    if (client->state == AWS_MQTT_CLIENT_STATE_CONNECTING && type != AWS_MQTT_PACKET_CONNACK) {
 
         aws_mqtt_client_connection_disconnect(client);
         return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
-    switch (type) {
-        case AWS_MQTT_PACKET_CONNACK: {
 
-            struct aws_mqtt_packet_connack connack;
-            if (aws_mqtt_packet_connack_decode(&message_cursor, &connack)) {
-                return AWS_OP_ERR;
-            }
-
-            client->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
-
-            CALL_CALLBACK(client, on_connect, connack.connect_return_code, connack.session_present);
-
-            if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
-                aws_mqtt_client_connection_disconnect(client);
-            }
-
-            break;
-        }
-
-        case AWS_MQTT_PACKET_CONNECT:
-        default:
-            /* These packets should never be sent by the server */
-            return AWS_OP_ERR;
-    }
+    /* Handle the packet */
+    int result = s_packet_handlers[type](client, message_cursor);
 
     /* Do cleanup */
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
     aws_channel_release_message_to_pool(slot->channel, message);
 
-    return AWS_OP_SUCCESS;
+    return result;
 }
 
 static int s_shutdown(
