@@ -75,9 +75,14 @@ static int s_mqtt_client_shutdown(
     void *user_data) {
 
     (void)bootstrap;
-    (void)error_code;
     (void)channel;
-    (void)user_data;
+
+    struct aws_mqtt_client *client = user_data;
+
+    /* Alert the client we've shutdown */
+    if (client->callbacks.on_disconnect) {
+        client->callbacks.on_disconnect(error_code, client->callbacks.user_data);
+    }
 
     return AWS_OP_SUCCESS;
 }

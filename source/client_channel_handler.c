@@ -91,7 +91,7 @@ static int s_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    struct aws_mqtt_client *client = handler->impl;
+    (void)handler;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         /* On closing write direction, send out disconnect packet before closing connection. */
@@ -121,9 +121,6 @@ static int s_shutdown(
                 return AWS_OP_ERR;
             }
         }
-
-        /* Alert the client we've shutdown */
-        CALL_CALLBACK(client, on_disconnect, error_code);
     }
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
