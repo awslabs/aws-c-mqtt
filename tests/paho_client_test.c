@@ -48,18 +48,20 @@ struct connection_args {
     struct aws_mqtt_client_connection *client;
 };
 
-static void s_mqtt_on_connection(enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data) {
+static void s_mqtt_on_connection(struct aws_mqtt_client_connection *connection, enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data) {
 
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
-    struct connection_args *args = user_data;
+    (void)user_data;
 
     sleep(3);
 
-    aws_mqtt_client_connection_disconnect(args->client);
+    aws_mqtt_client_connection_disconnect(connection);
 }
 
-static void s_mqtt_on_disconnect(int error_code, void *user_data) {
+static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
+
+    (void)connection;
 
     assert(error_code == AWS_OP_SUCCESS);
 

@@ -80,9 +80,7 @@ static int s_mqtt_client_shutdown(
     struct aws_mqtt_client_connection *client = user_data;
 
     /* Alert the client we've shutdown */
-    if (client->callbacks.on_disconnect) {
-        client->callbacks.on_disconnect(error_code, client->callbacks.user_data);
-    }
+    MQTT_CALL_CALLBACK(client, on_disconnect, error_code);
 
     return AWS_OP_SUCCESS;
 }
@@ -155,49 +153,52 @@ int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *cli
 
     return AWS_OP_SUCCESS;
 }
-
-#define AWS_DEFINE_ERROR_INFO_MQTT(C, ES) AWS_DEFINE_ERROR_INFO(C, ES, "libaws-c-mqtt")
-/* clang-format off */
-static struct aws_error_info errors[] = {
-    AWS_DEFINE_ERROR_INFO_MQTT(
-        AWS_ERROR_MQTT_INVALID_RESERVED_BITS,
-        "Bits marked as reserved in the MQTT spec were incorrectly set."),
-    AWS_DEFINE_ERROR_INFO_MQTT(
-        AWS_ERROR_MQTT_BUFFER_TOO_BIG,
-        "[MQTT-1.5.3] Encoded UTF-8 buffers may be no bigger than 65535 bytes."),
-    AWS_DEFINE_ERROR_INFO_MQTT(
-        AWS_ERROR_MQTT_INVALID_REMAINING_LENGTH,
-        "[MQTT-2.2.3] Encoded remaining length field is malformed."),
-    AWS_DEFINE_ERROR_INFO_MQTT(
-        AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_NAME,
-        "[MQTT-3.1.2-1] Protocol name specified is unsupported."),
-    AWS_DEFINE_ERROR_INFO_MQTT(
-        AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_LEVEL,
-        "[MQTT-3.1.2-2] Protocol level specified is unsupported."),
-    AWS_DEFINE_ERROR_INFO_MQTT(
-        AWS_ERROR_MQTT_INVALID_CREDENTIALS,
-        "[MQTT-3.1.2-21] Connect packet may not include password when no username is present."),
-    AWS_DEFINE_ERROR_INFO_MQTT(
-        AWS_ERROR_MQTT_INVALID_QOS,
-        "Both bits in a QoS field must not be set."),
-    AWS_DEFINE_ERROR_INFO_MQTT(
-        AWS_ERROR_MQTT_PROTOCOL_ERROR,
-        "Protocol error occured."),
-};
-/* clang-format on */
-#undef AWS_DEFINE_ERROR_INFO_MQTT
-
-static struct aws_error_info_list s_list = {
-    .error_list = errors,
-    .count = AWS_ARRAY_SIZE(errors),
-};
-
 void aws_mqtt_load_error_strings() {
 
     static bool s_error_strings_loaded = false;
     if (!s_error_strings_loaded) {
 
         s_error_strings_loaded = true;
+
+#define AWS_DEFINE_ERROR_INFO_MQTT(C, ES) AWS_DEFINE_ERROR_INFO(C, ES, "libaws-c-mqtt")
+        /* clang-format off */
+        static struct aws_error_info s_errors[] = {
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_INVALID_RESERVED_BITS,
+                "Bits marked as reserved in the MQTT spec were incorrectly set."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_BUFFER_TOO_BIG,
+                "[MQTT-1.5.3] Encoded UTF-8 buffers may be no bigger than 65535 bytes."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_INVALID_REMAINING_LENGTH,
+                "[MQTT-2.2.3] Encoded remaining length field is malformed."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_NAME,
+                "[MQTT-3.1.2-1] Protocol name specified is unsupported."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_LEVEL,
+                "[MQTT-3.1.2-2] Protocol level specified is unsupported."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_INVALID_CREDENTIALS,
+                "[MQTT-3.1.2-21] Connect packet may not include password when no username is present."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_INVALID_QOS,
+                "Both bits in a QoS field must not be set."),
+
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
+                "Packet type in packet fixed header is invalid."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_PROTOCOL_ERROR,
+                "Protocol error occured."),
+        };
+        /* clang-format on */
+#undef AWS_DEFINE_ERROR_INFO_MQTT
+
+        static struct aws_error_info_list s_list = {
+            .error_list = s_errors,
+            .count = AWS_ARRAY_SIZE(s_errors),
+        };
         aws_register_error_info(&s_list);
     }
 }

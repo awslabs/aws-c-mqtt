@@ -21,23 +21,16 @@
 
 #include <aws/common/task_scheduler.h>
 
-#define CALL_CALLBACK(client_ptr, callback, ...)                                                                       \
-    do {                                                                                                               \
-        if (client_ptr->callbacks.callback) {                                                                          \
-            client->callbacks.callback(__VA_ARGS__, client_ptr->callbacks.user_data);                                  \
-        }                                                                                                              \
-    } while (false)
+typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor);
 
-typedef int (packet_handler_fn)(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor);
-
-int s_packet_handler_default(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_default(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor) {
     (void)client;
     (void)message_cursor;
 
     return AWS_OP_ERR;
 }
 
-int s_packet_handler_connack(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_connack(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor) {
 
     struct aws_mqtt_packet_connack connack;
     if (aws_mqtt_packet_connack_decode(&message_cursor, &connack)) {
@@ -46,7 +39,7 @@ int s_packet_handler_connack(struct aws_mqtt_client_connection *client, struct a
 
     client->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
 
-    CALL_CALLBACK(client, on_connect, connack.connect_return_code, connack.session_present);
+    MQTT_CALL_CALLBACK(client, on_connect, connack.connect_return_code, connack.session_present);
 
     if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
         aws_mqtt_client_connection_disconnect(client);
@@ -55,7 +48,8 @@ int s_packet_handler_connack(struct aws_mqtt_client_connection *client, struct a
     return AWS_OP_SUCCESS;
 }
 
-packet_handler_fn *s_packet_handlers[] = {
+/* Bake up a big ol' function table just like Gramma used to make */
+static packet_handler_fn *s_packet_handlers[] = {
     &s_packet_handler_default, /* Reserved */
     &s_packet_handler_default, /* CONNECT */
     &s_packet_handler_connack, /* CONNACK */
@@ -97,6 +91,10 @@ static int s_process_read_message(
     }
 
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
+
+    if (type > AWS_MQTT_PACKET_DISCONNECT || type < AWS_MQTT_PACKET_CONNECT) {
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
+    }
 
     /* Handle the packet */
     int result = s_packet_handlers[type](client, message_cursor);

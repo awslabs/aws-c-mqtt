@@ -22,6 +22,13 @@
 
 #include <aws/io/channel.h>
 
+#define MQTT_CALL_CALLBACK(client_ptr, callback, ...)                                                                  \
+    do {                                                                                                               \
+        if (client_ptr->callbacks.callback) {                                                                          \
+            client->callbacks.callback(client_ptr, __VA_ARGS__, client_ptr->callbacks.user_data);                      \
+        }                                                                                                              \
+    } while (false)
+
 enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_CONNECTING,
     AWS_MQTT_CLIENT_STATE_CONNECTED,

@@ -72,12 +72,14 @@ struct aws_mqtt_subscription {
     enum aws_mqtt_qos qos;
 };
 
+struct aws_mqtt_client_connection;
+
 struct aws_mqtt_client_connection_callbacks {
     /* Called when a connection acknowlegement is received.
      * If return_code is not ACCEPT, the connetion is automatically closed. */
-    void (*on_connect)(enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data);
+    void (*on_connect)(struct aws_mqtt_client_connection *connection, enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data);
     /* Called when a connection is closed, right before any resources are deleted. */
-    void (*on_disconnect)(int error_code, void *user_data);
+    void (*on_disconnect)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
 
     void *user_data;
 };
@@ -90,12 +92,11 @@ enum aws_mqtt_error {
     AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_LEVEL,
     AWS_ERROR_MQTT_INVALID_CREDENTIALS,
     AWS_ERROR_MQTT_INVALID_QOS,
+    AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
     AWS_ERROR_MQTT_PROTOCOL_ERROR,
 
     AWS_ERROR_END_MQTT_RANGE = 0x1800,
 };
-
-struct aws_mqtt_client_connection;
 
 #ifdef __cplusplus
 extern "C" {

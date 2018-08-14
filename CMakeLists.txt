@@ -39,7 +39,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
 find_package(s2n REQUIRED)
 find_package(aws-c-common REQUIRED)
 find_package(aws-c-io REQUIRED)
-target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC aws-c-common aws-c-io ${PLATFORM_LIBS})
+target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC aws-c-io)
 
 install(FILES ${AWS_MQTT_HEADERS} DESTINATION "include/aws/mqtt")
 install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "include/aws/testing/mqtt")
