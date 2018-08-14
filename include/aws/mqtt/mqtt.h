@@ -25,6 +25,7 @@
 struct aws_client_bootstrap;
 struct aws_socket_endpoint;
 struct aws_socket_options;
+struct aws_tls_connection_options;
 
 /* Represents the types of the MQTT control packets [MQTT-2.2.1]. */
 enum aws_mqtt_packet_type {
@@ -113,6 +114,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client *client,
     struct aws_mqtt_client_connection_callbacks callbacks,
     struct aws_socket_endpoint *endpoint,
+    struct aws_tls_connection_options *tls_options,
     struct aws_byte_cursor client_id,
     bool clean_session,
     uint16_t keep_alive_time);

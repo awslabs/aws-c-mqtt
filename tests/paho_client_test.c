@@ -113,14 +113,14 @@ int main(int argc, char **argv) {
     };
 
     args.connection =
-        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, s_client_id, true, 0);
+        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id, true, 0);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
     args.connection =
-        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, s_client_id, true, 0);
+        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id, true, 0);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));

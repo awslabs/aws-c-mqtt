@@ -21,6 +21,7 @@
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/socket.h>
+#include <aws/io/tls_channel_handler.h>
 
 #include <assert.h>
 
@@ -91,11 +92,14 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client *client,
     struct aws_mqtt_client_connection_callbacks callbacks,
     struct aws_socket_endpoint *endpoint,
+    struct aws_tls_connection_options *tls_options,
     struct aws_byte_cursor client_id,
     bool clean_session,
     uint16_t keep_alive_time) {
 
     assert(allocator);
+    assert(client);
+    assert(!tls_options || client->client_bootstrap->tls_ctx);
 
     struct aws_mqtt_client_connection *connection =
         aws_mem_acquire(allocator, sizeof(struct aws_mqtt_client_connection));
@@ -128,17 +132,39 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
             &aws_string_destroy,
             NULL)) {
 
-        return NULL;
+        aws_mem_release(allocator, connection);
+        connection = NULL;
     }
 
-    if (aws_client_bootstrap_new_socket_channel(
-            client->client_bootstrap,
-            endpoint,
-            client->socket_options,
-            &s_mqtt_client_init,
-            &s_mqtt_client_shutdown,
-            connection)) {
-        return NULL;
+    if (tls_options) {
+
+        if (aws_client_bootstrap_new_tls_socket_channel(
+                client->client_bootstrap,
+                endpoint,
+                client->socket_options,
+                tls_options,
+                &s_mqtt_client_init,
+                &s_mqtt_client_shutdown,
+                connection)) {
+
+            aws_hash_table_clean_up(&connection->subscriptions);
+            aws_mem_release(allocator, connection);
+            connection = NULL;
+        }
+    } else {
+
+        if (aws_client_bootstrap_new_socket_channel(
+                client->client_bootstrap,
+                endpoint,
+                client->socket_options,
+                &s_mqtt_client_init,
+                &s_mqtt_client_shutdown,
+                connection)) {
+
+            aws_hash_table_clean_up(&connection->subscriptions);
+            aws_mem_release(allocator, connection);
+            connection = NULL;
+        }
     }
 
     return connection;
@@ -190,7 +216,6 @@ void aws_mqtt_load_error_strings() {
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_INVALID_QOS,
                 "Both bits in a QoS field must not be set."),
-
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
                 "Packet type in packet fixed header is invalid."),
