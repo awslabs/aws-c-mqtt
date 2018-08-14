@@ -25,7 +25,7 @@
 #define MQTT_CALL_CALLBACK(client_ptr, callback, ...)                                                                  \
     do {                                                                                                               \
         if (client_ptr->callbacks.callback) {                                                                          \
-            client->callbacks.callback(client_ptr, __VA_ARGS__, client_ptr->callbacks.user_data);                      \
+            client_ptr->callbacks.callback(client_ptr, __VA_ARGS__, client_ptr->callbacks.user_data);                  \
         }                                                                                                              \
     } while (false)
 

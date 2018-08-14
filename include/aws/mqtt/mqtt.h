@@ -98,6 +98,11 @@ enum aws_mqtt_error {
     AWS_ERROR_END_MQTT_RANGE = 0x1800,
 };
 
+struct aws_mqtt_client {
+    struct aws_client_bootstrap *client_bootstrap;
+    struct aws_socket_options *socket_options;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -105,16 +110,15 @@ extern "C" {
 AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_allocator *allocator,
+    struct aws_mqtt_client *client,
     struct aws_mqtt_client_connection_callbacks callbacks,
-    struct aws_client_bootstrap *client_bootstrap,
     struct aws_socket_endpoint *endpoint,
-    struct aws_socket_options *options,
     struct aws_byte_cursor client_id,
     bool clean_session,
     uint16_t keep_alive_time);
 
 AWS_MQTT_API
-int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *client);
+int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection);
 
 /*
  * Loads error strings for debugging and logging purposes.
