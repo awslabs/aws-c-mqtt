@@ -115,7 +115,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
 
     /* Initialize the handler */
     client->handler.alloc = allocator;
-    client->handler.vtable = aws_mqtt_client_channel_vtable;
+    client->handler.vtable = aws_mqtt_get_client_channel_vtable();
     client->handler.impl = client;
 
     if (aws_hash_table_init(

@@ -58,6 +58,6 @@ struct aws_mqtt_client_connection {
     uint16_t keep_alive_time;
 };
 
-extern struct aws_channel_handler_vtable aws_mqtt_client_channel_vtable;
+struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable();
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H */

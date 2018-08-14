@@ -166,11 +166,16 @@ static void s_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(client->allocator, client);
 }
 
-struct aws_channel_handler_vtable aws_mqtt_client_channel_vtable = {
-    .process_read_message = &s_process_read_message,
-    .process_write_message = NULL,
-    .increment_read_window = NULL,
-    .shutdown = &s_shutdown,
-    .initial_window_size = &s_initial_window_size,
-    .destroy = &s_destroy,
-};
+struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable() {
+
+    static struct aws_channel_handler_vtable s_vtable = {
+        .process_read_message = &s_process_read_message,
+        .process_write_message = NULL,
+        .increment_read_window = NULL,
+        .shutdown = &s_shutdown,
+        .initial_window_size = &s_initial_window_size,
+        .destroy = &s_destroy,
+    };
+
+    return s_vtable;
+}
