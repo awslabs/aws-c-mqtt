@@ -57,7 +57,10 @@ static int s_mqtt_client_init(
     /* Send the connect packet */
     struct aws_mqtt_packet_connect connect;
     aws_mqtt_packet_connect_init(
-        &connect, connection->client_id, connection->clean_session, connection->keep_alive_time);
+        &connect,
+        aws_byte_cursor_from_buf(&connection->client_id),
+        connection->clean_session,
+        connection->keep_alive_time);
 
     struct aws_io_message *message = aws_channel_acquire_message_from_pool(
         channel, AWS_IO_MESSAGE_APPLICATION_DATA, connect.fixed_header.remaining_length + 3);
@@ -127,9 +130,15 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     connection->allocator = allocator;
     connection->callbacks = callbacks;
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
-    connection->client_id = client_id;
     connection->clean_session = clean_session;
     connection->keep_alive_time = keep_alive_time;
+
+    struct aws_byte_buf client_id_buf = {
+        .buffer = client_id.ptr,
+        .len = client_id.len,
+        .capacity = client_id.len,
+    };
+    aws_byte_buf_init_copy(allocator, &connection->client_id, &client_id_buf);
 
     /* Initialize the handler */
     connection->handler.alloc = allocator;

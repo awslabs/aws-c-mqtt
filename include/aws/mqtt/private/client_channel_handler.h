@@ -53,7 +53,7 @@ struct aws_mqtt_client_connection {
     struct aws_hash_table subscriptions;
 
     /* Connect parameters */
-    struct aws_byte_cursor client_id;
+    struct aws_byte_buf client_id;
     bool clean_session;
     uint16_t keep_alive_time;
 };
