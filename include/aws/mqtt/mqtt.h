@@ -76,9 +76,16 @@ struct aws_mqtt_subscription {
 struct aws_mqtt_client_connection;
 
 struct aws_mqtt_client_connection_callbacks {
+    /* Called if the connection to the server is not completed.
+     * Note that if a CONNACK is recieved, this function will not be called no matter what the return code is */
+    void (*on_connection_failed)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
     /* Called when a connection acknowlegement is received.
      * If return_code is not ACCEPT, the connetion is automatically closed. */
-    void (*on_connect)(struct aws_mqtt_client_connection *connection, enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data);
+    void (*on_connack)(
+        struct aws_mqtt_client_connection *connection,
+        enum aws_mqtt_connect_return_code return_code,
+        bool session_present,
+        void *user_data);
     /* Called when a connection is closed, right before any resources are deleted. */
     void (*on_disconnect)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
 

@@ -48,7 +48,11 @@ struct connection_args {
     struct aws_mqtt_client_connection *connection;
 };
 
-static void s_mqtt_on_connection(struct aws_mqtt_client_connection *connection, enum aws_mqtt_connect_return_code return_code, bool session_present, void *user_data) {
+static void s_mqtt_on_connack(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present,
+    void *user_data) {
 
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
@@ -103,7 +107,7 @@ int main(int argc, char **argv) {
 
     struct aws_mqtt_client_connection_callbacks callbacks;
     AWS_ZERO_STRUCT(callbacks);
-    callbacks.on_connect = &s_mqtt_on_connection;
+    callbacks.on_connack = &s_mqtt_on_connack;
     callbacks.on_disconnect = &s_mqtt_on_disconnect;
     callbacks.user_data = &args;
 

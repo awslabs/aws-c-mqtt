@@ -25,6 +25,10 @@
 
 #include <assert.h>
 
+/**
+ * Channel has be initialized callback. Sets up channel handler and sends out CONNECT packet.
+ * The on_connack callback is called with the CONNACK packet is received from the server.
+ */
 static int s_mqtt_client_init(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
@@ -41,6 +45,12 @@ static int s_mqtt_client_init(
 
     /* Create the slot and handler */
     connection->slot = aws_channel_slot_new(channel);
+
+    if (!connection->slot) {
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        return AWS_OP_ERR;
+    }
+
     aws_channel_slot_insert_end(channel, connection->slot);
     aws_channel_slot_set_handler(connection->slot, &connection->handler);
 
@@ -52,6 +62,7 @@ static int s_mqtt_client_init(
     struct aws_io_message *message = aws_channel_acquire_message_from_pool(
         channel, AWS_IO_MESSAGE_APPLICATION_DATA, connect.fixed_header.remaining_length + 3);
     if (!message) {
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
         return AWS_OP_ERR;
     }
     struct aws_byte_cursor message_cursor = {
@@ -59,11 +70,13 @@ static int s_mqtt_client_init(
         .len = message->message_data.capacity,
     };
     if (aws_mqtt_packet_connect_encode(&message_cursor, &connect)) {
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
         return AWS_OP_ERR;
     }
     message->message_data.len = message->message_data.capacity - message_cursor.len;
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
         return AWS_OP_ERR;
     }
 
@@ -132,8 +145,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
             &aws_string_destroy,
             NULL)) {
 
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
         aws_mem_release(allocator, connection);
-        connection = NULL;
+        return NULL;
     }
 
     if (tls_options) {
@@ -147,9 +161,10 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
                 &s_mqtt_client_shutdown,
                 connection)) {
 
+            MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
             aws_hash_table_clean_up(&connection->subscriptions);
             aws_mem_release(allocator, connection);
-            connection = NULL;
+            return NULL;
         }
     } else {
 
@@ -161,9 +176,10 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
                 &s_mqtt_client_shutdown,
                 connection)) {
 
+            MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
             aws_hash_table_clean_up(&connection->subscriptions);
             aws_mem_release(allocator, connection);
-            connection = NULL;
+            return NULL;
         }
     }
 

@@ -39,7 +39,7 @@ static int s_packet_handler_connack(struct aws_mqtt_client_connection *client, s
 
     client->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
 
-    MQTT_CALL_CALLBACK(client, on_connect, connack.connect_return_code, connack.session_present);
+    MQTT_CALL_CALLBACK(client, on_connack, connack.connect_return_code, connack.session_present);
 
     if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
         aws_mqtt_client_connection_disconnect(client);
@@ -50,21 +50,20 @@ static int s_packet_handler_connack(struct aws_mqtt_client_connection *client, s
 
 /* Bake up a big ol' function table just like Gramma used to make */
 static packet_handler_fn *s_packet_handlers[] = {
-    &s_packet_handler_default, /* Reserved */
-    &s_packet_handler_default, /* CONNECT */
-    &s_packet_handler_connack, /* CONNACK */
-    &s_packet_handler_default, /* PUBLISH */
-    &s_packet_handler_default, /* PUBACK */
-    &s_packet_handler_default, /* PUBREC */
-    &s_packet_handler_default, /* PUBREL */
-    &s_packet_handler_default, /* PUBCOMP */
-    &s_packet_handler_default, /* SUBSCRIBE */
-    &s_packet_handler_default, /* SUBACK */
-    &s_packet_handler_default, /* UNSUBSCRIBE */
-    &s_packet_handler_default, /* UNSUBACK */
-    &s_packet_handler_default, /* PINGREQ */
-    &s_packet_handler_default, /* PINGRESP */
-    &s_packet_handler_default, /* DISCONNECT */
+    [AWS_MQTT_PACKET_CONNECT] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_CONNACK] = &s_packet_handler_connack,
+    [AWS_MQTT_PACKET_PUBLISH] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_PUBACK] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_PUBREC] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_PUBREL] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_PUBCOMP] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_SUBSCRIBE] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_SUBACK] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_UNSUBSCRIBE] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_UNSUBACK] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_PINGREQ] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_PINGRESP] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_DISCONNECT] = &s_packet_handler_default,
 };
 
 /**
@@ -92,7 +91,7 @@ static int s_process_read_message(
 
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
-    if (type > AWS_MQTT_PACKET_DISCONNECT || type < AWS_MQTT_PACKET_CONNECT) {
+    if (AWS_UNLIKELY(type > AWS_MQTT_PACKET_DISCONNECT || type < AWS_MQTT_PACKET_CONNECT)) {
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
     }
 
