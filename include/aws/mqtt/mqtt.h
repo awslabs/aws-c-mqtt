@@ -19,6 +19,13 @@
 #include <aws/mqtt/exports.h>
 
 #include <aws/common/byte_buf.h>
+#include <aws/common/string.h>
+
+/* forward declares */
+struct aws_client_bootstrap;
+struct aws_socket_endpoint;
+struct aws_socket_options;
+struct aws_tls_connection_options;
 
 /* Represents the types of the MQTT control packets [MQTT-2.2.1]. */
 enum aws_mqtt_packet_type {
@@ -66,6 +73,25 @@ struct aws_mqtt_subscription {
     enum aws_mqtt_qos qos;
 };
 
+struct aws_mqtt_client_connection;
+
+struct aws_mqtt_client_connection_callbacks {
+    /* Called if the connection to the server is not completed.
+     * Note that if a CONNACK is recieved, this function will not be called no matter what the return code is */
+    void (*on_connection_failed)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
+    /* Called when a connection acknowlegement is received.
+     * If return_code is not ACCEPT, the connetion is automatically closed. */
+    void (*on_connack)(
+        struct aws_mqtt_client_connection *connection,
+        enum aws_mqtt_connect_return_code return_code,
+        bool session_present,
+        void *user_data);
+    /* Called when a connection is closed, right before any resources are deleted. */
+    void (*on_disconnect)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
+
+    void *user_data;
+};
+
 enum aws_mqtt_error {
     AWS_ERROR_MQTT_INVALID_RESERVED_BITS = 0x1400,
     AWS_ERROR_MQTT_BUFFER_TOO_BIG,
@@ -74,14 +100,34 @@ enum aws_mqtt_error {
     AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_LEVEL,
     AWS_ERROR_MQTT_INVALID_CREDENTIALS,
     AWS_ERROR_MQTT_INVALID_QOS,
+    AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
     AWS_ERROR_MQTT_PROTOCOL_ERROR,
 
     AWS_ERROR_END_MQTT_RANGE = 0x1800,
 };
 
+struct aws_mqtt_client {
+    struct aws_client_bootstrap *client_bootstrap;
+    struct aws_socket_options *socket_options;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+AWS_MQTT_API
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client *client,
+    struct aws_mqtt_client_connection_callbacks callbacks,
+    struct aws_socket_endpoint *endpoint,
+    struct aws_tls_connection_options *tls_options,
+    struct aws_byte_cursor client_id,
+    bool clean_session,
+    uint16_t keep_alive_time);
+
+AWS_MQTT_API
+int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection);
 
 /*
  * Loads error strings for debugging and logging purposes.
