@@ -39,6 +39,7 @@ static struct aws_byte_cursor s_client_id = {
     .ptr = (uint8_t *)"MyClientId",
     .len = 10,
 };
+AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
 
 struct connection_args {
     struct aws_allocator *allocator;
@@ -57,6 +58,11 @@ static void s_mqtt_on_connack(
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
     (void)user_data;
+
+    struct aws_mqtt_subscription sub;
+    sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
+    sub.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
+    aws_mqtt_client_subscribe(connection, &sub, NULL, NULL);
 
     sleep(3);
 

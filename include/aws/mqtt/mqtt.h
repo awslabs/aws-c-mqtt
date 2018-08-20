@@ -75,6 +75,12 @@ struct aws_mqtt_subscription {
 
 struct aws_mqtt_client_connection;
 
+/** Type of function called when a publish recieved matches a subscription */
+typedef void(aws_mqtt_publish_recieved_fn)(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_mqtt_subscription *subscription,
+    void *user_data);
+
 struct aws_mqtt_client_connection_callbacks {
     /* Called if the connection to the server is not completed.
      * Note that if a CONNACK is recieved, this function will not be called no matter what the return code is */
@@ -128,6 +134,13 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
 
 AWS_MQTT_API
 int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection);
+
+AWS_MQTT_API
+int aws_mqtt_client_subscribe(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_mqtt_subscription *subscription,
+    aws_mqtt_publish_recieved_fn *callback,
+    void *user_data);
 
 /*
  * Loads error strings for debugging and logging purposes.

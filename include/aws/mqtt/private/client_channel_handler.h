@@ -35,6 +35,15 @@ enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_DISCONNECTING,
 };
 
+/** This serves as the value of the subscriptions table */
+struct aws_mqtt_subscription_impl {
+    struct aws_mqtt_client_connection *connection;
+
+    const struct aws_string *filter;
+    aws_mqtt_publish_recieved_fn *callback;
+    void *user_data;
+};
+
 struct aws_mqtt_client_connection {
 
     struct aws_allocator *allocator;
