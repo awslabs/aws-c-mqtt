@@ -69,8 +69,7 @@ static int s_mqtt_client_init(
         connection->clean_session,
         connection->keep_alive_time);
 
-    struct aws_io_message *message = aws_channel_acquire_message_from_pool(
-        channel, AWS_IO_MESSAGE_APPLICATION_DATA, connect.fixed_header.remaining_length + 3);
+    struct aws_io_message *message = mqtt_get_message_for_packet(connection, &connect.fixed_header);
     if (!message) {
         MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
         return AWS_OP_ERR;
@@ -241,6 +240,10 @@ int aws_mqtt_client_subscribe(
         goto handle_error;
     }
 
+    subscription_impl->subscription.qos = subscription->qos;
+    subscription_impl->subscription.topic_filter =
+        aws_byte_cursor_from_array(aws_string_bytes(subscription_impl->filter), subscription_impl->filter->len);
+
     struct aws_hash_element *elem;
     aws_hash_table_create(&connection->subscriptions, subscription_impl->filter, &elem, &was_created);
     elem->value = subscription_impl;
@@ -256,8 +259,7 @@ int aws_mqtt_client_subscribe(
         goto handle_error;
     }
 
-    message = aws_channel_acquire_message_from_pool(
-        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, subscribe.fixed_header.remaining_length + 3);
+    message = mqtt_get_message_for_packet(connection, &subscribe.fixed_header);
     if (!message) {
         goto handle_error;
     }

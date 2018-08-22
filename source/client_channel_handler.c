@@ -17,9 +17,42 @@
 
 #include <aws/mqtt/private/packets.h>
 
-#include <aws/io/channel.h>
-
 #include <aws/common/task_scheduler.h>
+
+static bool s_subscription_matches_publish(
+    struct aws_mqtt_subscription_impl *sub,
+    struct aws_mqtt_packet_publish *pub) {
+
+    struct aws_byte_buf sub_topic = aws_byte_buf_from_array(aws_string_bytes(sub->filter), sub->filter->len);
+    struct aws_byte_buf pub_topic = aws_byte_buf_from_array(pub->topic_name.ptr, pub->topic_name.len);
+
+    struct aws_array_list sub_topic_parts;
+    struct aws_array_list pub_topic_parts;
+
+    aws_byte_buf_split_on_char(&sub_topic, '/', &sub_topic_parts);
+    aws_byte_buf_split_on_char(&pub_topic, '/', &pub_topic_parts);
+
+    size_t sub_parts_len = aws_array_list_length(&sub_topic_parts);
+    size_t pub_parts_len = aws_array_list_length(&pub_topic_parts);
+
+    /* This should never happen, but just in case */
+    if (!sub_parts_len || !pub_parts_len) {
+        return false;
+    }
+
+    /* The sub topic can have wildcards, but if the sub topic has more parts than the pub topic, it can't be a match */
+    if (sub_parts_len > pub_parts_len) {
+        return false;
+    }
+
+    struct aws_byte_cursor *sub_part;
+    struct aws_byte_cursor *pub_part;
+
+    aws_array_list_get_at_ptr(&sub_topic_parts, (void **)&sub_part, 0);
+    aws_array_list_get_at_ptr(&pub_topic_parts, (void **)&pub_part, 0);
+
+    return true;
+}
 
 typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor);
 
@@ -48,11 +81,86 @@ static int s_packet_handler_connack(struct aws_mqtt_client_connection *client, s
     return AWS_OP_SUCCESS;
 }
 
+static int s_packet_handler_publish(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor) {
+
+    struct aws_mqtt_packet_publish publish;
+    if (aws_mqtt_packet_publish_decode(&message_cursor, &publish)) {
+        return AWS_OP_ERR;
+    }
+
+    const struct aws_string *topic =
+        aws_string_new_from_array(client->allocator, publish.topic_name.ptr, publish.topic_name.len);
+
+    /* Attempt lazy search of just topic name, no wildcard matching */
+    struct aws_hash_element *elem;
+    aws_hash_table_find(&client->subscriptions, topic, &elem);
+    aws_string_destroy((void *)topic);
+
+    struct aws_mqtt_subscription_impl *sub = NULL;
+    if (elem) {
+        sub = elem->value;
+    } else {
+        for (struct aws_hash_iter iter = aws_hash_iter_begin(&client->subscriptions); !aws_hash_iter_done(&iter);
+             aws_hash_iter_next(&iter)) {
+
+            struct aws_mqtt_subscription_impl *test = iter.element.value;
+
+            if (s_subscription_matches_publish(test, &publish)) {
+                sub = test;
+                break;
+            }
+        }
+    }
+
+    if (sub) {
+
+        sub->callback(client, &sub->subscription, sub->user_data);
+    }
+
+    struct aws_mqtt_packet_ack puback;
+    AWS_ZERO_STRUCT(puback);
+
+    switch ((publish.fixed_header.flags >> 1) & 0x3) {
+        case AWS_MQTT_QOS_AT_MOST_ONCE:
+            /* No more communication necessary */
+            break;
+        case AWS_MQTT_QOS_AT_LEAST_ONCE:
+            aws_mqtt_packet_puback_init(&puback, publish.packet_identifier);
+            break;
+        case AWS_MQTT_QOS_EXACTLY_ONCE:
+            aws_mqtt_packet_pubrec_init(&puback, publish.packet_identifier);
+            break;
+    }
+
+    if (puback.packet_identifier) {
+
+        struct aws_io_message *message = mqtt_get_message_for_packet(client, &puback.fixed_header);
+        if (!message) {
+            return AWS_OP_ERR;
+        }
+
+        struct aws_byte_cursor message_cursor = {
+            .ptr = message->message_data.buffer,
+            .len = message->message_data.capacity,
+        };
+        if (aws_mqtt_packet_ack_encode(&message_cursor, &puback)) {
+            return AWS_OP_ERR;
+        }
+        message->message_data.len = message->message_data.capacity - message_cursor.len;
+
+        if (aws_channel_slot_send_message(client->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 /* Bake up a big ol' function table just like Gramma used to make */
 static packet_handler_fn *s_packet_handlers[] = {
     [AWS_MQTT_PACKET_CONNECT] = &s_packet_handler_default,
     [AWS_MQTT_PACKET_CONNACK] = &s_packet_handler_connack,
-    [AWS_MQTT_PACKET_PUBLISH] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_PUBLISH] = &s_packet_handler_publish,
     [AWS_MQTT_PACKET_PUBACK] = &s_packet_handler_default,
     [AWS_MQTT_PACKET_PUBREC] = &s_packet_handler_default,
     [AWS_MQTT_PACKET_PUBREL] = &s_packet_handler_default,
@@ -112,8 +220,6 @@ static int s_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    (void)handler;
-
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         /* On closing write direction, send out disconnect packet before closing connection. */
 
@@ -123,8 +229,7 @@ static int s_shutdown(
             struct aws_mqtt_packet_connection disconnect;
             aws_mqtt_packet_disconnect_init(&disconnect);
 
-            struct aws_io_message *message = aws_channel_acquire_message_from_pool(
-                slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, disconnect.fixed_header.remaining_length + 3);
+            struct aws_io_message *message = mqtt_get_message_for_packet(handler->impl, &disconnect.fixed_header);
             if (!message) {
                 return AWS_OP_ERR;
             }
@@ -180,4 +285,12 @@ struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable() {
     };
 
     return s_vtable;
+}
+
+struct aws_io_message *mqtt_get_message_for_packet(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_fixed_header *header) {
+
+    return aws_channel_acquire_message_from_pool(
+        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 3 + header->remaining_length);
 }
