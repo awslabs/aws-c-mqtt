@@ -23,6 +23,8 @@ add_test_case(mqtt_packet_pingreq)
 add_test_case(mqtt_packet_pingresp)
 add_test_case(mqtt_packet_disconnect)
 
+add_test_case(mqtt_utils_topic_match)
+
 generate_test_driver(${CMAKE_PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${CMAKE_PROJECT_NAME}-paho-client)

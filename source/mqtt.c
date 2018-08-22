@@ -241,8 +241,7 @@ int aws_mqtt_client_subscribe(
     }
 
     subscription_impl->subscription.qos = subscription->qos;
-    subscription_impl->subscription.topic_filter =
-        aws_byte_cursor_from_array(aws_string_bytes(subscription_impl->filter), subscription_impl->filter->len);
+    subscription_impl->subscription.topic_filter = aws_byte_cursor_from_string(subscription_impl->filter);
 
     struct aws_hash_element *elem;
     aws_hash_table_create(&connection->subscriptions, subscription_impl->filter, &elem, &was_created);
@@ -253,9 +252,7 @@ int aws_mqtt_client_subscribe(
     if (aws_mqtt_packet_subscribe_init(&subscribe, connection->allocator, 42)) {
         goto handle_error;
     }
-    struct aws_byte_cursor filter_cursor =
-        aws_byte_cursor_from_array(aws_string_bytes(subscription_impl->filter), subscription_impl->filter->len);
-    if (aws_mqtt_packet_subscribe_add_topic(&subscribe, filter_cursor, subscription->qos)) {
+    if (aws_mqtt_packet_subscribe_add_topic(&subscribe, subscription_impl->subscription.topic_filter, subscription->qos)) {
         goto handle_error;
     }
 

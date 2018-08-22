@@ -16,43 +16,9 @@
 #include <aws/mqtt/private/client_channel_handler.h>
 
 #include <aws/mqtt/private/packets.h>
+#include <aws/mqtt/private/utils.h>
 
 #include <aws/common/task_scheduler.h>
-
-static bool s_subscription_matches_publish(
-    struct aws_mqtt_subscription_impl *sub,
-    struct aws_mqtt_packet_publish *pub) {
-
-    struct aws_byte_buf sub_topic = aws_byte_buf_from_array(aws_string_bytes(sub->filter), sub->filter->len);
-    struct aws_byte_buf pub_topic = aws_byte_buf_from_array(pub->topic_name.ptr, pub->topic_name.len);
-
-    struct aws_array_list sub_topic_parts;
-    struct aws_array_list pub_topic_parts;
-
-    aws_byte_buf_split_on_char(&sub_topic, '/', &sub_topic_parts);
-    aws_byte_buf_split_on_char(&pub_topic, '/', &pub_topic_parts);
-
-    size_t sub_parts_len = aws_array_list_length(&sub_topic_parts);
-    size_t pub_parts_len = aws_array_list_length(&pub_topic_parts);
-
-    /* This should never happen, but just in case */
-    if (!sub_parts_len || !pub_parts_len) {
-        return false;
-    }
-
-    /* The sub topic can have wildcards, but if the sub topic has more parts than the pub topic, it can't be a match */
-    if (sub_parts_len > pub_parts_len) {
-        return false;
-    }
-
-    struct aws_byte_cursor *sub_part;
-    struct aws_byte_cursor *pub_part;
-
-    aws_array_list_get_at_ptr(&sub_topic_parts, (void **)&sub_part, 0);
-    aws_array_list_get_at_ptr(&pub_topic_parts, (void **)&pub_part, 0);
-
-    return true;
-}
 
 typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *client, struct aws_byte_cursor message_cursor);
 
@@ -105,7 +71,7 @@ static int s_packet_handler_publish(struct aws_mqtt_client_connection *client, s
 
             struct aws_mqtt_subscription_impl *test = iter.element.value;
 
-            if (s_subscription_matches_publish(test, &publish)) {
+            if (aws_mqtt_subscription_matches_publish(client->allocator, test, &publish)) {
                 sub = test;
                 break;
             }
