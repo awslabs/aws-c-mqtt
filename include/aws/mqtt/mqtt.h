@@ -142,6 +142,14 @@ int aws_mqtt_client_subscribe(
     aws_mqtt_publish_recieved_fn *callback,
     void *user_data);
 
+AWS_MQTT_API
+int aws_mqtt_client_publish(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_byte_cursor topic,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    struct aws_byte_cursor payload);
+
 /*
  * Loads error strings for debugging and logging purposes.
  */

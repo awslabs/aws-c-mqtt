@@ -174,7 +174,9 @@ static int s_process_read_message(
 
     /* Do cleanup */
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
-    aws_channel_release_message_to_pool(slot->channel, message);
+    if (result == AWS_OP_SUCCESS) {
+        aws_channel_release_message_to_pool(slot->channel, message);
+    }
 
     return result;
 }
@@ -186,31 +188,35 @@ static int s_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
+    struct aws_mqtt_client_connection *connection = handler->impl;
+
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         /* On closing write direction, send out disconnect packet before closing connection. */
 
         if (!free_scarce_resources_immediately) {
 
-            /* Send the disconnect message */
-            struct aws_mqtt_packet_connection disconnect;
-            aws_mqtt_packet_disconnect_init(&disconnect);
+            if (error_code == AWS_OP_SUCCESS) {
+                /* On clean shutdown, send the disconnect message */
+                struct aws_mqtt_packet_connection disconnect;
+                aws_mqtt_packet_disconnect_init(&disconnect);
 
-            struct aws_io_message *message = mqtt_get_message_for_packet(handler->impl, &disconnect.fixed_header);
-            if (!message) {
-                return AWS_OP_ERR;
-            }
-            struct aws_byte_cursor message_cursor = {
-                .ptr = message->message_data.buffer,
-                .len = message->message_data.capacity,
-            };
+                struct aws_io_message *message = mqtt_get_message_for_packet(connection, &disconnect.fixed_header);
+                if (!message) {
+                    return AWS_OP_ERR;
+                }
+                struct aws_byte_cursor message_cursor = {
+                    .ptr = message->message_data.buffer,
+                    .len = message->message_data.capacity,
+                };
 
-            if (aws_mqtt_packet_connection_encode(&message_cursor, &disconnect)) {
-                return AWS_OP_ERR;
-            }
-            message->message_data.len = message->message_data.capacity - message_cursor.len;
+                if (aws_mqtt_packet_connection_encode(&message_cursor, &disconnect)) {
+                    return AWS_OP_ERR;
+                }
+                message->message_data.len = message->message_data.capacity - message_cursor.len;
 
-            if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
-                return AWS_OP_ERR;
+                if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
+                    return AWS_OP_ERR;
+                }
             }
         }
     }

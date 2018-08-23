@@ -35,11 +35,18 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-static struct aws_byte_cursor s_client_id = {
-    .ptr = (uint8_t *)"MyClientId",
-    .len = 10,
+static struct aws_byte_cursor s_client_id_1 = {
+    .ptr = (uint8_t *)"MyClientId1",
+    .len = 11,
+};
+static struct aws_byte_cursor s_client_id_2 = {
+    .ptr = (uint8_t *)"MyClientId2",
+    .len = 11,
 };
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
+
+static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
+enum { PAYLOAD_LEN = sizeof(s_payload) };
 
 struct connection_args {
     struct aws_allocator *allocator;
@@ -47,9 +54,23 @@ struct connection_args {
     struct aws_condition_variable *condition_variable;
 
     struct aws_mqtt_client_connection *connection;
+
+    bool retained_packet_recieved;
 };
 
-static void s_mqtt_on_connack(
+static void s_on_packet_recieved(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_mqtt_subscription *subscription,
+    void *user_data) {
+
+    (void)connection;
+    (void)subscription;
+
+    struct connection_args *args = user_data;
+    args->retained_packet_recieved = true;
+}
+
+static void s_mqtt_on_connack_1(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
@@ -57,16 +78,36 @@ static void s_mqtt_on_connack(
 
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
-    (void)user_data;
+
+    struct connection_args *args = user_data;
+
+    aws_mqtt_client_publish(
+        connection,
+        aws_byte_cursor_from_string(s_subscribe_topic),
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        true,
+        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN));
+
+    aws_condition_variable_notify_one(args->condition_variable);
+}
+
+static void s_mqtt_on_connack_2(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present,
+    void *user_data) {
+
+    assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
+    assert(session_present == false);
+
+    struct connection_args *args = user_data;
 
     struct aws_mqtt_subscription sub;
     sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    sub.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
-    aws_mqtt_client_subscribe(connection, &sub, NULL, NULL);
+    sub.qos = AWS_MQTT_QOS_AT_LEAST_ONCE;
+    aws_mqtt_client_subscribe(connection, &sub, &s_on_packet_recieved, user_data);
 
-    sleep(3);
-
-    aws_mqtt_client_connection_disconnect(connection);
+    aws_condition_variable_notify_one(args->condition_variable);
 }
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
@@ -113,7 +154,7 @@ int main(int argc, char **argv) {
 
     struct aws_mqtt_client_connection_callbacks callbacks;
     AWS_ZERO_STRUCT(callbacks);
-    callbacks.on_connack = &s_mqtt_on_connack;
+    callbacks.on_connack = &s_mqtt_on_connack_1;
     callbacks.on_disconnect = &s_mqtt_on_disconnect;
     callbacks.user_data = &args;
 
@@ -123,18 +164,36 @@ int main(int argc, char **argv) {
     };
 
     args.connection =
-        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id, true, 0);
+        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id_1, true, 0);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
+
+    sleep(3);
+    aws_mqtt_client_connection_disconnect(args.connection);
+
+    aws_mutex_lock(&mutex);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    aws_mutex_unlock(&mutex);
+
+    callbacks.on_connack = &s_mqtt_on_connack_2;
 
     args.connection =
-        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id, true, 0);
+        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id_2, true, 0);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
+
+    sleep(3);
+    aws_mqtt_client_connection_disconnect(args.connection);
+
+    aws_mutex_lock(&mutex);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    aws_mutex_unlock(&mutex);
+
+    ASSERT_TRUE(args.retained_packet_recieved);
 
     args.connection = NULL;
 

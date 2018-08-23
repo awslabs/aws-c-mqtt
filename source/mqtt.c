@@ -204,15 +204,13 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
 int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection) {
 
     assert(connection);
-    assert(connection && connection->slot);
+    assert(connection->slot);
 
     connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
 
     if (aws_channel_shutdown(connection->slot->channel, AWS_OP_SUCCESS)) {
         return AWS_OP_ERR;
     }
-
-    connection->slot = NULL;
 
     return AWS_OP_SUCCESS;
 }
@@ -252,7 +250,8 @@ int aws_mqtt_client_subscribe(
     if (aws_mqtt_packet_subscribe_init(&subscribe, connection->allocator, 42)) {
         goto handle_error;
     }
-    if (aws_mqtt_packet_subscribe_add_topic(&subscribe, subscription_impl->subscription.topic_filter, subscription->qos)) {
+    if (aws_mqtt_packet_subscribe_add_topic(
+            &subscribe, subscription_impl->subscription.topic_filter, subscription->qos)) {
         goto handle_error;
     }
 
@@ -288,6 +287,50 @@ handle_error:
     if (was_created) {
         aws_hash_table_remove(&connection->subscriptions, subscription_impl->filter, NULL, NULL);
     }
+    if (message) {
+        aws_channel_release_message_to_pool(connection->slot->channel, message);
+    }
+    return AWS_OP_ERR;
+}
+
+int aws_mqtt_client_publish(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_byte_cursor topic,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    struct aws_byte_cursor payload) {
+
+    assert(connection);
+
+    uint16_t packet_id = 0;
+    if (qos > AWS_MQTT_QOS_AT_MOST_ONCE) {
+        packet_id = 14;
+    }
+
+    struct aws_mqtt_packet_publish publish;
+    aws_mqtt_packet_publish_init(&publish, retain, qos, false, topic, packet_id, payload);
+
+    struct aws_io_message *message = mqtt_get_message_for_packet(connection, &publish.fixed_header);
+    if (!message) {
+        goto handle_error;
+    }
+    struct aws_byte_cursor message_cursor = {
+        .ptr = message->message_data.buffer,
+        .len = message->message_data.capacity,
+    };
+    if (aws_mqtt_packet_publish_encode(&message_cursor, &publish)) {
+        goto handle_error;
+    }
+    message->message_data.len = message->message_data.capacity - message_cursor.len;
+
+    if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+
+        goto handle_error;
+    }
+
+    return AWS_OP_SUCCESS;
+
+handle_error:
     if (message) {
         aws_channel_release_message_to_pool(connection->slot->channel, message);
     }
