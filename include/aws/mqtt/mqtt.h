@@ -79,6 +79,7 @@ struct aws_mqtt_client_connection;
 typedef void(aws_mqtt_publish_recieved_fn)(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_subscription *subscription,
+    struct aws_byte_cursor payload,
     void *user_data);
 
 struct aws_mqtt_client_connection_callbacks {

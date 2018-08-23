@@ -80,7 +80,7 @@ static int s_packet_handler_publish(struct aws_mqtt_client_connection *client, s
 
     if (sub) {
 
-        sub->callback(client, &sub->subscription, sub->user_data);
+        sub->callback(client, &sub->subscription, publish.payload, sub->user_data);
     }
 
     struct aws_mqtt_packet_ack puback;

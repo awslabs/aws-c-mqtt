@@ -61,10 +61,17 @@ struct connection_args {
 static void s_on_packet_recieved(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_subscription *subscription,
+    struct aws_byte_cursor payload,
     void *user_data) {
 
     (void)connection;
     (void)subscription;
+
+    struct aws_byte_cursor expected_payload = {
+        .ptr = s_payload,
+        .len = PAYLOAD_LEN,
+    };
+    assert(aws_byte_cursor_eq(&payload, &expected_payload));
 
     struct connection_args *args = user_data;
     args->retained_packet_recieved = true;
