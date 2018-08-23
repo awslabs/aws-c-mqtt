@@ -23,6 +23,7 @@
 #include <aws/common/hash_table.h>
 
 #include <aws/io/channel.h>
+#include <aws/io/message_pool.h>
 
 #define MQTT_CALL_CALLBACK(client_ptr, callback, ...)                                                                  \
     do {                                                                                                               \
@@ -48,6 +49,11 @@ struct aws_mqtt_subscription_impl {
     void *user_data;
 };
 
+struct aws_mqtt_outstanding_request {
+    struct aws_linked_list_node list_node;
+    uint16_t message_id;
+};
+
 struct aws_mqtt_client_connection {
 
     struct aws_allocator *allocator;
@@ -65,6 +71,11 @@ struct aws_mqtt_client_connection {
     /* Keeps track of all open subscriptions */
     struct aws_hash_table subscriptions;
 
+    /* aws_mqtt_outstanding_request */
+    struct aws_memory_pool requests_pool;
+    /* uint16_t -> aws_mqtt_outstanding_request */
+    struct aws_hash_table outstanding_requests;
+
     /* Connect parameters */
     struct aws_byte_buf client_id;
     bool clean_session;
@@ -77,5 +88,11 @@ struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable();
 struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header);
+
+/** Gets the next available packet id and places it in the outstanding requests list */
+uint16_t mqtt_get_next_packet_id(struct aws_mqtt_client_connection *connection);
+
+void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16_t message_id);
+
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H */
