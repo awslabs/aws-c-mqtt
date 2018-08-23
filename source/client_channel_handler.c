@@ -176,6 +176,41 @@ static int s_packet_handler_pubrec(
     return AWS_OP_SUCCESS;
 }
 
+static int s_packet_handler_pubrel(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_byte_cursor message_cursor) {
+
+    struct aws_mqtt_packet_ack ack;
+    if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
+        return AWS_OP_ERR;
+    }
+
+    /* Our side is done with the message */
+    mqtt_request_complete(connection, ack.packet_identifier);
+
+    /* Send PUBCOMP */
+    aws_mqtt_packet_pubcomp_init(&ack, ack.packet_identifier);
+    struct aws_io_message *message = mqtt_get_message_for_packet(connection, &ack.fixed_header);
+    if (!message) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_byte_cursor out_message_cursor = {
+        .ptr = message->message_data.buffer,
+        .len = message->message_data.capacity,
+    };
+    if (aws_mqtt_packet_ack_encode(&out_message_cursor, &ack)) {
+        return AWS_OP_ERR;
+    }
+    message->message_data.len = message->message_data.capacity - out_message_cursor.len;
+
+    if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_packet_handler_pingresp(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor message_cursor) {
@@ -195,7 +230,7 @@ static packet_handler_fn *s_packet_handlers[] = {
     [AWS_MQTT_PACKET_PUBLISH] = &s_packet_handler_publish,
     [AWS_MQTT_PACKET_PUBACK] = &s_packet_handler_ack,
     [AWS_MQTT_PACKET_PUBREC] = &s_packet_handler_pubrec,
-    [AWS_MQTT_PACKET_PUBREL] = &s_packet_handler_default,
+    [AWS_MQTT_PACKET_PUBREL] = &s_packet_handler_pubrel,
     [AWS_MQTT_PACKET_PUBCOMP] = &s_packet_handler_ack,
     [AWS_MQTT_PACKET_SUBSCRIBE] = &s_packet_handler_default,
     [AWS_MQTT_PACKET_SUBACK] = &s_packet_handler_ack,
