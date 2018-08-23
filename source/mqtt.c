@@ -126,7 +126,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client_connection *connection =
         aws_mem_acquire(allocator, sizeof(struct aws_mqtt_client_connection));
 
-    if (!client) {
+    if (!connection) {
 
         return NULL;
     }
@@ -228,13 +228,17 @@ int aws_mqtt_client_subscribe(
 
     struct aws_mqtt_subscription_impl *subscription_impl =
         aws_mem_acquire(connection->allocator, sizeof(struct aws_mqtt_subscription_impl));
+    if (!subscription_impl) {
+        goto handle_error;
+    }
+
     subscription_impl->connection = connection;
     subscription_impl->callback = callback;
     subscription_impl->user_data = user_data;
 
     subscription_impl->filter = aws_string_new_from_array(
         connection->allocator, subscription->topic_filter.ptr, subscription->topic_filter.len);
-    if (!subscription_impl) {
+    if (!subscription_impl->filter) {
         goto handle_error;
     }
 

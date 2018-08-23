@@ -20,5 +20,6 @@ $INCLUDE_PATHS                                              \
 --suppress=missingIncludeSystem                             \
 --suppress=unusedFunction                                   \
 --suppress=allocaCalled --suppress=obsoleteFunctionsalloca  \
+--suppress=*:build/tests/test_runner.c                      \
                                                             \
 -q .
