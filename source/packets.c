@@ -466,7 +466,7 @@ int aws_mqtt_packet_publish_init(
     struct aws_byte_cursor payload) {
 
     assert(packet);
-    assert(topic_name.len > 0);
+    assert(topic_name.len > 0); /* [MQTT-4.7.3-1] */
 
     AWS_ZERO_STRUCT(*packet);
 
