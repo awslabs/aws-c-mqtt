@@ -309,7 +309,6 @@ int aws_mqtt_client_subscribe(
     aws_mqtt_packet_subscribe_clean_up(&subscribe);
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-
         goto handle_error;
     }
     return AWS_OP_SUCCESS;

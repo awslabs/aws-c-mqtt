@@ -92,6 +92,7 @@ static int s_packet_handler_publish(
     struct aws_mqtt_packet_ack puback;
     AWS_ZERO_STRUCT(puback);
 
+    /* Switch on QoS flags (bits 1 & 2) */
     switch ((publish.fixed_header.flags >> 1) & 0x3) {
         case AWS_MQTT_QOS_AT_MOST_ONCE:
             /* No more communication necessary */
