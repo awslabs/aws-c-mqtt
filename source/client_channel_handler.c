@@ -121,14 +121,9 @@ static int s_packet_handler_publish(
             return AWS_OP_ERR;
         }
 
-        struct aws_byte_cursor puback_cursor = {
-            .ptr = message->message_data.buffer,
-            .len = message->message_data.capacity,
-        };
-        if (aws_mqtt_packet_ack_encode(&puback_cursor, &puback)) {
+        if (aws_mqtt_packet_ack_encode(&message->message_data, &puback)) {
             return AWS_OP_ERR;
         }
-        message->message_data.len = message->message_data.capacity - puback_cursor.len;
 
         if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
             return AWS_OP_ERR;
@@ -169,14 +164,9 @@ static int s_packet_handler_pubrec(
         return AWS_OP_ERR;
     }
 
-    struct aws_byte_cursor out_message_cursor = {
-        .ptr = message->message_data.buffer,
-        .len = message->message_data.capacity,
-    };
-    if (aws_mqtt_packet_ack_encode(&out_message_cursor, &ack)) {
+    if (aws_mqtt_packet_ack_encode(&message->message_data, &ack)) {
         return AWS_OP_ERR;
     }
-    message->message_data.len = message->message_data.capacity - out_message_cursor.len;
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         return AWS_OP_ERR;
@@ -201,14 +191,9 @@ static int s_packet_handler_pubrel(
         return AWS_OP_ERR;
     }
 
-    struct aws_byte_cursor out_message_cursor = {
-        .ptr = message->message_data.buffer,
-        .len = message->message_data.capacity,
-    };
-    if (aws_mqtt_packet_ack_encode(&out_message_cursor, &ack)) {
+    if (aws_mqtt_packet_ack_encode(&message->message_data, &ack)) {
         return AWS_OP_ERR;
     }
-    message->message_data.len = message->message_data.capacity - out_message_cursor.len;
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         return AWS_OP_ERR;
@@ -315,15 +300,10 @@ static int s_shutdown(
                 if (!message) {
                     return AWS_OP_ERR;
                 }
-                struct aws_byte_cursor message_cursor = {
-                    .ptr = message->message_data.buffer,
-                    .len = message->message_data.capacity,
-                };
 
-                if (aws_mqtt_packet_connection_encode(&message_cursor, &disconnect)) {
+                if (aws_mqtt_packet_connection_encode(&message->message_data, &disconnect)) {
                     return AWS_OP_ERR;
                 }
-                message->message_data.len = message->message_data.capacity - message_cursor.len;
 
                 if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
                     return AWS_OP_ERR;

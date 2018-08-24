@@ -22,9 +22,11 @@ enum { S_BUFFER_SIZE = 128 };
 struct packet_test_fixture;
 
 /* Function type used to init and cleanup a fixture */
-typedef int(packet_init_fn)(struct packet_test_fixture *, struct aws_byte_cursor *);
-/* Function used to encode and decode a packet (this should be set to a function from packets.h) */
-typedef int(packet_code_fn)(struct aws_byte_cursor *, void *);
+typedef int(packet_init_fn)(struct packet_test_fixture *);
+/* Function used to encode a packet (this should be set to a function from packets.h) */
+typedef int(packet_encode_fn)(struct aws_byte_buf *, void *);
+/* Function used to decode a packet (this should be set to a function from packets.h) */
+typedef int(packet_decode_fn)(struct aws_byte_cursor *, void *);
 /* Function used to check if two packets are equal */
 typedef bool(packet_eq_fn)(void *, void *, size_t);
 
@@ -62,8 +64,8 @@ struct packet_test_fixture {
     enum aws_mqtt_packet_type type;
     size_t size;
     packet_init_fn *init;
-    packet_code_fn *encode;
-    packet_code_fn *decode;
+    packet_encode_fn *encode;
+    packet_decode_fn *decode;
     packet_init_fn *teardown;
     packet_eq_fn *equal;
     struct aws_allocator *allocator;
@@ -92,30 +94,19 @@ static int s_packet_test_run(struct aws_allocator *allocator, void *ctx) {
 
     struct packet_test_fixture *fixture = ctx;
 
-    aws_byte_buf_init(allocator, &fixture->buffer, S_BUFFER_SIZE);
+    aws_byte_buf_init(&fixture->buffer, allocator, S_BUFFER_SIZE);
 
     /* Init the in_packet & buffer */
-    struct aws_byte_cursor cursor = {
-        .ptr = fixture->buffer.buffer,
-        .len = fixture->buffer.capacity,
-    };
-    ASSERT_SUCCESS(fixture->init(fixture, &cursor));
-    fixture->buffer.len = fixture->buffer.capacity - cursor.len;
+    ASSERT_SUCCESS(fixture->init(fixture));
 
     /* Encode */
 
     /* Create the output buffer */
     struct aws_byte_buf output_buffer;
-    ASSERT_SUCCESS(aws_byte_buf_init(allocator, &output_buffer, S_BUFFER_SIZE));
-    struct aws_byte_cursor output_cursor = {
-        .ptr = output_buffer.buffer,
-        .len = output_buffer.capacity,
-    };
+    ASSERT_SUCCESS(aws_byte_buf_init(&output_buffer, allocator, S_BUFFER_SIZE));
 
     /* Encode the packet */
-    ASSERT_SUCCESS(fixture->encode(&output_cursor, fixture->in_packet));
-
-    output_buffer.len = output_buffer.capacity - output_cursor.len;
+    ASSERT_SUCCESS(fixture->encode(&output_buffer, fixture->in_packet));
 
     /* Compare the buffers */
     ASSERT_BIN_ARRAYS_EQUALS(fixture->buffer.buffer, fixture->buffer.len, output_buffer.buffer, output_buffer.len);
@@ -125,7 +116,7 @@ static int s_packet_test_run(struct aws_allocator *allocator, void *ctx) {
     /* Decode */
 
     /* Decode the buffer */
-    cursor = aws_byte_cursor_from_buf(&fixture->buffer);
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&fixture->buffer);
     ASSERT_SUCCESS(fixture->decode(&cursor, fixture->out_packet));
 
     /* Compare the packets */
@@ -144,8 +135,7 @@ static void s_packet_test_after(struct aws_allocator *allocator, void *ctx) {
 
     /* Tear down the packet & buffer */
     if (fixture->teardown) {
-        struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&fixture->buffer);
-        fixture->teardown(fixture, &cursor);
+        fixture->teardown(fixture);
     }
 
     /* Tear down the fixture */
@@ -159,8 +149,8 @@ static void s_packet_test_after(struct aws_allocator *allocator, void *ctx) {
         .type = AWS_MQTT_PACKET_##e_type,                                                                              \
         .size = sizeof(struct aws_mqtt_packet_##s_name),                                                               \
         .init = (i),                                                                                                   \
-        .encode = (packet_code_fn *)&aws_mqtt_packet_##s_name##_encode,                                                \
-        .decode = (packet_code_fn *)&aws_mqtt_packet_##s_name##_decode,                                                \
+        .encode = (packet_encode_fn *)&aws_mqtt_packet_##s_name##_encode,                                              \
+        .decode = (packet_decode_fn *)&aws_mqtt_packet_##s_name##_decode,                                              \
         .teardown = (t),                                                                                               \
         .equal = (e),                                                                                                  \
     };                                                                                                                 \
@@ -183,7 +173,7 @@ enum { PAYLOAD_LEN = sizeof(s_payload) };
 /*****************************************************************************/
 /* Ack                                                                       */
 
-static int s_test_ack_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_ack_init(struct packet_test_fixture *fixture) {
 
     /* Init buffer */
     uint8_t packet_id = (uint8_t)(fixture->type + 7);
@@ -222,13 +212,12 @@ static int s_test_ack_init(struct packet_test_fixture *fixture, struct aws_byte_
             break;
     }
 
-    aws_byte_cursor_write(buffer, header, sizeof(header));
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
 
     return AWS_OP_SUCCESS;
 }
 #define PACKET_TEST_ACK(e_type, name)                   \
-    PACKET_TEST_NAME(                                   \
-    e_type, name, ack, &s_test_ack_init, NULL, NULL)
+    PACKET_TEST_NAME(e_type, name, ack, &s_test_ack_init, NULL, NULL)
 PACKET_TEST_ACK(PUBACK, puback)
 PACKET_TEST_ACK(PUBREC, pubrec)
 PACKET_TEST_ACK(PUBREL, pubrel)
@@ -241,8 +230,7 @@ PACKET_TEST_ACK(UNSUBACK, unsuback)
 /* Connect                                                                   */
 
 static int s_test_connect_init(
-    struct packet_test_fixture *fixture,
-    struct aws_byte_cursor *buffer) {
+struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
@@ -263,10 +251,10 @@ static int s_test_connect_init(
     };
     /* clang-format on */
 
-    aws_byte_cursor_write(buffer, header, sizeof(header));
-    aws_byte_cursor_write_u8(buffer, 0);
-    aws_byte_cursor_write_u8(buffer, CLIENT_ID_LEN);
-    aws_byte_cursor_write(buffer, s_client_id, CLIENT_ID_LEN);
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
+    aws_byte_buf_write_u8(&fixture->buffer, 0);
+    aws_byte_buf_write_u8(&fixture->buffer, CLIENT_ID_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_client_id, CLIENT_ID_LEN);
 
     return AWS_OP_SUCCESS;
 }
@@ -290,7 +278,7 @@ PACKET_TEST(CONNECT, connect, &s_test_connect_init, NULL, &s_test_connect_eq)
 /*****************************************************************************/
 /* Connect                                                                   */
 
-static int s_test_connack_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_connack_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_connack_init(fixture->in_packet, true, AWS_MQTT_CONNECT_ACCEPTED));
@@ -305,7 +293,7 @@ static int s_test_connack_init(struct packet_test_fixture *fixture, struct aws_b
     };
     /* clang-format on */
 
-    aws_byte_cursor_write(buffer, header, sizeof(header));
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
 
     return AWS_OP_SUCCESS;
 }
@@ -314,7 +302,7 @@ PACKET_TEST(CONNACK, connack, &s_test_connack_init, NULL, NULL)
 /*****************************************************************************/
 /* Publish                                                                   */
 
-static int s_test_publish_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_publish_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
@@ -328,22 +316,22 @@ static int s_test_publish_init(struct packet_test_fixture *fixture, struct aws_b
 
     /* Init buffer */
     /* clang-format off */
-    aws_byte_cursor_write_u8(
-        buffer, (AWS_MQTT_PACKET_PUBLISH << 4) | (AWS_MQTT_QOS_EXACTLY_ONCE << 1)); /* Packet type */
-    aws_byte_cursor_write_u8(
-        buffer, 4 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
-    aws_byte_cursor_write_u8(
-        buffer, 0); /* Topic name len byte 1 */
-    aws_byte_cursor_write_u8(
-        buffer, TOPIC_NAME_LEN); /* Topic name len byte 2 */
-    aws_byte_cursor_write(
-        buffer, s_topic_name, TOPIC_NAME_LEN); /* Topic name */
-    aws_byte_cursor_write_u8(
-        buffer, 0);       /* Packet id byte 1 */
-    aws_byte_cursor_write_u8(
-        buffer, 7);       /* Packet id byte 2 */
-    aws_byte_cursor_write(
-        buffer, s_payload, PAYLOAD_LEN); /* payload */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, (AWS_MQTT_PACKET_PUBLISH << 4) | (AWS_MQTT_QOS_EXACTLY_ONCE << 1)); /* Packet type */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 4 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0); /* Topic name len byte 1 */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, TOPIC_NAME_LEN); /* Topic name len byte 2 */
+    aws_byte_buf_write(
+        &fixture->buffer, s_topic_name, TOPIC_NAME_LEN); /* Topic name */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0);       /* Packet id byte 1 */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 7);       /* Packet id byte 2 */
+    aws_byte_buf_write(
+        &fixture->buffer, s_payload, PAYLOAD_LEN); /* payload */
     /* clang-format on */
 
     return AWS_OP_SUCCESS;
@@ -363,7 +351,7 @@ PACKET_TEST(PUBLISH, publish, &s_test_publish_init, NULL, &s_test_publish_eq)
 /*****************************************************************************/
 /* Subscribe                                                                 */
 
-static int s_test_subscribe_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_subscribe_init(struct packet_test_fixture *fixture) {
 
     /* Init packets */
     ASSERT_SUCCESS(aws_mqtt_packet_subscribe_init(fixture->in_packet, fixture->allocator, 7));
@@ -373,29 +361,27 @@ static int s_test_subscribe_init(struct packet_test_fixture *fixture, struct aws
         fixture->in_packet, aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN), AWS_MQTT_QOS_EXACTLY_ONCE));
 
     /* Init buffer */ /* clang-format off */
-    aws_byte_cursor_write_u8(
-        buffer, (AWS_MQTT_PACKET_SUBSCRIBE << 4) | 0x2); /* Packet type & flags */
-    aws_byte_cursor_write_u8(
-        buffer, 4 + TOPIC_NAME_LEN + 1); /* Remaining length */
-    aws_byte_cursor_write_u8(
-        buffer, 0);
-    aws_byte_cursor_write_u8(
-        buffer, 7);
-    aws_byte_cursor_write_u8(
-        buffer, 0);
-    aws_byte_cursor_write_u8(
-        buffer, TOPIC_NAME_LEN);
-    aws_byte_cursor_write(
-        buffer, s_topic_name, TOPIC_NAME_LEN);
-    aws_byte_cursor_write_u8(
-        buffer, AWS_MQTT_QOS_EXACTLY_ONCE);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, (AWS_MQTT_PACKET_SUBSCRIBE << 4) | 0x2); /* Packet type & flags */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 4 + TOPIC_NAME_LEN + 1); /* Remaining length */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 7);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, TOPIC_NAME_LEN);
+    aws_byte_buf_write(
+        &fixture->buffer, s_topic_name, TOPIC_NAME_LEN);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, AWS_MQTT_QOS_EXACTLY_ONCE);
     /* clang-format on */
 
     return AWS_OP_SUCCESS;
 }
-static int s_test_subscribe_clean_up(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
-
-    (void)buffer;
+static int s_test_subscribe_clean_up(struct packet_test_fixture *fixture) {
 
     aws_mqtt_packet_subscribe_clean_up(fixture->in_packet);
     aws_mqtt_packet_subscribe_clean_up(fixture->out_packet);
@@ -440,7 +426,7 @@ PACKET_TEST(SUBSCRIBE, subscribe, &s_test_subscribe_init, &s_test_subscribe_clea
 /*****************************************************************************/
 /* Unsubscribe                                                               */
 
-static int s_test_unsubscribe_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_unsubscribe_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_unsubscribe_init(fixture->in_packet, fixture->allocator, 7));
@@ -451,27 +437,25 @@ static int s_test_unsubscribe_init(struct packet_test_fixture *fixture, struct a
 
     /* Init buffer */
     /* clang-format off */
-    aws_byte_cursor_write_u8(
-        buffer, (AWS_MQTT_PACKET_UNSUBSCRIBE << 4) | 0x2); /* Packet type & flags */
-    aws_byte_cursor_write_u8(
-        buffer, 4 + TOPIC_NAME_LEN); /* Remaining length */
-    aws_byte_cursor_write_u8(
-        buffer, 0);
-    aws_byte_cursor_write_u8(
-        buffer, 7);
-    aws_byte_cursor_write_u8(
-        buffer, 0);
-    aws_byte_cursor_write_u8(
-        buffer, TOPIC_NAME_LEN);
-    aws_byte_cursor_write(
-        buffer, s_topic_name, TOPIC_NAME_LEN);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, (AWS_MQTT_PACKET_UNSUBSCRIBE << 4) | 0x2); /* Packet type & flags */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 4 + TOPIC_NAME_LEN); /* Remaining length */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 7);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, TOPIC_NAME_LEN);
+    aws_byte_buf_write(
+        &fixture->buffer, s_topic_name, TOPIC_NAME_LEN);
     /* clang-format on */
 
     return AWS_OP_SUCCESS;
 }
-static int s_test_unsubscribe_clean_up(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
-
-    (void)buffer;
+static int s_test_unsubscribe_clean_up(struct packet_test_fixture *fixture) {
 
     aws_mqtt_packet_unsubscribe_clean_up(fixture->in_packet);
     aws_mqtt_packet_unsubscribe_clean_up(fixture->out_packet);
@@ -513,7 +497,7 @@ PACKET_TEST(UNSUBSCRIBE, unsubscribe, &s_test_unsubscribe_init, &s_test_unsubscr
 /*****************************************************************************/
 /* Connection                                                                */
 
-static int s_test_connection_init(struct packet_test_fixture *fixture, struct aws_byte_cursor *buffer) {
+static int s_test_connection_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     switch (fixture->type) {
@@ -539,7 +523,7 @@ static int s_test_connection_init(struct packet_test_fixture *fixture, struct aw
     };
     /* clang-format on */
 
-    aws_byte_cursor_write(buffer, header, sizeof(header));
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
 
     return AWS_OP_SUCCESS;
 }

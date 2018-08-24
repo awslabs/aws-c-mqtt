@@ -62,7 +62,7 @@ bool aws_mqtt_packet_has_flags(const struct aws_mqtt_fixed_header *header);
 /**
  * Write a fixed header to a byte stream.
  */
-int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_fixed_header *header);
+int aws_mqtt_fixed_header_encode(struct aws_byte_buf *buf, const struct aws_mqtt_fixed_header *header);
 
 /**
  * Read a fixed header from a byte stream.

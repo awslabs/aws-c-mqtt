@@ -23,9 +23,9 @@
  * Any number less than or equal to 127 (7 bit max) can be written into a single byte, where any number larger than 128
  * may be written into multiple bytes, using the most significant bit (128) as a continuation flag.
  */
-static int s_encode_remaining_length(struct aws_byte_cursor *cur, size_t remaining_length) {
+static int s_encode_remaining_length(struct aws_byte_buf *buf, size_t remaining_length) {
 
-    assert(cur);
+    assert(buf);
     assert(remaining_length < UINT32_MAX);
 
     do {
@@ -34,7 +34,7 @@ static int s_encode_remaining_length(struct aws_byte_cursor *cur, size_t remaini
         if (remaining_length) {
             encoded_byte |= 128;
         }
-        if (!aws_byte_cursor_write_u8(cur, encoded_byte)) {
+        if (!aws_byte_buf_write_u8(buf, encoded_byte)) {
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }
     } while (remaining_length);
@@ -102,9 +102,9 @@ bool aws_mqtt_packet_has_flags(const struct aws_mqtt_fixed_header *header) {
     }
 }
 
-int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_fixed_header *header) {
+int aws_mqtt_fixed_header_encode(struct aws_byte_buf *buf, const struct aws_mqtt_fixed_header *header) {
 
-    assert(cur);
+    assert(buf);
     assert(header);
 
     /* Check that flags are 0 if they must not be present */
@@ -114,12 +114,12 @@ int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, const struct aws_m
 
     /* Write packet type and flags */
     uint8_t byte_1 = (uint8_t)((header->packet_type << 4) | (header->flags & 0xF));
-    if (!aws_byte_cursor_write_u8(cur, byte_1)) {
+    if (!aws_byte_buf_write_u8(buf, byte_1)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
     /* Write remaining length */
-    if (s_encode_remaining_length(cur, header->remaining_length)) {
+    if (s_encode_remaining_length(buf, header->remaining_length)) {
         return AWS_OP_ERR;
     }
 
