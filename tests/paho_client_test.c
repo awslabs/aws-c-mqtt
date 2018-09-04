@@ -91,7 +91,7 @@ static void s_mqtt_on_connack_1(
     aws_mqtt_client_publish(
         connection,
         aws_byte_cursor_from_string(s_subscribe_topic),
-        AWS_MQTT_QOS_EXACTLY_ONCE,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
         true,
         aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN));
 
@@ -111,7 +111,7 @@ static void s_mqtt_on_connack_2(
 
     struct aws_mqtt_subscription sub;
     sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    sub.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
+    sub.qos = AWS_MQTT_QOS_AT_LEAST_ONCE;
     aws_mqtt_client_subscribe(connection, &sub, &s_on_packet_recieved, user_data);
 
     aws_condition_variable_notify_one(args->condition_variable);
@@ -192,6 +192,10 @@ int main(int argc, char **argv) {
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
+
+    struct aws_byte_cursor topic_filter =
+        aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
+    aws_mqtt_client_unsubscribe(args.connection, &topic_filter);
 
     sleep(3);
     aws_mqtt_client_connection_disconnect(args.connection);

@@ -278,9 +278,9 @@ int aws_mqtt_client_subscribe(
     subscription_impl->subscription.qos = subscription->qos;
     subscription_impl->subscription.topic_filter = aws_byte_cursor_from_string(subscription_impl->filter);
 
-    struct aws_hash_element *elem;
-    aws_hash_table_create(&connection->subscriptions, subscription_impl->filter, &elem, &was_created);
-    elem->value = subscription_impl;
+    if (aws_hash_table_put(&connection->subscriptions, subscription_impl->filter, subscription_impl, &was_created)) {
+        goto handle_error;
+    }
 
     /* Send the subscribe packet */
     uint16_t packet_id = mqtt_get_next_packet_id(connection);
@@ -327,6 +327,68 @@ handle_error:
     if (message) {
         aws_channel_release_message_to_pool(connection->slot->channel, message);
     }
+    return AWS_OP_ERR;
+}
+
+int aws_mqtt_client_unsubscribe(struct aws_mqtt_client_connection *connection, const struct aws_byte_cursor *filter) {
+
+    assert(connection);
+
+    struct aws_io_message *message = NULL;
+
+    const struct aws_string *filter_str = aws_string_new_from_array(connection->allocator, filter->ptr, filter->len);
+    if (!filter_str) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_hash_element *elem = NULL;
+    aws_hash_table_find(&connection->subscriptions, filter_str, &elem);
+    if (!elem) {
+        return AWS_OP_SUCCESS;
+    }
+
+    aws_string_destroy((void *)filter_str);
+
+    struct aws_mqtt_subscription_impl *sub = elem->value;
+
+    /* Send the unsubscribe packet */
+    uint16_t packet_id = mqtt_get_next_packet_id(connection);
+    struct aws_mqtt_packet_unsubscribe unsubscribe;
+    if (aws_mqtt_packet_unsubscribe_init(&unsubscribe, connection->allocator, packet_id)) {
+        goto handle_error;
+    }
+    if (aws_mqtt_packet_unsubscribe_add_topic(&unsubscribe, sub->subscription.topic_filter)) {
+        goto handle_error;
+    }
+
+    message = mqtt_get_message_for_packet(connection, &unsubscribe.fixed_header);
+    if (!message) {
+        goto handle_error;
+    }
+    struct aws_byte_cursor message_cursor = {
+        .ptr = message->message_data.buffer,
+        .len = message->message_data.capacity,
+    };
+    if (aws_mqtt_packet_unsubscribe_encode(&message_cursor, &unsubscribe)) {
+        goto handle_error;
+    }
+    message->message_data.len = message->message_data.capacity - message_cursor.len;
+
+    aws_mqtt_packet_unsubscribe_clean_up(&unsubscribe);
+
+    if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        goto handle_error;
+    }
+    return AWS_OP_SUCCESS;
+
+handle_error:
+
+    aws_mqtt_packet_unsubscribe_clean_up(&unsubscribe);
+
+    if (message) {
+        aws_channel_release_message_to_pool(connection->slot->channel, message);
+    }
+
     return AWS_OP_ERR;
 }
 
