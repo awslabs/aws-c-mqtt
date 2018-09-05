@@ -347,8 +347,6 @@ int aws_mqtt_client_unsubscribe(struct aws_mqtt_client_connection *connection, c
         return AWS_OP_SUCCESS;
     }
 
-    aws_string_destroy((void *)filter_str);
-
     struct aws_mqtt_subscription_impl *sub = elem->value;
 
     /* Send the unsubscribe packet */
@@ -376,6 +374,10 @@ int aws_mqtt_client_unsubscribe(struct aws_mqtt_client_connection *connection, c
 
     aws_mqtt_packet_unsubscribe_clean_up(&unsubscribe);
 
+    aws_hash_table_remove(&connection->subscriptions, filter_str, NULL, NULL);
+
+    aws_string_destroy((void *)filter_str);
+
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         goto handle_error;
     }
@@ -384,6 +386,10 @@ int aws_mqtt_client_unsubscribe(struct aws_mqtt_client_connection *connection, c
 handle_error:
 
     aws_mqtt_packet_unsubscribe_clean_up(&unsubscribe);
+
+    if (filter_str) {
+        aws_string_destroy((void *)filter_str);
+    }
 
     if (message) {
         aws_channel_release_message_to_pool(connection->slot->channel, message);
