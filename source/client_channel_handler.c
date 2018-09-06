@@ -379,11 +379,10 @@ uint16_t mqtt_get_next_packet_id(struct aws_mqtt_client_connection *connection) 
         return 0;
     }
 
-    struct aws_hash_element *elem = NULL;
-
     /* If this is a new node that doesn't have an id, generate one */
     if (next_request->message_id == 0) {
 
+        struct aws_hash_element *elem = NULL;
         uint16_t next_id = 0;
         do {
 
@@ -397,13 +396,11 @@ uint16_t mqtt_get_next_packet_id(struct aws_mqtt_client_connection *connection) 
         next_request->message_id = next_id;
     }
 
-    elem = NULL;
-    if (aws_hash_table_create(&connection->outstanding_requests, &next_request->message_id, &elem, NULL)) {
+    if (aws_hash_table_put(&connection->outstanding_requests, &next_request->message_id, next_request, NULL)) {
 
         aws_memory_pool_release(&connection->requests_pool, next_request);
         return 0;
     }
-    elem->value = next_request;
 
     return next_request->message_id;
 }

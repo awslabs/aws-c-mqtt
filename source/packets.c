@@ -769,7 +769,7 @@ int aws_mqtt_packet_unsubscribe_init(
 
     AWS_ZERO_STRUCT(*packet);
 
-    packet->fixed_header.packet_type = AWS_MQTT_PACKET_SUBSCRIBE;
+    packet->fixed_header.packet_type = AWS_MQTT_PACKET_UNSUBSCRIBE;
     packet->fixed_header.flags = S_BIT_1_FLAGS;
     packet->fixed_header.remaining_length = sizeof(uint16_t);
 

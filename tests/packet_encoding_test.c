@@ -451,7 +451,7 @@ static int s_test_unsubscribe_init(struct packet_test_fixture *fixture, struct a
     /* Init buffer */
     /* clang-format off */
     aws_byte_cursor_write_u8(
-        buffer, (AWS_MQTT_PACKET_SUBSCRIBE << 4) | 0x2); /* Packet type & flags */
+        buffer, (AWS_MQTT_PACKET_UNSUBSCRIBE << 4) | 0x2); /* Packet type & flags */
     aws_byte_cursor_write_u8(
         buffer, 4 + TOPIC_NAME_LEN); /* Remaining length */
     aws_byte_cursor_write_u8(

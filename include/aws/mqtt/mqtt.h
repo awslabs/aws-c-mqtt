@@ -144,6 +144,11 @@ int aws_mqtt_client_subscribe(
     void *user_data);
 
 AWS_MQTT_API
+int aws_mqtt_client_unsubscribe(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *filter);
+
+AWS_MQTT_API
 int aws_mqtt_client_publish(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor topic,

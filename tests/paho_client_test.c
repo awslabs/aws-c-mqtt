@@ -91,7 +91,7 @@ static void s_mqtt_on_connack_1(
     aws_mqtt_client_publish(
         connection,
         aws_byte_cursor_from_string(s_subscribe_topic),
-        AWS_MQTT_QOS_EXACTLY_ONCE,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
         true,
         aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN));
 
@@ -111,7 +111,7 @@ static void s_mqtt_on_connack_2(
 
     struct aws_mqtt_subscription sub;
     sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    sub.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
+    sub.qos = AWS_MQTT_QOS_AT_LEAST_ONCE;
     aws_mqtt_client_subscribe(connection, &sub, &s_on_packet_recieved, user_data);
 
     aws_condition_variable_notify_one(args->condition_variable);
@@ -194,16 +194,27 @@ int main(int argc, char **argv) {
     aws_mutex_unlock(&mutex);
 
     sleep(3);
+
+    ASSERT_TRUE(args.retained_packet_recieved);
+
+    struct aws_byte_cursor topic_filter =
+        aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
+    aws_mqtt_client_unsubscribe(args.connection, &topic_filter);
+
+    sleep(3);
+
+    size_t outstanding_reqs = aws_hash_table_get_entry_count(&args.connection->outstanding_requests);
+    ASSERT_UINT_EQUALS(0, outstanding_reqs);
+
+    size_t outstanding_subs = aws_hash_table_get_entry_count(&args.connection->subscriptions);
+    ASSERT_UINT_EQUALS(0, outstanding_subs);
+
+    sleep(3);
     aws_mqtt_client_connection_disconnect(args.connection);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
-
-    ASSERT_TRUE(args.retained_packet_recieved);
-
-    size_t outstanding_reqs = aws_hash_table_get_entry_count(&args.connection->outstanding_requests);
-    ASSERT_UINT_EQUALS(0, outstanding_reqs);
 
     args.connection = NULL;
 
