@@ -185,9 +185,6 @@ static int s_packet_handler_pubrel(
         return AWS_OP_ERR;
     }
 
-    /* Our side is done with the message */
-    mqtt_request_complete(connection, ack.packet_identifier);
-
     /* Send PUBCOMP */
     aws_mqtt_packet_pubcomp_init(&ack, ack.packet_identifier);
     struct aws_io_message *message = mqtt_get_message_for_packet(connection, &ack.fixed_header);
