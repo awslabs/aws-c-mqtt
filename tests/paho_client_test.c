@@ -77,6 +77,15 @@ static void s_on_packet_recieved(
     args->retained_packet_recieved = true;
 }
 
+static void s_mqtt_publish_complete(
+    struct aws_mqtt_client_connection *connection,
+    void *userdata) {
+
+    (void)connection;
+
+    aws_string_destroy(userdata);
+}
+
 static void s_mqtt_on_connack_1(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_connect_return_code return_code,
@@ -88,12 +97,15 @@ static void s_mqtt_on_connack_1(
 
     struct connection_args *args = user_data;
 
+    const struct aws_string *payload = aws_string_new_from_array(args->allocator, s_payload, PAYLOAD_LEN);
+
     aws_mqtt_client_publish(
         connection,
         aws_byte_cursor_from_string(s_subscribe_topic),
         AWS_MQTT_QOS_EXACTLY_ONCE,
         true,
-        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN));
+        aws_byte_cursor_from_string(payload),
+        &s_mqtt_publish_complete, (void *)payload);
 
     aws_condition_variable_notify_one(args->condition_variable);
 }

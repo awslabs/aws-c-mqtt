@@ -75,6 +75,9 @@ struct aws_mqtt_subscription {
 
 struct aws_mqtt_client_connection;
 
+/** Callback called when a publish roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). */
+typedef void(aws_mqtt_publish_complete_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+
 /** Type of function called when a publish recieved matches a subscription */
 typedef void(aws_mqtt_publish_recieved_fn)(
     struct aws_mqtt_client_connection *connection,
@@ -154,7 +157,9 @@ int aws_mqtt_client_publish(
     struct aws_byte_cursor topic,
     enum aws_mqtt_qos qos,
     bool retain,
-    struct aws_byte_cursor payload);
+    struct aws_byte_cursor payload,
+    aws_mqtt_publish_complete_fn *on_complete,
+    void *userdata);
 
 /*
  * Loads error strings for debugging and logging purposes.
