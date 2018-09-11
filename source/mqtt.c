@@ -242,11 +242,7 @@ int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *con
     assert(connection);
     assert(connection->slot);
 
-    connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
-
-    if (aws_channel_shutdown(connection->slot->channel, AWS_OP_SUCCESS)) {
-        return AWS_OP_ERR;
-    }
+    mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
 
     return AWS_OP_SUCCESS;
 }
@@ -530,6 +526,67 @@ int aws_mqtt_client_publish(
     return AWS_OP_SUCCESS;
 }
 
+static bool s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
+    (void)message_id;
+    (void)is_first_attempt;
+
+    struct aws_mqtt_client_connection *connection = userdata;
+
+    if (is_first_attempt) {
+        /* First attempt, actually send the packet */
+
+        struct aws_mqtt_packet_connection pingreq;
+        aws_mqtt_packet_pingreq_init(&pingreq);
+
+        struct aws_io_message *message = mqtt_get_message_for_packet(connection, &pingreq.fixed_header);
+        if (!message) {
+            goto handle_error;
+        }
+        struct aws_byte_cursor message_cursor = {
+            .ptr = message->message_data.buffer,
+            .len = message->message_data.capacity,
+        };
+        if (aws_mqtt_packet_connection_encode(&message_cursor, &pingreq)) {
+            goto handle_error;
+        }
+        message->message_data.len = message->message_data.capacity - message_cursor.len;
+
+        if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+
+            goto handle_error;
+        }
+
+        return false;
+
+    handle_error:
+        if (message) {
+            aws_channel_release_message_to_pool(connection->slot->channel, message);
+        }
+
+        return true;
+    }
+
+    /* Check that a pingresp has been recieved since pingreq was sent */
+
+    uint64_t current_time = 0;
+    aws_channel_current_clock_time(connection->slot->channel, &current_time);
+
+    if (current_time - connection->last_pingresp_timestamp > request_timeout) {
+        /* It's been too long since the last ping, close the connection */
+
+        mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_TIMEOUT);
+    }
+
+    return true;
+}
+
+int aws_mqtt_client_ping(struct aws_mqtt_client_connection *connection) {
+
+    mqtt_create_request(connection, &s_pingreq_send, NULL, connection);
+
+    return AWS_OP_SUCCESS;
+}
+
 void aws_mqtt_load_error_strings() {
 
     static bool s_error_strings_loaded = false;
@@ -564,6 +621,9 @@ void aws_mqtt_load_error_strings() {
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
                 "Packet type in packet fixed header is invalid."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_TIMEOUT,
+                "Time limit between request and response has been exceeded."),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_PROTOCOL_ERROR,
                 "Protocol error occured."),

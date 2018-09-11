@@ -20,7 +20,7 @@
 
 #include <aws/common/task_scheduler.h>
 
-static const uint64_t s_timeout = 3000000000;
+const uint64_t request_timeout = 3000000000;
 
 typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor);
 
@@ -214,10 +214,10 @@ static int s_packet_handler_pingresp(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor message_cursor) {
 
-    (void)connection;
     (void)message_cursor;
 
-    /* Don't need to do anything on PINGRESP */
+    /* Store the timestamp this was received */
+    aws_channel_current_clock_time(connection->slot->channel, &connection->last_pingresp_timestamp);
 
     return AWS_OP_SUCCESS;
 }
@@ -377,20 +377,24 @@ static void s_request_timeout_task(void *arg, enum aws_task_status status) {
 
         if (!request->completed) {
             /* If not complete, attempt retry */
-            if (request->send_request(request->message_id, false, request->userdata)) {
+            if (request->send_request(request->message_id, !request->initiated, request->userdata)) {
                 /* If the send_request function reports the request is complete,
                    remove from the hash table and call the callback. */
                 request->completed = true;
-                request->on_complete(request->userdata);
+                if (request->on_complete) {
+                    request->on_complete(request->userdata);
+                }
             }
         }
+        request->initiated = true;
 
         if (request->completed) {
             /* If complete, remove request from outstanding list and return to pool */
 
             struct aws_hash_element elem;
             int was_present = 0;
-            aws_hash_table_remove(&request->connection->outstanding_requests, &request->message_id, &elem, &was_present);
+            aws_hash_table_remove(
+                &request->connection->outstanding_requests, &request->message_id, &elem, &was_present);
             assert(was_present);
 
             aws_memory_pool_release(&request->connection->requests_pool, elem.value);
@@ -403,7 +407,7 @@ static void s_request_timeout_task(void *arg, enum aws_task_status status) {
 
             uint64_t ttr = 0;
             aws_channel_current_clock_time(request->connection->slot->channel, &ttr);
-            ttr += s_timeout;
+            ttr += request_timeout;
 
             aws_channel_schedule_task(request->connection->slot->channel, &retry_task, ttr);
         }
@@ -423,24 +427,22 @@ uint16_t mqtt_create_request(
     if (!next_request) {
         return 0;
     }
+    memset(next_request, 0, sizeof(struct aws_mqtt_outstanding_request));
 
-    /* If this is a new node that doesn't have an id, generate one */
-    if (next_request->message_id == 0) {
+    struct aws_hash_element *elem = NULL;
+    uint16_t next_id = 0;
+    do {
 
-        struct aws_hash_element *elem = NULL;
-        uint16_t next_id = 0;
-        do {
+        ++next_id;
+        aws_hash_table_find(&connection->outstanding_requests, &next_id, &elem);
 
-            ++next_id;
-            aws_hash_table_find(&connection->outstanding_requests, &next_id, &elem);
+    } while (elem);
 
-        } while (elem);
-
-        assert(next_id); /* Somehow have UINT16_MAX outstanding requests, definitely a bug */
-        next_request->message_id = next_id;
-    }
+    assert(next_id); /* Somehow have UINT16_MAX outstanding requests, definitely a bug */
+    next_request->message_id = next_id;
 
     next_request->connection = connection;
+    next_request->initiated = false;
     next_request->completed = false;
     next_request->send_request = send_request;
     next_request->on_complete = on_complete;
@@ -481,4 +483,10 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16
     if (request->on_complete) {
         request->on_complete(request->userdata);
     }
+}
+
+void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
+
+    connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+    aws_channel_shutdown(connection->slot->channel, error_code);
 }

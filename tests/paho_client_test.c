@@ -77,9 +77,7 @@ static void s_on_packet_recieved(
     args->retained_packet_recieved = true;
 }
 
-static void s_mqtt_publish_complete(
-    struct aws_mqtt_client_connection *connection,
-    void *userdata) {
+static void s_mqtt_publish_complete(struct aws_mqtt_client_connection *connection, void *userdata) {
 
     (void)connection;
 
@@ -105,7 +103,8 @@ static void s_mqtt_on_connack_1(
         AWS_MQTT_QOS_EXACTLY_ONCE,
         true,
         aws_byte_cursor_from_string(payload),
-        &s_mqtt_publish_complete, (void *)payload);
+        &s_mqtt_publish_complete,
+        (void *)payload);
 
     aws_condition_variable_notify_one(args->condition_variable);
 }
@@ -213,7 +212,9 @@ int main(int argc, char **argv) {
         aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
     aws_mqtt_client_unsubscribe(args.connection, &topic_filter);
 
-    sleep(3);
+    aws_mqtt_client_ping(args.connection);
+
+    sleep(4);
 
     size_t outstanding_reqs = aws_hash_table_get_entry_count(&args.connection->outstanding_requests);
     ASSERT_UINT_EQUALS(0, outstanding_reqs);
@@ -221,7 +222,6 @@ int main(int argc, char **argv) {
     size_t outstanding_subs = aws_hash_table_get_entry_count(&args.connection->subscriptions);
     ASSERT_UINT_EQUALS(0, outstanding_subs);
 
-    sleep(3);
     aws_mqtt_client_connection_disconnect(args.connection);
 
     aws_mutex_lock(&mutex);

@@ -38,6 +38,8 @@ enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_DISCONNECTING,
 };
 
+extern const uint64_t request_timeout;
+
 /** This serves as the value of the subscriptions table */
 struct aws_mqtt_subscription_impl {
     struct aws_mqtt_client_connection *connection;
@@ -60,6 +62,7 @@ struct aws_mqtt_outstanding_request {
     struct aws_mqtt_client_connection *connection;
 
     uint16_t message_id;
+    bool initiated;
     bool completed;
     aws_mqtt_send_request_fn *send_request;
     aws_mqtt_complete_fn *on_complete;
@@ -88,6 +91,8 @@ struct aws_mqtt_client_connection {
     /* uint16_t -> aws_mqtt_outstanding_request */
     struct aws_hash_table outstanding_requests;
 
+    uint64_t last_pingresp_timestamp;
+
     /* Connect parameters */
     struct aws_byte_buf client_id;
     bool clean_session;
@@ -111,5 +116,8 @@ uint16_t mqtt_create_request(
 
 /* Call when an ack packet comes back from the server. */
 void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16_t message_id);
+
+/* Call to close the connection with an error code */
+void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H */
