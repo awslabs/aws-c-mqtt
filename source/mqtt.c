@@ -239,10 +239,9 @@ handle_error:
 
 int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection) {
 
-    assert(connection);
-    assert(connection->slot);
-
-    mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
+    if (connection && connection->slot) {
+        mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
+    }
 
     return AWS_OP_SUCCESS;
 }
