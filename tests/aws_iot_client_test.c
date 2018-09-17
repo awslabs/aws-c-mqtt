@@ -45,6 +45,7 @@ enum { PAYLOAD_LEN = sizeof(s_payload) };
 struct connection_args {
     struct aws_allocator *allocator;
 
+    struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
 
     struct aws_mqtt_client_connection *connection;
@@ -87,7 +88,10 @@ static void s_mqtt_on_connack(
     assert(session_present == false);
 
     struct connection_args *args = user_data;
+
+    aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
+    aws_mutex_unlock(args->mutex);
 }
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
@@ -101,7 +105,9 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
 
     struct connection_args *args = user_data;
 
+    aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
+    aws_mutex_unlock(args->mutex);
 }
 
 int main(int argc, char **argv) {
@@ -116,6 +122,7 @@ int main(int argc, char **argv) {
     struct connection_args args;
     AWS_ZERO_STRUCT(args);
     args.allocator = &paho_client_allocator;
+    args.mutex = &mutex;
     args.condition_variable = &condition_variable;
 
     aws_tls_init_static_state(args.allocator);
@@ -129,10 +136,11 @@ int main(int argc, char **argv) {
     struct aws_tls_ctx_options tls_ctx_opt;
     aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "iot.cert.pem", "iot.private.key");
     aws_tls_ctx_options_set_alpn_list(&tls_ctx_opt, "x-amzn-mqtt-ca");
-    aws_tls_ctx_options_set_server_name(&tls_ctx_opt, "a1ba5f1mpna9k5.iot.us-east-2.amazonaws.com");
 
     struct aws_tls_connection_options tls_conn_opt;
     aws_tls_connection_options_init_from_ctx_options(&tls_conn_opt, &tls_ctx_opt);
+
+    aws_tls_connection_options_set_server_name(&tls_conn_opt, "a1ba5f1mpna9k5.iot.us-east-2.amazonaws.com");
 
     struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(args.allocator, &tls_ctx_opt);
 
