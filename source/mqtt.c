@@ -570,7 +570,7 @@ static bool s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *use
     uint64_t current_time = 0;
     aws_channel_current_clock_time(connection->slot->channel, &current_time);
 
-    if (current_time - connection->last_pingresp_timestamp > request_timeout) {
+    if (current_time - connection->last_pingresp_timestamp > request_timeout_ns) {
         /* It's been too long since the last ping, close the connection */
 
         mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_TIMEOUT);

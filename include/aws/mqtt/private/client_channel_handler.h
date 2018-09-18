@@ -21,6 +21,7 @@
 #include <aws/mqtt/private/fixed_header.h>
 
 #include <aws/common/hash_table.h>
+#include <aws/common/task_scheduler.h>
 
 #include <aws/io/channel.h>
 #include <aws/io/message_pool.h>
@@ -38,7 +39,7 @@ enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_DISCONNECTING,
 };
 
-extern const uint64_t request_timeout;
+extern const uint64_t request_timeout_ns;
 
 /** This serves as the value of the subscriptions table */
 struct aws_mqtt_subscription_impl {
@@ -60,6 +61,8 @@ struct aws_mqtt_outstanding_request {
     struct aws_linked_list_node list_node;
 
     struct aws_mqtt_client_connection *connection;
+
+    struct aws_task timeout_task;
 
     uint16_t message_id;
     bool initiated;

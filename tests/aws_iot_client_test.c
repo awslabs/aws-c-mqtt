@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
     aws_mqtt_load_error_strings();
 
     struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 0));
 
     struct aws_tls_ctx_options tls_ctx_opt;
     aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "iot.cert.pem", "iot.private.key");
@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
 
     aws_tls_ctx_destroy(tls_ctx);
 
-    aws_tls_clean_up_static_state(args.allocator);
+    aws_tls_clean_up_static_state();
 
     ASSERT_UINT_EQUALS(paho_client_alloc_impl.freed, paho_client_alloc_impl.allocated);
 

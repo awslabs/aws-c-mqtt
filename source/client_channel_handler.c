@@ -20,7 +20,7 @@
 
 #include <aws/common/task_scheduler.h>
 
-const uint64_t request_timeout = 3000000000;
+const uint64_t request_timeout_ns = 3000000000;
 
 typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor);
 
@@ -371,7 +371,7 @@ struct aws_io_message *mqtt_get_message_for_packet(
         connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 3 + header->remaining_length);
 }
 
-static void s_request_timeout_task(void *arg, enum aws_task_status status) {
+static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_mqtt_outstanding_request *request = arg;
 
@@ -401,15 +401,11 @@ static void s_request_timeout_task(void *arg, enum aws_task_status status) {
         } else {
             /* If not complete, schedule retry task */
 
-            struct aws_task retry_task;
-            retry_task.fn = &s_request_timeout_task;
-            retry_task.arg = arg;
-
             uint64_t ttr = 0;
             aws_channel_current_clock_time(request->connection->slot->channel, &ttr);
-            ttr += request_timeout;
+            ttr += request_timeout_ns;
 
-            aws_channel_schedule_task(request->connection->slot->channel, &retry_task, ttr);
+            aws_channel_schedule_task_future(request->connection->slot->channel, task, ttr);
         }
     }
 }
@@ -455,14 +451,14 @@ uint16_t mqtt_create_request(
         return 0;
     }
 
+    next_request->timeout_task.fn = &s_request_timeout_task;
+    next_request->timeout_task.arg = next_request;
+
     /* Send the request now if on channel's thread, otherwise schedule a task */
     if (aws_channel_thread_is_callers_thread(connection->slot->channel)) {
-        s_request_timeout_task(next_request, AWS_TASK_STATUS_RUN_READY);
+        s_request_timeout_task(&next_request->timeout_task, next_request, AWS_TASK_STATUS_RUN_READY);
     } else {
-        struct aws_task send_task;
-        send_task.fn = &s_request_timeout_task;
-        send_task.arg = next_request;
-        aws_channel_schedule_task(connection->slot->channel, &send_task, 0);
+        aws_channel_schedule_task_now(connection->slot->channel, &next_request->timeout_task);
     }
 
     return next_request->message_id;

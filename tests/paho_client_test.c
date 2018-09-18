@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
     args.condition_variable = &condition_variable;
 
     struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 0));
 
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
