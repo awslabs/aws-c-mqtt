@@ -5,6 +5,7 @@ enable_testing()
 
 file(GLOB TEST_SRC "*.c")
 list(FILTER TEST_SRC EXCLUDE REGEX ".*paho_client_test.c$")
+list(FILTER TEST_SRC EXCLUDE REGEX ".*aws_iot_client_test.c$")
 file(GLOB TEST_HDRS "*.h")
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
@@ -35,3 +36,12 @@ aws_set_common_properties(${TEST_PAHO_CLIENT_BINARY_NAME})
 aws_add_sanitizers(${TEST_PAHO_CLIENT_BINARY_NAME} ${${CMAKE_PROJECT_NAME}_SANITIZERS})
 target_compile_definitions(${TEST_PAHO_CLIENT_BINARY_NAME} PRIVATE AWS_UNSTABLE_TESTING_API=1)
 target_include_directories(${TEST_PAHO_CLIENT_BINARY_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+
+set(TEST_IOT_CLIENT_BINARY_NAME ${CMAKE_PROJECT_NAME}-iot-client)
+
+add_executable(${TEST_IOT_CLIENT_BINARY_NAME} "aws_iot_client_test.c")
+target_link_libraries(${TEST_IOT_CLIENT_BINARY_NAME} PRIVATE ${CMAKE_PROJECT_NAME})
+aws_set_common_properties(${TEST_IOT_CLIENT_BINARY_NAME})
+aws_add_sanitizers(${TEST_IOT_CLIENT_BINARY_NAME} ${${CMAKE_PROJECT_NAME}_SANITIZERS})
+target_compile_definitions(${TEST_IOT_CLIENT_BINARY_NAME} PRIVATE AWS_UNSTABLE_TESTING_API=1)
+target_include_directories(${TEST_IOT_CLIENT_BINARY_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})

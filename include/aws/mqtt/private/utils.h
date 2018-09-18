@@ -24,8 +24,4 @@ bool aws_mqtt_subscription_matches_publish(
     struct aws_mqtt_subscription_impl *sub,
     struct aws_mqtt_packet_publish *pub);
 
-void aws_channel_schedule_or_run_task(
-    struct aws_channel *channel,
-    struct aws_task *task);
-
 #endif /* AWS_MQTT_PRIVATE_UTILS_H */

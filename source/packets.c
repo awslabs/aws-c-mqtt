@@ -472,7 +472,11 @@ int aws_mqtt_packet_publish_init(
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_PUBLISH;
     packet->fixed_header.remaining_length =
-        s_sizeof_encoded_buffer(&topic_name) + sizeof(packet->packet_identifier) + payload.len;
+        s_sizeof_encoded_buffer(&topic_name) + payload.len;
+
+    if (qos > 0) {
+        packet->fixed_header.remaining_length += sizeof(packet->packet_identifier);
+    }
 
     /* [MQTT-2.2.2] */
     uint8_t publish_flags = (retain & 0x1) | (qos & 0x3) << 1 | (dup & 0x1) << 3;
@@ -505,9 +509,12 @@ int aws_mqtt_packet_publish_encode(struct aws_byte_cursor *cur, const struct aws
         return AWS_OP_ERR;
     }
 
-    /* Write packet identifier */
-    if (!aws_byte_cursor_write_be16(cur, packet->packet_identifier)) {
-        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+    enum aws_mqtt_qos qos = ((packet->fixed_header.flags >> 1) & 0x3);
+    if (qos > 0) {
+        /* Write packet identifier */
+        if (!aws_byte_cursor_write_be16(cur, packet->packet_identifier)) {
+            return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+        }
     }
 
     /*************************************************************************/
@@ -540,16 +547,23 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
         return AWS_OP_ERR;
     }
 
+    size_t payload_size = packet->fixed_header.remaining_length - s_sizeof_encoded_buffer(&packet->topic_name);
+
+    /* Read QoS */
+    enum aws_mqtt_qos qos = ((packet->fixed_header.flags >> 1) & 0x3);
+
     /* Read packet identifier */
-    if (!aws_byte_cursor_read_be16(cur, &packet->packet_identifier)) {
-        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+    if (qos > 0) {
+        if (!aws_byte_cursor_read_be16(cur, &packet->packet_identifier)) {
+            return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+        }
+        payload_size -= sizeof(packet->packet_identifier);
+    } else {
+        packet->packet_identifier = 0;
     }
 
     /*************************************************************************/
     /* Payload                                                               */
-
-    size_t payload_size = packet->fixed_header.remaining_length - s_sizeof_encoded_buffer(&packet->topic_name) -
-                          sizeof(packet->packet_identifier);
     packet->payload = aws_byte_cursor_advance(cur, payload_size);
     if (packet->payload.len == 0) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);

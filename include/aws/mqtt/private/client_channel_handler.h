@@ -21,6 +21,7 @@
 #include <aws/mqtt/private/fixed_header.h>
 
 #include <aws/common/hash_table.h>
+#include <aws/common/task_scheduler.h>
 
 #include <aws/io/channel.h>
 #include <aws/io/message_pool.h>
@@ -38,6 +39,8 @@ enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_DISCONNECTING,
 };
 
+extern const uint64_t request_timeout_ns;
+
 /** This serves as the value of the subscriptions table */
 struct aws_mqtt_subscription_impl {
     struct aws_mqtt_client_connection *connection;
@@ -49,9 +52,24 @@ struct aws_mqtt_subscription_impl {
     void *user_data;
 };
 
+/* Called after the timeout if a matching ack packet hasn't arrived.
+   Return true to consider request complete, false to schedule a timeout task. */
+typedef bool(aws_mqtt_send_request_fn)(uint16_t message_id, bool is_first_attempt, void *userdata);
+typedef void(aws_mqtt_complete_fn)(void *userdata);
+
 struct aws_mqtt_outstanding_request {
     struct aws_linked_list_node list_node;
+
+    struct aws_mqtt_client_connection *connection;
+
+    struct aws_task timeout_task;
+
     uint16_t message_id;
+    bool initiated;
+    bool completed;
+    aws_mqtt_send_request_fn *send_request;
+    aws_mqtt_complete_fn *on_complete;
+    void *userdata;
 };
 
 struct aws_mqtt_client_connection {
@@ -76,6 +94,8 @@ struct aws_mqtt_client_connection {
     /* uint16_t -> aws_mqtt_outstanding_request */
     struct aws_hash_table outstanding_requests;
 
+    uint64_t last_pingresp_timestamp;
+
     /* Connect parameters */
     struct aws_byte_buf client_id;
     bool clean_session;
@@ -89,10 +109,18 @@ struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header);
 
-/** Gets the next available packet id and places it in the outstanding requests list */
-uint16_t mqtt_get_next_packet_id(struct aws_mqtt_client_connection *connection);
+/* This function registers a new outstanding request, calls send_request
+ and returns the message identifier to use. */
+uint16_t mqtt_create_request(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_send_request_fn *send_request,
+    aws_mqtt_complete_fn *on_complete,
+    void *userdata);
 
+/* Call when an ack packet comes back from the server. */
 void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16_t message_id);
 
+/* Call to close the connection with an error code */
+void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H */

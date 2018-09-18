@@ -111,16 +111,3 @@ clean_up:
 
     return result;
 }
-
-void aws_channel_schedule_or_run_task(
-    struct aws_channel *channel,
-    struct aws_task *task) {
-
-    if (aws_channel_thread_is_callers_thread(channel)) {
-
-        task->fn(task->arg, AWS_TASK_STATUS_RUN_READY);
-    } else {
-
-        aws_channel_schedule_task(channel, task, 0);
-    }
-}

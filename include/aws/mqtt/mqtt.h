@@ -75,6 +75,9 @@ struct aws_mqtt_subscription {
 
 struct aws_mqtt_client_connection;
 
+/** Callback called when a publish roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). */
+typedef void(aws_mqtt_publish_complete_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+
 /** Type of function called when a publish recieved matches a subscription */
 typedef void(aws_mqtt_publish_recieved_fn)(
     struct aws_mqtt_client_connection *connection,
@@ -108,6 +111,7 @@ enum aws_mqtt_error {
     AWS_ERROR_MQTT_INVALID_CREDENTIALS,
     AWS_ERROR_MQTT_INVALID_QOS,
     AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
+    AWS_ERROR_MQTT_TIMEOUT,
     AWS_ERROR_MQTT_PROTOCOL_ERROR,
 
     AWS_ERROR_END_MQTT_RANGE = 0x1800,
@@ -144,9 +148,7 @@ int aws_mqtt_client_subscribe(
     void *user_data);
 
 AWS_MQTT_API
-int aws_mqtt_client_unsubscribe(
-    struct aws_mqtt_client_connection *connection,
-    const struct aws_byte_cursor *filter);
+int aws_mqtt_client_unsubscribe(struct aws_mqtt_client_connection *connection, const struct aws_byte_cursor *filter);
 
 AWS_MQTT_API
 int aws_mqtt_client_publish(
@@ -154,7 +156,12 @@ int aws_mqtt_client_publish(
     struct aws_byte_cursor topic,
     enum aws_mqtt_qos qos,
     bool retain,
-    struct aws_byte_cursor payload);
+    struct aws_byte_cursor payload,
+    aws_mqtt_publish_complete_fn *on_complete,
+    void *userdata);
+
+AWS_MQTT_API
+int aws_mqtt_client_ping(struct aws_mqtt_client_connection *connection);
 
 /*
  * Loads error strings for debugging and logging purposes.
