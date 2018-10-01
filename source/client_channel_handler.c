@@ -349,7 +349,7 @@ static void s_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(connection->allocator, connection);
 }
 
-struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable() {
+struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void) {
 
     static struct aws_channel_handler_vtable s_vtable = {
         .process_read_message = &s_process_read_message,

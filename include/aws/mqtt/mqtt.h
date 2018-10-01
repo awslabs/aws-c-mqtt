@@ -167,7 +167,7 @@ int aws_mqtt_client_ping(struct aws_mqtt_client_connection *connection);
  * Loads error strings for debugging and logging purposes.
  */
 AWS_MQTT_API
-void aws_mqtt_load_error_strings();
+void aws_mqtt_load_error_strings(void);
 
 #ifdef __cplusplus
 }
