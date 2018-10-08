@@ -60,12 +60,12 @@ struct connection_args {
 
 static void s_on_packet_recieved(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_mqtt_subscription *subscription,
+    struct aws_byte_cursor topic,
     struct aws_byte_cursor payload,
     void *user_data) {
 
     (void)connection;
-    (void)subscription;
+    (void)topic;
 
     struct aws_byte_cursor expected_payload = {
         .ptr = s_payload,

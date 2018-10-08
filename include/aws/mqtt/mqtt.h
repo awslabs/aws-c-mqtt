@@ -81,7 +81,7 @@ typedef void(aws_mqtt_publish_complete_fn)(struct aws_mqtt_client_connection *co
 /** Type of function called when a publish recieved matches a subscription */
 typedef void(aws_mqtt_publish_recieved_fn)(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_mqtt_subscription *subscription,
+    struct aws_byte_cursor topic,
     struct aws_byte_cursor payload,
     void *user_data);
 
