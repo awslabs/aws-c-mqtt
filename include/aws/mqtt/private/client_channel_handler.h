@@ -55,7 +55,6 @@ struct aws_mqtt_subscription_impl {
 /* Called after the timeout if a matching ack packet hasn't arrived.
    Return true to consider request complete, false to schedule a timeout task. */
 typedef bool(aws_mqtt_send_request_fn)(uint16_t message_id, bool is_first_attempt, void *userdata);
-typedef void(aws_mqtt_complete_fn)(void *userdata);
 
 struct aws_mqtt_outstanding_request {
     struct aws_linked_list_node list_node;
@@ -68,8 +67,9 @@ struct aws_mqtt_outstanding_request {
     bool initiated;
     bool completed;
     aws_mqtt_send_request_fn *send_request;
-    aws_mqtt_complete_fn *on_complete;
-    void *userdata;
+    void *send_request_ud;
+    aws_mqtt_op_complete_fn *on_complete;
+    void *on_complete_ud;
 };
 
 struct aws_mqtt_client_connection {
@@ -114,8 +114,9 @@ struct aws_io_message *mqtt_get_message_for_packet(
 uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,
-    aws_mqtt_complete_fn *on_complete,
-    void *userdata);
+    void *send_request_ud,
+    aws_mqtt_op_complete_fn *on_complete,
+    void *on_complete_ud);
 
 /* Call when an ack packet comes back from the server. */
 void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16_t message_id);

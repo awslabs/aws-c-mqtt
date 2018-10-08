@@ -123,7 +123,7 @@ static void s_mqtt_on_connack_2(
     struct aws_mqtt_subscription sub;
     sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
     sub.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
-    aws_mqtt_client_subscribe(connection, &sub, &s_on_packet_recieved, user_data);
+    aws_mqtt_client_subscribe(connection, &sub, &s_on_packet_recieved, user_data, NULL, NULL);
 
     aws_condition_variable_notify_one(args->condition_variable);
 }
@@ -156,14 +156,14 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 0));
 
-    struct aws_socket_endpoint endpoint;
-    AWS_ZERO_STRUCT(endpoint);
-    sprintf(endpoint.address, "%s", "127.0.0.1");
-    sprintf(endpoint.port, "%s", "1883");
+    struct aws_socket_endpoint endpoint = {
+        .address = "127.0.0.1",
+        .port = 1883,
+    };
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout = 3000;
+    options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
 
     struct aws_byte_cursor topic_filter =
         aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    aws_mqtt_client_unsubscribe(args.connection, &topic_filter);
+    aws_mqtt_client_unsubscribe(args.connection, &topic_filter, NULL, NULL);
 
     aws_mqtt_client_ping(args.connection);
 
