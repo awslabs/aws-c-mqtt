@@ -83,6 +83,8 @@ static void s_mqtt_on_connack(
     void *user_data) {
 
     (void)connection;
+    (void)return_code;
+    (void)session_present;
 
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);

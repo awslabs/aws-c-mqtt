@@ -66,11 +66,13 @@ static void s_on_packet_recieved(
 
     (void)connection;
     (void)topic;
+    (void)payload;
 
     struct aws_byte_cursor expected_payload = {
         .ptr = s_payload,
         .len = PAYLOAD_LEN,
     };
+    (void)expected_payload;
     assert(aws_byte_cursor_eq(&payload, &expected_payload));
 
     struct connection_args *args = user_data;
@@ -89,6 +91,9 @@ static void s_mqtt_on_connack_1(
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *user_data) {
+
+    (void)return_code;
+    (void)session_present;
 
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
@@ -115,6 +120,9 @@ static void s_mqtt_on_connack_2(
     bool session_present,
     void *user_data) {
 
+    (void)return_code;
+    (void)session_present;
+
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
 
@@ -131,6 +139,7 @@ static void s_mqtt_on_connack_2(
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
 
     (void)connection;
+    (void)error_code;
 
     assert(error_code == AWS_OP_SUCCESS);
 
