@@ -297,8 +297,10 @@ handle_error:
 int aws_mqtt_client_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_subscription *subscription,
-    aws_mqtt_publish_recieved_fn *callback,
-    void *user_data) {
+    aws_mqtt_publish_recieved_fn *on_publish,
+    void *on_publish_ud,
+    aws_mqtt_op_complete_fn *on_suback,
+    void *on_suback_ud) {
 
     assert(connection);
 
@@ -311,8 +313,8 @@ int aws_mqtt_client_subscribe(
     }
 
     subscription_impl->connection = connection;
-    subscription_impl->callback = callback;
-    subscription_impl->user_data = user_data;
+    subscription_impl->callback = on_publish;
+    subscription_impl->user_data = on_publish_ud;
 
     subscription_impl->filter = aws_string_new_from_array(
         connection->allocator, subscription->topic_filter.ptr, subscription->topic_filter.len);
@@ -327,7 +329,7 @@ int aws_mqtt_client_subscribe(
         goto handle_error;
     }
 
-    mqtt_create_request(subscription_impl->connection, &s_subscribe_send, NULL, subscription_impl);
+    mqtt_create_request(subscription_impl->connection, &s_subscribe_send, subscription_impl, on_suback, on_suback_ud);
 
     return AWS_OP_SUCCESS;
 
@@ -396,7 +398,11 @@ handle_error:
     return true;
 }
 
-int aws_mqtt_client_unsubscribe(struct aws_mqtt_client_connection *connection, const struct aws_byte_cursor *filter) {
+int aws_mqtt_client_unsubscribe(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *filter,
+    aws_mqtt_op_complete_fn *on_unsuback,
+    void *on_unsuback_ud) {
 
     assert(connection);
 
@@ -414,7 +420,7 @@ int aws_mqtt_client_unsubscribe(struct aws_mqtt_client_connection *connection, c
     /* Only needed this to do the lookup */
     aws_string_destroy((void *)filter_str);
 
-    mqtt_create_request(connection, &s_unsubscribe_send, NULL, elem->value);
+    mqtt_create_request(connection, &s_unsubscribe_send, elem->value, on_unsuback, on_unsuback_ud);
 
     return AWS_OP_SUCCESS;
 
@@ -434,7 +440,7 @@ struct publish_task_arg {
     bool retain;
     struct aws_byte_cursor payload;
 
-    aws_mqtt_publish_complete_fn *on_complete;
+    aws_mqtt_op_complete_fn *on_complete;
     void *userdata;
 };
 
@@ -485,14 +491,14 @@ handle_error:
     return true;
 }
 
-static void s_publish_complete(void *userdata) {
+static void s_publish_complete(struct aws_mqtt_client_connection *connection, void *userdata) {
     struct publish_task_arg *publish_arg = userdata;
 
     if (publish_arg->on_complete) {
-        publish_arg->on_complete(publish_arg->connection, publish_arg->userdata);
+        publish_arg->on_complete(connection, publish_arg->userdata);
     }
 
-    aws_mem_release(publish_arg->connection->allocator, publish_arg);
+    aws_mem_release(connection->allocator, publish_arg);
 }
 
 int aws_mqtt_client_publish(
@@ -501,7 +507,7 @@ int aws_mqtt_client_publish(
     enum aws_mqtt_qos qos,
     bool retain,
     struct aws_byte_cursor payload,
-    aws_mqtt_publish_complete_fn *on_complete,
+    aws_mqtt_op_complete_fn *on_complete,
     void *userdata) {
 
     assert(connection);
@@ -520,7 +526,7 @@ int aws_mqtt_client_publish(
     arg->on_complete = on_complete;
     arg->userdata = userdata;
 
-    mqtt_create_request(connection, &s_publish_send, &s_publish_complete, arg);
+    mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
 
     return AWS_OP_SUCCESS;
 }
@@ -581,7 +587,7 @@ static bool s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *use
 
 int aws_mqtt_client_ping(struct aws_mqtt_client_connection *connection) {
 
-    mqtt_create_request(connection, &s_pingreq_send, NULL, connection);
+    mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
 
     return AWS_OP_SUCCESS;
 }

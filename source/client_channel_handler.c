@@ -377,12 +377,12 @@ static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_ta
 
         if (!request->completed) {
             /* If not complete, attempt retry */
-            if (request->send_request(request->message_id, !request->initiated, request->userdata)) {
+            if (request->send_request(request->message_id, !request->initiated, request->send_request_ud)) {
                 /* If the send_request function reports the request is complete,
                    remove from the hash table and call the callback. */
                 request->completed = true;
                 if (request->on_complete) {
-                    request->on_complete(request->userdata);
+                    request->on_complete(request->connection, request->on_complete_ud);
                 }
             }
         }
@@ -413,8 +413,9 @@ static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_ta
 uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,
-    aws_mqtt_complete_fn *on_complete,
-    void *userdata) {
+    void *send_request_ud,
+    aws_mqtt_op_complete_fn *on_complete,
+    void *on_complete_ud) {
 
     assert(connection);
     assert(send_request);
@@ -441,8 +442,9 @@ uint16_t mqtt_create_request(
     next_request->initiated = false;
     next_request->completed = false;
     next_request->send_request = send_request;
+    next_request->send_request_ud = send_request_ud;
     next_request->on_complete = on_complete;
-    next_request->userdata = userdata;
+    next_request->on_complete_ud = on_complete_ud;
 
     /* Store the request by message_id */
     if (aws_hash_table_put(&connection->outstanding_requests, &next_request->message_id, next_request, NULL)) {
@@ -477,7 +479,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16
 
     /* Alert the user */
     if (request->on_complete) {
-        request->on_complete(request->userdata);
+        request->on_complete(request->connection, request->on_complete_ud);
     }
 }
 

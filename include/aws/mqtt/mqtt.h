@@ -75,8 +75,8 @@ struct aws_mqtt_subscription {
 
 struct aws_mqtt_client_connection;
 
-/** Callback called when a publish roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). */
-typedef void(aws_mqtt_publish_complete_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+/** Callback called when a request roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). */
+typedef void(aws_mqtt_op_complete_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
 /** Type of function called when a publish recieved matches a subscription */
 typedef void(aws_mqtt_publish_recieved_fn)(
@@ -144,11 +144,17 @@ AWS_MQTT_API
 int aws_mqtt_client_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_subscription *subscription,
-    aws_mqtt_publish_recieved_fn *callback,
-    void *user_data);
+    aws_mqtt_publish_recieved_fn *on_publish,
+    void *on_publish_ud,
+    aws_mqtt_op_complete_fn *on_suback,
+    void *on_suback_ud);
 
 AWS_MQTT_API
-int aws_mqtt_client_unsubscribe(struct aws_mqtt_client_connection *connection, const struct aws_byte_cursor *filter);
+int aws_mqtt_client_unsubscribe(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *filter,
+    aws_mqtt_op_complete_fn *on_unsuback,
+    void *on_unsuback_ud);
 
 AWS_MQTT_API
 int aws_mqtt_client_publish(
@@ -157,7 +163,7 @@ int aws_mqtt_client_publish(
     enum aws_mqtt_qos qos,
     bool retain,
     struct aws_byte_cursor payload,
-    aws_mqtt_publish_complete_fn *on_complete,
+    aws_mqtt_op_complete_fn *on_complete,
     void *userdata);
 
 AWS_MQTT_API

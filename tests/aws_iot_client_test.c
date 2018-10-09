@@ -83,6 +83,8 @@ static void s_mqtt_on_connack(
     void *user_data) {
 
     (void)connection;
+    (void)return_code;
+    (void)session_present;
 
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
@@ -134,24 +136,26 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 0));
 
     struct aws_tls_ctx_options tls_ctx_opt;
-    aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "iot.cert.pem", "iot.private.key");
+    aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "9f0631f03a-certificate.pem.crt", "9f0631f03a-private.pem.key");
     aws_tls_ctx_options_set_alpn_list(&tls_ctx_opt, "x-amzn-mqtt-ca");
+    aws_tls_ctx_options_override_default_trust_store(&tls_ctx_opt, NULL, "AmazonRootCA1.pem");
 
     struct aws_tls_connection_options tls_conn_opt;
     aws_tls_connection_options_init_from_ctx_options(&tls_conn_opt, &tls_ctx_opt);
 
-    aws_tls_connection_options_set_server_name(&tls_conn_opt, "a1ba5f1mpna9k5.iot.us-east-2.amazonaws.com");
+    aws_tls_connection_options_set_server_name(&tls_conn_opt, "a1ba5f1mpna9k5-ats.iot.us-east-1.amazonaws.com");
 
     struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(args.allocator, &tls_ctx_opt);
+    assert(tls_ctx);
 
-    struct aws_socket_endpoint endpoint;
-    AWS_ZERO_STRUCT(endpoint);
-    sprintf(endpoint.address, "%s", "18.191.24.253");
-    sprintf(endpoint.port, "%s", "443");
+    struct aws_socket_endpoint endpoint = {
+        .address = "52.201.162.231",
+        .port = 8883,
+    };
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout = 3000;
+    options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
@@ -187,7 +191,7 @@ int main(int argc, char **argv) {
     struct aws_mqtt_subscription sub;
     sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
     sub.qos = AWS_MQTT_QOS_AT_LEAST_ONCE;
-    aws_mqtt_client_subscribe(args.connection, &sub, &s_on_packet_recieved, &args);
+    aws_mqtt_client_subscribe(args.connection, &sub, &s_on_packet_recieved, &args, NULL, NULL);
 
     const struct aws_string *payload = aws_string_new_from_array(args.allocator, s_payload, PAYLOAD_LEN);
 

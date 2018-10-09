@@ -66,11 +66,13 @@ static void s_on_packet_recieved(
 
     (void)connection;
     (void)topic;
+    (void)payload;
 
     struct aws_byte_cursor expected_payload = {
         .ptr = s_payload,
         .len = PAYLOAD_LEN,
     };
+    (void)expected_payload;
     assert(aws_byte_cursor_eq(&payload, &expected_payload));
 
     struct connection_args *args = user_data;
@@ -89,6 +91,9 @@ static void s_mqtt_on_connack_1(
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *user_data) {
+
+    (void)return_code;
+    (void)session_present;
 
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
@@ -115,6 +120,9 @@ static void s_mqtt_on_connack_2(
     bool session_present,
     void *user_data) {
 
+    (void)return_code;
+    (void)session_present;
+
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
 
@@ -123,7 +131,7 @@ static void s_mqtt_on_connack_2(
     struct aws_mqtt_subscription sub;
     sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
     sub.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
-    aws_mqtt_client_subscribe(connection, &sub, &s_on_packet_recieved, user_data);
+    aws_mqtt_client_subscribe(connection, &sub, &s_on_packet_recieved, user_data, NULL, NULL);
 
     aws_condition_variable_notify_one(args->condition_variable);
 }
@@ -131,6 +139,7 @@ static void s_mqtt_on_connack_2(
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
 
     (void)connection;
+    (void)error_code;
 
     assert(error_code == AWS_OP_SUCCESS);
 
@@ -156,14 +165,14 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 0));
 
-    struct aws_socket_endpoint endpoint;
-    AWS_ZERO_STRUCT(endpoint);
-    sprintf(endpoint.address, "%s", "127.0.0.1");
-    sprintf(endpoint.port, "%s", "1883");
+    struct aws_socket_endpoint endpoint = {
+        .address = "127.0.0.1",
+        .port = 1883,
+    };
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout = 3000;
+    options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
@@ -210,7 +219,7 @@ int main(int argc, char **argv) {
 
     struct aws_byte_cursor topic_filter =
         aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    aws_mqtt_client_unsubscribe(args.connection, &topic_filter);
+    aws_mqtt_client_unsubscribe(args.connection, &topic_filter, NULL, NULL);
 
     aws_mqtt_client_ping(args.connection);
 
