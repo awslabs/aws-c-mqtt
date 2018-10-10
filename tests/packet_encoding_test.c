@@ -419,10 +419,11 @@ static bool s_test_subscribe_eq(void *a, void *b, size_t size) {
     }
 
     for (size_t i = 0; i < length; ++i) {
-        struct aws_mqtt_subscription *lt;
+        struct aws_mqtt_subscription *lt = NULL;
         aws_array_list_get_at_ptr(&l->topic_filters, (void **)&lt, i);
-        struct aws_mqtt_subscription *rt;
+        struct aws_mqtt_subscription *rt = NULL;
         aws_array_list_get_at_ptr(&r->topic_filters, (void **)&rt, i);
+        assert(lt && rt);
 
         if (lt->qos != rt->qos) {
             return false;
@@ -494,10 +495,11 @@ static bool s_test_unsubscribe_eq(void *a, void *b, size_t size) {
     }
 
     for (size_t i = 0; i < length; ++i) {
-        struct aws_byte_cursor *lt;
+        struct aws_byte_cursor *lt = NULL;
         aws_array_list_get_at_ptr(&l->topic_filters, (void **)&lt, i);
-        struct aws_byte_cursor *rt;
+        struct aws_byte_cursor *rt = NULL;
         aws_array_list_get_at_ptr(&r->topic_filters, (void **)&rt, i);
+        assert(lt && rt);
 
         if (!s_byte_cursor_eq(*lt, *rt)) {
             return false;
