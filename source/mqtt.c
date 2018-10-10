@@ -294,9 +294,10 @@ handle_error:
     return true;
 }
 
-int aws_mqtt_client_subscribe(
+int aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_mqtt_subscription *subscription,
+    struct aws_byte_cursor topic_filter,
+    enum aws_mqtt_qos qos,
     aws_mqtt_publish_recieved_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_op_complete_fn *on_suback,
@@ -317,12 +318,12 @@ int aws_mqtt_client_subscribe(
     subscription_impl->user_data = on_publish_ud;
 
     subscription_impl->filter = aws_string_new_from_array(
-        connection->allocator, subscription->topic_filter.ptr, subscription->topic_filter.len);
+        connection->allocator, topic_filter.ptr, topic_filter.len);
     if (!subscription_impl->filter) {
         goto handle_error;
     }
 
-    subscription_impl->subscription.qos = subscription->qos;
+    subscription_impl->subscription.qos = qos;
     subscription_impl->subscription.topic_filter = aws_byte_cursor_from_string(subscription_impl->filter);
 
     if (aws_hash_table_put(&connection->subscriptions, subscription_impl->filter, subscription_impl, &was_created)) {
@@ -398,7 +399,7 @@ handle_error:
     return true;
 }
 
-int aws_mqtt_client_unsubscribe(
+int aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *filter,
     aws_mqtt_op_complete_fn *on_unsuback,
@@ -501,7 +502,7 @@ static void s_publish_complete(struct aws_mqtt_client_connection *connection, vo
     aws_mem_release(connection->allocator, publish_arg);
 }
 
-int aws_mqtt_client_publish(
+int aws_mqtt_client_connection_publish(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor topic,
     enum aws_mqtt_qos qos,
@@ -585,7 +586,7 @@ static bool s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *use
     return true;
 }
 
-int aws_mqtt_client_ping(struct aws_mqtt_client_connection *connection) {
+int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection) {
 
     mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
 

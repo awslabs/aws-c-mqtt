@@ -188,14 +188,18 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    struct aws_mqtt_subscription sub;
-    sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    sub.qos = AWS_MQTT_QOS_AT_LEAST_ONCE;
-    aws_mqtt_client_subscribe(args.connection, &sub, &s_on_packet_recieved, &args, NULL, NULL);
+    aws_mqtt_client_connection_subscribe(
+        args.connection,
+        aws_byte_cursor_from_string(s_subscribe_topic),
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        &s_on_packet_recieved,
+        &args,
+        NULL,
+        NULL);
 
     const struct aws_string *payload = aws_string_new_from_array(args.allocator, s_payload, PAYLOAD_LEN);
 
-    aws_mqtt_client_publish(
+    aws_mqtt_client_connection_publish(
         args.connection,
         aws_byte_cursor_from_string(s_subscribe_topic),
         AWS_MQTT_QOS_AT_MOST_ONCE,

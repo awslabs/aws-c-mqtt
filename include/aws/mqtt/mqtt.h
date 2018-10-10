@@ -141,23 +141,24 @@ AWS_MQTT_API
 int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection);
 
 AWS_MQTT_API
-int aws_mqtt_client_subscribe(
+int aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_mqtt_subscription *subscription,
+    struct aws_byte_cursor topic_filter,
+    enum aws_mqtt_qos qos,
     aws_mqtt_publish_recieved_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_op_complete_fn *on_suback,
     void *on_suback_ud);
 
 AWS_MQTT_API
-int aws_mqtt_client_unsubscribe(
+int aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *filter,
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_ud);
 
 AWS_MQTT_API
-int aws_mqtt_client_publish(
+int aws_mqtt_client_connection_publish(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor topic,
     enum aws_mqtt_qos qos,
@@ -167,7 +168,7 @@ int aws_mqtt_client_publish(
     void *userdata);
 
 AWS_MQTT_API
-int aws_mqtt_client_ping(struct aws_mqtt_client_connection *connection);
+int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
 
 /*
  * Loads error strings for debugging and logging purposes.
