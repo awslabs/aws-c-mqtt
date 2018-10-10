@@ -258,7 +258,7 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
         goto handle_error;
     }
     if (aws_mqtt_packet_subscribe_add_topic(
-            &subscribe, subscription_impl->subscription.topic_filter, subscription_impl->subscription.qos)) {
+            &subscribe, aws_byte_cursor_from_string(subscription_impl->filter), subscription_impl->qos)) {
         goto handle_error;
     }
 
@@ -317,14 +317,11 @@ int aws_mqtt_client_connection_subscribe(
     subscription_impl->callback = on_publish;
     subscription_impl->user_data = on_publish_ud;
 
-    subscription_impl->filter = aws_string_new_from_array(
-        connection->allocator, topic_filter.ptr, topic_filter.len);
+    subscription_impl->qos = qos;
+    subscription_impl->filter = aws_string_new_from_array(connection->allocator, topic_filter.ptr, topic_filter.len);
     if (!subscription_impl->filter) {
         goto handle_error;
     }
-
-    subscription_impl->subscription.qos = qos;
-    subscription_impl->subscription.topic_filter = aws_byte_cursor_from_string(subscription_impl->filter);
 
     if (aws_hash_table_put(&connection->subscriptions, subscription_impl->filter, subscription_impl, &was_created)) {
         goto handle_error;
@@ -359,7 +356,7 @@ static bool s_unsubscribe_send(uint16_t message_id, bool is_first_attempt, void 
     if (aws_mqtt_packet_unsubscribe_init(&unsubscribe, subscription_impl->connection->allocator, message_id)) {
         goto handle_error;
     }
-    if (aws_mqtt_packet_unsubscribe_add_topic(&unsubscribe, subscription_impl->subscription.topic_filter)) {
+    if (aws_mqtt_packet_unsubscribe_add_topic(&unsubscribe, aws_byte_cursor_from_string(subscription_impl->filter))) {
         goto handle_error;
     }
 

@@ -66,13 +66,6 @@ enum aws_mqtt_connect_return_code {
     /* reserved = 6 - 255 */
 };
 
-struct aws_mqtt_subscription {
-    /* Topic filte to subscribe to [MQTT-4.7]. */
-    struct aws_byte_cursor topic_filter;
-    /* Maximum QoS of messages to receive [MQTT-4.3]. */
-    enum aws_mqtt_qos qos;
-};
-
 struct aws_mqtt_client_connection;
 
 /** Callback called when a request roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). */

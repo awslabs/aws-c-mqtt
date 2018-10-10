@@ -44,10 +44,9 @@ extern const uint64_t request_timeout_ns;
 /** This serves as the value of the subscriptions table */
 struct aws_mqtt_subscription_impl {
     struct aws_mqtt_client_connection *connection;
-    /* Public facing subscription */
-    struct aws_mqtt_subscription subscription;
 
     const struct aws_string *filter;
+    enum aws_mqtt_qos qos;
     aws_mqtt_publish_recieved_fn *callback;
     void *user_data;
 };
