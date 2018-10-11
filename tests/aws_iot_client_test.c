@@ -97,6 +97,18 @@ static void s_mqtt_on_connack(
     aws_mutex_unlock(args->mutex);
 }
 
+static void s_mqtt_on_connection_failed(
+    struct aws_mqtt_client_connection *connection,
+    int error_code,
+    void *user_data) {
+
+    (void)connection;
+    (void)user_data;
+
+    printf("Error recieved: %s\n", aws_error_debug_str(error_code));
+    abort();
+}
+
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
 
     (void)connection;
@@ -142,11 +154,12 @@ int main(int argc, char **argv) {
     AWS_ZERO_STRUCT(socket_options);
     socket_options.connect_timeout_ms = 3000;
     socket_options.type = AWS_SOCKET_STREAM;
-    socket_options.domain = AWS_SOCKET_IPV4;
+    socket_options.domain = AWS_SOCKET_IPV6;
 
     struct aws_mqtt_client_connection_callbacks callbacks;
     AWS_ZERO_STRUCT(callbacks);
     callbacks.on_connack = &s_mqtt_on_connack;
+    callbacks.on_connection_failed = &s_mqtt_on_connection_failed;
     callbacks.on_disconnect = &s_mqtt_on_disconnect;
     callbacks.user_data = &args;
 
@@ -154,18 +167,9 @@ int main(int argc, char **argv) {
     aws_mqtt_client_init(&client, args.allocator, 1);
 
     args.connection = aws_mqtt_client_connection_new(
-        &client,
-        callbacks,
-        aws_byte_cursor_from_string(s_hostname),
-        8883,
-        &socket_options,
-        &tls_ctx_opt);
+        &client, callbacks, aws_byte_cursor_from_string(s_hostname), 8883, &socket_options, &tls_ctx_opt);
 
-    aws_mqtt_client_connection_connect(
-        args.connection,
-        aws_byte_cursor_from_string(s_client_id),
-        true,
-        0);
+    aws_mqtt_client_connection_connect(args.connection, aws_byte_cursor_from_string(s_client_id), true, 0);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));

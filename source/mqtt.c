@@ -32,7 +32,11 @@ static void s_mqtt_host_destroy(void *object) {
     struct aws_mqtt_host *host = object;
 
     aws_string_destroy(host->hostname);
-    aws_tls_ctx_destroy(host->bootstrap.tls_ctx);
+
+    if (host->bootstrap.tls_ctx) {
+        aws_tls_ctx_destroy(host->bootstrap.tls_ctx);
+    }
+
     aws_client_bootstrap_clean_up(&host->bootstrap);
 
     aws_mem_release(host->allocator, host);
@@ -310,44 +314,54 @@ static void s_host_resolved_callback(
         return;
     }
 
-    /* If the user specifically requests IPv6 use it, otherwise use IPv4 */
-    size_t address_index = connection->socket_options->domain == AWS_SOCKET_IPV6 ? 0 : 1;
-
-    assert(aws_array_list_length(host_addresses) > address_index);
-
-    struct aws_host_address *address = NULL;
-    int result = aws_array_list_get_at(host_addresses, (void *)&address, address_index);
-    assert(result == AWS_OP_SUCCESS);
-
     struct aws_socket_endpoint endpoint;
     endpoint.port = connection->port;
-    aws_host_address_to_endpoint_options(address, &endpoint, connection->socket_options);
 
-    if (connection->host->bootstrap.tls_ctx) {
-        if (aws_client_bootstrap_new_tls_socket_channel(
-                &connection->host->bootstrap,
-                &endpoint,
-                connection->socket_options,
-                &connection->host->connection_options,
-                &s_mqtt_client_init,
-                &s_mqtt_client_shutdown,
-                connection)) {
+    const size_t num_addresses = aws_array_list_length(host_addresses);
+    for (size_t i = 0; i < num_addresses; ++i) {
 
-            MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
-            return;
+        struct aws_host_address *address = NULL;
+        int result = aws_array_list_get_at(host_addresses, (void *)&address, i);
+        assert(result == AWS_OP_SUCCESS);
+
+        aws_host_address_to_endpoint_options(address, &endpoint, connection->socket_options);
+
+        if (connection->host->bootstrap.tls_ctx) {
+            result = aws_client_bootstrap_new_tls_socket_channel(
+                    &connection->host->bootstrap,
+                    &endpoint,
+                    connection->socket_options,
+                    &connection->host->connection_options,
+                    &s_mqtt_client_init,
+                    &s_mqtt_client_shutdown,
+                    connection);
+        } else {
+            result = aws_client_bootstrap_new_socket_channel(
+                    &connection->host->bootstrap,
+                    &endpoint,
+                    connection->socket_options,
+                    &s_mqtt_client_init,
+                    &s_mqtt_client_shutdown,
+                    connection);
         }
-    } else {
-        if (aws_client_bootstrap_new_socket_channel(
-                &connection->host->bootstrap,
-                &endpoint,
-                connection->socket_options,
-                &s_mqtt_client_init,
-                &s_mqtt_client_shutdown,
-                connection)) {
-
-            MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
-            return;
+        int connect_error = aws_last_error();
+        if (!result) {
+            /* Connection attempt successful */
+            break;
         }
+
+        /* Not successful connection attempt, report address as faulty */
+        result = aws_host_resolver_record_connection_failure(&connection->client->host_resolver, address);
+        assert(result == AWS_OP_SUCCESS);
+
+        if (connect_error == AWS_IO_SOCKET_NO_ROUTE_TO_HOST) {
+            /* Attempt next address set */
+            continue;
+        }
+
+        /* If not success or NO_ROUTE, report error and abandon ship */
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        break;
     }
 }
 
