@@ -342,8 +342,8 @@ static void s_destroy(struct aws_channel_handler *handler) {
     aws_hash_table_clean_up(&connection->subscriptions);
 
     /* Cleanup outstanding requests */
-    aws_memory_pool_clean_up(&connection->requests_pool);
     aws_hash_table_clean_up(&connection->outstanding_requests);
+    aws_memory_pool_clean_up(&connection->requests_pool);
 
     /* Frees all allocated memory */
     aws_mem_release(connection->allocator, connection);
@@ -372,9 +372,16 @@ struct aws_io_message *mqtt_get_message_for_packet(
 }
 
 static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_mqtt_outstanding_request *request = arg;
 
+    struct aws_mqtt_outstanding_request *request = arg;
+
+    /* If the task was cancelled, assume all containers are gone and just free */
+    if (request->cancelled) {
+        aws_mem_release(request->allocator, request);
+        return;
+    }
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
         if (!request->completed) {
             /* If not complete, attempt retry */
             if (request->send_request(request->message_id, !request->initiated, request->send_request_ud)) {
@@ -438,6 +445,7 @@ uint16_t mqtt_create_request(
     assert(next_id); /* Somehow have UINT16_MAX outstanding requests, definitely a bug */
     next_request->message_id = next_id;
 
+    next_request->allocator = connection->allocator;
     next_request->connection = connection;
     next_request->initiated = false;
     next_request->completed = false;

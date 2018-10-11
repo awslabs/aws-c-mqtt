@@ -44,6 +44,7 @@ static struct aws_byte_cursor s_client_id_2 = {
     .len = 11,
 };
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
+AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "localhost");
 
 static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
 enum { PAYLOAD_LEN = sizeof(s_payload) };
@@ -169,11 +170,6 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 0));
 
-    struct aws_socket_endpoint endpoint = {
-        .address = "127.0.0.1",
-        .port = 1883,
-    };
-
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 3000;
@@ -189,13 +185,14 @@ int main(int argc, char **argv) {
     callbacks.on_disconnect = &s_mqtt_on_disconnect;
     callbacks.user_data = &args;
 
-    struct aws_mqtt_client client = {
-        .client_bootstrap = &client_bootstrap,
-        .socket_options = &options,
-    };
+    struct aws_mqtt_client client;
+    ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, 1));
 
-    args.connection =
-        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id_1, true, 0);
+    args.connection = aws_mqtt_client_connection_new(
+        &client, callbacks, aws_byte_cursor_from_string(s_hostname), 1883, &options, NULL);
+    ASSERT_NOT_NULL(args.connection);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, s_client_id_1, true, 0));
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
@@ -210,8 +207,7 @@ int main(int argc, char **argv) {
 
     callbacks.on_connack = &s_mqtt_on_connack_2;
 
-    args.connection =
-        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id_2, true, 0);
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, s_client_id_2, true, 0));
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));

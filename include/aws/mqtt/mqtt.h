@@ -21,11 +21,14 @@
 #include <aws/common/byte_buf.h>
 #include <aws/common/string.h>
 
+#include <aws/io/event_loop.h>
+#include <aws/io/host_resolver.h>
+
 /* forward declares */
 struct aws_client_bootstrap;
 struct aws_socket_endpoint;
 struct aws_socket_options;
-struct aws_tls_connection_options;
+struct aws_tls_ctx_options;
 
 /* Quality of Service associated with a publish action or subscription [MQTT-4.3]. */
 enum aws_mqtt_qos {
@@ -44,6 +47,16 @@ enum aws_mqtt_connect_return_code {
     AWS_MQTT_CONNECT_BAD_USERNAME_OR_PASSWORD,
     AWS_MQTT_CONNECT_NOT_AUTHORIZED,
     /* reserved = 6 - 255 */
+};
+
+struct aws_mqtt_client {
+    struct aws_allocator *allocator;
+    struct aws_event_loop_group event_loop_group;
+    struct aws_hash_table hosts_to_bootstrap;
+
+    /* DNS Resolver */
+    struct aws_host_resolver host_resolver;
+    struct aws_host_resolution_config host_resolver_config;
 };
 
 struct aws_mqtt_client_connection;
@@ -90,22 +103,30 @@ enum aws_mqtt_error {
     AWS_ERROR_END_MQTT_RANGE = 0x1800,
 };
 
-struct aws_mqtt_client {
-    struct aws_client_bootstrap *client_bootstrap;
-    struct aws_socket_options *socket_options;
-};
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 AWS_MQTT_API
-struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
+int aws_mqtt_client_init(
+    struct aws_mqtt_client *client,
     struct aws_allocator *allocator,
+    uint16_t num_threads);
+
+void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
+
+AWS_MQTT_API
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client *client,
     struct aws_mqtt_client_connection_callbacks callbacks,
-    struct aws_socket_endpoint *endpoint,
-    struct aws_tls_connection_options *tls_options,
+    struct aws_byte_cursor host_name,
+    uint16_t port,
+    struct aws_socket_options *socket_options,
+    struct aws_tls_ctx_options *tls_options);
+
+AWS_MQTT_API
+int aws_mqtt_client_connection_connect(
+    struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor client_id,
     bool clean_session,
     uint16_t keep_alive_time);

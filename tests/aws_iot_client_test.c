@@ -38,6 +38,7 @@
 
 AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "aws_iot_client_test");
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
+AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "a1ba5f1mpna9k5-ats.iot.us-east-1.amazonaws.com");
 
 static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
 enum { PAYLOAD_LEN = sizeof(s_payload) };
@@ -132,36 +133,16 @@ int main(int argc, char **argv) {
     aws_io_load_error_strings();
     aws_mqtt_load_error_strings();
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 0));
-
     struct aws_tls_ctx_options tls_ctx_opt;
     aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "9f0631f03a-certificate.pem.crt", "9f0631f03a-private.pem.key");
     aws_tls_ctx_options_set_alpn_list(&tls_ctx_opt, "x-amzn-mqtt-ca");
     aws_tls_ctx_options_override_default_trust_store(&tls_ctx_opt, NULL, "AmazonRootCA1.pem");
 
-    struct aws_tls_connection_options tls_conn_opt;
-    aws_tls_connection_options_init_from_ctx_options(&tls_conn_opt, &tls_ctx_opt);
-
-    aws_tls_connection_options_set_server_name(&tls_conn_opt, "a1ba5f1mpna9k5-ats.iot.us-east-1.amazonaws.com");
-
-    struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(args.allocator, &tls_ctx_opt);
-    assert(tls_ctx);
-
-    struct aws_socket_endpoint endpoint = {
-        .address = "52.201.162.231",
-        .port = 8883,
-    };
-
-    struct aws_socket_options options;
-    AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 3000;
-    options.type = AWS_SOCKET_STREAM;
-    options.domain = AWS_SOCKET_IPV4;
-
-    struct aws_client_bootstrap client_bootstrap;
-    ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, args.allocator, &el_group));
-    aws_client_bootstrap_set_tls_ctx(&client_bootstrap, tls_ctx);
+    struct aws_socket_options socket_options;
+    AWS_ZERO_STRUCT(socket_options);
+    socket_options.connect_timeout_ms = 3000;
+    socket_options.type = AWS_SOCKET_STREAM;
+    socket_options.domain = AWS_SOCKET_IPV4;
 
     struct aws_mqtt_client_connection_callbacks callbacks;
     AWS_ZERO_STRUCT(callbacks);
@@ -169,17 +150,19 @@ int main(int argc, char **argv) {
     callbacks.on_disconnect = &s_mqtt_on_disconnect;
     callbacks.user_data = &args;
 
-    struct aws_mqtt_client client = {
-        .client_bootstrap = &client_bootstrap,
-        .socket_options = &options,
-    };
+    struct aws_mqtt_client client;
+    aws_mqtt_client_init(&client, args.allocator, 1);
 
     args.connection = aws_mqtt_client_connection_new(
-        args.allocator,
         &client,
         callbacks,
-        &endpoint,
-        &tls_conn_opt,
+        aws_byte_cursor_from_string(s_hostname),
+        8883,
+        &socket_options,
+        &tls_ctx_opt);
+
+    aws_mqtt_client_connection_connect(
+        args.connection,
         aws_byte_cursor_from_string(s_client_id),
         true,
         0);
@@ -218,11 +201,9 @@ int main(int argc, char **argv) {
 
     args.connection = NULL;
 
-    aws_event_loop_group_clean_up(&el_group);
-
-    aws_tls_ctx_destroy(tls_ctx);
-
     aws_tls_clean_up_static_state();
+
+    aws_mqtt_client_clean_up(&client);
 
     ASSERT_UINT_EQUALS(paho_client_alloc_impl.freed, paho_client_alloc_impl.allocated);
 
