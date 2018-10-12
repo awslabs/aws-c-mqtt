@@ -145,6 +145,9 @@ int main(int argc, char **argv) {
     aws_io_load_error_strings();
     aws_mqtt_load_error_strings();
 
+    struct aws_event_loop_group elg;
+    aws_event_loop_group_default_init(&elg, args.allocator, 1);
+
     struct aws_tls_ctx_options tls_ctx_opt;
     aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "9f0631f03a-certificate.pem.crt", "9f0631f03a-private.pem.key");
     aws_tls_ctx_options_set_alpn_list(&tls_ctx_opt, "x-amzn-mqtt-ca");
@@ -164,7 +167,7 @@ int main(int argc, char **argv) {
     callbacks.user_data = &args;
 
     struct aws_mqtt_client client;
-    aws_mqtt_client_init(&client, args.allocator, 1);
+    aws_mqtt_client_init(&client, args.allocator, &elg);
 
     args.connection = aws_mqtt_client_connection_new(
         &client, callbacks, aws_byte_cursor_from_string(s_hostname), 8883, &socket_options, &tls_ctx_opt);
@@ -208,6 +211,8 @@ int main(int argc, char **argv) {
     aws_tls_clean_up_static_state();
 
     aws_mqtt_client_clean_up(&client);
+
+    aws_event_loop_group_clean_up(&elg);
 
     ASSERT_UINT_EQUALS(paho_client_alloc_impl.freed, paho_client_alloc_impl.allocated);
 

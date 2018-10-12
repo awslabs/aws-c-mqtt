@@ -51,7 +51,7 @@ enum aws_mqtt_connect_return_code {
 
 struct aws_mqtt_client {
     struct aws_allocator *allocator;
-    struct aws_event_loop_group event_loop_group;
+    struct aws_event_loop_group *event_loop_group;
     struct aws_hash_table hosts_to_bootstrap;
 
     /* DNS Resolver */
@@ -111,7 +111,7 @@ AWS_MQTT_API
 int aws_mqtt_client_init(
     struct aws_mqtt_client *client,
     struct aws_allocator *allocator,
-    uint16_t num_threads);
+    struct aws_event_loop_group *el_group);
 
 void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
 

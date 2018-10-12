@@ -42,25 +42,25 @@ static void s_mqtt_host_destroy(void *object) {
     aws_mem_release(host->allocator, host);
 }
 
-int aws_mqtt_client_init(struct aws_mqtt_client *client, struct aws_allocator *allocator, uint16_t num_threads) {
+int aws_mqtt_client_init(
+    struct aws_mqtt_client *client,
+    struct aws_allocator *allocator,
+    struct aws_event_loop_group *el_group) {
 
     AWS_ZERO_STRUCT(*client);
     client->allocator = allocator;
-    if (aws_event_loop_group_default_init(&client->event_loop_group, allocator, num_threads)) {
-
-        return AWS_OP_ERR;
-    }
+    client->event_loop_group = el_group;
 
     if (aws_hash_table_init(
             &client->hosts_to_bootstrap, allocator, 1, &aws_hash_string, &aws_string_eq, NULL, &s_mqtt_host_destroy)) {
 
-        aws_event_loop_group_clean_up(&client->event_loop_group);
+        aws_event_loop_group_clean_up(client->event_loop_group);
         return AWS_OP_ERR;
     }
 
     aws_host_resolver_init_default(&client->host_resolver, client->allocator, 10);
     client->host_resolver_config = (struct aws_host_resolution_config){
-        .max_ttl = 10,
+        .max_ttl = 1,
         .impl = aws_default_dns_resolve,
         .impl_data = NULL,
     };
@@ -70,7 +70,6 @@ int aws_mqtt_client_init(struct aws_mqtt_client *client, struct aws_allocator *a
 
 void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
 
-    aws_event_loop_group_clean_up(&client->event_loop_group);
     aws_hash_table_clean_up(&client->hosts_to_bootstrap);
     aws_host_resolver_clean_up(&client->host_resolver);
 }
@@ -247,7 +246,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
             struct aws_mqtt_host *host = aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_host));
             host->allocator = client->allocator;
             host->hostname = host_name_str;
-            aws_client_bootstrap_init(&host->bootstrap, client->allocator, &client->event_loop_group);
+            aws_client_bootstrap_init(&host->bootstrap, client->allocator, client->event_loop_group);
 
             if (tls_options) {
 
@@ -328,21 +327,21 @@ static void s_host_resolved_callback(
 
         if (connection->host->bootstrap.tls_ctx) {
             result = aws_client_bootstrap_new_tls_socket_channel(
-                    &connection->host->bootstrap,
-                    &endpoint,
-                    connection->socket_options,
-                    &connection->host->connection_options,
-                    &s_mqtt_client_init,
-                    &s_mqtt_client_shutdown,
-                    connection);
+                &connection->host->bootstrap,
+                &endpoint,
+                connection->socket_options,
+                &connection->host->connection_options,
+                &s_mqtt_client_init,
+                &s_mqtt_client_shutdown,
+                connection);
         } else {
             result = aws_client_bootstrap_new_socket_channel(
-                    &connection->host->bootstrap,
-                    &endpoint,
-                    connection->socket_options,
-                    &s_mqtt_client_init,
-                    &s_mqtt_client_shutdown,
-                    connection);
+                &connection->host->bootstrap,
+                &endpoint,
+                connection->socket_options,
+                &s_mqtt_client_init,
+                &s_mqtt_client_shutdown,
+                connection);
         }
         int connect_error = aws_last_error();
         if (!result) {
