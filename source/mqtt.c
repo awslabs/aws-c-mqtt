@@ -352,14 +352,16 @@ static void s_host_resolved_callback(
             break;
         }
 
-        /* Not successful connection attempt, report address as faulty */
-        result = aws_host_resolver_record_connection_failure(&connection->client->host_resolver, address);
-        assert(result == AWS_OP_SUCCESS);
-
         if (connect_error == AWS_IO_SOCKET_NO_ROUTE_TO_HOST) {
             /* Attempt next address set */
+            /* TODO: Report to host resolver that IPv6 isn't working */
             continue;
         }
+
+        /* Not successful connection attempt, report address as faulty */
+        result = aws_host_resolver_record_connection_failure(&connection->client->host_resolver, address);
+        (void)result;
+        assert(result == AWS_OP_SUCCESS);
 
         /* If not success or NO_ROUTE, report error and abandon ship */
         MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
