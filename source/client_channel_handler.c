@@ -22,6 +22,10 @@
 
 const uint64_t request_timeout_ns = 3000000000;
 
+/*******************************************************************************
+ * Packet State Machine
+ ******************************************************************************/
+
 typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor);
 
 static int s_packet_handler_default(
@@ -240,6 +244,10 @@ static packet_handler_fn *s_packet_handlers[] = {
     [AWS_MQTT_PACKET_DISCONNECT] = &s_packet_handler_default,
 };
 
+/*******************************************************************************
+ * Channel Handler
+ ******************************************************************************/
+
 /**
  * Handles incoming messages from the server.
  */
@@ -363,6 +371,10 @@ struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void) {
     return s_vtable;
 }
 
+/*******************************************************************************
+ * Helpers
+ ******************************************************************************/
+
 struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header) {
@@ -370,6 +382,10 @@ struct aws_io_message *mqtt_get_message_for_packet(
     return aws_channel_acquire_message_from_pool(
         connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 3 + header->remaining_length);
 }
+
+/*******************************************************************************
+ * Requests
+ ******************************************************************************/
 
 static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_task_status status) {
 
