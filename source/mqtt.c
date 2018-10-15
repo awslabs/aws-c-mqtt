@@ -591,10 +591,10 @@ handle_error:
 
 struct publish_task_arg {
     struct aws_mqtt_client_connection *connection;
-    const struct aws_byte_cursor *topic;
+    struct aws_byte_cursor topic;
     enum aws_mqtt_qos qos;
     bool retain;
-    const struct aws_byte_cursor *payload;
+    struct aws_byte_cursor payload;
 
     aws_mqtt_op_complete_fn *on_complete;
     void *userdata;
@@ -614,9 +614,9 @@ static bool s_publish_send(uint16_t message_id, bool is_first_attempt, void *use
         publish_arg->retain,
         publish_arg->qos,
         !is_first_attempt,
-        *publish_arg->topic,
+        publish_arg->topic,
         message_id,
-        *publish_arg->payload);
+        publish_arg->payload);
 
     struct aws_io_message *message = mqtt_get_message_for_packet(publish_arg->connection, &publish.fixed_header);
     if (!message) {
@@ -674,10 +674,10 @@ int aws_mqtt_client_connection_publish(
     }
 
     arg->connection = connection;
-    arg->topic = topic;
+    arg->topic = *topic;
     arg->qos = qos;
     arg->retain = retain;
-    arg->payload = payload;
+    arg->payload = *payload;
 
     arg->on_complete = on_complete;
     arg->userdata = userdata;
