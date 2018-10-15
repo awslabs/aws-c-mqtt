@@ -166,7 +166,7 @@ static bool s_uint16_t_eq(const void *a, const void *b) {
     return *(uint16_t *)a == *(uint16_t *)b;
 }
 
-static void s_outstanding_request_dtor(void *item) {
+static void s_outstanding_request_destroy(void *item) {
     struct aws_mqtt_outstanding_request *request = item;
 
     request->cancelled = true;
@@ -219,7 +219,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
             s_hash_uint16_t,
             s_uint16_t_eq,
             NULL,
-            &s_outstanding_request_dtor)) {
+            &s_outstanding_request_destroy)) {
 
         goto handle_error;
     }
