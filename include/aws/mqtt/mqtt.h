@@ -107,14 +107,45 @@ enum aws_mqtt_error {
 extern "C" {
 #endif
 
+/**
+ * Initializes an instance of aws_mqtt_client.
+ * It is expected that the user will manage the client's object lifetime, this function will not allocate one.
+ *
+ * \param[in] client    The client to initialize
+ * \param[in] allocator The allocator the client will use for all future allocations
+ * \param[in] elg       The event loop group to distribute new connections on
+ *
+ * \returns AWS_OP_SUCCESS if successfully initialized, otherwise AWS_OP_ERR and aws_last_error() will be set.
+ */
 AWS_MQTT_API
 int aws_mqtt_client_init(
     struct aws_mqtt_client *client,
     struct aws_allocator *allocator,
-    struct aws_event_loop_group *el_group);
+    struct aws_event_loop_group *elg);
 
+/**
+ * Cleans up and frees all memory allocated by the client.
+ *
+ * Note that calling this function before all connections are closed is undefined behavior.
+ *
+ * \param[in] client    The client to shut down
+ */
+AWS_MQTT_API
 void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
 
+/**
+ * Spawns a new connection object.
+ *
+ * \param[in] client            The client to spawn the connection from
+ * \param[in] callbacks         \see aws_mqtt_client_connection_callbacks
+ * \param[in] host_name         The server name to connect to
+ * \param[in] port              The port on the server to connect to
+ * \param[in] socket_options    The socket options to pass to the aws_client_bootstrap functions
+ * \param[in] tls_options       TLS settings to use when opening a connection.
+ *                                  Pass NULL to connect without TLS (NOT RECOMMENDED)
+ *
+ * \returns AWS_OP_SUCCESS on success, otherwise AWS_OP_ERR and aws_last_error() is set.
+ */
 AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client *client,
@@ -124,6 +155,18 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_socket_options *socket_options,
     struct aws_tls_ctx_options *tls_options);
 
+/**
+ * Opens the actual connection defined by aws_mqtt_client_connection_new.
+ * Once the connection is opened, on_connack will be called.
+ *
+ * \param[in] connection        The connection object
+ * \param[in] client_id         The clientid to place in the CONNECT packet
+ * \param[in] clean_session     True to discard all server session data and start fresh
+ * \param[in] keep_alive_time   The keep alive value to place in the CONNECT PACKET
+ *
+ * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
+ *              otherwise AWS_OP_ERR and aws_last_error() will be set.
+ */
 AWS_MQTT_API
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
@@ -131,9 +174,31 @@ int aws_mqtt_client_connection_connect(
     bool clean_session,
     uint16_t keep_alive_time);
 
+/**
+ * Closes the connection asyncronously, calls the on_disconnect callback, and destroys the connection object.
+ *
+ * \param[in] connection    The connection to close
+ *
+ * \returns AWS_OP_SUCCESS if the connection is open and is being shutdown,
+ *              otherwise AWS_OP_ERR and aws_last_error() is set.
+ */
 AWS_MQTT_API
 int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection);
 
+/**
+ * Subscrube to a topic filter. on_publish will be called when a PUBLISH matching topic_filter is recieved.
+ *
+ * \param[in] connection    The connection to subscribe on
+ * \param[in] topic_filter  The topic filter to subscribe on
+ * \param[in] qos           The maximum QoS of messages to recieve
+ * \param[in] on_publish    Called when a PUBLISH packet matching topic_filter is recieved
+ * \param[in] on_publish_ud Passed to on_publish
+ * \param[in] on_suback     Called when a SUBACK has been recieved from the server and the subscription is complete
+ * \param[in] on_suback_ud  Passed to on_suback
+ *
+ * \returns AWS_OP_SUCCESS if the connection is open and the SUBSCRIBE is sent or queued to send,
+ *              otherwise AWS_OP_ERR and aws_last_error() is set.
+ */
 AWS_MQTT_API
 int aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
@@ -144,13 +209,39 @@ int aws_mqtt_client_connection_subscribe(
     aws_mqtt_op_complete_fn *on_suback,
     void *on_suback_ud);
 
+/**
+ * Unsubscribe to a topic filter.
+ *
+ * \param[in] connection        The connection to unsubscribe on
+ * \param[in] topic_filter      The topic filter to unsubscribe on
+ * \param[in] on_unsuback       Called when a UNSUBACK has been recieved from the server and the subscription is removed
+ * \param[in] on_unsuback_ud    Passed to on_unsuback
+ *
+ * \returns AWS_OP_SUCCESS if the connection is open and the UNSUBSCRIBE is sent or queued to send,
+ *              otherwise AWS_OP_ERR and aws_last_error() is set.
+ */
 AWS_MQTT_API
 int aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_byte_cursor *filter,
+    const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_ud);
 
+/**
+ * Send a PUBLSIH packet over connection.
+ *
+ * \param[in] connection    The connection to publish on
+ * \param[in] topic         The topic to publish on
+ * \param[in] qos           The requested QoS of the packet
+ * \param[in] retain        True to have the server save the packet, and send to all new subscriptions matching topic
+ * \param[in] payload       The data to send as the payload of the publish
+ * \param[in] on_complete   For QoS 0, called as soon as the packet is sent
+ *                          For QoS 1, called when PUBACK is recieved
+ *                          For QoS 2, called when PUBCOMP is recieved
+ *
+ * \returns AWS_OP_SUCCESS if the connection is open and the PUBLISH is sent or queued to send,
+ *              otherwise AWS_OP_ERR and aws_last_error() is set.
+ */
 AWS_MQTT_API
 int aws_mqtt_client_connection_publish(
     struct aws_mqtt_client_connection *connection,
@@ -161,6 +252,15 @@ int aws_mqtt_client_connection_publish(
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata);
 
+/**
+ * Sends a PINGREQ packet to the server to keep the connection alive.
+ * If a PINGRESP is not recieved within a reasonable period of time, the connection will be closed.
+ *
+ * \params[in] connection   The connection to ping on
+ *
+ * \returns AWS_OP_SUCCESS if the connection is open and the PINGREQ is sent or queued to send,
+ *              otherwise AWS_OP_ERR and aws_last_error() is set.
+ */
 AWS_MQTT_API
 int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
 

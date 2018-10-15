@@ -45,11 +45,11 @@ static void s_mqtt_host_destroy(void *object) {
 int aws_mqtt_client_init(
     struct aws_mqtt_client *client,
     struct aws_allocator *allocator,
-    struct aws_event_loop_group *el_group) {
+    struct aws_event_loop_group *elg) {
 
     AWS_ZERO_STRUCT(*client);
     client->allocator = allocator;
-    client->event_loop_group = el_group;
+    client->event_loop_group = elg;
 
     if (aws_hash_table_init(
             &client->hosts_to_bootstrap, allocator, 1, &aws_hash_string, &aws_string_eq, NULL, &s_mqtt_host_destroy)) {
@@ -550,13 +550,14 @@ handle_error:
 
 int aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_byte_cursor *filter,
+    const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_ud) {
 
     assert(connection);
 
-    const struct aws_string *filter_str = aws_string_new_from_array(connection->allocator, filter->ptr, filter->len);
+    const struct aws_string *filter_str =
+        aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
     if (!filter_str) {
         goto handle_error;
     }
