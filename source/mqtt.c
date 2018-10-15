@@ -254,7 +254,10 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
                 aws_tls_connection_options_set_server_name(&host->connection_options, (const char *)host_name->ptr);
 
                 struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(client->allocator, tls_options);
-                assert(tls_ctx);
+                if (!tls_ctx) {
+                    return NULL;
+                }
+
                 aws_client_bootstrap_set_tls_ctx(&host->bootstrap, tls_ctx);
             }
 
