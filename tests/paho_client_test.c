@@ -61,8 +61,8 @@ struct connection_args {
 
 static void s_on_packet_recieved(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor topic,
-    struct aws_byte_cursor payload,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
     void *user_data) {
 
     (void)connection;
@@ -74,7 +74,7 @@ static void s_on_packet_recieved(
         .len = PAYLOAD_LEN,
     };
     (void)expected_payload;
-    assert(aws_byte_cursor_eq(&payload, &expected_payload));
+    assert(aws_byte_cursor_eq(payload, &expected_payload));
 
     struct connection_args *args = user_data;
     args->retained_packet_recieved = true;
@@ -103,12 +103,14 @@ static void s_mqtt_on_connack_1(
 
     const struct aws_string *payload = aws_string_new_from_array(args->allocator, s_payload, PAYLOAD_LEN);
 
+    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
+    struct aws_byte_cursor payload_cur = aws_byte_cursor_from_string(payload);
     aws_mqtt_client_connection_publish(
         connection,
-        aws_byte_cursor_from_string(s_subscribe_topic),
+        &subscribe_topic_cur,
         AWS_MQTT_QOS_EXACTLY_ONCE,
         true,
-        aws_byte_cursor_from_string(payload),
+        &payload_cur,
         &s_mqtt_publish_complete,
         (void *)payload);
 
@@ -129,9 +131,10 @@ static void s_mqtt_on_connack_2(
 
     struct connection_args *args = user_data;
 
+    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
     aws_mqtt_client_connection_subscribe(
         connection,
-        aws_byte_cursor_from_string(s_subscribe_topic),
+        &subscribe_topic_cur,
         AWS_MQTT_QOS_EXACTLY_ONCE,
         &s_on_packet_recieved,
         user_data,
@@ -185,11 +188,12 @@ int main(int argc, char **argv) {
     struct aws_mqtt_client client;
     ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, &el_group));
 
+    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
     args.connection = aws_mqtt_client_connection_new(
-        &client, callbacks, aws_byte_cursor_from_string(s_hostname), 1883, &options, NULL);
+        &client, callbacks, &host_name_cur, 1883, &options, NULL);
     ASSERT_NOT_NULL(args.connection);
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, s_client_id_1, true, 0));
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &s_client_id_1, true, 0));
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
@@ -204,7 +208,7 @@ int main(int argc, char **argv) {
 
     callbacks.on_connack = &s_mqtt_on_connack_2;
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, s_client_id_2, true, 0));
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &s_client_id_2, true, 0));
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));

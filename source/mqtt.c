@@ -175,7 +175,7 @@ static void s_outstanding_request_dtor(void *item) {
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client *client,
     struct aws_mqtt_client_connection_callbacks callbacks,
-    struct aws_byte_cursor host_name,
+    const struct aws_byte_cursor *host_name,
     uint16_t port,
     struct aws_socket_options *socket_options,
     struct aws_tls_ctx_options *tls_options) {
@@ -236,7 +236,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
 
     /* Initialize the host */
     {
-        struct aws_string *host_name_str = aws_string_new_from_array(client->allocator, host_name.ptr, host_name.len);
+        struct aws_string *host_name_str = aws_string_new_from_array(client->allocator, host_name->ptr, host_name->len);
         struct aws_hash_element *elem = NULL;
         aws_hash_table_create(&client->hosts_to_bootstrap, host_name_str, &elem, &host_was_created);
 
@@ -251,7 +251,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
             if (tls_options) {
 
                 aws_tls_connection_options_init_from_ctx_options(&host->connection_options, tls_options);
-                aws_tls_connection_options_set_server_name(&host->connection_options, (const char *)host_name.ptr);
+                aws_tls_connection_options_set_server_name(&host->connection_options, (const char *)host_name->ptr);
 
                 struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(client->allocator, tls_options);
                 assert(tls_ctx);
@@ -366,7 +366,7 @@ static void s_host_resolved_callback(
 
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor client_id,
+    const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time) {
 
@@ -374,7 +374,7 @@ int aws_mqtt_client_connection_connect(
     connection->clean_session = clean_session;
     connection->keep_alive_time = keep_alive_time;
 
-    struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id.ptr, client_id.len);
+    struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id->ptr, client_id->len);
     if (aws_byte_buf_init_copy(connection->allocator, &connection->client_id, &client_id_buf)) {
         return AWS_OP_ERR;
     }
@@ -448,7 +448,7 @@ handle_error:
 
 int aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor topic_filter,
+    const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_recieved_fn *on_publish,
     void *on_publish_ud,
@@ -470,7 +470,7 @@ int aws_mqtt_client_connection_subscribe(
     subscription_impl->user_data = on_publish_ud;
 
     subscription_impl->qos = qos;
-    subscription_impl->filter = aws_string_new_from_array(connection->allocator, topic_filter.ptr, topic_filter.len);
+    subscription_impl->filter = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
     if (!subscription_impl->filter) {
         goto handle_error;
     }
@@ -586,10 +586,10 @@ handle_error:
 
 struct publish_task_arg {
     struct aws_mqtt_client_connection *connection;
-    struct aws_byte_cursor topic;
+    const struct aws_byte_cursor *topic;
     enum aws_mqtt_qos qos;
     bool retain;
-    struct aws_byte_cursor payload;
+    const struct aws_byte_cursor *payload;
 
     aws_mqtt_op_complete_fn *on_complete;
     void *userdata;
@@ -609,9 +609,9 @@ static bool s_publish_send(uint16_t message_id, bool is_first_attempt, void *use
         publish_arg->retain,
         publish_arg->qos,
         !is_first_attempt,
-        publish_arg->topic,
+        *publish_arg->topic,
         message_id,
-        publish_arg->payload);
+        *publish_arg->payload);
 
     struct aws_io_message *message = mqtt_get_message_for_packet(publish_arg->connection, &publish.fixed_header);
     if (!message) {
@@ -654,10 +654,10 @@ static void s_publish_complete(struct aws_mqtt_client_connection *connection, vo
 
 int aws_mqtt_client_connection_publish(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor topic,
+    const struct aws_byte_cursor *topic,
     enum aws_mqtt_qos qos,
     bool retain,
-    struct aws_byte_cursor payload,
+    const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata) {
 

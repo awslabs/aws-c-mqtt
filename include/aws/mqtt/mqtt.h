@@ -67,8 +67,8 @@ typedef void(aws_mqtt_op_complete_fn)(struct aws_mqtt_client_connection *connect
 /** Type of function called when a publish recieved matches a subscription */
 typedef void(aws_mqtt_publish_recieved_fn)(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor topic,
-    struct aws_byte_cursor payload,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
     void *user_data);
 
 struct aws_mqtt_client_connection_callbacks {
@@ -150,7 +150,7 @@ AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client *client,
     struct aws_mqtt_client_connection_callbacks callbacks,
-    struct aws_byte_cursor host_name,
+    const struct aws_byte_cursor *host_name,
     uint16_t port,
     struct aws_socket_options *socket_options,
     struct aws_tls_ctx_options *tls_options);
@@ -170,7 +170,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
 AWS_MQTT_API
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor client_id,
+    const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time);
 
@@ -202,7 +202,7 @@ int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *con
 AWS_MQTT_API
 int aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor topic_filter,
+    const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_recieved_fn *on_publish,
     void *on_publish_ud,
@@ -245,10 +245,10 @@ int aws_mqtt_client_connection_unsubscribe(
 AWS_MQTT_API
 int aws_mqtt_client_connection_publish(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor topic,
+    const struct aws_byte_cursor *topic,
     enum aws_mqtt_qos qos,
     bool retain,
-    struct aws_byte_cursor payload,
+    const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata);
 
