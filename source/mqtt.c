@@ -28,15 +28,66 @@
 
 #include <assert.h>
 
-static void s_mqtt_subscription_impl_destroy(void *value) {
-    struct aws_mqtt_subscription_impl *impl = value;
+/*******************************************************************************
+ * Client Init
+ ******************************************************************************/
 
-    aws_string_destroy((void *)impl->filter);
-    aws_mem_release(impl->connection->allocator, impl);
+static void s_mqtt_host_destroy(void *object) {
+    struct aws_mqtt_host *host = object;
+
+    aws_string_destroy(host->hostname);
+
+    if (host->bootstrap.tls_ctx) {
+        aws_tls_ctx_destroy(host->bootstrap.tls_ctx);
+    }
+
+    aws_client_bootstrap_clean_up(&host->bootstrap);
+
+    aws_mem_release(host->allocator, host);
 }
 
+int aws_mqtt_client_init(
+    struct aws_mqtt_client *client,
+    struct aws_allocator *allocator,
+    struct aws_event_loop_group *elg) {
+
+    AWS_ZERO_STRUCT(*client);
+    client->allocator = allocator;
+    client->event_loop_group = elg;
+
+    if (aws_hash_table_init(
+            &client->hosts_to_bootstrap, allocator, 1, &aws_hash_string, &aws_string_eq, NULL, &s_mqtt_host_destroy)) {
+
+        aws_event_loop_group_clean_up(client->event_loop_group);
+        return AWS_OP_ERR;
+    }
+
+    aws_host_resolver_init_default(&client->host_resolver, client->allocator, 10);
+    client->host_resolver_config = (struct aws_host_resolution_config){
+        .max_ttl = 1,
+        .impl = aws_default_dns_resolve,
+        .impl_data = NULL,
+    };
+
+    return AWS_OP_SUCCESS;
+}
+
+/*******************************************************************************
+ * Client Clean Up
+ ******************************************************************************/
+
+void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
+
+    aws_hash_table_clean_up(&client->hosts_to_bootstrap);
+    aws_host_resolver_clean_up(&client->host_resolver);
+}
+
+/*******************************************************************************
+ * Connection New
+ ******************************************************************************/
+
 /**
- * Channel has be initialized callback. Sets up channel handler and sends out CONNECT packet.
+ * Channel has been initialized callback. Sets up channel handler and sends out CONNECT packet.
  * The on_connack callback is called with the CONNACK packet is received from the server.
  */
 static int s_mqtt_client_init(
@@ -47,11 +98,12 @@ static int s_mqtt_client_init(
 
     (void)bootstrap;
 
+    struct aws_mqtt_client_connection *connection = user_data;
+
     if (error_code != AWS_OP_SUCCESS) {
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, error_code);
         return AWS_OP_ERR;
     }
-
-    struct aws_mqtt_client_connection *connection = user_data;
 
     /* Create the slot and handler */
     connection->slot = aws_channel_slot_new(channel);
@@ -120,51 +172,50 @@ static bool s_uint16_t_eq(const void *a, const void *b) {
     return *(uint16_t *)a == *(uint16_t *)b;
 }
 
+static void s_outstanding_request_destroy(void *item) {
+    struct aws_mqtt_outstanding_request *request = item;
+
+    request->cancelled = true;
+}
+
+static void s_mqtt_subscription_impl_destroy(void *value) {
+    struct aws_mqtt_subscription_impl *impl = value;
+
+    aws_string_destroy((void *)impl->filter);
+    aws_mem_release(impl->connection->allocator, impl);
+}
+
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
-    struct aws_allocator *allocator,
     struct aws_mqtt_client *client,
     struct aws_mqtt_client_connection_callbacks callbacks,
-    struct aws_socket_endpoint *endpoint,
-    struct aws_tls_connection_options *tls_options,
-    struct aws_byte_cursor client_id,
-    bool clean_session,
-    uint16_t keep_alive_time) {
+    const struct aws_byte_cursor *host_name,
+    uint16_t port,
+    struct aws_socket_options *socket_options,
+    struct aws_tls_ctx_options *tls_options) {
 
-    assert(allocator);
     assert(client);
-    assert(!tls_options || client->client_bootstrap->tls_ctx);
+
+    int host_was_created = 0;
 
     struct aws_mqtt_client_connection *connection =
-        aws_mem_acquire(allocator, sizeof(struct aws_mqtt_client_connection));
+        aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_client_connection));
 
     if (!connection) {
-
         return NULL;
     }
 
     /* Initialize the client */
     AWS_ZERO_STRUCT(*connection);
-    connection->allocator = allocator;
+    connection->allocator = client->allocator;
+    connection->client = client;
+    connection->port = port;
+    connection->socket_options = socket_options;
     connection->callbacks = callbacks;
-    connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
-    connection->clean_session = clean_session;
-    connection->keep_alive_time = keep_alive_time;
-
-    struct aws_byte_buf client_id_buf = {
-        .buffer = client_id.ptr,
-        .len = client_id.len,
-        .capacity = client_id.len,
-    };
-    aws_byte_buf_init_copy(allocator, &connection->client_id, &client_id_buf);
-
-    /* Initialize the handler */
-    connection->handler.alloc = allocator;
-    connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
-    connection->handler.impl = connection;
+    connection->state = AWS_MQTT_CLIENT_STATE_INIT;
 
     if (aws_hash_table_init(
             &connection->subscriptions,
-            allocator,
+            connection->allocator,
             0,
             &aws_hash_string,
             &aws_string_eq,
@@ -174,44 +225,62 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
         goto handle_error;
     }
 
-    if (aws_memory_pool_init(&connection->requests_pool, allocator, 32, sizeof(struct aws_mqtt_outstanding_request))) {
-
-        goto handle_error;
-    }
     if (aws_hash_table_init(
             &connection->outstanding_requests,
-            allocator,
+            connection->allocator,
             sizeof(struct aws_mqtt_outstanding_request *),
             s_hash_uint16_t,
             s_uint16_t_eq,
             NULL,
-            NULL)) {
+            &s_outstanding_request_destroy)) {
+
+        goto handle_error;
+    }
+    if (aws_memory_pool_init(
+            &connection->requests_pool, connection->allocator, 32, sizeof(struct aws_mqtt_outstanding_request))) {
 
         goto handle_error;
     }
 
-    if (tls_options) {
-        if (aws_client_bootstrap_new_tls_socket_channel(
-                client->client_bootstrap,
-                endpoint,
-                client->socket_options,
-                tls_options,
-                &s_mqtt_client_init,
-                &s_mqtt_client_shutdown,
-                connection)) {
+    /* Initialize the handler */
+    connection->handler.alloc = connection->allocator;
+    connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
+    connection->handler.impl = connection;
 
-            goto handle_error;
-        }
-    } else {
-        if (aws_client_bootstrap_new_socket_channel(
-                client->client_bootstrap,
-                endpoint,
-                client->socket_options,
-                &s_mqtt_client_init,
-                &s_mqtt_client_shutdown,
-                connection)) {
+    /* Initialize the host */
+    {
+        struct aws_string *host_name_str = aws_string_new_from_array(client->allocator, host_name->ptr, host_name->len);
+        struct aws_hash_element *elem = NULL;
+        aws_hash_table_create(&client->hosts_to_bootstrap, host_name_str, &elem, &host_was_created);
 
-            goto handle_error;
+        /* Initialize the bootstrap if it's new */
+        if (host_was_created) {
+
+            struct aws_mqtt_host *host = aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_host));
+            host->allocator = client->allocator;
+            host->hostname = host_name_str;
+            aws_client_bootstrap_init(&host->bootstrap, client->allocator, client->event_loop_group);
+
+            if (tls_options) {
+
+                aws_tls_connection_options_init_from_ctx_options(&host->connection_options, tls_options);
+                aws_tls_connection_options_set_server_name(&host->connection_options, (const char *)host_name->ptr);
+
+                struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(client->allocator, tls_options);
+                if (!tls_ctx) {
+                    return NULL;
+                }
+
+                aws_client_bootstrap_set_tls_ctx(&host->bootstrap, tls_ctx);
+            }
+
+            elem->value = host;
+            connection->host = host;
+
+        } else {
+            /* Don't need this string, there already was one */
+            connection->host = elem->value;
+            aws_string_destroy(host_name_str);
         }
     }
 
@@ -219,23 +288,132 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
 
 handle_error:
 
-    MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+    if (host_was_created) {
+        if (connection->host->bootstrap.tls_ctx) {
+            aws_tls_ctx_destroy(connection->host->bootstrap.tls_ctx);
+        }
+    }
 
     if (connection->subscriptions.p_impl) {
         aws_hash_table_clean_up(&connection->subscriptions);
-    }
-
-    if (connection->requests_pool.data_ptr) {
-        aws_memory_pool_clean_up(&connection->requests_pool);
     }
 
     if (connection->outstanding_requests.p_impl) {
         aws_hash_table_clean_up(&connection->outstanding_requests);
     }
 
-    aws_mem_release(allocator, connection);
+    if (connection->requests_pool.data_ptr) {
+        aws_memory_pool_clean_up(&connection->requests_pool);
+    }
+
+    if (connection) {
+        aws_mem_release(client->allocator, connection);
+    }
+
     return NULL;
 }
+
+/*******************************************************************************
+ * Connect
+ ******************************************************************************/
+
+static void s_host_resolved_callback(
+    struct aws_host_resolver *resolver,
+    const struct aws_string *host_name,
+    int err_code,
+    const struct aws_array_list *host_addresses,
+    void *user_data) {
+
+    (void)resolver;
+    (void)host_name;
+
+    struct aws_mqtt_client_connection *connection = user_data;
+    if (err_code != AWS_OP_SUCCESS) {
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, err_code);
+        return;
+    }
+
+    struct aws_socket_endpoint endpoint;
+    endpoint.port = connection->port;
+
+    const size_t num_addresses = aws_array_list_length(host_addresses);
+    for (size_t i = 0; i < num_addresses; ++i) {
+
+        struct aws_host_address *address = NULL;
+        int result = aws_array_list_get_at(host_addresses, (void *)&address, i);
+        assert(result == AWS_OP_SUCCESS);
+
+        aws_host_address_to_endpoint_options(address, &endpoint, connection->socket_options);
+
+        if (connection->host->bootstrap.tls_ctx) {
+            result = aws_client_bootstrap_new_tls_socket_channel(
+                &connection->host->bootstrap,
+                &endpoint,
+                connection->socket_options,
+                &connection->host->connection_options,
+                &s_mqtt_client_init,
+                &s_mqtt_client_shutdown,
+                connection);
+        } else {
+            result = aws_client_bootstrap_new_socket_channel(
+                &connection->host->bootstrap,
+                &endpoint,
+                connection->socket_options,
+                &s_mqtt_client_init,
+                &s_mqtt_client_shutdown,
+                connection);
+        }
+        int connect_error = aws_last_error();
+        if (!result) {
+            /* Connection attempt successful */
+            break;
+        }
+
+        if (connect_error == AWS_IO_SOCKET_NO_ROUTE_TO_HOST) {
+            /* Attempt next address set */
+            /* TODO: Report to host resolver that IPv6 isn't working */
+            continue;
+        }
+
+        /* Not successful connection attempt, report address as faulty */
+        result = aws_host_resolver_record_connection_failure(&connection->client->host_resolver, address);
+        (void)result;
+        assert(result == AWS_OP_SUCCESS);
+
+        /* If not success or NO_ROUTE, report error and abandon ship */
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        break;
+    }
+}
+
+int aws_mqtt_client_connection_connect(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *client_id,
+    bool clean_session,
+    uint16_t keep_alive_time) {
+
+    connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
+    connection->clean_session = clean_session;
+    connection->keep_alive_time = keep_alive_time;
+
+    struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id->ptr, client_id->len);
+    if (aws_byte_buf_init_copy(connection->allocator, &connection->client_id, &client_id_buf)) {
+        return AWS_OP_ERR;
+    }
+
+    aws_host_resolver_resolve_host(
+        &connection->client->host_resolver,
+        connection->host->hostname,
+        s_host_resolved_callback,
+        &connection->client->host_resolver_config,
+        connection);
+
+    return AWS_OP_SUCCESS;
+}
+
+/*******************************************************************************
+ * Disconnect
+ ******************************************************************************/
 
 int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection) {
 
@@ -245,6 +423,10 @@ int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *con
 
     return AWS_OP_SUCCESS;
 }
+
+/*******************************************************************************
+ * Subscribe
+ ******************************************************************************/
 
 static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
     (void)is_first_attempt;
@@ -258,7 +440,7 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
         goto handle_error;
     }
     if (aws_mqtt_packet_subscribe_add_topic(
-            &subscribe, subscription_impl->subscription.topic_filter, subscription_impl->subscription.qos)) {
+            &subscribe, aws_byte_cursor_from_string(subscription_impl->filter), subscription_impl->qos)) {
         goto handle_error;
     }
 
@@ -294,9 +476,10 @@ handle_error:
     return true;
 }
 
-int aws_mqtt_client_subscribe(
+int aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_mqtt_subscription *subscription,
+    const struct aws_byte_cursor *topic_filter,
+    enum aws_mqtt_qos qos,
     aws_mqtt_publish_recieved_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_op_complete_fn *on_suback,
@@ -316,14 +499,11 @@ int aws_mqtt_client_subscribe(
     subscription_impl->callback = on_publish;
     subscription_impl->user_data = on_publish_ud;
 
-    subscription_impl->filter = aws_string_new_from_array(
-        connection->allocator, subscription->topic_filter.ptr, subscription->topic_filter.len);
+    subscription_impl->qos = qos;
+    subscription_impl->filter = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
     if (!subscription_impl->filter) {
         goto handle_error;
     }
-
-    subscription_impl->subscription.qos = subscription->qos;
-    subscription_impl->subscription.topic_filter = aws_byte_cursor_from_string(subscription_impl->filter);
 
     if (aws_hash_table_put(&connection->subscriptions, subscription_impl->filter, subscription_impl, &was_created)) {
         goto handle_error;
@@ -347,6 +527,10 @@ handle_error:
     return AWS_OP_ERR;
 }
 
+/*******************************************************************************
+ * Unsubscribe
+ ******************************************************************************/
+
 static bool s_unsubscribe_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
     (void)is_first_attempt;
 
@@ -358,7 +542,7 @@ static bool s_unsubscribe_send(uint16_t message_id, bool is_first_attempt, void 
     if (aws_mqtt_packet_unsubscribe_init(&unsubscribe, subscription_impl->connection->allocator, message_id)) {
         goto handle_error;
     }
-    if (aws_mqtt_packet_unsubscribe_add_topic(&unsubscribe, subscription_impl->subscription.topic_filter)) {
+    if (aws_mqtt_packet_unsubscribe_add_topic(&unsubscribe, aws_byte_cursor_from_string(subscription_impl->filter))) {
         goto handle_error;
     }
 
@@ -398,15 +582,16 @@ handle_error:
     return true;
 }
 
-int aws_mqtt_client_unsubscribe(
+int aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_byte_cursor *filter,
+    const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_ud) {
 
     assert(connection);
 
-    const struct aws_string *filter_str = aws_string_new_from_array(connection->allocator, filter->ptr, filter->len);
+    const struct aws_string *filter_str =
+        aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
     if (!filter_str) {
         goto handle_error;
     }
@@ -432,6 +617,10 @@ handle_error:
 
     return AWS_OP_ERR;
 }
+
+/*******************************************************************************
+ * Publish
+ ******************************************************************************/
 
 struct publish_task_arg {
     struct aws_mqtt_client_connection *connection;
@@ -501,12 +690,12 @@ static void s_publish_complete(struct aws_mqtt_client_connection *connection, vo
     aws_mem_release(connection->allocator, publish_arg);
 }
 
-int aws_mqtt_client_publish(
+int aws_mqtt_client_connection_publish(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor topic,
+    const struct aws_byte_cursor *topic,
     enum aws_mqtt_qos qos,
     bool retain,
-    struct aws_byte_cursor payload,
+    const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata) {
 
@@ -518,10 +707,10 @@ int aws_mqtt_client_publish(
     }
 
     arg->connection = connection;
-    arg->topic = topic;
+    arg->topic = *topic;
     arg->qos = qos;
     arg->retain = retain;
-    arg->payload = payload;
+    arg->payload = *payload;
 
     arg->on_complete = on_complete;
     arg->userdata = userdata;
@@ -530,6 +719,10 @@ int aws_mqtt_client_publish(
 
     return AWS_OP_SUCCESS;
 }
+
+/*******************************************************************************
+ * Ping
+ ******************************************************************************/
 
 static bool s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
     (void)message_id;
@@ -585,12 +778,16 @@ static bool s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *use
     return true;
 }
 
-int aws_mqtt_client_ping(struct aws_mqtt_client_connection *connection) {
+int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection) {
 
     mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
 
     return AWS_OP_SUCCESS;
 }
+
+/*******************************************************************************
+ * Load Error String
+ ******************************************************************************/
 
 void aws_mqtt_load_error_strings() {
 

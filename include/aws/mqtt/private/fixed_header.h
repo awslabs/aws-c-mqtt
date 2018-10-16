@@ -20,6 +20,26 @@
 
 #include <aws/mqtt/mqtt.h>
 
+/* Represents the types of the MQTT control packets [MQTT-2.2.1]. */
+enum aws_mqtt_packet_type {
+    /* reserved = 0, */
+    AWS_MQTT_PACKET_CONNECT = 1,
+    AWS_MQTT_PACKET_CONNACK,
+    AWS_MQTT_PACKET_PUBLISH,
+    AWS_MQTT_PACKET_PUBACK,
+    AWS_MQTT_PACKET_PUBREC,
+    AWS_MQTT_PACKET_PUBREL,
+    AWS_MQTT_PACKET_PUBCOMP,
+    AWS_MQTT_PACKET_SUBSCRIBE,
+    AWS_MQTT_PACKET_SUBACK,
+    AWS_MQTT_PACKET_UNSUBSCRIBE,
+    AWS_MQTT_PACKET_UNSUBACK,
+    AWS_MQTT_PACKET_PINGREQ,
+    AWS_MQTT_PACKET_PINGRESP,
+    AWS_MQTT_PACKET_DISCONNECT,
+    /* reserved = 15, */
+};
+
 /**
  * Represents the fixed header [MQTT-2.2].
  */

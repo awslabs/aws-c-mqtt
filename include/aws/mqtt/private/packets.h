@@ -30,6 +30,14 @@
  *     3. Payload, preset in some packets
  */
 
+/* Struct used internally for representing subscriptions */
+struct aws_mqtt_subscription {
+    /* Topic filter to subscribe to [MQTT-4.7]. */
+    struct aws_byte_cursor topic_filter;
+    /* Maximum QoS of messages to receive [MQTT-4.3]. */
+    enum aws_mqtt_qos qos;
+};
+
 /**
  * Used to represent the following MQTT packets:
  * - PUBACK

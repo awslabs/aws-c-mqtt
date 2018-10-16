@@ -32,8 +32,7 @@ static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub
 
     struct aws_mqtt_subscription_impl subscription;
     subscription.filter = aws_string_new_from_c_str(allocator, sub_filter);
-    subscription.subscription.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
-    subscription.subscription.topic_filter = aws_byte_cursor_from_string(subscription.filter);
+    subscription.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
 
     bool result = aws_mqtt_subscription_matches_publish(allocator, &subscription, &publish);
 

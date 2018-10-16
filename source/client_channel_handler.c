@@ -22,6 +22,10 @@
 
 const uint64_t request_timeout_ns = 3000000000;
 
+/*******************************************************************************
+ * Packet State Machine
+ ******************************************************************************/
+
 typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor);
 
 static int s_packet_handler_default(
@@ -88,7 +92,7 @@ static int s_packet_handler_publish(
 
     if (sub) {
 
-        sub->callback(connection, publish.topic_name, publish.payload, sub->user_data);
+        sub->callback(connection, &publish.topic_name, &publish.payload, sub->user_data);
     }
 
     struct aws_mqtt_packet_ack puback;
@@ -240,6 +244,10 @@ static packet_handler_fn *s_packet_handlers[] = {
     [AWS_MQTT_PACKET_DISCONNECT] = &s_packet_handler_default,
 };
 
+/*******************************************************************************
+ * Channel Handler
+ ******************************************************************************/
+
 /**
  * Handles incoming messages from the server.
  */
@@ -342,8 +350,8 @@ static void s_destroy(struct aws_channel_handler *handler) {
     aws_hash_table_clean_up(&connection->subscriptions);
 
     /* Cleanup outstanding requests */
-    aws_memory_pool_clean_up(&connection->requests_pool);
     aws_hash_table_clean_up(&connection->outstanding_requests);
+    aws_memory_pool_clean_up(&connection->requests_pool);
 
     /* Frees all allocated memory */
     aws_mem_release(connection->allocator, connection);
@@ -363,6 +371,10 @@ struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void) {
     return s_vtable;
 }
 
+/*******************************************************************************
+ * Helpers
+ ******************************************************************************/
+
 struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header) {
@@ -371,10 +383,21 @@ struct aws_io_message *mqtt_get_message_for_packet(
         connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 3 + header->remaining_length);
 }
 
-static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_mqtt_outstanding_request *request = arg;
+/*******************************************************************************
+ * Requests
+ ******************************************************************************/
 
+static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+
+    struct aws_mqtt_outstanding_request *request = arg;
+
+    /* If the task was cancelled, assume all containers are gone and just free */
+    if (request->cancelled) {
+        aws_mem_release(request->allocator, request);
+        return;
+    }
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
         if (!request->completed) {
             /* If not complete, attempt retry */
             if (request->send_request(request->message_id, !request->initiated, request->send_request_ud)) {
@@ -438,6 +461,7 @@ uint16_t mqtt_create_request(
     assert(next_id); /* Somehow have UINT16_MAX outstanding requests, definitely a bug */
     next_request->message_id = next_id;
 
+    next_request->allocator = connection->allocator;
     next_request->connection = connection;
     next_request->initiated = false;
     next_request->completed = false;

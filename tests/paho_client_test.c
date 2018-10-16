@@ -44,6 +44,7 @@ static struct aws_byte_cursor s_client_id_2 = {
     .len = 11,
 };
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
+AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "localhost");
 
 static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
 enum { PAYLOAD_LEN = sizeof(s_payload) };
@@ -60,8 +61,8 @@ struct connection_args {
 
 static void s_on_packet_recieved(
     struct aws_mqtt_client_connection *connection,
-    struct aws_byte_cursor topic,
-    struct aws_byte_cursor payload,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
     void *user_data) {
 
     (void)connection;
@@ -73,7 +74,7 @@ static void s_on_packet_recieved(
         .len = PAYLOAD_LEN,
     };
     (void)expected_payload;
-    assert(aws_byte_cursor_eq(&payload, &expected_payload));
+    assert(aws_byte_cursor_eq(payload, &expected_payload));
 
     struct connection_args *args = user_data;
     args->retained_packet_recieved = true;
@@ -102,12 +103,14 @@ static void s_mqtt_on_connack_1(
 
     const struct aws_string *payload = aws_string_new_from_array(args->allocator, s_payload, PAYLOAD_LEN);
 
-    aws_mqtt_client_publish(
+    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
+    struct aws_byte_cursor payload_cur = aws_byte_cursor_from_string(payload);
+    aws_mqtt_client_connection_publish(
         connection,
-        aws_byte_cursor_from_string(s_subscribe_topic),
+        &subscribe_topic_cur,
         AWS_MQTT_QOS_EXACTLY_ONCE,
         true,
-        aws_byte_cursor_from_string(payload),
+        &payload_cur,
         &s_mqtt_publish_complete,
         (void *)payload);
 
@@ -128,10 +131,15 @@ static void s_mqtt_on_connack_2(
 
     struct connection_args *args = user_data;
 
-    struct aws_mqtt_subscription sub;
-    sub.topic_filter = aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    sub.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
-    aws_mqtt_client_subscribe(connection, &sub, &s_on_packet_recieved, user_data, NULL, NULL);
+    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &subscribe_topic_cur,
+        AWS_MQTT_QOS_EXACTLY_ONCE,
+        &s_on_packet_recieved,
+        user_data,
+        NULL,
+        NULL);
 
     aws_condition_variable_notify_one(args->condition_variable);
 }
@@ -163,12 +171,7 @@ int main(int argc, char **argv) {
     args.condition_variable = &condition_variable;
 
     struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 0));
-
-    struct aws_socket_endpoint endpoint = {
-        .address = "127.0.0.1",
-        .port = 1883,
-    };
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 1));
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -176,22 +179,21 @@ int main(int argc, char **argv) {
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_client_bootstrap client_bootstrap;
-    ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, args.allocator, &el_group));
-
     struct aws_mqtt_client_connection_callbacks callbacks;
     AWS_ZERO_STRUCT(callbacks);
     callbacks.on_connack = &s_mqtt_on_connack_1;
     callbacks.on_disconnect = &s_mqtt_on_disconnect;
     callbacks.user_data = &args;
 
-    struct aws_mqtt_client client = {
-        .client_bootstrap = &client_bootstrap,
-        .socket_options = &options,
-    };
+    struct aws_mqtt_client client;
+    ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, &el_group));
 
-    args.connection =
-        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id_1, true, 0);
+    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
+    args.connection = aws_mqtt_client_connection_new(
+        &client, callbacks, &host_name_cur, 1883, &options, NULL);
+    ASSERT_NOT_NULL(args.connection);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &s_client_id_1, true, 0));
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
@@ -206,8 +208,7 @@ int main(int argc, char **argv) {
 
     callbacks.on_connack = &s_mqtt_on_connack_2;
 
-    args.connection =
-        aws_mqtt_client_connection_new(args.allocator, &client, callbacks, &endpoint, NULL, s_client_id_2, true, 0);
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &s_client_id_2, true, 0));
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
@@ -219,9 +220,9 @@ int main(int argc, char **argv) {
 
     struct aws_byte_cursor topic_filter =
         aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    aws_mqtt_client_unsubscribe(args.connection, &topic_filter, NULL, NULL);
+    aws_mqtt_client_connection_unsubscribe(args.connection, &topic_filter, NULL, NULL);
 
-    aws_mqtt_client_ping(args.connection);
+    aws_mqtt_client_connection_ping(args.connection);
 
     sleep(4);
 

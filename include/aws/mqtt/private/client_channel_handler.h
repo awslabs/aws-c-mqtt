@@ -24,7 +24,9 @@
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/channel.h>
+#include <aws/io/channel_bootstrap.h>
 #include <aws/io/message_pool.h>
+#include <aws/io/tls_channel_handler.h>
 
 #define MQTT_CALL_CALLBACK(client_ptr, callback, ...)                                                                  \
     do {                                                                                                               \
@@ -34,6 +36,7 @@
     } while (false)
 
 enum aws_mqtt_client_connection_state {
+    AWS_MQTT_CLIENT_STATE_INIT,
     AWS_MQTT_CLIENT_STATE_CONNECTING,
     AWS_MQTT_CLIENT_STATE_CONNECTED,
     AWS_MQTT_CLIENT_STATE_DISCONNECTING,
@@ -41,13 +44,21 @@ enum aws_mqtt_client_connection_state {
 
 extern const uint64_t request_timeout_ns;
 
+/** Connection options specific to each host */
+struct aws_mqtt_host {
+
+    struct aws_allocator *allocator;
+    struct aws_string *hostname;
+    struct aws_client_bootstrap bootstrap;
+    struct aws_tls_connection_options connection_options;
+};
+
 /** This serves as the value of the subscriptions table */
 struct aws_mqtt_subscription_impl {
     struct aws_mqtt_client_connection *connection;
-    /* Public facing subscription */
-    struct aws_mqtt_subscription subscription;
 
     const struct aws_string *filter;
+    enum aws_mqtt_qos qos;
     aws_mqtt_publish_recieved_fn *callback;
     void *user_data;
 };
@@ -59,6 +70,7 @@ typedef bool(aws_mqtt_send_request_fn)(uint16_t message_id, bool is_first_attemp
 struct aws_mqtt_outstanding_request {
     struct aws_linked_list_node list_node;
 
+    struct aws_allocator *allocator;
     struct aws_mqtt_client_connection *connection;
 
     struct aws_task timeout_task;
@@ -66,6 +78,7 @@ struct aws_mqtt_outstanding_request {
     uint16_t message_id;
     bool initiated;
     bool completed;
+    bool cancelled;
     aws_mqtt_send_request_fn *send_request;
     void *send_request_ud;
     aws_mqtt_op_complete_fn *on_complete;
@@ -75,6 +88,13 @@ struct aws_mqtt_outstanding_request {
 struct aws_mqtt_client_connection {
 
     struct aws_allocator *allocator;
+
+    struct aws_mqtt_client *client;
+
+    /* The host information */
+    struct aws_mqtt_host *host;
+    uint16_t port;
+    struct aws_socket_options *socket_options;
 
     /* User callbacks */
     struct aws_mqtt_client_connection_callbacks callbacks;
