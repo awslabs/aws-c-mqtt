@@ -122,6 +122,12 @@ struct aws_mqtt_client_connection {
     uint16_t keep_alive_time;
     struct aws_string *username;
     struct aws_string *password;
+    struct {
+        struct aws_byte_buf topic;
+        enum aws_mqtt_qos qos;
+        bool retain;
+        struct aws_byte_buf payload;
+    } will;
 };
 
 struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void);

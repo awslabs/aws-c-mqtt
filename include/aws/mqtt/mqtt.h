@@ -156,6 +156,21 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_tls_ctx_options *tls_options);
 
 /**
+ * Sets the will message to send with the CONNECT packet.
+ *
+ * \param[in] connection    The connection object
+ * \param[in] topic         The topic to publish the will on
+ * \param[in] qos           The QoS to publish the will with
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_will(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    const struct aws_byte_cursor *payload);
+
+/**
  * Sets the username and/or password to send with the CONNECT packet.
  *
  * \param[in] connection    The connection object
