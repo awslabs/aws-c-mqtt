@@ -345,11 +345,11 @@ static void s_destroy(struct aws_channel_handler *handler) {
 
     /* Clear the credentials */
     if (connection->username) {
-        aws_string_destroy(connection->username);
+        aws_string_destroy_secure(connection->username);
         connection->username = NULL;
     }
     if (connection->password) {
-        aws_string_destroy(connection->password);
+        aws_string_destroy_secure(connection->password);
         connection->password = NULL;
     }
 
