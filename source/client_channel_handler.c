@@ -343,6 +343,16 @@ static void s_destroy(struct aws_channel_handler *handler) {
 
     struct aws_mqtt_client_connection *connection = handler->impl;
 
+    /* Clear the credentials */
+    if (connection->username) {
+        aws_string_destroy(connection->username);
+        connection->username = NULL;
+    }
+    if (connection->password) {
+        aws_string_destroy(connection->password);
+        connection->password = NULL;
+    }
+
     /* Clear the client_id */
     aws_byte_buf_clean_up(&connection->client_id);
 

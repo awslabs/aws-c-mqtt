@@ -156,6 +156,19 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_tls_ctx_options *tls_options);
 
 /**
+ * Sets the username and/or password to send with the CONNECT packet.
+ *
+ * \param[in] connection    The connection object
+ * \param[in] username      The username to connect with
+ * \param[in] password      [optional] The password to connect with
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_login(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *username,
+    const struct aws_byte_cursor *password);
+
+/**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
  * Once the connection is opened, on_connack will be called.
  *
