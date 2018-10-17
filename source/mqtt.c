@@ -124,6 +124,16 @@ static int s_mqtt_client_init(
         connection->clean_session,
         connection->keep_alive_time);
 
+    if (connection->will.topic.buffer) {
+        /* Add will if present */
+        aws_mqtt_packet_connect_add_will(
+            &connect,
+            aws_byte_cursor_from_buf(&connection->will.topic),
+            connection->will.qos,
+            connection->will.retain,
+            aws_byte_cursor_from_buf(&connection->will.payload));
+    }
+
     if (connection->username) {
         struct aws_byte_cursor username_cur = aws_byte_cursor_from_string(connection->username);
         struct aws_byte_cursor password_cur = {
@@ -330,6 +340,35 @@ handle_error:
 /*******************************************************************************
  * Connection Configuration
  ******************************************************************************/
+
+int aws_mqtt_client_connection_set_will(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    const struct aws_byte_cursor *payload) {
+
+    struct aws_byte_buf topic_buf = aws_byte_buf_from_array(topic->ptr, topic->len);
+    if (aws_byte_buf_init_copy(connection->allocator, &connection->will.topic, &topic_buf)) {
+        goto cleanup;
+    }
+
+    connection->will.qos = qos;
+    connection->will.retain = retain;
+
+    struct aws_byte_buf payload_buf = aws_byte_buf_from_array(payload->ptr, payload->len);
+    if (aws_byte_buf_init_copy(connection->allocator, &connection->will.payload, &payload_buf)) {
+        goto cleanup;
+    }
+
+    return AWS_OP_SUCCESS;
+
+cleanup:
+    aws_byte_buf_clean_up(&connection->will.topic);
+    aws_byte_buf_clean_up(&connection->will.payload);
+
+    return AWS_OP_ERR;
+}
 
 int aws_mqtt_client_connection_set_login(
     struct aws_mqtt_client_connection *connection,

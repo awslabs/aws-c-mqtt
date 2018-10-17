@@ -196,6 +196,24 @@ int aws_mqtt_packet_connect_add_credentials(
     return AWS_OP_SUCCESS;
 }
 
+int aws_mqtt_packet_connect_add_will(
+    struct aws_mqtt_packet_connect *packet,
+    struct aws_byte_cursor topic,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    struct aws_byte_cursor payload) {
+
+    packet->has_will = true;
+    packet->will_topic = topic;
+    packet->will_qos = qos;
+    packet->will_retain = retain;
+    packet->will_message = payload;
+
+    packet->fixed_header.remaining_length += s_sizeof_encoded_buffer(&topic) + s_sizeof_encoded_buffer(&payload);
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_connect *packet) {
 
     assert(cur);

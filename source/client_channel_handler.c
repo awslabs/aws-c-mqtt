@@ -353,6 +353,10 @@ static void s_destroy(struct aws_channel_handler *handler) {
         connection->password = NULL;
     }
 
+    /* Clean up the will */
+    aws_byte_buf_clean_up(&connection->will.topic);
+    aws_byte_buf_clean_up(&connection->will.payload);
+
     /* Clear the client_id */
     aws_byte_buf_clean_up(&connection->client_id);
 

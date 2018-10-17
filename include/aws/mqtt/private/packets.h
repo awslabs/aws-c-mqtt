@@ -159,6 +159,14 @@ int aws_mqtt_packet_connect_init(
     uint16_t keep_alive);
 
 AWS_MQTT_API
+int aws_mqtt_packet_connect_add_will(
+    struct aws_mqtt_packet_connect *packet,
+    struct aws_byte_cursor topic,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    struct aws_byte_cursor payload);
+
+AWS_MQTT_API
 int aws_mqtt_packet_connect_add_credentials(
     struct aws_mqtt_packet_connect *packet,
     struct aws_byte_cursor username,

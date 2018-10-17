@@ -43,6 +43,9 @@ AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "a1ba5f1mpna9k5-ats.iot.us-east-1.ama
 static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
 enum { PAYLOAD_LEN = sizeof(s_payload) };
 
+static uint8_t s_will_payload[] = "The client has gone offline!";
+enum { WILL_PAYLOAD_LEN = sizeof(s_will_payload) };
+
 struct connection_args {
     struct aws_allocator *allocator;
 
@@ -145,6 +148,8 @@ int main(int argc, char **argv) {
     aws_io_load_error_strings();
     aws_mqtt_load_error_strings();
 
+    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
+
     struct aws_event_loop_group elg;
     aws_event_loop_group_default_init(&elg, args.allocator, 1);
 
@@ -173,6 +178,9 @@ int main(int argc, char **argv) {
     args.connection = aws_mqtt_client_connection_new(
         &client, callbacks, &host_name_cur, 8883, &socket_options, &tls_ctx_opt);
 
+    struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
+    aws_mqtt_client_connection_set_will(args.connection, &subscribe_topic_cur, 1, false, &will_cur);
+
     struct aws_byte_cursor client_id_cur = aws_byte_cursor_from_string(s_client_id);
     aws_mqtt_client_connection_connect(args.connection, &client_id_cur, true, 0);
 
@@ -180,7 +188,6 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
     aws_mqtt_client_connection_subscribe(
         args.connection,
         &subscribe_topic_cur,
