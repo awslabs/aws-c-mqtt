@@ -124,6 +124,20 @@ static int s_mqtt_client_init(
         connection->clean_session,
         connection->keep_alive_time);
 
+    if (connection->username) {
+        struct aws_byte_cursor username_cur = aws_byte_cursor_from_string(connection->username);
+        struct aws_byte_cursor password_cur = {
+            .ptr = NULL,
+            .len = 0,
+        };
+
+        if (connection->password) {
+            password_cur = aws_byte_cursor_from_string(connection->password);
+        }
+
+        aws_mqtt_packet_connect_add_credentials(&connect, username_cur, password_cur);
+    }
+
     struct aws_io_message *message = mqtt_get_message_for_packet(connection, &connect.fixed_header);
     if (!message) {
         MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
@@ -311,6 +325,33 @@ handle_error:
     }
 
     return NULL;
+}
+
+/*******************************************************************************
+ * Connection Configuration
+ ******************************************************************************/
+
+int aws_mqtt_client_connection_set_login(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *username,
+    const struct aws_byte_cursor *password) {
+
+    assert(connection);
+    assert(username);
+
+    connection->username = aws_string_new_from_array(connection->allocator, username->ptr, username->len);
+    if (!connection->username) {
+        return AWS_OP_ERR;
+    }
+
+    if (password) {
+        connection->password = aws_string_new_from_array(connection->allocator, password->ptr, password->len);
+        if (!connection->password) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 /*******************************************************************************
