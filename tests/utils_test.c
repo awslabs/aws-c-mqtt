@@ -24,7 +24,20 @@ static struct aws_byte_cursor s_empty_cursor = {
     .len = 0,
 };
 
+static bool was_called = false;
+static void on_publish() {
+    was_called = true;
+}
+
 static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub_filter, const char *pub_topic) {
+
+    was_called = false;
+
+    struct aws_mqtt_topic_tree tree;
+    aws_mqtt_topic_tree_init(&tree, allocator);
+
+    struct aws_string *topic_filter = aws_string_new_from_c_str(allocator, sub_filter);
+    aws_mqtt_topic_tree_insert(&tree, topic_filter, &on_publish, NULL, NULL);
 
     struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_array(pub_topic, strlen(pub_topic));
     struct aws_mqtt_packet_publish publish;
@@ -34,11 +47,13 @@ static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub
     subscription.filter = aws_string_new_from_c_str(allocator, sub_filter);
     subscription.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
 
-    bool result = aws_mqtt_subscription_matches_publish(allocator, &subscription, &publish);
+    aws_mqtt_topic_tree_publish(&tree, &publish);
 
     aws_string_destroy((void *)subscription.filter);
 
-    return result;
+    aws_mqtt_topic_tree_clean_up(&tree);
+
+    return was_called;
 }
 
 AWS_TEST_CASE(mqtt_utils_topic_match, s_mqtt_utils_topic_match_fn)
@@ -68,6 +83,58 @@ static int s_mqtt_utils_topic_match_fn(struct aws_allocator *allocator, void *ct
     ASSERT_TRUE(s_check_topic_match(allocator, "+/+", "/finance"));
     ASSERT_TRUE(s_check_topic_match(allocator, "/+", "/finance"));
     ASSERT_FALSE(s_check_topic_match(allocator, "+", "/finance"));
+
+    return AWS_OP_SUCCESS;
+}
+
+static struct aws_byte_cursor s_topic_a_a = {
+    .ptr = (uint8_t *)"a/a/a",
+    .len = 5,
+};
+static struct aws_byte_cursor s_topic_a_b = {
+    .ptr = (uint8_t *)"a/a/b",
+    .len = 5,
+};
+
+AWS_TEST_CASE(mqtt_utils_topic_unsubscribe, s_mqtt_utils_topic_unsubscribe_fn)
+static int s_mqtt_utils_topic_unsubscribe_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt_topic_tree tree;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_init(&tree, allocator));
+
+    struct aws_string *topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
+    struct aws_string *topic_a_b = aws_string_new_from_array(allocator, s_topic_a_b.ptr, s_topic_a_b.len);
+
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a));
+    /* Re-create, it was nuked by remove. */
+    topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
+
+    /* Ensure that the intermediate 'a' node was removed as well. */
+    ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
+
+    /* Put it back so we can test removal of a partial tree. */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_b, &on_publish, NULL, NULL));
+
+    /* Should remove the last /a, but not the first 2. */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a));
+
+    struct aws_mqtt_packet_publish publish;
+    aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a, 1, s_topic_a_a);
+
+    was_called = false;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    ASSERT_FALSE(was_called);
+
+    publish.topic_name = s_topic_a_b;
+
+    was_called = false;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    ASSERT_TRUE(was_called);
+
+    aws_mqtt_topic_tree_clean_up(&tree);
 
     return AWS_OP_SUCCESS;
 }
