@@ -3,7 +3,7 @@ include(AwsTestHarness)
 include(LibFuzzer)
 enable_testing()
 
-set(TEST_SRC packet_encoding_test.c utils_test.c)
+set(TEST_SRC packet_encoding_test.c topic_tree_test.c)
 file(GLOB TESTS ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
