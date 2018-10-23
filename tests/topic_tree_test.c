@@ -13,7 +13,7 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/mqtt/private/utils.h>
+#include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -41,23 +41,17 @@ static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub
 
     struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_array(pub_topic, strlen(pub_topic));
     struct aws_mqtt_packet_publish publish;
-    aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_EXACTLY_ONCE, false, filter_cursor, 1, s_empty_cursor);
-
-    struct aws_mqtt_subscription_impl subscription;
-    subscription.filter = aws_string_new_from_c_str(allocator, sub_filter);
-    subscription.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
+    aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, filter_cursor, 1, s_empty_cursor);
 
     aws_mqtt_topic_tree_publish(&tree, &publish);
-
-    aws_string_destroy((void *)subscription.filter);
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
     return was_called;
 }
 
-AWS_TEST_CASE(mqtt_utils_topic_match, s_mqtt_utils_topic_match_fn)
-static int s_mqtt_utils_topic_match_fn(struct aws_allocator *allocator, void *ctx) {
+AWS_TEST_CASE(mqtt_topic_tree_match, s_mqtt_topic_tree_match_fn)
+static int s_mqtt_topic_tree_match_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     /* Check single-level filters */
@@ -96,8 +90,8 @@ static struct aws_byte_cursor s_topic_a_b = {
     .len = 5,
 };
 
-AWS_TEST_CASE(mqtt_utils_topic_unsubscribe, s_mqtt_utils_topic_unsubscribe_fn)
-static int s_mqtt_utils_topic_unsubscribe_fn(struct aws_allocator *allocator, void *ctx) {
+AWS_TEST_CASE(mqtt_topic_tree_unsubscribe, s_mqtt_topic_tree_unsubscribe_fn)
+static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct aws_mqtt_topic_tree tree;

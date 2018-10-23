@@ -132,6 +132,7 @@ bool s_topic_node_is_subscription(struct aws_mqtt_topic_node *node) {
 int aws_mqtt_topic_tree_insert(
     struct aws_mqtt_topic_tree *tree,
     const struct aws_string *topic_filter,
+    enum aws_mqtt_qos qos,
     aws_mqtt_publish_recieved_fn *callback,
     void *connection,
     void *userdata) {
@@ -179,6 +180,7 @@ int aws_mqtt_topic_tree_insert(
            Free the new topic_filter so all existing byte_cursors remain valid. */
         aws_string_destroy((void *)topic_filter);
     }
+    current->qos = qos;
     current->owns_topic_filter = true;
     current->callback = callback;
     current->connection = connection;
@@ -351,8 +353,11 @@ static void s_topic_tree_publish_do_recurse(
     struct aws_hash_element *elem = NULL;
 
     if (sub_parts_len == 0) {
+        enum aws_mqtt_qos qos = ((pub->fixed_header.flags >> 1) & 0x3);
+
         /* If this is the last node and is a sub, call it */
-        if (s_topic_node_is_subscription(current)) {
+        if (s_topic_node_is_subscription(current) &&
+            current->qos >= qos) {
             current->callback(current->connection, &pub->topic_name, &pub->payload, current->userdata);
         }
         return;

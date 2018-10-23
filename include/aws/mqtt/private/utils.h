@@ -24,6 +24,9 @@ struct aws_mqtt_topic_node {
     /* This node's part of the topic filter. If in another node's subtopics, this is the key. */
     struct aws_byte_cursor topic;
 
+    /* Max QoS to deliver. */
+    enum aws_mqtt_qos qos;
+
     /**
      * aws_byte_cursor -> aws_mqtt_topic_node
      * '#' and '+' are special values in here
@@ -71,6 +74,7 @@ void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
 int aws_mqtt_topic_tree_insert(
     struct aws_mqtt_topic_tree *tree,
     const struct aws_string *topic_filter,
+    enum aws_mqtt_qos qos,
     aws_mqtt_publish_recieved_fn *callback,
     void *connection,
     void *userdata);
