@@ -19,6 +19,7 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/mqtt/private/fixed_header.h>
+#include <aws/mqtt/private/utils.h>
 
 #include <aws/common/hash_table.h>
 #include <aws/common/task_scheduler.h>
@@ -51,16 +52,6 @@ struct aws_mqtt_host {
     struct aws_string *hostname;
     struct aws_client_bootstrap bootstrap;
     struct aws_tls_connection_options connection_options;
-};
-
-/** This serves as the value of the subscriptions table */
-struct aws_mqtt_subscription_impl {
-    struct aws_mqtt_client_connection *connection;
-
-    const struct aws_string *filter;
-    enum aws_mqtt_qos qos;
-    aws_mqtt_publish_recieved_fn *callback;
-    void *user_data;
 };
 
 /* Called after the timeout if a matching ack packet hasn't arrived.
@@ -107,7 +98,7 @@ struct aws_mqtt_client_connection {
     struct aws_channel_slot *slot;
 
     /* Keeps track of all open subscriptions */
-    struct aws_hash_table subscriptions;
+    struct aws_mqtt_topic_tree subscriptions;
 
     /* aws_mqtt_outstanding_request */
     struct aws_memory_pool requests_pool;

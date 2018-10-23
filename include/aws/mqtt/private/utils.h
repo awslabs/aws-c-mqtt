@@ -16,7 +16,6 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/mqtt/private/client_channel_handler.h>
 #include <aws/mqtt/private/packets.h>
 
 struct aws_mqtt_topic_node {
@@ -98,10 +97,5 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
  * \returns AWS_OP_SUCCESS on successful publish, AWS_OP_ERR with aws_last_error() populated on failure.
  */
 int aws_mqtt_topic_tree_publish(struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub);
-
-bool aws_mqtt_subscription_matches_publish(
-    struct aws_allocator *allocator,
-    struct aws_mqtt_subscription_impl *sub,
-    struct aws_mqtt_packet_publish *pub);
 
 #endif /* AWS_MQTT_PRIVATE_UTILS_H */

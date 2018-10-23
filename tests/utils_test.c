@@ -43,13 +43,7 @@ static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub
     struct aws_mqtt_packet_publish publish;
     aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_EXACTLY_ONCE, false, filter_cursor, 1, s_empty_cursor);
 
-    struct aws_mqtt_subscription_impl subscription;
-    subscription.filter = aws_string_new_from_c_str(allocator, sub_filter);
-    subscription.qos = AWS_MQTT_QOS_EXACTLY_ONCE;
-
     aws_mqtt_topic_tree_publish(&tree, &publish);
-
-    aws_string_destroy((void *)subscription.filter);
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
