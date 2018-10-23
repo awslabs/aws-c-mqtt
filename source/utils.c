@@ -13,7 +13,7 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/mqtt/private/utils.h>
+#include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/byte_buf.h>
 #include <aws/common/task_scheduler.h>

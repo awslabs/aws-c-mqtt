@@ -17,7 +17,7 @@
 
 #include <aws/mqtt/private/client_channel_handler.h>
 #include <aws/mqtt/private/packets.h>
-#include <aws/mqtt/private/utils.h>
+#include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>

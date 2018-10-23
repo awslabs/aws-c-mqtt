@@ -19,7 +19,7 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/mqtt/private/fixed_header.h>
-#include <aws/mqtt/private/utils.h>
+#include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/hash_table.h>
 #include <aws/common/task_scheduler.h>

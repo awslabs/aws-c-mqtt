@@ -16,7 +16,7 @@
 #include <aws/mqtt/private/client_channel_handler.h>
 
 #include <aws/mqtt/private/packets.h>
-#include <aws/mqtt/private/utils.h>
+#include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/task_scheduler.h>
 
