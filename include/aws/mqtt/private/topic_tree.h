@@ -1,5 +1,5 @@
-#ifndef AWS_MQTT_PRIVATE_UTILS_H
-#define AWS_MQTT_PRIVATE_UTILS_H
+#ifndef AWS_MQTT_PRIVATE_TOPIC_TREE_H
+#define AWS_MQTT_PRIVATE_TOPIC_TREE_H
 
 /*
  * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -98,4 +98,4 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
  */
 int aws_mqtt_topic_tree_publish(struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub);
 
-#endif /* AWS_MQTT_PRIVATE_UTILS_H */
+#endif /* AWS_MQTT_PRIVATE_TOPIC_TREE_H */

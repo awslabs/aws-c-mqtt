@@ -303,14 +303,11 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
             /* If a new viable topic filter is found once, it can be used for all parents. */
             const struct aws_string *new_topic_filter = NULL;
             /* How much of new_topic_filter should be lopped off the beginning. */
-            size_t topic_offset = visited[nodes_left]->topic.ptr - aws_string_bytes(current->topic_filter) + current->topic.len + 1;
+            size_t topic_offset = visited[nodes_left]->topic.ptr - aws_string_bytes(current->topic_filter);
 
             /* -1 to avoid touching current */
             for (size_t i = nodes_left; i > 0; --i) {
                 struct aws_mqtt_topic_node *parent = visited[i];
-
-                /* Remove this topic and following / from offset. */
-                topic_offset -= (parent->topic.len + 1);
 
                 if (parent->topic_filter == current->topic_filter) {
                     /* Uh oh, Mom's using my topic string again! Steal it and replace it with a new one, Indiana Jones style. */
@@ -332,6 +329,9 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
                     parent->topic_filter = new_topic_filter;
                     parent->topic.ptr = (uint8_t *)aws_string_bytes(new_topic_filter) + topic_offset;
                 }
+
+                /* Remove this topic and following / from offset. */
+                topic_offset -= (parent->topic.len + 1);
             }
         }
 

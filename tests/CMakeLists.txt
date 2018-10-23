@@ -21,8 +21,8 @@ add_test_case(mqtt_packet_pingreq)
 add_test_case(mqtt_packet_pingresp)
 add_test_case(mqtt_packet_disconnect)
 
-add_test_case(mqtt_utils_topic_match)
-add_test_case(mqtt_utils_topic_unsubscribe)
+add_test_case(mqtt_topic_tree_match)
+add_test_case(mqtt_topic_tree_unsubscribe)
 
 generate_test_driver(${CMAKE_PROJECT_NAME}-tests)
 
