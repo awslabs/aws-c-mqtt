@@ -90,7 +90,7 @@ void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
  * Channel has been initialized callback. Sets up channel handler and sends out CONNECT packet.
  * The on_connack callback is called with the CONNACK packet is received from the server.
  */
-static int s_mqtt_client_init(
+static void s_mqtt_client_init(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -102,7 +102,7 @@ static int s_mqtt_client_init(
 
     if (error_code != AWS_OP_SUCCESS) {
         MQTT_CALL_CALLBACK(connection, on_connection_failed, error_code);
-        return AWS_OP_ERR;
+        return;
     }
 
     /* Create the slot and handler */
@@ -110,7 +110,7 @@ static int s_mqtt_client_init(
 
     if (!connection->slot) {
         MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
-        return AWS_OP_ERR;
+        return;
     }
 
     aws_channel_slot_insert_end(channel, connection->slot);
@@ -150,28 +150,32 @@ static int s_mqtt_client_init(
 
     struct aws_io_message *message = mqtt_get_message_for_packet(connection, &connect.fixed_header);
     if (!message) {
-        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
-        return AWS_OP_ERR;
+        goto handle_error;
     }
     struct aws_byte_cursor message_cursor = {
         .ptr = message->message_data.buffer,
         .len = message->message_data.capacity,
     };
     if (aws_mqtt_packet_connect_encode(&message_cursor, &connect)) {
-        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
-        return AWS_OP_ERR;
+        goto handle_error;
     }
     message->message_data.len = message->message_data.capacity - message_cursor.len;
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
-        return AWS_OP_ERR;
+        goto handle_error;
     }
 
-    return AWS_OP_SUCCESS;
+    return;
+
+handle_error:
+    MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+
+    if (message) {
+        aws_channel_release_message_to_pool(connection->slot->channel, message);
+    }
 }
 
-static int s_mqtt_client_shutdown(
+static void s_mqtt_client_shutdown(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -185,7 +189,32 @@ static int s_mqtt_client_shutdown(
     /* Alert the connection we've shutdown */
     MQTT_CALL_CALLBACK(connection, on_disconnect, error_code);
 
-    return AWS_OP_SUCCESS;
+    /* Clear the credentials */
+    if (connection->username) {
+        aws_string_destroy_secure(connection->username);
+        connection->username = NULL;
+    }
+    if (connection->password) {
+        aws_string_destroy_secure(connection->password);
+        connection->password = NULL;
+    }
+
+    /* Clean up the will */
+    aws_byte_buf_clean_up(&connection->will.topic);
+    aws_byte_buf_clean_up(&connection->will.payload);
+
+    /* Clear the client_id */
+    aws_byte_buf_clean_up(&connection->client_id);
+
+    /* Free all of the active subscriptions */
+    aws_hash_table_clean_up(&connection->subscriptions);
+
+    /* Cleanup outstanding requests */
+    aws_hash_table_clean_up(&connection->outstanding_requests);
+    aws_memory_pool_clean_up(&connection->requests_pool);
+
+    /* Frees all allocated memory */
+    aws_mem_release(connection->allocator, connection);
 }
 
 static uint64_t s_hash_uint16_t(const void *item) {
@@ -283,7 +312,12 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
             struct aws_mqtt_host *host = aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_host));
             host->allocator = client->allocator;
             host->hostname = host_name_str;
-            aws_client_bootstrap_init(&host->bootstrap, client->allocator, client->event_loop_group);
+            aws_client_bootstrap_init(
+                &host->bootstrap,
+                client->allocator,
+                client->event_loop_group,
+                &client->host_resolver,
+                &client->host_resolver_config);
 
             if (tls_options) {
 
@@ -397,75 +431,6 @@ int aws_mqtt_client_connection_set_login(
  * Connect
  ******************************************************************************/
 
-static void s_host_resolved_callback(
-    struct aws_host_resolver *resolver,
-    const struct aws_string *host_name,
-    int err_code,
-    const struct aws_array_list *host_addresses,
-    void *user_data) {
-
-    (void)resolver;
-    (void)host_name;
-
-    struct aws_mqtt_client_connection *connection = user_data;
-    if (err_code != AWS_OP_SUCCESS) {
-        MQTT_CALL_CALLBACK(connection, on_connection_failed, err_code);
-        return;
-    }
-
-    struct aws_socket_endpoint endpoint;
-    endpoint.port = connection->port;
-
-    const size_t num_addresses = aws_array_list_length(host_addresses);
-    for (size_t i = 0; i < num_addresses; ++i) {
-
-        struct aws_host_address *address = NULL;
-        int result = aws_array_list_get_at(host_addresses, (void *)&address, i);
-        assert(result == AWS_OP_SUCCESS);
-
-        aws_host_address_to_endpoint_options(address, &endpoint, connection->socket_options);
-
-        if (connection->host->bootstrap.tls_ctx) {
-            result = aws_client_bootstrap_new_tls_socket_channel(
-                &connection->host->bootstrap,
-                &endpoint,
-                connection->socket_options,
-                &connection->host->connection_options,
-                &s_mqtt_client_init,
-                &s_mqtt_client_shutdown,
-                connection);
-        } else {
-            result = aws_client_bootstrap_new_socket_channel(
-                &connection->host->bootstrap,
-                &endpoint,
-                connection->socket_options,
-                &s_mqtt_client_init,
-                &s_mqtt_client_shutdown,
-                connection);
-        }
-        int connect_error = aws_last_error();
-        if (!result) {
-            /* Connection attempt successful */
-            break;
-        }
-
-        if (connect_error == AWS_IO_SOCKET_NO_ROUTE_TO_HOST) {
-            /* Attempt next address set */
-            /* TODO: Report to host resolver that IPv6 isn't working */
-            continue;
-        }
-
-        /* Not successful connection attempt, report address as faulty */
-        result = aws_host_resolver_record_connection_failure(&connection->client->host_resolver, address);
-        (void)result;
-        assert(result == AWS_OP_SUCCESS);
-
-        /* If not success or NO_ROUTE, report error and abandon ship */
-        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
-        break;
-    }
-}
-
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *client_id,
@@ -481,12 +446,31 @@ int aws_mqtt_client_connection_connect(
         return AWS_OP_ERR;
     }
 
-    aws_host_resolver_resolve_host(
-        &connection->client->host_resolver,
-        connection->host->hostname,
-        s_host_resolved_callback,
-        &connection->client->host_resolver_config,
-        connection);
+    int result = 0;
+    if (connection->host->bootstrap.tls_ctx) {
+        result = aws_client_bootstrap_new_tls_socket_channel(
+            &connection->host->bootstrap,
+            (const char *)aws_string_bytes(connection->host->hostname),
+            connection->port,
+            connection->socket_options,
+            &connection->host->connection_options,
+            &s_mqtt_client_init,
+            &s_mqtt_client_shutdown,
+            connection);
+    } else {
+        result = aws_client_bootstrap_new_socket_channel(
+            &connection->host->bootstrap,
+            (const char *)aws_string_bytes(connection->host->hostname),
+            connection->port,
+            connection->socket_options,
+            &s_mqtt_client_init,
+            &s_mqtt_client_shutdown,
+            connection);
+    }
+    if (result) {
+        /* Connection attempt failed */
+        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+    }
 
     return AWS_OP_SUCCESS;
 }

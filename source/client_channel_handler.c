@@ -342,33 +342,7 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 static void s_destroy(struct aws_channel_handler *handler) {
 
     struct aws_mqtt_client_connection *connection = handler->impl;
-
-    /* Clear the credentials */
-    if (connection->username) {
-        aws_string_destroy_secure(connection->username);
-        connection->username = NULL;
-    }
-    if (connection->password) {
-        aws_string_destroy_secure(connection->password);
-        connection->password = NULL;
-    }
-
-    /* Clean up the will */
-    aws_byte_buf_clean_up(&connection->will.topic);
-    aws_byte_buf_clean_up(&connection->will.payload);
-
-    /* Clear the client_id */
-    aws_byte_buf_clean_up(&connection->client_id);
-
-    /* Free all of the active subscriptions */
-    aws_hash_table_clean_up(&connection->subscriptions);
-
-    /* Cleanup outstanding requests */
-    aws_hash_table_clean_up(&connection->outstanding_requests);
-    aws_memory_pool_clean_up(&connection->requests_pool);
-
-    /* Frees all allocated memory */
-    aws_mem_release(connection->allocator, connection);
+    (void)connection;
 }
 
 struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void) {

@@ -246,8 +246,9 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws
     }
 
     /* Write connect flags [MQTT-3.1.2.3] */
-    uint8_t connect_flags = packet->clean_session << 1 | packet->has_will << 2 | (uint8_t)packet->will_qos << 3 |
-                            packet->will_retain << 5 | packet->has_password << 6 | packet->has_username << 7;
+    uint8_t connect_flags = (uint8_t)(
+        packet->clean_session << 1 | packet->has_will << 2 | packet->will_qos << 3 | packet->will_retain << 5 |
+        packet->has_password << 6 | packet->has_username << 7);
 
     if (!aws_byte_cursor_write_u8(cur, connect_flags)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
@@ -407,7 +408,7 @@ int aws_mqtt_packet_connack_init(
     packet->fixed_header.remaining_length = 1 + sizeof(packet->connect_return_code);
 
     packet->session_present = session_present;
-    packet->connect_return_code = return_code;
+    packet->connect_return_code = (uint8_t)return_code;
 
     return AWS_OP_SUCCESS;
 }
@@ -489,15 +490,14 @@ int aws_mqtt_packet_publish_init(
     AWS_ZERO_STRUCT(*packet);
 
     packet->fixed_header.packet_type = AWS_MQTT_PACKET_PUBLISH;
-    packet->fixed_header.remaining_length =
-        s_sizeof_encoded_buffer(&topic_name) + payload.len;
+    packet->fixed_header.remaining_length = s_sizeof_encoded_buffer(&topic_name) + payload.len;
 
     if (qos > 0) {
         packet->fixed_header.remaining_length += sizeof(packet->packet_identifier);
     }
 
     /* [MQTT-2.2.2] */
-    uint8_t publish_flags = (retain & 0x1) | (qos & 0x3) << 1 | (dup & 0x1) << 3;
+    uint8_t publish_flags = (uint8_t)((retain & 0x1) | (qos & 0x3) << 1 | (dup & 0x1) << 3);
     packet->fixed_header.flags = publish_flags;
 
     packet->topic_name = topic_name;
