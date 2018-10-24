@@ -113,7 +113,7 @@ int aws_mqtt_fixed_header_encode(struct aws_byte_cursor *cur, const struct aws_m
     }
 
     /* Write packet type and flags */
-    uint8_t byte_1 = (uint8_t)(header->packet_type << 4) | (header->flags & 0xF);
+    uint8_t byte_1 = (uint8_t)((header->packet_type << 4) | (header->flags & 0xF));
     if (!aws_byte_cursor_write_u8(cur, byte_1)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }

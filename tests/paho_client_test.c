@@ -33,7 +33,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#ifdef WIN32
+#    include <Windows.h>
+#    define sleep Sleep
+#else
+#    include <unistd.h>
+#endif
 
 static struct aws_byte_cursor s_client_id_1 = {
     .ptr = (uint8_t *)"MyClientId1",

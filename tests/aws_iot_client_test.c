@@ -34,7 +34,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#ifdef WIN32
+#    include <Windows.h>
+#    define sleep Sleep
+#else
+#    include <unistd.h>
+#endif
 
 AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "aws_iot_client_test");
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
