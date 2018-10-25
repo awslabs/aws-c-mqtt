@@ -34,7 +34,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#ifdef WIN32
+#    include <Windows.h>
+#    define sleep Sleep
+#else
+#    include <unistd.h>
+#endif
 
 AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "aws_iot_client_test");
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
@@ -175,8 +180,8 @@ int main(int argc, char **argv) {
     aws_mqtt_client_init(&client, args.allocator, &elg);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
-    args.connection = aws_mqtt_client_connection_new(
-        &client, callbacks, &host_name_cur, 8883, &socket_options, &tls_ctx_opt);
+    args.connection =
+        aws_mqtt_client_connection_new(&client, callbacks, &host_name_cur, 8883, &socket_options, &tls_ctx_opt);
 
     struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
     aws_mqtt_client_connection_set_will(args.connection, &subscribe_topic_cur, 1, false, &will_cur);
@@ -189,13 +194,7 @@ int main(int argc, char **argv) {
     aws_mutex_unlock(&mutex);
 
     aws_mqtt_client_connection_subscribe(
-        args.connection,
-        &subscribe_topic_cur,
-        AWS_MQTT_QOS_AT_LEAST_ONCE,
-        &s_on_packet_recieved,
-        &args,
-        NULL,
-        NULL);
+        args.connection, &subscribe_topic_cur, AWS_MQTT_QOS_AT_LEAST_ONCE, &s_on_packet_recieved, &args, NULL, NULL);
 
     const struct aws_string *payload = aws_string_new_from_array(args.allocator, s_payload, PAYLOAD_LEN);
     struct aws_byte_cursor payload_cur = aws_byte_cursor_from_string(payload);

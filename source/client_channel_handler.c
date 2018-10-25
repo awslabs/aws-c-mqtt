@@ -20,6 +20,10 @@
 
 #include <aws/common/task_scheduler.h>
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4204)
+#endif
+
 const uint64_t request_timeout_ns = 3000000000;
 
 /*******************************************************************************
@@ -118,14 +122,14 @@ static int s_packet_handler_publish(
             return AWS_OP_ERR;
         }
 
-        struct aws_byte_cursor message_cursor = {
+        struct aws_byte_cursor puback_cursor = {
             .ptr = message->message_data.buffer,
             .len = message->message_data.capacity,
         };
-        if (aws_mqtt_packet_ack_encode(&message_cursor, &puback)) {
+        if (aws_mqtt_packet_ack_encode(&puback_cursor, &puback)) {
             return AWS_OP_ERR;
         }
-        message->message_data.len = message->message_data.capacity - message_cursor.len;
+        message->message_data.len = message->message_data.capacity - puback_cursor.len;
 
         if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
             return AWS_OP_ERR;
@@ -342,33 +346,7 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 static void s_destroy(struct aws_channel_handler *handler) {
 
     struct aws_mqtt_client_connection *connection = handler->impl;
-
-    /* Clear the credentials */
-    if (connection->username) {
-        aws_string_destroy_secure(connection->username);
-        connection->username = NULL;
-    }
-    if (connection->password) {
-        aws_string_destroy_secure(connection->password);
-        connection->password = NULL;
-    }
-
-    /* Clean up the will */
-    aws_byte_buf_clean_up(&connection->will.topic);
-    aws_byte_buf_clean_up(&connection->will.payload);
-
-    /* Clear the client_id */
-    aws_byte_buf_clean_up(&connection->client_id);
-
-    /* Free all of the active subscriptions */
-    aws_hash_table_clean_up(&connection->subscriptions);
-
-    /* Cleanup outstanding requests */
-    aws_hash_table_clean_up(&connection->outstanding_requests);
-    aws_memory_pool_clean_up(&connection->requests_pool);
-
-    /* Frees all allocated memory */
-    aws_mem_release(connection->allocator, connection);
+    (void)connection;
 }
 
 struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void) {

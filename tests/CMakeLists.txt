@@ -3,11 +3,8 @@ include(AwsTestHarness)
 include(LibFuzzer)
 enable_testing()
 
-file(GLOB TEST_SRC "*.c")
-list(FILTER TEST_SRC EXCLUDE REGEX ".*paho_client_test.c$")
-list(FILTER TEST_SRC EXCLUDE REGEX ".*aws_iot_client_test.c$")
-file(GLOB TEST_HDRS "*.h")
-file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
+set(TEST_SRC packet_encoding_test.c utils_test.c)
+file(GLOB TESTS ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
 add_test_case(mqtt_packet_pubrec)
