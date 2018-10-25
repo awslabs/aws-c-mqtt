@@ -224,11 +224,10 @@ int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *con
  * \param[in] on_suback     Called when a SUBACK has been recieved from the server and the subscription is complete
  * \param[in] on_suback_ud  Passed to on_suback
  *
- * \returns AWS_OP_SUCCESS if the connection is open and the SUBSCRIBE is sent or queued to send,
- *              otherwise AWS_OP_ERR and aws_last_error() is set.
+ * \returns The packet id of the subscribe packet if successfully sent, otherwise 0.
  */
 AWS_MQTT_API
-int aws_mqtt_client_connection_subscribe(
+uint16_t aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
@@ -245,11 +244,10 @@ int aws_mqtt_client_connection_subscribe(
  * \param[in] on_unsuback       Called when a UNSUBACK has been recieved from the server and the subscription is removed
  * \param[in] on_unsuback_ud    Passed to on_unsuback
  *
- * \returns AWS_OP_SUCCESS if the connection is open and the UNSUBSCRIBE is sent or queued to send,
- *              otherwise AWS_OP_ERR and aws_last_error() is set.
+ * \returns The packet id of the unsubscribe packet if successfully sent, otherwise 0.
  */
 AWS_MQTT_API
-int aws_mqtt_client_connection_unsubscribe(
+uint16_t aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
@@ -267,11 +265,10 @@ int aws_mqtt_client_connection_unsubscribe(
  *                          For QoS 1, called when PUBACK is recieved
  *                          For QoS 2, called when PUBCOMP is recieved
  *
- * \returns AWS_OP_SUCCESS if the connection is open and the PUBLISH is sent or queued to send,
- *              otherwise AWS_OP_ERR and aws_last_error() is set.
+ * \returns The packet id of the publish packet if successfully sent, otherwise 0.
  */
 AWS_MQTT_API
-int aws_mqtt_client_connection_publish(
+uint16_t aws_mqtt_client_connection_publish(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     enum aws_mqtt_qos qos,
