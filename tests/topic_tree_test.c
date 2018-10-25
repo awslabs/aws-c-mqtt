@@ -25,7 +25,17 @@ static struct aws_byte_cursor s_empty_cursor = {
 };
 
 static bool was_called = false;
-static void on_publish() {
+static void on_publish(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
+    void *user_data) {
+
+    (void)connection;
+    (void)topic;
+    (void)payload;
+    (void)user_data;
+
     was_called = true;
 }
 

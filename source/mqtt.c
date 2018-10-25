@@ -587,8 +587,7 @@ handle_error:
         aws_mem_release(connection->allocator, task_arg);
     }
     if (was_created) {
-        struct aws_byte_cursor topic_filter = aws_byte_cursor_from_string(task_arg->filter);
-        aws_mqtt_topic_tree_remove(&connection->subscriptions, &topic_filter);
+        aws_mqtt_topic_tree_remove(&connection->subscriptions, topic_filter);
     }
     return 0;
 }
@@ -665,7 +664,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
 
     struct unsubscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct unsubscribe_task_arg));
     if (!task_arg) {
-        return AWS_OP_ERR;
+        return 0;
     }
     task_arg->connection = connection;
     task_arg->filter = *topic_filter;

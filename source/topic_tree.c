@@ -21,6 +21,7 @@
 #ifdef _MSC_VER
 /* disables warning non const declared initializers for Microsoft compilers */
 #    pragma warning(disable : 4204)
+#    include <malloc.h>
 #endif /* _MSC_VER */
 
 AWS_STATIC_STRING_FROM_LITERAL(s_single_level_wildcard, "+");
@@ -233,7 +234,7 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
     const size_t sub_parts_len = aws_array_list_length(&sub_topic_parts);
 
 #ifdef _MSC_VER
-    struct aws_mqtt_topic_node **visited = alloca(sizeof(void *) * (sub_parts_len + 1));
+    struct aws_mqtt_topic_node **visited = _alloca(sizeof(void *) * (sub_parts_len + 1));
 #else
     struct aws_mqtt_topic_node *visited[sub_parts_len + 1];
 #endif
@@ -275,8 +276,7 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
         for (size_t i = sub_parts_len; i > 0; --i) {
             struct aws_mqtt_topic_node *node = visited[i];
 
-            if (!s_topic_node_is_subscription(node) &&
-                0 == aws_hash_table_get_entry_count(&node->subtopics)) {
+            if (!s_topic_node_is_subscription(node) && 0 == aws_hash_table_get_entry_count(&node->subtopics)) {
 
                 /* No subscription and no children, this node needs to go. */
                 struct aws_mqtt_topic_node *grandma = visited[i - 1];
@@ -310,7 +310,8 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
                 struct aws_mqtt_topic_node *parent = visited[i];
 
                 if (parent->topic_filter == current->topic_filter) {
-                    /* Uh oh, Mom's using my topic string again! Steal it and replace it with a new one, Indiana Jones style. */
+                    /* Uh oh, Mom's using my topic string again! Steal it and replace it with a new one, Indiana Jones
+                     * style. */
 
                     if (!new_topic_filter) {
                         /* Set new_tf to old_tf so it's easier to check against the existing node.
@@ -318,7 +319,8 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
                         new_topic_filter = current->topic_filter;
 
                         /* Search all subtopics until we find one that isn't current. */
-                        aws_hash_table_foreach(&parent->subtopics, s_topic_node_string_finder, &new_topic_filter);
+                        aws_hash_table_foreach(
+                            &parent->subtopics, s_topic_node_string_finder, (void *)&new_topic_filter);
 
                         /* This would only happen if there is only one topic in subtopics (current's) and
                          * it has no children (in which case it should have been removed above). */
@@ -360,8 +362,7 @@ static void s_topic_tree_publish_do_recurse(
         enum aws_mqtt_qos qos = ((pub->fixed_header.flags >> 1) & 0x3);
 
         /* If this is the last node and is a sub, call it */
-        if (s_topic_node_is_subscription(current) &&
-            current->qos >= qos) {
+        if (s_topic_node_is_subscription(current) && current->qos >= qos) {
             current->callback(current->connection, &pub->topic_name, &pub->payload, current->userdata);
         }
         return;
