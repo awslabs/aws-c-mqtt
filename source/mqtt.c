@@ -544,7 +544,7 @@ handle_error:
     return true;
 }
 
-int aws_mqtt_client_connection_subscribe(
+uint16_t aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
@@ -577,9 +577,8 @@ int aws_mqtt_client_connection_subscribe(
         goto handle_error;
     }
 
-    mqtt_create_request(subscription_impl->connection, &s_subscribe_send, subscription_impl, on_suback, on_suback_ud);
-
-    return AWS_OP_SUCCESS;
+    return mqtt_create_request(
+        subscription_impl->connection, &s_subscribe_send, subscription_impl, on_suback, on_suback_ud);
 
 handle_error:
 
@@ -592,7 +591,7 @@ handle_error:
     if (was_created) {
         aws_hash_table_remove(&connection->subscriptions, subscription_impl->filter, NULL, NULL);
     }
-    return AWS_OP_ERR;
+    return 0;
 }
 
 /*******************************************************************************
@@ -650,7 +649,7 @@ handle_error:
     return true;
 }
 
-int aws_mqtt_client_connection_unsubscribe(
+uint16_t aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
@@ -673,9 +672,7 @@ int aws_mqtt_client_connection_unsubscribe(
     /* Only needed this to do the lookup */
     aws_string_destroy((void *)filter_str);
 
-    mqtt_create_request(connection, &s_unsubscribe_send, elem->value, on_unsuback, on_unsuback_ud);
-
-    return AWS_OP_SUCCESS;
+    return mqtt_create_request(connection, &s_unsubscribe_send, elem->value, on_unsuback, on_unsuback_ud);
 
 handle_error:
 
@@ -683,7 +680,7 @@ handle_error:
         aws_string_destroy((void *)filter_str);
     }
 
-    return AWS_OP_ERR;
+    return 0;
 }
 
 /*******************************************************************************
@@ -758,7 +755,7 @@ static void s_publish_complete(struct aws_mqtt_client_connection *connection, vo
     aws_mem_release(connection->allocator, publish_arg);
 }
 
-int aws_mqtt_client_connection_publish(
+uint16_t aws_mqtt_client_connection_publish(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     enum aws_mqtt_qos qos,
@@ -771,7 +768,7 @@ int aws_mqtt_client_connection_publish(
 
     struct publish_task_arg *arg = aws_mem_acquire(connection->allocator, sizeof(struct publish_task_arg));
     if (!arg) {
-        return AWS_OP_ERR;
+        return 0;
     }
 
     arg->connection = connection;
@@ -783,9 +780,7 @@ int aws_mqtt_client_connection_publish(
     arg->on_complete = on_complete;
     arg->userdata = userdata;
 
-    mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
-
-    return AWS_OP_SUCCESS;
+    return mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
 }
 
 /*******************************************************************************
