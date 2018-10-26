@@ -65,7 +65,7 @@ struct aws_mqtt_client_connection;
 typedef void(aws_mqtt_op_complete_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
 /** Type of function called when a publish recieved matches a subscription */
-typedef void(aws_mqtt_publish_recieved_fn)(
+typedef void(aws_mqtt_publish_received_fn)(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
@@ -231,7 +231,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
-    aws_mqtt_publish_recieved_fn *on_publish,
+    aws_mqtt_publish_received_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_op_complete_fn *on_suback,
     void *on_suback_ud);

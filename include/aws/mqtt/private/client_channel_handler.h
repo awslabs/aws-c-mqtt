@@ -19,6 +19,7 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/mqtt/private/fixed_header.h>
+#include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/hash_table.h>
 #include <aws/common/task_scheduler.h>
@@ -51,16 +52,6 @@ struct aws_mqtt_host {
     struct aws_string *hostname;
     struct aws_client_bootstrap bootstrap;
     struct aws_tls_connection_options connection_options;
-};
-
-/** This serves as the value of the subscriptions table */
-struct aws_mqtt_subscription_impl {
-    struct aws_mqtt_client_connection *connection;
-
-    const struct aws_string *filter;
-    enum aws_mqtt_qos qos;
-    aws_mqtt_publish_recieved_fn *callback;
-    void *user_data;
 };
 
 /* Called after the timeout if a matching ack packet hasn't arrived.
@@ -107,7 +98,7 @@ struct aws_mqtt_client_connection {
     struct aws_channel_slot *slot;
 
     /* Keeps track of all open subscriptions */
-    struct aws_hash_table subscriptions;
+    struct aws_mqtt_topic_tree subscriptions;
 
     /* aws_mqtt_outstanding_request */
     struct aws_memory_pool requests_pool;
@@ -130,7 +121,7 @@ struct aws_mqtt_client_connection {
     } will;
 };
 
-struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void);
+struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
 
 /* Helper for getting a message object for a packet */
 struct aws_io_message *mqtt_get_message_for_packet(
@@ -138,7 +129,7 @@ struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_fixed_header *header);
 
 /* This function registers a new outstanding request, calls send_request
- and returns the message identifier to use. */
+ and returns the message identifier to use (or 0 on error). */
 uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,

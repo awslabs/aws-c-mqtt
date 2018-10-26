@@ -227,7 +227,7 @@ int main(int argc, char **argv) {
     size_t outstanding_reqs = aws_hash_table_get_entry_count(&args.connection->outstanding_requests);
     ASSERT_UINT_EQUALS(0, outstanding_reqs);
 
-    size_t outstanding_subs = aws_hash_table_get_entry_count(&args.connection->subscriptions);
+    size_t outstanding_subs = aws_hash_table_get_entry_count(&args.connection->subscriptions.root->subtopics);
     ASSERT_UINT_EQUALS(0, outstanding_subs);
 
     aws_mqtt_client_connection_disconnect(args.connection);

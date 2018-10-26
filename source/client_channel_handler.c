@@ -16,7 +16,7 @@
 #include <aws/mqtt/private/client_channel_handler.h>
 
 #include <aws/mqtt/private/packets.h>
-#include <aws/mqtt/private/utils.h>
+#include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/task_scheduler.h>
 
@@ -70,33 +70,8 @@ static int s_packet_handler_publish(
         return AWS_OP_ERR;
     }
 
-    const struct aws_string *topic =
-        aws_string_new_from_array(connection->allocator, publish.topic_name.ptr, publish.topic_name.len);
-
-    /* Attempt lazy search of just topic name, no wildcard matching */
-    struct aws_hash_element *elem;
-    aws_hash_table_find(&connection->subscriptions, topic, &elem);
-    aws_string_destroy((void *)topic);
-
-    struct aws_mqtt_subscription_impl *sub = NULL;
-    if (elem) {
-        sub = elem->value;
-    } else {
-        for (struct aws_hash_iter iter = aws_hash_iter_begin(&connection->subscriptions); !aws_hash_iter_done(&iter);
-             aws_hash_iter_next(&iter)) {
-
-            struct aws_mqtt_subscription_impl *test = iter.element.value;
-
-            if (aws_mqtt_subscription_matches_publish(connection->allocator, test, &publish)) {
-                sub = test;
-                break;
-            }
-        }
-    }
-
-    if (sub) {
-
-        sub->callback(connection, &publish.topic_name, &publish.payload, sub->user_data);
+    if (aws_mqtt_topic_tree_publish(&connection->subscriptions, &publish)) {
+        return AWS_OP_ERR;
     }
 
     struct aws_mqtt_packet_ack puback;
@@ -349,7 +324,7 @@ static void s_destroy(struct aws_channel_handler *handler) {
     (void)connection;
 }
 
-struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void) {
+struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void) {
 
     static struct aws_channel_handler_vtable s_vtable = {
         .process_read_message = &s_process_read_message,
@@ -360,7 +335,7 @@ struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void) {
         .destroy = &s_destroy,
     };
 
-    return s_vtable;
+    return &s_vtable;
 }
 
 /*******************************************************************************
