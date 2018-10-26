@@ -121,7 +121,7 @@ struct aws_mqtt_client_connection {
     } will;
 };
 
-struct aws_channel_handler_vtable aws_mqtt_get_client_channel_vtable(void);
+struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
 
 /* Helper for getting a message object for a packet */
 struct aws_io_message *mqtt_get_message_for_packet(

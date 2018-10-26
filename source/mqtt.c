@@ -548,9 +548,7 @@ handle_error:
         aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
     }
 
-    aws_mqtt_topic_tree_remove(
-            &task_arg->connection->subscriptions,
-            &topic_cursor);
+    aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &topic_cursor);
 
     aws_mem_release(task_arg->connection->allocator, task_arg);
 
