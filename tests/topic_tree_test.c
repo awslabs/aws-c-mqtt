@@ -88,6 +88,9 @@ static int s_mqtt_topic_tree_match_fn(struct aws_allocator *allocator, void *ctx
     ASSERT_TRUE(s_check_topic_match(allocator, "/+", "/finance"));
     ASSERT_FALSE(s_check_topic_match(allocator, "+", "/finance"));
 
+    ASSERT_TRUE(s_check_topic_match(allocator, "///", "///"));
+    ASSERT_FALSE(s_check_topic_match(allocator, "///", "//"));
+
     return AWS_OP_SUCCESS;
 }
 

@@ -130,7 +130,7 @@ cleanup:
     return AWS_OP_ERR;
 }
 
-bool s_topic_node_is_subscription(struct aws_mqtt_topic_node *node) {
+bool s_topic_node_is_subscription(const struct aws_mqtt_topic_node *node) {
     return node->callback;
 }
 
@@ -138,7 +138,7 @@ int aws_mqtt_topic_tree_insert(
     struct aws_mqtt_topic_tree *tree,
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
-    aws_mqtt_publish_recieved_fn *callback,
+    aws_mqtt_publish_received_fn *callback,
     void *connection,
     void *userdata) {
 
@@ -200,6 +200,7 @@ int aws_mqtt_topic_tree_insert(
     return AWS_OP_SUCCESS;
 }
 
+/* Searches subtree until a topic_filter with a different pointer value is found. */
 static int s_topic_node_string_finder(void *userdata, struct aws_hash_element *elem) {
 
     const struct aws_string **topic_filter = userdata;
@@ -363,7 +364,7 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
 static void s_topic_tree_publish_do_recurse(
     struct aws_byte_cursor *sub_part,
     size_t sub_parts_len,
-    struct aws_mqtt_topic_node *current,
+    const struct aws_mqtt_topic_node *current,
     struct aws_mqtt_packet_publish *pub) {
 
     struct aws_byte_cursor hash_cur = aws_byte_cursor_from_string(s_multi_level_wildcard);
@@ -407,7 +408,7 @@ static void s_topic_tree_publish_do_recurse(
     }
 }
 
-int aws_mqtt_topic_tree_publish(struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub) {
+int aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub) {
 
     assert(tree);
     assert(pub);

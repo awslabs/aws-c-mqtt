@@ -129,7 +129,7 @@ struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_fixed_header *header);
 
 /* This function registers a new outstanding request, calls send_request
- and returns the message identifier to use. */
+ and returns the message identifier to use (or 0 on error). */
 uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,

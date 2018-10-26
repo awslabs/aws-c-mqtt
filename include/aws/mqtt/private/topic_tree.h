@@ -23,9 +23,6 @@ struct aws_mqtt_topic_node {
     /* This node's part of the topic filter. If in another node's subtopics, this is the key. */
     struct aws_byte_cursor topic;
 
-    /* Max QoS to deliver. */
-    enum aws_mqtt_qos qos;
-
     /**
      * aws_byte_cursor -> aws_mqtt_topic_node
      * '#' and '+' are special values in here
@@ -37,8 +34,10 @@ struct aws_mqtt_topic_node {
     bool owns_topic_filter;
 
     /* The following will only be populated if the node IS a subscription */
+    /* Max QoS to deliver. */
+    enum aws_mqtt_qos qos;
     /* Callback to call on message recieved */
-    aws_mqtt_publish_recieved_fn *callback;
+    aws_mqtt_publish_received_fn *callback;
     void *connection;
     void *userdata;
 };
@@ -74,7 +73,7 @@ int aws_mqtt_topic_tree_insert(
     struct aws_mqtt_topic_tree *tree,
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
-    aws_mqtt_publish_recieved_fn *callback,
+    aws_mqtt_publish_received_fn *callback,
     void *connection,
     void *userdata);
 
@@ -96,6 +95,6 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
  *
  * \returns AWS_OP_SUCCESS on successful publish, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-int aws_mqtt_topic_tree_publish(struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub);
+int aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub);
 
 #endif /* AWS_MQTT_PRIVATE_TOPIC_TREE_H */

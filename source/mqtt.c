@@ -485,7 +485,7 @@ struct subscribe_task_arg {
     const struct aws_string *filter;
     enum aws_mqtt_qos qos;
 
-    aws_mqtt_publish_recieved_fn *on_publish;
+    aws_mqtt_publish_received_fn *on_publish;
     void *on_publish_ud;
 };
 
@@ -523,13 +523,16 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
         goto handle_error;
     }
 
-    aws_mqtt_topic_tree_insert(
-        &task_arg->connection->subscriptions,
-        task_arg->filter,
-        task_arg->qos,
-        task_arg->on_publish,
-        task_arg->connection,
-        task_arg->on_publish_ud);
+    if (aws_mqtt_topic_tree_insert(
+            &task_arg->connection->subscriptions,
+            task_arg->filter,
+            task_arg->qos,
+            task_arg->on_publish,
+            task_arg->connection,
+            task_arg->on_publish_ud)) {
+
+        goto handle_error;
+    }
 
     aws_mem_release(task_arg->connection->allocator, task_arg);
 
@@ -552,14 +555,12 @@ uint16_t aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
-    aws_mqtt_publish_recieved_fn *on_publish,
+    aws_mqtt_publish_received_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_op_complete_fn *on_suback,
     void *on_suback_ud) {
 
     assert(connection);
-
-    int was_created = 0;
 
     struct subscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
@@ -576,7 +577,12 @@ uint16_t aws_mqtt_client_connection_subscribe(
         goto handle_error;
     }
 
-    return mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, on_suback, on_suback_ud);
+    uint16_t packet_id =
+        mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, on_suback, on_suback_ud);
+
+    if (packet_id) {
+        return packet_id;
+    }
 
 handle_error:
 
@@ -585,9 +591,6 @@ handle_error:
             aws_string_destroy((void *)task_arg->filter);
         }
         aws_mem_release(connection->allocator, task_arg);
-    }
-    if (was_created) {
-        aws_mqtt_topic_tree_remove(&connection->subscriptions, topic_filter);
     }
     return 0;
 }
