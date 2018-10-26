@@ -92,10 +92,14 @@ static int s_mqtt_topic_tree_match_fn(struct aws_allocator *allocator, void *ctx
 }
 
 static struct aws_byte_cursor s_topic_a_a = {
+    .ptr = (uint8_t *)"a/a",
+    .len = 3,
+};
+static struct aws_byte_cursor s_topic_a_a_a = {
     .ptr = (uint8_t *)"a/a/a",
     .len = 5,
 };
-static struct aws_byte_cursor s_topic_a_b = {
+static struct aws_byte_cursor s_topic_a_a_b = {
     .ptr = (uint8_t *)"a/a/b",
     .len = 5,
 };
@@ -108,31 +112,34 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     ASSERT_SUCCESS(aws_mqtt_topic_tree_init(&tree, allocator));
 
     struct aws_string *topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
-    struct aws_string *topic_a_b = aws_string_new_from_array(allocator, s_topic_a_b.ptr, s_topic_a_b.len);
+    struct aws_string *topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
+    struct aws_string *topic_a_a_b = aws_string_new_from_array(allocator, s_topic_a_a_b.ptr, s_topic_a_a_b.len);
 
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
     /* Re-create, it was nuked by remove. */
-    topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
+    topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
 
     /* Ensure that the intermediate 'a' node was removed as well. */
     ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
 
     /* Put it back so we can test removal of a partial tree. */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
 
     /* Should remove the last /a, but not the first 2. */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a));
 
     struct aws_mqtt_packet_publish publish;
-    aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a, 1, s_topic_a_a);
+    aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a_a, 1, s_topic_a_a_a);
 
     was_called = false;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
     ASSERT_FALSE(was_called);
 
-    publish.topic_name = s_topic_a_b;
+    publish.topic_name = s_topic_a_a_b;
 
     was_called = false;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));

@@ -154,11 +154,11 @@ int aws_mqtt_topic_tree_insert(
 
     struct aws_mqtt_topic_node *current = tree->root;
 
+    struct aws_byte_cursor *sub_part = NULL;
     const size_t sub_parts_len = aws_array_list_length(&sub_topic_parts);
     for (size_t i = 0; i < sub_parts_len; ++i) {
 
         /* Get the current topic part */
-        struct aws_byte_cursor *sub_part = NULL;
         aws_array_list_get_at_ptr(&sub_topic_parts, (void **)&sub_part, i);
 
         /* Add or find mid-node */
@@ -184,6 +184,10 @@ int aws_mqtt_topic_tree_insert(
         /* If the topic filter was already here, this is already a subscription.
            Free the new topic_filter so all existing byte_cursors remain valid. */
         aws_string_destroy((void *)topic_filter);
+    } else {
+        /* Node already existed but wasn't subscription. */
+        current->topic = *sub_part;
+        current->topic_filter = topic_filter;
     }
     current->qos = qos;
     current->owns_topic_filter = true;
@@ -269,6 +273,9 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
         /* "unsubscribe" current. */
         current->callback = NULL;
 
+        /* Set to true if current needs to be cleaned up. */
+        bool destroy_current = false;
+
         /* How many nodes are left after the great purge. */
         size_t nodes_left = sub_parts_len - 1;
 
@@ -289,6 +296,8 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
 
                     /* Make sure the following loop doesn't hit this node. */
                     --nodes_left;
+                } else {
+                    destroy_current = true;
                 }
             } else {
 
@@ -298,12 +307,12 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
         }
 
         /* If current owns the full string, go fixup the pointer references. */
-        if (current->owns_topic_filter) {
+        if (current->owns_topic_filter && nodes_left > 0) {
 
             /* If a new viable topic filter is found once, it can be used for all parents. */
             const struct aws_string *new_topic_filter = NULL;
             /* How much of new_topic_filter should be lopped off the beginning. */
-            size_t topic_offset = visited[nodes_left]->topic.ptr - aws_string_bytes(current->topic_filter);
+            size_t topic_offset = visited[nodes_left]->topic.ptr - aws_string_bytes(visited[nodes_left]->topic_filter);
 
             /* -1 to avoid touching current */
             for (size_t i = nodes_left; i > 0; --i) {
@@ -312,6 +321,8 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
                 if (parent->topic_filter == current->topic_filter) {
                     /* Uh oh, Mom's using my topic string again! Steal it and replace it with a new one, Indiana Jones
                      * style. */
+
+                    assert(!parent->owns_topic_filter);
 
                     if (!new_topic_filter) {
                         /* Set new_tf to old_tf so it's easier to check against the existing node.
@@ -338,7 +349,9 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
         }
 
         /* Now that the strings are update, remove current. */
-        s_topic_node_clean_up(current, tree->allocator);
+        if (destroy_current) {
+            s_topic_node_clean_up(current, tree->allocator);
+        }
         current = NULL;
     }
 
