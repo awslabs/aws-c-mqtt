@@ -495,12 +495,25 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
 
     struct aws_io_message *message = NULL;
 
+    struct aws_byte_cursor topic_cursor = aws_byte_cursor_from_string(task_arg->filter);
+
+    if (aws_mqtt_topic_tree_insert(
+            &task_arg->connection->subscriptions,
+            task_arg->filter,
+            task_arg->qos,
+            task_arg->on_publish,
+            task_arg->connection,
+            task_arg->on_publish_ud)) {
+
+        goto handle_error;
+    }
+
     /* Send the subscribe packet */
     struct aws_mqtt_packet_subscribe subscribe;
     if (aws_mqtt_packet_subscribe_init(&subscribe, task_arg->connection->allocator, message_id)) {
         goto handle_error;
     }
-    if (aws_mqtt_packet_subscribe_add_topic(&subscribe, aws_byte_cursor_from_string(task_arg->filter), task_arg->qos)) {
+    if (aws_mqtt_packet_subscribe_add_topic(&subscribe, topic_cursor, task_arg->qos)) {
         goto handle_error;
     }
 
@@ -523,17 +536,6 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
         goto handle_error;
     }
 
-    if (aws_mqtt_topic_tree_insert(
-            &task_arg->connection->subscriptions,
-            task_arg->filter,
-            task_arg->qos,
-            task_arg->on_publish,
-            task_arg->connection,
-            task_arg->on_publish_ud)) {
-
-        goto handle_error;
-    }
-
     aws_mem_release(task_arg->connection->allocator, task_arg);
 
     return false;
@@ -545,6 +547,10 @@ handle_error:
     if (message) {
         aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
     }
+
+    aws_mqtt_topic_tree_remove(
+            &task_arg->connection->subscriptions,
+            &topic_cursor);
 
     aws_mem_release(task_arg->connection->allocator, task_arg);
 
