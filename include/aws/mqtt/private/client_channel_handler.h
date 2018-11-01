@@ -16,7 +16,7 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/mqtt/mqtt.h>
+#include <aws/mqtt/client.h>
 
 #include <aws/mqtt/private/fixed_header.h>
 #include <aws/mqtt/private/topic_tree.h>

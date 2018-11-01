@@ -139,8 +139,8 @@ int aws_mqtt_topic_tree_insert(
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
-    void *connection,
-    void *userdata) {
+    void *userdata,
+    void **old_userdata) {
 
     assert(tree);
     assert(topic_filter);
@@ -179,6 +179,11 @@ int aws_mqtt_topic_tree_insert(
         }
     }
 
+    if (old_userdata && current->userdata) {
+        /* If there was userdata assigned to this node, pass it out. */
+        *old_userdata = current->userdata;
+    }
+
     /* Node found (or created), add the topic filter and callbacks */
     if (current->owns_topic_filter) {
         /* If the topic filter was already here, this is already a subscription.
@@ -192,7 +197,6 @@ int aws_mqtt_topic_tree_insert(
     current->qos = qos;
     current->owns_topic_filter = true;
     current->callback = callback;
-    current->connection = connection;
     current->userdata = userdata;
 
     aws_array_list_clean_up(&sub_topic_parts);
@@ -227,7 +231,7 @@ static int s_topic_node_string_finder(void *userdata, struct aws_hash_element *e
     return 0;
 }
 
-int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter) {
+int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter, void **old_userdata) {
 
     assert(tree);
     assert(topic_filter);
@@ -273,6 +277,11 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
 
         /* "unsubscribe" current. */
         current->callback = NULL;
+
+        if (old_userdata && current->userdata) {
+            /* If there was userdata assigned to this node, pass it out. */
+            *old_userdata = current->userdata;
+        }
 
         /* Set to true if current needs to be cleaned up. */
         bool destroy_current = false;
@@ -380,7 +389,7 @@ static void s_topic_tree_publish_do_recurse(
 
         /* If this is the last node and is a sub, call it */
         if (s_topic_node_is_subscription(current) && current->qos >= qos) {
-            current->callback(current->connection, &pub->topic_name, &pub->payload, current->userdata);
+            current->callback(&pub->topic_name, &pub->payload, current->userdata);
         }
         return;
     }
@@ -393,7 +402,7 @@ static void s_topic_tree_publish_do_recurse(
         /* Must be a subscription and have no children */
         assert(s_topic_node_is_subscription(multi_wildcard));
         assert(0 == aws_hash_table_get_entry_count(&multi_wildcard->subtopics));
-        multi_wildcard->callback(current->connection, &pub->topic_name, &pub->payload, multi_wildcard->userdata);
+        multi_wildcard->callback(&pub->topic_name, &pub->payload, multi_wildcard->userdata);
     }
 
     /* Check single level wildcard */
