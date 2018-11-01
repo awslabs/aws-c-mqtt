@@ -13,7 +13,7 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/mqtt/private/client_channel_handler.h>
+#include <aws/mqtt/private/client_impl.h>
 
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/packets.h>

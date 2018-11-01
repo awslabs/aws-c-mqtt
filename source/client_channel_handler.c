@@ -13,7 +13,7 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/mqtt/private/client_channel_handler.h>
+#include <aws/mqtt/private/client_impl.h>
 
 #include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/topic_tree.h>
@@ -52,7 +52,7 @@ static int s_packet_handler_connack(
 
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
 
-    MQTT_CALL_CALLBACK(connection, on_connack, connack.connect_return_code, connack.session_present);
+    MQTT_CLIENT_CALL_CALLBACK(connection, on_connack, connack.connect_return_code, connack.session_present);
 
     if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
         aws_mqtt_client_connection_disconnect(connection);

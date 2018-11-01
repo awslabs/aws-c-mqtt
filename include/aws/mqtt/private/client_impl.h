@@ -29,7 +29,7 @@
 #include <aws/io/message_pool.h>
 #include <aws/io/tls_channel_handler.h>
 
-#define MQTT_CALL_CALLBACK(client_ptr, callback, ...)                                                                  \
+#define MQTT_CLIENT_CALL_CALLBACK(client_ptr, callback, ...)                                                                  \
     do {                                                                                                               \
         if (client_ptr->callbacks.callback) {                                                                          \
             client_ptr->callbacks.callback(client_ptr, __VA_ARGS__, client_ptr->callbacks.user_data);                  \

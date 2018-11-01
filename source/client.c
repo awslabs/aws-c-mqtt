@@ -14,7 +14,7 @@
  */
 #include <aws/mqtt/client.h>
 
-#include <aws/mqtt/private/client_channel_handler.h>
+#include <aws/mqtt/private/client_impl.h>
 #include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/topic_tree.h>
 
@@ -104,7 +104,7 @@ static void s_mqtt_client_init(
     struct aws_mqtt_client_connection *connection = user_data;
 
     if (error_code != AWS_OP_SUCCESS) {
-        MQTT_CALL_CALLBACK(connection, on_connection_failed, error_code);
+        MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, error_code);
         return;
     }
 
@@ -112,7 +112,7 @@ static void s_mqtt_client_init(
     connection->slot = aws_channel_slot_new(channel);
 
     if (!connection->slot) {
-        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
         return;
     }
 
@@ -171,7 +171,7 @@ static void s_mqtt_client_init(
     return;
 
 handle_error:
-    MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+    MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
 
     if (message) {
         aws_channel_release_message_to_pool(connection->slot->channel, message);
@@ -190,7 +190,7 @@ static void s_mqtt_client_shutdown(
     struct aws_mqtt_client_connection *connection = user_data;
 
     /* Alert the connection we've shutdown */
-    MQTT_CALL_CALLBACK(connection, on_disconnect, error_code);
+    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect, error_code);
 
     /* Clear the credentials */
     if (connection->username) {
@@ -456,7 +456,7 @@ int aws_mqtt_client_connection_connect(
     }
     if (result) {
         /* Connection attempt failed */
-        MQTT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
     }
 
     return AWS_OP_SUCCESS;
