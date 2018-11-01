@@ -61,7 +61,8 @@ struct aws_mqtt_client_connection_callbacks {
 };
 
 /** Callback called when a request roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). */
-typedef void(aws_mqtt_op_complete_fn)(struct aws_mqtt_client_connection *connection, uint16_t packet_id, void *userdata);
+typedef void(
+    aws_mqtt_op_complete_fn)(struct aws_mqtt_client_connection *connection, uint16_t packet_id, void *userdata);
 
 /** Type of function called when a publish recieved matches a subscription (client specific) */
 typedef void(aws_mqtt_client_publish_received_fn)(

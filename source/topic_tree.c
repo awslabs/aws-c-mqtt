@@ -231,7 +231,10 @@ static int s_topic_node_string_finder(void *userdata, struct aws_hash_element *e
     return 0;
 }
 
-int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter, void **old_userdata) {
+int aws_mqtt_topic_tree_remove(
+    struct aws_mqtt_topic_tree *tree,
+    const struct aws_byte_cursor *topic_filter,
+    void **old_userdata) {
 
     assert(tree);
     assert(topic_filter);
