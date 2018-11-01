@@ -16,7 +16,15 @@
  * permissions and limitations under the License.
  */
 
+#include <aws/common/hash_table.h>
+
 #include <aws/mqtt/private/packets.h>
+
+/** Type of function called when a publish recieved matches a subscription */
+typedef void(aws_mqtt_publish_received_fn)(
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
+    void *user_data);
 
 struct aws_mqtt_topic_node {
 
@@ -38,7 +46,6 @@ struct aws_mqtt_topic_node {
     enum aws_mqtt_qos qos;
     /* Callback to call on message recieved */
     aws_mqtt_publish_received_fn *callback;
-    void *connection;
     void *userdata;
 };
 
@@ -60,12 +67,13 @@ void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
 /**
  * Insert a new topic filter into the subscription tree (subscribe).
  *
- * \param[in] tree          The tree to insert into.
- * \param[in] topic_filter  The topic filter to subscribe on. May contain wildcards.
- * \param[in] callback      The callback to call on a publish with a matching topic.
- * \param[in] connection    The connection object to pass to the callback. This is a void* to support client and server
+ * \param[in]  tree         The tree to insert into.
+ * \param[in]  topic_filter The topic filter to subscribe on. May contain wildcards.
+ * \param[in]  callback     The callback to call on a publish with a matching topic.
+ * \param[in]  connection   The connection object to pass to the callback. This is a void* to support client and server
  *                          connections in the future.
- * \param[in] userdata      The userdata to pass to callback.
+ * \param[in]  userdata     The userdata to pass to callback.
+ * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
  *
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
  */
@@ -74,18 +82,22 @@ int aws_mqtt_topic_tree_insert(
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
-    void *connection,
-    void *userdata);
+    void *userdata,
+    void **old_userdata);
 
 /**
  * Remove a topic filter from the subscription tree (unsubscribe).
  *
- * \param[in] tree          The tree to remove from.
- * \param[in] topic_filter  The filter to remove (must be exactly the same as the topic_filter passed to insert).
+ * \param[in]  tree         The tree to remove from.
+ * \param[in]  topic_filter The filter to remove (must be exactly the same as the topic_filter passed to insert).
+ * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
  *
  * \returns AWS_OP_SUCCESS on successful removal, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter);
+int aws_mqtt_topic_tree_remove(
+    struct aws_mqtt_topic_tree *tree,
+    const struct aws_byte_cursor *topic_filter,
+    void **old_userdata);
 
 /**
  * Dispatches a publish packet to all subscriptions matching the publish topic.
