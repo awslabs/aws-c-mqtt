@@ -372,7 +372,7 @@ static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_ta
                    remove from the hash table and call the callback. */
                 request->completed = true;
                 if (request->on_complete) {
-                    request->on_complete(request->connection, request->on_complete_ud);
+                    request->on_complete(request->connection, request->message_id, request->on_complete_ud);
                 }
             }
         }
@@ -470,7 +470,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16
 
     /* Alert the user */
     if (request->on_complete) {
-        request->on_complete(request->connection, request->on_complete_ud);
+        request->on_complete(request->connection, request->message_id, request->on_complete_ud);
     }
 }
 

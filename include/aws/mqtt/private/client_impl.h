@@ -1,5 +1,5 @@
-#ifndef AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H
-#define AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H
+#ifndef AWS_MQTT_PRIVATE_CLIENT_IMPL_H
+#define AWS_MQTT_PRIVATE_CLIENT_IMPL_H
 
 /*
  * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -143,4 +143,4 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16
 /* Call to close the connection with an error code */
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
 
-#endif /* AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H */
+#endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */
