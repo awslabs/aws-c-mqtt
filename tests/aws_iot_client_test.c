@@ -78,9 +78,10 @@ static void s_on_packet_recieved(
     args->retained_packet_recieved = true;
 }
 
-static void s_mqtt_publish_complete(struct aws_mqtt_client_connection *connection, void *userdata) {
+static void s_mqtt_publish_complete(struct aws_mqtt_client_connection *connection, uint16_t packet_id, void *userdata) {
 
     (void)connection;
+    (void)packet_id;
 
     aws_string_destroy(userdata);
 }

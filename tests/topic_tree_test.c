@@ -25,10 +25,7 @@ static struct aws_byte_cursor s_empty_cursor = {
 };
 
 static bool was_called = false;
-static void on_publish(
-    const struct aws_byte_cursor *topic,
-    const struct aws_byte_cursor *payload,
-    void *user_data) {
+static void on_publish(const struct aws_byte_cursor *topic, const struct aws_byte_cursor *payload, void *user_data) {
 
     (void)topic;
     (void)payload;

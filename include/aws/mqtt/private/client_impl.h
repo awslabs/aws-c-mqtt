@@ -1,5 +1,5 @@
-#ifndef AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H
-#define AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H
+#ifndef AWS_MQTT_PRIVATE_CLIENT_IMPL_H
+#define AWS_MQTT_PRIVATE_CLIENT_IMPL_H
 
 /*
  * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -29,7 +29,7 @@
 #include <aws/io/message_pool.h>
 #include <aws/io/tls_channel_handler.h>
 
-#define MQTT_CLIENT_CALL_CALLBACK(client_ptr, callback, ...)                                                                  \
+#define MQTT_CLIENT_CALL_CALLBACK(client_ptr, callback, ...)                                                           \
     do {                                                                                                               \
         if (client_ptr->callbacks.callback) {                                                                          \
             client_ptr->callbacks.callback(client_ptr, __VA_ARGS__, client_ptr->callbacks.user_data);                  \
@@ -143,4 +143,4 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16
 /* Call to close the connection with an error code */
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
 
-#endif /* AWS_MQTT_PRIVATE_CLIENT_CHANNEL_HANDLER_H */
+#endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */

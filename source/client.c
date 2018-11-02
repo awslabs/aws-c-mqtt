@@ -762,11 +762,11 @@ handle_error:
     return true;
 }
 
-static void s_publish_complete(struct aws_mqtt_client_connection *connection, void *userdata) {
+static void s_publish_complete(struct aws_mqtt_client_connection *connection, uint16_t packet_id, void *userdata) {
     struct publish_task_arg *publish_arg = userdata;
 
     if (publish_arg->on_complete) {
-        publish_arg->on_complete(connection, publish_arg->userdata);
+        publish_arg->on_complete(connection, packet_id, publish_arg->userdata);
     }
 
     aws_mem_release(connection->allocator, publish_arg);
