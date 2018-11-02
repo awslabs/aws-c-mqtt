@@ -146,6 +146,10 @@ int aws_mqtt_topic_tree_insert(
     assert(topic_filter);
     assert(callback);
 
+    if (old_userdata) {
+        *old_userdata = NULL;
+    }
+
     struct aws_byte_cursor topic_filter_cur = aws_byte_cursor_from_string(topic_filter);
     struct aws_array_list sub_topic_parts;
     if (s_split_topic(&sub_topic_parts, &topic_filter_cur, tree->allocator)) {
@@ -239,6 +243,10 @@ int aws_mqtt_topic_tree_remove(
     assert(tree);
     assert(topic_filter);
 
+    if (old_userdata) {
+        *old_userdata = NULL;
+    }
+
     struct aws_array_list sub_topic_parts;
     if (s_split_topic(&sub_topic_parts, topic_filter, tree->allocator)) {
         return AWS_OP_ERR;
@@ -326,11 +334,16 @@ int aws_mqtt_topic_tree_remove(
             const struct aws_string *new_topic_filter = NULL;
             const struct aws_string *const old_topic_filter = current->topic_filter;
             /* How much of new_topic_filter should be lopped off the beginning. */
-            size_t topic_offset = visited[nodes_left]->topic.ptr - aws_string_bytes(visited[nodes_left]->topic_filter);
+
+            struct aws_mqtt_topic_node *parent = visited[nodes_left];
+            size_t topic_offset = parent->topic.ptr - aws_string_bytes(parent->topic_filter) + parent->topic.len + 1;
 
             /* -1 to avoid touching current */
             for (size_t i = nodes_left; i > 0; --i) {
-                struct aws_mqtt_topic_node *parent = visited[i];
+                parent = visited[i];
+
+                /* Remove this topic and following / from offset. */
+                topic_offset -= (parent->topic.len + 1);
 
                 if (parent->topic_filter == old_topic_filter) {
                     /* Uh oh, Mom's using my topic string again! Steal it and replace it with a new one, Indiana Jones
@@ -358,9 +371,6 @@ int aws_mqtt_topic_tree_remove(
                     parent->topic_filter = new_topic_filter;
                     parent->topic.ptr = (uint8_t *)aws_string_bytes(new_topic_filter) + topic_offset;
                 }
-
-                /* Remove this topic and following / from offset. */
-                topic_offset -= (parent->topic.len + 1);
             }
         }
 
