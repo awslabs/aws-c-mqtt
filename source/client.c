@@ -629,7 +629,7 @@ static bool s_unsubscribe_send(uint16_t message_id, bool is_first_attempt, void 
     struct unsubscribe_task_arg *task_arg = userdata;
     struct aws_io_message *message = NULL;
 
-    void *old_userdata;
+    void *old_userdata = NULL;
     aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &task_arg->filter, &old_userdata);
 
     if (old_userdata) {
