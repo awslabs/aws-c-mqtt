@@ -16,6 +16,83 @@
 #include <aws/mqtt/mqtt.h>
 
 /*******************************************************************************
+ * Topic Validation
+ ******************************************************************************/
+
+static bool s_is_valid_topic(const struct aws_byte_cursor *topic, bool is_filter) {
+
+    /* [MQTT-4.7.3-1] Check existance and length */
+    if (!topic->ptr || !topic->len) {
+        return false;
+    }
+
+    /* [MQTT-4.7.3-2] Check for the null character */
+    if (memchr(topic->ptr, 0, topic->len)) {
+        return false;
+    }
+
+    /* [MQTT-4.7.3-3] Topic must not be too long */
+    if (topic->len > 65535) {
+        return false;
+    }
+
+    struct aws_byte_buf topic_buf = aws_byte_buf_from_array(topic->ptr, topic->len);
+
+    bool saw_hash = false;
+
+    struct aws_byte_cursor topic_part;
+    AWS_ZERO_STRUCT(topic_part);
+    while (aws_byte_buf_next_split(&topic_buf, '/', &topic_part)) {
+
+        if (saw_hash) {
+            /* If last part was a '#' and there's still another part, it's an invalid topic */
+            return false;
+        }
+
+        if (topic_part.len == 0) {
+            /* 0 length parts are fine */
+            continue;
+        }
+
+        /* Check single level wildcard */
+        if (memchr(topic_part.ptr, '+', topic_part.len)) {
+            if (!is_filter) {
+                /* + only allowed on filters */
+                return false;
+            }
+            if (topic_part.len > 1) {
+                /* topic part must be 1 character long */
+                return false;
+            }
+        }
+
+        /* Check multi level wildcard */
+        if (memchr(topic_part.ptr, '#', topic_part.len)) {
+            if (!is_filter) {
+                /* # only allowed on filters */
+                return false;
+            }
+            if (topic_part.len > 1) {
+                /* topic part must be 1 character long */
+                return false;
+            }
+            saw_hash = true;
+        }
+    }
+
+    return true;
+}
+
+bool aws_mqtt_is_valid_topic(const struct aws_byte_cursor *topic) {
+
+    return s_is_valid_topic(topic, false);
+}
+bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) {
+
+    return s_is_valid_topic(topic_filter, true);
+}
+
+/*******************************************************************************
  * Load Error String
  ******************************************************************************/
 
@@ -53,6 +130,9 @@ void aws_mqtt_load_error_strings() {
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
                 "Packet type in packet fixed header is invalid."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_INVALID_TOPIC,
+                "Topic or filter is invalid."),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_TIMEOUT,
                 "Time limit between request and response has been exceeded."),

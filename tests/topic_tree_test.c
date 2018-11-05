@@ -147,3 +147,28 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
 
     return AWS_OP_SUCCESS;
 }
+
+AWS_TEST_CASE(mqtt_topic_validation, s_mqtt_topic_validation_fn)
+static int s_mqtt_topic_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+#define ASSERT_TOPIC_VALIDITY(expected, topic) do {\
+        struct aws_byte_cursor topic_cursor; \
+        topic_cursor.ptr = (uint8_t *)(topic); \
+        topic_cursor.len = strlen(topic); \
+        ASSERT_##expected(aws_mqtt_is_valid_topic_filter(&topic_cursor)); \
+    } while (false)
+
+    ASSERT_TOPIC_VALIDITY(TRUE, "#");
+    ASSERT_TOPIC_VALIDITY(TRUE, "sport/tennis/#");
+    ASSERT_TOPIC_VALIDITY(FALSE, "sport/tennis#");
+    ASSERT_TOPIC_VALIDITY(FALSE, "sport/tennis/#/ranking");
+
+    ASSERT_TOPIC_VALIDITY(TRUE, "+");
+    ASSERT_TOPIC_VALIDITY(TRUE, "+/tennis/#");
+    ASSERT_TOPIC_VALIDITY(TRUE, "sport/+/player1");
+    ASSERT_TOPIC_VALIDITY(FALSE, "sport+");
+
+    return AWS_OP_SUCCESS;
+}

@@ -48,6 +48,7 @@ enum aws_mqtt_error {
     AWS_ERROR_MQTT_INVALID_CREDENTIALS,
     AWS_ERROR_MQTT_INVALID_QOS,
     AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
+    AWS_ERROR_MQTT_INVALID_TOPIC,
     AWS_ERROR_MQTT_TIMEOUT,
     AWS_ERROR_MQTT_PROTOCOL_ERROR,
 
@@ -55,6 +56,11 @@ enum aws_mqtt_error {
 };
 
 AWS_EXTERN_C_BEGIN
+
+AWS_MQTT_API
+bool aws_mqtt_is_valid_topic(const struct aws_byte_cursor *topic);
+AWS_MQTT_API
+bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter);
 
 /*
  * Loads error strings for debugging and logging purposes.
