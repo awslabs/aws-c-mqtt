@@ -45,7 +45,7 @@ static bool s_is_valid_topic(const struct aws_byte_cursor *topic, bool is_filter
     while (aws_byte_buf_next_split(&topic_buf, '/', &topic_part)) {
 
         if (saw_hash) {
-            /* If last part was a '#' and there's still another part, it's an invalid topic */
+            /* [MQTT-4.7.1-2] If last part was a '#' and there's still another part, it's an invalid topic */
             return false;
         }
 
@@ -57,7 +57,7 @@ static bool s_is_valid_topic(const struct aws_byte_cursor *topic, bool is_filter
         /* Check single level wildcard */
         if (memchr(topic_part.ptr, '+', topic_part.len)) {
             if (!is_filter) {
-                /* + only allowed on filters */
+                /* [MQTT-4.7.1-3] + only allowed on filters */
                 return false;
             }
             if (topic_part.len > 1) {
@@ -69,7 +69,7 @@ static bool s_is_valid_topic(const struct aws_byte_cursor *topic, bool is_filter
         /* Check multi level wildcard */
         if (memchr(topic_part.ptr, '#', topic_part.len)) {
             if (!is_filter) {
-                /* # only allowed on filters */
+                /* [MQTT-4.7.1-2] # only allowed on filters */
                 return false;
             }
             if (topic_part.len > 1) {
