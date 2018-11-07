@@ -358,8 +358,14 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
 
     struct aws_mqtt_outstanding_request *request = arg;
 
-    /* If the task was cancelled, assume all containers are gone and just free */
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        /* If task cancelled, assume safe shutdown is in progress and signal hash_table destroy to clean up */
+        request->cancelled = true;
+        return;
+    }
+
     if (request->cancelled) {
+        /* If the request was cancelled, assume all containers are gone and just free */
         aws_mem_release(request->allocator, request);
         return;
     }
