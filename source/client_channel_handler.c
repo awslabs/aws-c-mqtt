@@ -354,7 +354,7 @@ struct aws_io_message *mqtt_get_message_for_packet(
  * Requests
  ******************************************************************************/
 
-static void s_request_timeout_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
     struct aws_mqtt_outstanding_request *request = arg;
 
@@ -444,8 +444,7 @@ uint16_t mqtt_create_request(
         return 0;
     }
 
-    next_request->timeout_task.fn = &s_request_timeout_task;
-    next_request->timeout_task.arg = next_request;
+    aws_channel_task_init(&next_request->timeout_task, s_request_timeout_task, next_request);
 
     /* Send the request now if on channel's thread, otherwise schedule a task */
     if (aws_channel_thread_is_callers_thread(connection->slot->channel)) {

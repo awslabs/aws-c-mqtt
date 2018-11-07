@@ -62,6 +62,10 @@ static void s_topic_node_clean_up(struct aws_mqtt_topic_node *node, struct aws_a
     /* Traverse all children and remove */
     aws_hash_table_foreach(&node->subtopics, s_topic_node_clean_up_hash_foreach_wrap, allocator);
 
+    if (node->cleanup && node->userdata) {
+        node->cleanup(node->userdata);
+    }
+
     if (node->owns_topic_filter) {
         aws_string_destroy((void *)node->topic_filter);
     }
@@ -111,16 +115,12 @@ int aws_mqtt_topic_tree_insert(
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
-    void *userdata,
-    void **old_userdata) {
+    aws_mqtt_topic_userdata_fn *cleanup,
+    void *userdata) {
 
     assert(tree);
     assert(topic_filter);
     assert(callback);
-
-    if (old_userdata) {
-        *old_userdata = NULL;
-    }
 
     struct aws_mqtt_topic_node *current = tree->root;
 
@@ -151,9 +151,9 @@ int aws_mqtt_topic_tree_insert(
         }
     }
 
-    if (old_userdata && current->userdata) {
+    if (current->cleanup && current->userdata) {
         /* If there was userdata assigned to this node, pass it out. */
-        *old_userdata = current->userdata;
+        current->cleanup(current->userdata);
     }
 
     /* Node found (or created), add the topic filter and callbacks */
@@ -169,6 +169,7 @@ int aws_mqtt_topic_tree_insert(
     current->qos = qos;
     current->owns_topic_filter = true;
     current->callback = callback;
+    current->cleanup = cleanup;
     current->userdata = userdata;
 
     return AWS_OP_SUCCESS;
@@ -201,17 +202,10 @@ static int s_topic_node_string_finder(void *userdata, struct aws_hash_element *e
     return 0;
 }
 
-int aws_mqtt_topic_tree_remove(
-    struct aws_mqtt_topic_tree *tree,
-    const struct aws_byte_cursor *topic_filter,
-    void **old_userdata) {
+int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter) {
 
     assert(tree);
     assert(topic_filter);
-
-    if (old_userdata) {
-        *old_userdata = NULL;
-    }
 
     struct aws_array_list sub_topic_parts;
     AWS_ZERO_STRUCT(sub_topic_parts);
@@ -265,12 +259,13 @@ int aws_mqtt_topic_tree_remove(
          * Then update all nodes that were using current's topic_filter for topic. */
 
         /* "unsubscribe" current. */
-        current->callback = NULL;
-
-        if (old_userdata && current->userdata) {
+        if (current->cleanup && current->userdata) {
             /* If there was userdata assigned to this node, pass it out. */
-            *old_userdata = current->userdata;
+            current->cleanup(current->userdata);
         }
+        current->callback = NULL;
+        current->cleanup = NULL;
+        current->userdata = NULL;
 
         /* Set to true if current needs to be cleaned up. */
         bool destroy_current = false;

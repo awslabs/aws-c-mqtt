@@ -114,7 +114,7 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     struct aws_string *topic_a_a_b = aws_string_new_from_array(allocator, s_topic_a_a_b.ptr, s_topic_a_a_b.len);
 
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
     /* Re-create, it was nuked by remove. */
     topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
 
@@ -127,8 +127,8 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
 
     /* Should remove the last /a, but not the first 2. */
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a));
 
     struct aws_mqtt_packet_publish publish;
     aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a_a, 1, s_topic_a_a_a);

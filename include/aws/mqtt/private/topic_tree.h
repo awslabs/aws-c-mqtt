@@ -26,6 +26,9 @@ typedef void(aws_mqtt_publish_received_fn)(
     const struct aws_byte_cursor *payload,
     void *user_data);
 
+/** Function called on cleanup when an intact userdata is encountered. */
+typedef void(aws_mqtt_topic_userdata_fn)(void *userdata);
+
 struct aws_mqtt_topic_node {
 
     /* This node's part of the topic filter. If in another node's subtopics, this is the key. */
@@ -46,6 +49,7 @@ struct aws_mqtt_topic_node {
     enum aws_mqtt_qos qos;
     /* Callback to call on message recieved */
     aws_mqtt_publish_received_fn *callback;
+    aws_mqtt_topic_userdata_fn *cleanup;
     void *userdata;
 };
 
@@ -82,8 +86,8 @@ int aws_mqtt_topic_tree_insert(
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
-    void *userdata,
-    void **old_userdata);
+    aws_mqtt_topic_userdata_fn *cleanup,
+    void *userdata);
 
 /**
  * Remove a topic filter from the subscription tree (unsubscribe).
@@ -94,10 +98,7 @@ int aws_mqtt_topic_tree_insert(
  *
  * \returns AWS_OP_SUCCESS on successful removal, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-int aws_mqtt_topic_tree_remove(
-    struct aws_mqtt_topic_tree *tree,
-    const struct aws_byte_cursor *topic_filter,
-    void **old_userdata);
+int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter);
 
 /**
  * Dispatches a publish packet to all subscriptions matching the publish topic.
