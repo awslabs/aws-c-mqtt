@@ -64,7 +64,7 @@ struct aws_mqtt_outstanding_request {
     struct aws_allocator *allocator;
     struct aws_mqtt_client_connection *connection;
 
-    struct aws_task timeout_task;
+    struct aws_channel_task timeout_task;
 
     uint16_t message_id;
     bool initiated;
