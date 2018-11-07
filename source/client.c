@@ -503,6 +503,12 @@ static void s_on_publish_client_wrapper(
     task_arg->on_publish(task_arg->connection, topic, payload, task_arg->on_publish_ud);
 }
 
+static void s_on_topic_clean_up(void *userdata) {
+
+    struct subscribe_task_arg *task_arg = userdata;
+    aws_mem_release(task_arg->connection->allocator, task_arg);
+}
+
 static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
     (void)is_first_attempt;
     struct subscribe_task_arg *task_arg = userdata;
@@ -511,22 +517,15 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
 
     struct aws_byte_cursor topic_cursor = aws_byte_cursor_from_string(task_arg->filter);
 
-    void *old_userdata = NULL;
-
     if (aws_mqtt_topic_tree_insert(
             &task_arg->connection->subscriptions,
             task_arg->filter,
             task_arg->qos,
             s_on_publish_client_wrapper,
-            task_arg,
-            &old_userdata)) {
+            s_on_topic_clean_up,
+            task_arg)) {
 
         goto handle_error;
-    }
-
-    if (old_userdata) {
-        /* Free the old task_arg if there was one. */
-        aws_mem_release(task_arg->connection->allocator, old_userdata);
     }
 
     /* Send the subscribe packet */
@@ -567,7 +566,7 @@ handle_error:
         aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
     }
 
-    aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &topic_cursor, NULL);
+    aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &topic_cursor);
 
     aws_mem_release(task_arg->connection->allocator, task_arg);
 
@@ -638,13 +637,7 @@ static bool s_unsubscribe_send(uint16_t message_id, bool is_first_attempt, void 
     struct unsubscribe_task_arg *task_arg = userdata;
     struct aws_io_message *message = NULL;
 
-    void *old_userdata = NULL;
-    aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &task_arg->filter, &old_userdata);
-
-    if (old_userdata) {
-        /* Free the old task_arg if there was one. */
-        aws_mem_release(task_arg->connection->allocator, old_userdata);
-    }
+    aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &task_arg->filter);
 
     /* Send the unsubscribe packet */
     struct aws_mqtt_packet_unsubscribe unsubscribe;
