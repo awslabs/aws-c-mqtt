@@ -23,6 +23,7 @@ add_test_case(mqtt_packet_disconnect)
 
 add_test_case(mqtt_topic_tree_match)
 add_test_case(mqtt_topic_tree_unsubscribe)
+add_test_case(mqtt_topic_validation)
 
 generate_test_driver(${CMAKE_PROJECT_NAME}-tests)
 

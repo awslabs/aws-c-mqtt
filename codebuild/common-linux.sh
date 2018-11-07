@@ -27,7 +27,7 @@ mkdir install
 
 install_library s2n 98225d7
 install_library aws-c-common
-install_library aws-c-io tls-s2n
+install_library aws-c-io
 
 cd aws-c-mqtt
 mkdir build

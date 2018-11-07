@@ -369,6 +369,10 @@ int aws_mqtt_client_connection_set_will(
     bool retain,
     const struct aws_byte_cursor *payload) {
 
+    if (!aws_mqtt_is_valid_topic(topic)) {
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+    }
+
     struct aws_byte_buf topic_buf = aws_byte_buf_from_array(topic->ptr, topic->len);
     if (aws_byte_buf_init_copy(connection->allocator, &connection->will.topic, &topic_buf)) {
         goto cleanup;
@@ -581,6 +585,11 @@ uint16_t aws_mqtt_client_connection_subscribe(
 
     assert(connection);
 
+    if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+        return 0;
+    }
+
     struct subscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
         goto handle_error;
@@ -690,6 +699,11 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
 
     assert(connection);
 
+    if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+        return 0;
+    }
+
     struct unsubscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct unsubscribe_task_arg));
     if (!task_arg) {
         return 0;
@@ -782,6 +796,11 @@ uint16_t aws_mqtt_client_connection_publish(
     void *userdata) {
 
     assert(connection);
+
+    if (!aws_mqtt_is_valid_topic(topic)) {
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+        return 0;
+    }
 
     struct publish_task_arg *arg = aws_mem_acquire(connection->allocator, sizeof(struct publish_task_arg));
     if (!arg) {
