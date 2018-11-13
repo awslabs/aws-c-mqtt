@@ -54,7 +54,30 @@ static int s_packet_handler_connack(
 
     MQTT_CLIENT_CALL_CALLBACK(connection, on_connack, connack.connect_return_code, connack.session_present);
 
-    if (connack.connect_return_code != AWS_MQTT_CONNECT_ACCEPTED) {
+    if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
+        /* If successfully connected, schedule all pending tasks */
+
+        struct aws_linked_list requests;
+        aws_linked_list_init(&requests);
+
+        aws_mutex_lock(&connection->pending_requests_mutex);
+        aws_linked_list_swap_contents(&connection->pending_requests, &requests);
+        aws_mutex_unlock(&connection->pending_requests_mutex);
+
+        if (!aws_linked_list_empty(&requests)) {
+            struct aws_linked_list_node *current = aws_linked_list_front(&requests);
+            const struct aws_linked_list_node *end = aws_linked_list_end(&requests);
+
+            do {
+
+                struct aws_mqtt_outstanding_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_outstanding_request, list_node);
+                aws_channel_schedule_task_now(connection->slot->channel, &request->timeout_task);
+
+                current = current->next;
+            } while (current != end);
+        }
+    } else {
+        /* If error code returned, disconnect */
         aws_mqtt_client_connection_disconnect(connection);
     }
 
@@ -394,14 +417,20 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             assert(was_present);
 
             aws_memory_pool_release(&request->connection->requests_pool, elem.value);
-        } else {
-            /* If not complete, schedule retry task */
+        } else if (request->connection->slot) {
+            /* If not complete and online, schedule retry task */
 
             uint64_t ttr = 0;
             aws_channel_current_clock_time(request->connection->slot->channel, &ttr);
             ttr += request_timeout_ns;
 
             aws_channel_schedule_task_future(request->connection->slot->channel, task, ttr);
+        } else {
+            /* Else, put the task in the pending list */
+
+            aws_mutex_lock(&request->connection->pending_requests_mutex);
+            aws_linked_list_push_back(&request->connection->pending_requests, &request->list_node);
+            aws_mutex_unlock(&request->connection->pending_requests_mutex);
         }
     }
 }
@@ -453,7 +482,11 @@ uint16_t mqtt_create_request(
     aws_channel_task_init(&next_request->timeout_task, s_request_timeout_task, next_request);
 
     /* Send the request now if on channel's thread, otherwise schedule a task */
-    if (aws_channel_thread_is_callers_thread(connection->slot->channel)) {
+    if (!connection->slot) {
+        aws_mutex_lock(&connection->pending_requests_mutex);
+        aws_linked_list_push_back(&connection->pending_requests, &next_request->list_node);
+        aws_mutex_unlock(&connection->pending_requests_mutex);
+    } else if (aws_channel_thread_is_callers_thread(connection->slot->channel)) {
         s_request_timeout_task(&next_request->timeout_task, next_request, AWS_TASK_STATUS_RUN_READY);
     } else {
         aws_channel_schedule_task_now(connection->slot->channel, &next_request->timeout_task);
