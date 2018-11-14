@@ -106,8 +106,10 @@ struct aws_mqtt_client_connection {
     /* uint16_t -> aws_mqtt_outstanding_request */
     struct aws_hash_table outstanding_requests;
     /* List of all requests that cannot be scheduled until the connection comes online */
-    struct aws_linked_list pending_requests;
-    struct aws_mutex pending_requests_mutex;
+    struct {
+        struct aws_linked_list list;
+        struct aws_mutex mutex;
+    } pending_requests;
 
     uint64_t last_pingresp_timestamp;
 

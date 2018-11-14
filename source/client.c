@@ -316,9 +316,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     connection->state = AWS_MQTT_CLIENT_STATE_INIT;
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
-    aws_linked_list_init(&connection->pending_requests);
+    aws_linked_list_init(&connection->pending_requests.list);
 
-    if (aws_mutex_init(&connection->pending_requests_mutex)) {
+    if (aws_mutex_init(&connection->pending_requests.mutex)) {
 
         goto handle_error;
     }
@@ -508,7 +508,7 @@ int aws_mqtt_client_connection_connect(
     connection->keep_alive_time = keep_alive_time;
 
     if (client_id) {
-        /* Only set connection->client_id new one passed */
+        /* Only set connection->client_id if a new one was provided */
         struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id->ptr, client_id->len);
         if (aws_byte_buf_init_copy(connection->allocator, &connection->client_id, &client_id_buf)) {
             return AWS_OP_ERR;
