@@ -150,11 +150,26 @@ int aws_mqtt_client_connection_set_login(
     const struct aws_byte_cursor *password);
 
 /**
+ * Sets the minimum and maximum reconnect timeouts.
+ *
+ * The time between reconnect attempts will start at min and multipy by 2 until max is reached.
+ *
+ * \param[in] connection    The connection object
+ * \param[in] min_timeout   The timeout to start with
+ * \param[in] max_timeout   The highest allowable wait time between reconnect attempts
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_reconnect_timeout(
+    struct aws_mqtt_client_connection *connection,
+    uint64_t min_timeout,
+    uint64_t max_timeout);
+
+/**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
  * Once the connection is opened, on_connack will be called.
  *
  * \param[in] connection        The connection object
- * \param[in] client_id         The clientid to place in the CONNECT packet
+ * \param[in] client_id         The clientid to place in the CONNECT packet. May be NULL to reuse last set client_id.
  * \param[in] clean_session     True to discard all server session data and start fresh
  * \param[in] keep_alive_time   The keep alive value to place in the CONNECT PACKET
  *

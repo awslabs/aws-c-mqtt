@@ -22,6 +22,7 @@
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/hash_table.h>
+#include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/channel.h>
@@ -104,8 +105,19 @@ struct aws_mqtt_client_connection {
     struct aws_memory_pool requests_pool;
     /* uint16_t -> aws_mqtt_outstanding_request */
     struct aws_hash_table outstanding_requests;
+    /* List of all requests that cannot be scheduled until the connection comes online */
+    struct {
+        struct aws_linked_list list;
+        struct aws_mutex mutex;
+    } pending_requests;
 
     uint64_t last_pingresp_timestamp;
+
+    struct {
+        uint64_t current;
+        uint64_t min;
+        uint64_t max;
+    } reconnect_timeouts;
 
     /* Connect parameters */
     struct aws_byte_buf client_id;

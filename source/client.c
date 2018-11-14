@@ -23,6 +23,7 @@
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 
+#include <aws/common/clock.h>
 #include <aws/common/task_scheduler.h>
 
 #include <assert.h>
@@ -108,6 +109,9 @@ static void s_mqtt_client_init(
         return;
     }
 
+    /* Reset the current timeout timer */
+    connection->reconnect_timeouts.current = connection->reconnect_timeouts.min;
+
     /* Create the slot and handler */
     connection->slot = aws_channel_slot_new(channel);
 
@@ -178,6 +182,34 @@ handle_error:
     }
 }
 
+static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_task_status status) {
+    struct aws_mqtt_client_connection *connection = userdata;
+
+    if (status == AWS_TASK_STATUS_RUN_READY && !connection->slot) {
+        /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
+
+        aws_mqtt_client_connection_connect(connection, NULL, connection->clean_session, connection->keep_alive_time);
+
+        struct aws_event_loop *el = aws_event_loop_group_get_next_loop(connection->host->bootstrap.event_loop_group);
+
+        uint64_t ttr = 0;
+        aws_event_loop_current_clock_time(el, &ttr);
+        ttr += aws_timestamp_convert(
+            connection->reconnect_timeouts.current, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+        connection->reconnect_timeouts.current *= 2;
+        if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max) {
+            connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
+        }
+
+        /* Schedule checkup task */
+        aws_event_loop_schedule_task_future(el, task, ttr);
+    } else {
+
+        aws_mem_release(connection->allocator, task);
+    }
+}
+
 static void s_mqtt_client_shutdown(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
@@ -192,32 +224,47 @@ static void s_mqtt_client_shutdown(
     /* Alert the connection we've shutdown */
     MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect, error_code);
 
-    /* Clear the credentials */
-    if (connection->username) {
-        aws_string_destroy_secure(connection->username);
-        connection->username = NULL;
+    if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+        /* Intentionally disconnecting, so shut down */
+
+        /* Clear the credentials */
+        if (connection->username) {
+            aws_string_destroy_secure(connection->username);
+            connection->username = NULL;
+        }
+        if (connection->password) {
+            aws_string_destroy_secure(connection->password);
+            connection->password = NULL;
+        }
+
+        /* Clean up the will */
+        aws_byte_buf_clean_up(&connection->will.topic);
+        aws_byte_buf_clean_up(&connection->will.payload);
+
+        /* Clear the client_id */
+        aws_byte_buf_clean_up(&connection->client_id);
+
+        /* Free all of the active subscriptions */
+        aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
+
+        /* Cleanup outstanding requests */
+        aws_hash_table_clean_up(&connection->outstanding_requests);
+        aws_memory_pool_clean_up(&connection->requests_pool);
+
+        aws_channel_slot_remove(connection->slot);
+
+        /* Frees all allocated memory */
+        aws_mem_release(connection->allocator, connection);
+    } else {
+        /* Unintentionally disconnecting, reconnect */
+        connection->slot = NULL;
+
+        struct aws_task *reconnect_task = aws_mem_acquire(connection->allocator, sizeof(struct aws_task));
+        aws_task_init(reconnect_task, s_attempt_reconect, connection);
+
+        /* Attempt the reconnect immediately */
+        reconnect_task->fn(reconnect_task, reconnect_task->arg, AWS_TASK_STATUS_RUN_READY);
     }
-    if (connection->password) {
-        aws_string_destroy_secure(connection->password);
-        connection->password = NULL;
-    }
-
-    /* Clean up the will */
-    aws_byte_buf_clean_up(&connection->will.topic);
-    aws_byte_buf_clean_up(&connection->will.payload);
-
-    /* Clear the client_id */
-    aws_byte_buf_clean_up(&connection->client_id);
-
-    /* Free all of the active subscriptions */
-    aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
-
-    /* Cleanup outstanding requests */
-    aws_hash_table_clean_up(&connection->outstanding_requests);
-    aws_memory_pool_clean_up(&connection->requests_pool);
-
-    /* Frees all allocated memory */
-    aws_mem_release(connection->allocator, connection);
 }
 
 static uint64_t s_hash_uint16_t(const void *item) {
@@ -231,7 +278,13 @@ static bool s_uint16_t_eq(const void *a, const void *b) {
 static void s_outstanding_request_destroy(void *item) {
     struct aws_mqtt_outstanding_request *request = item;
 
-    request->cancelled = true;
+    if (request->cancelled) {
+        /* Task ran as cancelled already, clean up the memory */
+        aws_mem_release(request->allocator, request);
+    } else {
+        /* Signal task to clean up request */
+        request->cancelled = true;
+    }
 }
 
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
@@ -261,6 +314,14 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     connection->socket_options = socket_options;
     connection->callbacks = callbacks;
     connection->state = AWS_MQTT_CLIENT_STATE_INIT;
+    connection->reconnect_timeouts.min = 1;
+    connection->reconnect_timeouts.max = 128;
+    aws_linked_list_init(&connection->pending_requests.list);
+
+    if (aws_mutex_init(&connection->pending_requests.mutex)) {
+
+        goto handle_error;
+    }
 
     if (aws_mqtt_topic_tree_init(&connection->subscriptions, connection->allocator)) {
 
@@ -311,7 +372,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
             if (tls_options) {
 
                 aws_tls_connection_options_init_from_ctx_options(&host->connection_options, tls_options);
-                aws_tls_connection_options_set_server_name(&host->connection_options, (const char *)host_name->ptr);
+                aws_tls_connection_options_set_server_name(
+                    &host->connection_options, (const char *)aws_string_bytes(host_name_str));
 
                 struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(client->allocator, tls_options);
                 if (!tls_ctx) {
@@ -418,6 +480,19 @@ int aws_mqtt_client_connection_set_login(
     return AWS_OP_SUCCESS;
 }
 
+int aws_mqtt_client_connection_set_reconnect_timeout(
+    struct aws_mqtt_client_connection *connection,
+    uint64_t min_timeout,
+    uint64_t max_timeout) {
+
+    assert(connection);
+
+    connection->reconnect_timeouts.min = min_timeout;
+    connection->reconnect_timeouts.max = max_timeout;
+
+    return AWS_OP_SUCCESS;
+}
+
 /*******************************************************************************
  * Connect
  ******************************************************************************/
@@ -432,9 +507,22 @@ int aws_mqtt_client_connection_connect(
     connection->clean_session = clean_session;
     connection->keep_alive_time = keep_alive_time;
 
-    struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id->ptr, client_id->len);
-    if (aws_byte_buf_init_copy(connection->allocator, &connection->client_id, &client_id_buf)) {
-        return AWS_OP_ERR;
+    if (client_id) {
+        /* Only set connection->client_id if a new one was provided */
+        struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id->ptr, client_id->len);
+        if (aws_byte_buf_init_copy(connection->allocator, &connection->client_id, &client_id_buf)) {
+            return AWS_OP_ERR;
+        }
+    } else {
+        /* If client_id not passed, one must already be set. */
+        assert(connection->client_id.buffer);
+    }
+
+    if (clean_session) {
+        /* If clean_session is set, all subscriptions will be reset by the server,
+        so we can clean the local tree out too. */
+        aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
+        aws_mqtt_topic_tree_init(&connection->subscriptions, connection->allocator);
     }
 
     int result = 0;
@@ -461,6 +549,7 @@ int aws_mqtt_client_connection_connect(
     if (result) {
         /* Connection attempt failed */
         MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        return AWS_OP_ERR;
     }
 
     return AWS_OP_SUCCESS;
@@ -517,17 +606,6 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
 
     struct aws_byte_cursor topic_cursor = aws_byte_cursor_from_string(task_arg->filter);
 
-    if (aws_mqtt_topic_tree_insert(
-            &task_arg->connection->subscriptions,
-            task_arg->filter,
-            task_arg->qos,
-            s_on_publish_client_wrapper,
-            s_on_topic_clean_up,
-            task_arg)) {
-
-        goto handle_error;
-    }
-
     /* Send the subscribe packet */
     struct aws_mqtt_packet_subscribe subscribe;
     if (aws_mqtt_packet_subscribe_init(&subscribe, task_arg->connection->allocator, message_id)) {
@@ -553,6 +631,17 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
     aws_mqtt_packet_subscribe_clean_up(&subscribe);
 
     if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        goto handle_error;
+    }
+
+    if (aws_mqtt_topic_tree_insert(
+            &task_arg->connection->subscriptions,
+            task_arg->filter,
+            task_arg->qos,
+            s_on_publish_client_wrapper,
+            s_on_topic_clean_up,
+            task_arg)) {
+
         goto handle_error;
     }
 
@@ -766,7 +855,7 @@ handle_error:
         aws_channel_release_message_to_pool(publish_arg->connection->slot->channel, message);
     }
 
-    return true;
+    return false;
 }
 
 static void s_publish_complete(struct aws_mqtt_client_connection *connection, uint16_t packet_id, void *userdata) {

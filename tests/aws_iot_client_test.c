@@ -101,6 +101,11 @@ static void s_mqtt_on_connack(
 
     struct connection_args *args = user_data;
 
+    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
+
+    aws_mqtt_client_connection_subscribe(
+        args->connection, &subscribe_topic_cur, AWS_MQTT_QOS_AT_LEAST_ONCE, &s_on_packet_recieved, args, NULL, NULL);
+
     aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
     aws_mutex_unlock(args->mutex);
@@ -115,7 +120,6 @@ static void s_mqtt_on_connection_failed(
     (void)user_data;
 
     fprintf(stderr, "Error recieved: %s\n", aws_error_debug_str(error_code));
-    abort();
 }
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
@@ -123,8 +127,8 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
     (void)connection;
 
     if (error_code != AWS_OP_SUCCESS) {
-        fprintf(stderr, "error: %s\n", aws_error_debug_str(error_code));
-        abort();
+        fprintf(stderr, "Disconnected, error: %s\n", aws_error_debug_str(error_code));
+        return;
     }
 
     struct connection_args *args = user_data;
@@ -166,7 +170,7 @@ int main(int argc, char **argv) {
 
     struct aws_socket_options socket_options;
     AWS_ZERO_STRUCT(socket_options);
-    socket_options.connect_timeout_ms = 3000;
+    socket_options.connect_timeout_ms = 500;
     socket_options.type = AWS_SOCKET_STREAM;
     socket_options.domain = AWS_SOCKET_IPV6;
 
@@ -194,22 +198,23 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    aws_mqtt_client_connection_subscribe(
-        args.connection, &subscribe_topic_cur, AWS_MQTT_QOS_AT_LEAST_ONCE, &s_on_packet_recieved, &args, NULL, NULL);
-
-    const struct aws_string *payload = aws_string_new_from_array(args.allocator, s_payload, PAYLOAD_LEN);
+    struct aws_string *payload = aws_string_new_from_array(args.allocator, s_payload, PAYLOAD_LEN);
     struct aws_byte_cursor payload_cur = aws_byte_cursor_from_string(payload);
 
-    aws_mqtt_client_connection_publish(
-        args.connection,
-        &subscribe_topic_cur,
-        AWS_MQTT_QOS_AT_MOST_ONCE,
-        false,
-        &payload_cur,
-        &s_mqtt_publish_complete,
-        (void *)payload);
+    while (true) {
+        aws_mqtt_client_connection_publish(
+            args.connection,
+            &subscribe_topic_cur,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            false,
+            &payload_cur,
+            NULL, // &s_mqtt_publish_complete,
+            (void *)payload);
 
-    sleep(10);
+        sleep(1);
+    }
+
+    s_mqtt_publish_complete(args.connection, 0, payload);
 
     aws_mqtt_client_connection_disconnect(args.connection);
 
