@@ -70,7 +70,8 @@ static int s_packet_handler_connack(
 
             do {
 
-                struct aws_mqtt_outstanding_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_outstanding_request, list_node);
+                struct aws_mqtt_outstanding_request *request =
+                    AWS_CONTAINER_OF(current, struct aws_mqtt_outstanding_request, list_node);
                 aws_channel_schedule_task_now(connection->slot->channel, &request->timeout_task);
 
                 current = current->next;
