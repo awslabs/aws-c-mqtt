@@ -111,6 +111,12 @@ struct aws_mqtt_client_connection {
 
     uint64_t last_pingresp_timestamp;
 
+    struct {
+        uint64_t current;
+        uint64_t min;
+        uint64_t max;
+    } reconnect_timeouts;
+
     /* Connect parameters */
     struct aws_byte_buf client_id;
     bool clean_session;

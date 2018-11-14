@@ -23,6 +23,7 @@
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 
+#include <aws/common/clock.h>
 #include <aws/common/task_scheduler.h>
 
 #include <assert.h>
@@ -108,6 +109,9 @@ static void s_mqtt_client_init(
         return;
     }
 
+    /* Reset the current timeout timer */
+    connection->reconnect_timeouts.current = connection->reconnect_timeouts.min;
+
     /* Create the slot and handler */
     connection->slot = aws_channel_slot_new(channel);
 
@@ -190,7 +194,13 @@ static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_t
 
         uint64_t ttr = 0;
         aws_event_loop_current_clock_time(el, &ttr);
-        ttr += 3000000000;
+        ttr += aws_timestamp_convert(
+            connection->reconnect_timeouts.current, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+        connection->reconnect_timeouts.current *= 2;
+        if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max) {
+            connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
+        }
 
         /* Schedule checkup task */
         aws_event_loop_schedule_task_future(el, task, ttr);
@@ -304,6 +314,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     connection->socket_options = socket_options;
     connection->callbacks = callbacks;
     connection->state = AWS_MQTT_CLIENT_STATE_INIT;
+    connection->reconnect_timeouts.min = 1;
+    connection->reconnect_timeouts.max = 128;
     aws_linked_list_init(&connection->pending_requests);
 
     if (aws_mutex_init(&connection->pending_requests_mutex)) {
@@ -463,6 +475,19 @@ int aws_mqtt_client_connection_set_login(
             return AWS_OP_ERR;
         }
     }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt_client_connection_set_reconnect_timeout(
+    struct aws_mqtt_client_connection *connection,
+    uint64_t min_timeout,
+    uint64_t max_timeout) {
+
+    assert(connection);
+
+    connection->reconnect_timeouts.min = min_timeout;
+    connection->reconnect_timeouts.max = max_timeout;
 
     return AWS_OP_SUCCESS;
 }
