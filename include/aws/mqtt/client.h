@@ -122,6 +122,12 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_tls_ctx_options *tls_options);
 
 /**
+ * Cleans up and destroys a connection object.
+ */
+AWS_MQTT_API
+void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection);
+
+/**
  * Sets the will message to send with the CONNECT packet.
  *
  * \param[in] connection    The connection object

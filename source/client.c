@@ -224,38 +224,7 @@ static void s_mqtt_client_shutdown(
     /* Alert the connection we've shutdown */
     MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect, error_code);
 
-    if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
-        /* Intentionally disconnecting, so shut down */
-
-        /* Clear the credentials */
-        if (connection->username) {
-            aws_string_destroy_secure(connection->username);
-            connection->username = NULL;
-        }
-        if (connection->password) {
-            aws_string_destroy_secure(connection->password);
-            connection->password = NULL;
-        }
-
-        /* Clean up the will */
-        aws_byte_buf_clean_up(&connection->will.topic);
-        aws_byte_buf_clean_up(&connection->will.payload);
-
-        /* Clear the client_id */
-        aws_byte_buf_clean_up(&connection->client_id);
-
-        /* Free all of the active subscriptions */
-        aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
-
-        /* Cleanup outstanding requests */
-        aws_hash_table_clean_up(&connection->outstanding_requests);
-        aws_memory_pool_clean_up(&connection->requests_pool);
-
-        aws_channel_slot_remove(connection->slot);
-
-        /* Frees all allocated memory */
-        aws_mem_release(connection->allocator, connection);
-    } else {
+    if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
         /* Unintentionally disconnecting, reconnect */
         connection->slot = NULL;
 
@@ -418,6 +387,44 @@ handle_error:
     }
 
     return NULL;
+}
+
+/*******************************************************************************
+ * Connection Destroy
+ ******************************************************************************/
+
+void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection) {
+
+    assert(connection);
+
+    /* Clear the credentials */
+    if (connection->username) {
+        aws_string_destroy_secure(connection->username);
+        connection->username = NULL;
+    }
+    if (connection->password) {
+        aws_string_destroy_secure(connection->password);
+        connection->password = NULL;
+    }
+
+    /* Clean up the will */
+    aws_byte_buf_clean_up(&connection->will.topic);
+    aws_byte_buf_clean_up(&connection->will.payload);
+
+    /* Clear the client_id */
+    aws_byte_buf_clean_up(&connection->client_id);
+
+    /* Free all of the active subscriptions */
+    aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
+
+    /* Cleanup outstanding requests */
+    aws_hash_table_clean_up(&connection->outstanding_requests);
+    aws_memory_pool_clean_up(&connection->requests_pool);
+
+    aws_channel_slot_remove(connection->slot);
+
+    /* Frees all allocated memory */
+    aws_mem_release(connection->allocator, connection);
 }
 
 /*******************************************************************************

@@ -237,6 +237,7 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
+    aws_mqtt_client_connection_destroy(args.connection);
     args.connection = NULL;
 
     aws_event_loop_group_clean_up(&el_group);
