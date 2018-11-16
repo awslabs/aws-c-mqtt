@@ -133,6 +133,9 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
 
     struct connection_args *args = user_data;
 
+    aws_mqtt_client_connection_destroy(args->connection);
+    args->connection = NULL;
+
     aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
     aws_mutex_unlock(args->mutex);
@@ -221,8 +224,6 @@ int main(int argc, char **argv) {
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
-
-    args.connection = NULL;
 
     aws_tls_clean_up_static_state();
 
