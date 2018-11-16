@@ -36,14 +36,6 @@
  * Client Init
  ******************************************************************************/
 
-static void s_mqtt_host_destroy(void *object) {
-    struct aws_mqtt_host *host = object;
-
-    aws_string_destroy(host->hostname);
-
-    aws_mem_release(host->allocator, host);
-}
-
 int aws_mqtt_client_init(
     struct aws_mqtt_client *client,
     struct aws_allocator *allocator,
@@ -52,19 +44,6 @@ int aws_mqtt_client_init(
     AWS_ZERO_STRUCT(*client);
     client->allocator = allocator;
     client->bootstrap = bootstrap;
-
-    if (aws_hash_table_init(
-            &client->hosts_to_bootstrap, allocator, 1, &aws_hash_string, &aws_string_eq, NULL, &s_mqtt_host_destroy)) {
-
-        return AWS_OP_ERR;
-    }
-
-    aws_host_resolver_init_default(&client->host_resolver, client->allocator, 10);
-    client->host_resolver_config = (struct aws_host_resolution_config){
-        .max_ttl = 1,
-        .impl = aws_default_dns_resolve,
-        .impl_data = NULL,
-    };
 
     return AWS_OP_SUCCESS;
 }
@@ -75,8 +54,7 @@ int aws_mqtt_client_init(
 
 void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
 
-    aws_hash_table_clean_up(&client->hosts_to_bootstrap);
-    aws_host_resolver_clean_up(&client->host_resolver);
+    AWS_ZERO_STRUCT(*client);
 }
 
 /*******************************************************************************
@@ -214,12 +192,12 @@ static void s_mqtt_client_shutdown(
 
     struct aws_mqtt_client_connection *connection = user_data;
 
-    /* Alert the connection we've shutdown */
-    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect, error_code);
+    /* Always clear slot, as that's what's been shutdown */
+    aws_channel_slot_remove(connection->slot);
+    connection->slot = NULL;
 
     if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
         /* Unintentionally disconnecting, reconnect */
-        connection->slot = NULL;
 
         struct aws_task *reconnect_task = aws_mem_acquire(connection->allocator, sizeof(struct aws_task));
         aws_task_init(reconnect_task, s_attempt_reconect, connection);
@@ -227,6 +205,9 @@ static void s_mqtt_client_shutdown(
         /* Attempt the reconnect immediately */
         reconnect_task->fn(reconnect_task, reconnect_task->arg, AWS_TASK_STATUS_RUN_READY);
     }
+
+    /* Alert the connection we've shutdown */
+    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect, error_code);
 }
 
 static uint64_t s_hash_uint16_t(const void *item) {
@@ -259,8 +240,6 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
 
     assert(client);
 
-    int host_was_created = 0;
-
     struct aws_mqtt_client_connection *connection =
         aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_client_connection));
 
@@ -272,6 +251,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     AWS_ZERO_STRUCT(*connection);
     connection->allocator = client->allocator;
     connection->client = client;
+    connection->host_name = aws_string_new_from_array(connection->allocator, host_name->ptr, host_name->len);
     connection->port = port;
     connection->tls_options = tls_options;
     connection->socket_options = socket_options;
@@ -313,29 +293,6 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
     connection->handler.impl = connection;
 
-    /* Initialize the host */
-    {
-        struct aws_string *host_name_str = aws_string_new_from_array(client->allocator, host_name->ptr, host_name->len);
-        struct aws_hash_element *elem = NULL;
-        aws_hash_table_create(&client->hosts_to_bootstrap, host_name_str, &elem, &host_was_created);
-
-        /* Initialize the bootstrap if it's new */
-        if (host_was_created) {
-
-            struct aws_mqtt_host *host = aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_host));
-            host->allocator = client->allocator;
-            host->hostname = host_name_str;
-
-            elem->value = host;
-            connection->host = host;
-
-        } else {
-            /* Don't need this string, there already was one */
-            connection->host = elem->value;
-            aws_string_destroy(host_name_str);
-        }
-    }
-
     return connection;
 
 handle_error:
@@ -365,6 +322,8 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
 
     assert(connection);
 
+    aws_string_destroy(connection->host_name);
+
     /* Clear the credentials */
     if (connection->username) {
         aws_string_destroy_secure(connection->username);
@@ -389,7 +348,9 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     aws_hash_table_clean_up(&connection->outstanding_requests);
     aws_memory_pool_clean_up(&connection->requests_pool);
 
-    aws_channel_slot_remove(connection->slot);
+    if (connection->slot) {
+        aws_channel_slot_remove(connection->slot);
+    }
 
     /* Frees all allocated memory */
     aws_mem_release(connection->allocator, connection);
@@ -504,17 +465,17 @@ int aws_mqtt_client_connection_connect(
     if (connection->tls_options) {
         result = aws_client_bootstrap_new_tls_socket_channel(
             connection->client->bootstrap,
-            (const char *)aws_string_bytes(connection->host->hostname),
+            (const char *)aws_string_bytes(connection->host_name),
             connection->port,
             connection->socket_options,
-            &connection->host->connection_options,
+            connection->tls_options,
             &s_mqtt_client_init,
             &s_mqtt_client_shutdown,
             connection);
     } else {
         result = aws_client_bootstrap_new_socket_channel(
             connection->client->bootstrap,
-            (const char *)aws_string_bytes(connection->host->hostname),
+            (const char *)aws_string_bytes(connection->host_name),
             connection->port,
             connection->socket_options,
             &s_mqtt_client_init,

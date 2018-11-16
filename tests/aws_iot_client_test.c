@@ -237,6 +237,8 @@ int main(int argc, char **argv) {
 
     aws_mqtt_client_clean_up(&client);
 
+    aws_client_bootstrap_clean_up(&bootstrap);
+
     aws_event_loop_group_clean_up(&elg);
 
     aws_tls_ctx_destroy(tls_ctx);

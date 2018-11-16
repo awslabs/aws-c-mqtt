@@ -46,14 +46,6 @@ enum aws_mqtt_client_connection_state {
 
 extern const uint64_t request_timeout_ns;
 
-/** Connection options specific to each host */
-struct aws_mqtt_host {
-
-    struct aws_allocator *allocator;
-    struct aws_string *hostname;
-    struct aws_tls_connection_options connection_options;
-};
-
 /* Called after the timeout if a matching ack packet hasn't arrived.
    Return true to consider request complete, false to schedule a timeout task. */
 typedef bool(aws_mqtt_send_request_fn)(uint16_t message_id, bool is_first_attempt, void *userdata);
@@ -83,7 +75,7 @@ struct aws_mqtt_client_connection {
     struct aws_mqtt_client *client;
 
     /* The host information */
-    struct aws_mqtt_host *host;
+    struct aws_string *host_name;
     uint16_t port;
     struct aws_tls_connection_options *tls_options;
     struct aws_socket_options *socket_options;

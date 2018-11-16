@@ -34,11 +34,6 @@ struct aws_tls_connection_options;
 struct aws_mqtt_client {
     struct aws_allocator *allocator;
     struct aws_client_bootstrap *bootstrap;
-    struct aws_hash_table hosts_to_bootstrap;
-
-    /* DNS Resolver */
-    struct aws_host_resolver host_resolver;
-    struct aws_host_resolution_config host_resolver_config;
 };
 
 struct aws_mqtt_client_connection;
