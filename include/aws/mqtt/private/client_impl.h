@@ -51,7 +51,6 @@ struct aws_mqtt_host {
 
     struct aws_allocator *allocator;
     struct aws_string *hostname;
-    struct aws_client_bootstrap bootstrap;
     struct aws_tls_connection_options connection_options;
 };
 
@@ -86,6 +85,7 @@ struct aws_mqtt_client_connection {
     /* The host information */
     struct aws_mqtt_host *host;
     uint16_t port;
+    struct aws_tls_connection_options *tls_options;
     struct aws_socket_options *socket_options;
 
     /* User callbacks */

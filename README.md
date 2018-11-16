@@ -26,9 +26,9 @@ Initializes an instance of `aws_mqtt_client` with the required parameters.
 * `client` is effectively the `this` parameter.
 * `allocator` will be used to initialize the client (note that the client itself is NOT allocated).
     *This resource must outlive `client`*.
-* `elg` will be used to distribute new MQTT connections across a pool of event loops.
+* `bootstrap` will be used to initiate new socket connections MQTT.
     *This resource must outlive `client`*.
-    See [aws-c-io][aws-c-io] for more information about `aws_event_loop_group`.
+    See [aws-c-io][aws-c-io] for more information about `aws_client_bootstrap`.
 
 ```c
 void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);

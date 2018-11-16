@@ -173,6 +173,9 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 1));
 
+    struct aws_client_bootstrap bootstrap;
+    aws_client_bootstrap_init(&bootstrap, args.allocator, &el_group, NULL, NULL);
+
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 3000;
@@ -186,7 +189,7 @@ int main(int argc, char **argv) {
     callbacks.user_data = &args;
 
     struct aws_mqtt_client client;
-    ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, &el_group));
+    ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, &bootstrap));
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
     args.connection = aws_mqtt_client_connection_new(&client, callbacks, &host_name_cur, 1883, &options, NULL);

@@ -29,11 +29,11 @@
 /* forward declares */
 struct aws_client_bootstrap;
 struct aws_socket_options;
-struct aws_tls_ctx_options;
+struct aws_tls_connection_options;
 
 struct aws_mqtt_client {
     struct aws_allocator *allocator;
-    struct aws_event_loop_group *event_loop_group;
+    struct aws_client_bootstrap *bootstrap;
     struct aws_hash_table hosts_to_bootstrap;
 
     /* DNS Resolver */
@@ -79,7 +79,7 @@ AWS_EXTERN_C_BEGIN
  *
  * \param[in] client    The client to initialize
  * \param[in] allocator The allocator the client will use for all future allocations
- * \param[in] elg       The event loop group to distribute new connections on
+ * \param[in] bootstrap The client bootstrap to use to initiate new socket connections
  *
  * \returns AWS_OP_SUCCESS if successfully initialized, otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
@@ -87,7 +87,7 @@ AWS_MQTT_API
 int aws_mqtt_client_init(
     struct aws_mqtt_client *client,
     struct aws_allocator *allocator,
-    struct aws_event_loop_group *elg);
+    struct aws_client_bootstrap *bootstrap);
 
 /**
  * Cleans up and frees all memory allocated by the client.
@@ -119,7 +119,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     const struct aws_byte_cursor *host_name,
     uint16_t port,
     struct aws_socket_options *socket_options,
-    struct aws_tls_ctx_options *tls_options);
+    struct aws_tls_connection_options *tls_options);
 
 /**
  * Cleans up and destroys a connection object.
