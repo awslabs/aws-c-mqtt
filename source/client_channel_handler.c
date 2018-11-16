@@ -516,5 +516,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
 
     connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
-    aws_channel_shutdown(connection->slot->channel, error_code);
+    if (connection->slot) {
+        aws_channel_shutdown(connection->slot->channel, error_code);
+    }
 }

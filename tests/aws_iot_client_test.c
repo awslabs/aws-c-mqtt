@@ -166,10 +166,20 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group elg;
     aws_event_loop_group_default_init(&elg, args.allocator, 1);
 
+    struct aws_client_bootstrap bootstrap;
+    aws_client_bootstrap_init(&bootstrap, args.allocator, &elg, NULL, NULL);
+
     struct aws_tls_ctx_options tls_ctx_opt;
     aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "9f0631f03a-certificate.pem.crt", "9f0631f03a-private.pem.key");
     aws_tls_ctx_options_set_alpn_list(&tls_ctx_opt, "x-amzn-mqtt-ca");
     aws_tls_ctx_options_override_default_trust_store(&tls_ctx_opt, NULL, "AmazonRootCA1.pem");
+
+    struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(args.allocator, &tls_ctx_opt);
+    ASSERT_NOT_NULL(tls_ctx);
+
+    struct aws_tls_connection_options tls_con_opt;
+    aws_tls_connection_options_init_from_ctx(&tls_con_opt, tls_ctx);
+    aws_tls_connection_options_set_server_name(&tls_con_opt, (const char *)aws_string_bytes(s_hostname));
 
     struct aws_socket_options socket_options;
     AWS_ZERO_STRUCT(socket_options);
@@ -185,11 +195,11 @@ int main(int argc, char **argv) {
     callbacks.user_data = &args;
 
     struct aws_mqtt_client client;
-    aws_mqtt_client_init(&client, args.allocator, &elg);
+    aws_mqtt_client_init(&client, args.allocator, &bootstrap);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
     args.connection =
-        aws_mqtt_client_connection_new(&client, callbacks, &host_name_cur, 8883, &socket_options, &tls_ctx_opt);
+        aws_mqtt_client_connection_new(&client, callbacks, &host_name_cur, 8883, &socket_options, &tls_con_opt);
 
     struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
     aws_mqtt_client_connection_set_will(args.connection, &subscribe_topic_cur, 1, false, &will_cur);
@@ -204,7 +214,7 @@ int main(int argc, char **argv) {
     struct aws_string *payload = aws_string_new_from_array(args.allocator, s_payload, PAYLOAD_LEN);
     struct aws_byte_cursor payload_cur = aws_byte_cursor_from_string(payload);
 
-    while (true) {
+    for (int i = 0; i < 10; ++i) {
         aws_mqtt_client_connection_publish(
             args.connection,
             &subscribe_topic_cur,
@@ -225,11 +235,15 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    aws_tls_clean_up_static_state();
-
     aws_mqtt_client_clean_up(&client);
 
+    aws_client_bootstrap_clean_up(&bootstrap);
+
     aws_event_loop_group_clean_up(&elg);
+
+    aws_tls_ctx_destroy(tls_ctx);
+
+    aws_tls_clean_up_static_state();
 
     ASSERT_UINT_EQUALS(paho_client_alloc_impl.freed, paho_client_alloc_impl.allocated);
 
