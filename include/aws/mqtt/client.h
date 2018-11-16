@@ -104,7 +104,7 @@ void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
  *
  * \param[in] client            The client to spawn the connection from
  * \param[in] callbacks         \see aws_mqtt_client_connection_callbacks
- * \param[in] host_name         The server name to connect to
+ * \param[in] host_name         The server name to connect to. This resource may be freed immediately after return.
  * \param[in] port              The port on the server to connect to
  * \param[in] socket_options    The socket options to pass to the aws_client_bootstrap functions
  * \param[in] tls_options       TLS settings to use when opening a connection.
@@ -195,10 +195,10 @@ AWS_MQTT_API
 int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection);
 
 /**
- * Subscrube to a topic filter. on_publish will be called when a PUBLISH matching topic_filter is recieved.
+ * Subscribe to a topic filter. on_publish will be called when a PUBLISH matching topic_filter is recieved.
  *
  * \param[in] connection    The connection to subscribe on
- * \param[in] topic_filter  The topic filter to subscribe on
+ * \param[in] topic_filter  The topic filter to subscribe on.  This resource must persist until on_suback.
  * \param[in] qos           The maximum QoS of messages to recieve
  * \param[in] on_publish    Called when a PUBLISH packet matching topic_filter is recieved
  * \param[in] on_publish_ud Passed to on_publish
@@ -221,7 +221,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
  * Unsubscribe to a topic filter.
  *
  * \param[in] connection        The connection to unsubscribe on
- * \param[in] topic_filter      The topic filter to unsubscribe on
+ * \param[in] topic_filter      The topic filter to unsubscribe on. This resource must persist until on_unsuback.
  * \param[in] on_unsuback       Called when a UNSUBACK has been recieved from the server and the subscription is removed
  * \param[in] on_unsuback_ud    Passed to on_unsuback
  *
