@@ -444,6 +444,11 @@ int aws_mqtt_client_connection_connect(
     connection->keep_alive_time = keep_alive_time;
 
     if (client_id) {
+        /* Clean up old client_id */
+        if (connection->client_id.buffer) {
+            aws_byte_buf_clean_up(&connection->client_id);
+        }
+
         /* Only set connection->client_id if a new one was provided */
         struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id->ptr, client_id->len);
         if (aws_byte_buf_init_copy(connection->allocator, &connection->client_id, &client_id_buf)) {

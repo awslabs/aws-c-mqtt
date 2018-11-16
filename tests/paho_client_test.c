@@ -44,10 +44,10 @@ static struct aws_byte_cursor s_client_id_1 = {
     .ptr = (uint8_t *)"MyClientId1",
     .len = 11,
 };
-// static struct aws_byte_cursor s_client_id_2 = {
-//     .ptr = (uint8_t *)"MyClientId2",
-//     .len = 11,
-// };
+static struct aws_byte_cursor s_client_id_2 = {
+    .ptr = (uint8_t *)"MyClientId2",
+    .len = 11,
+};
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
 AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "localhost");
 
@@ -57,6 +57,7 @@ enum { PAYLOAD_LEN = sizeof(s_payload) };
 struct connection_args {
     struct aws_allocator *allocator;
 
+    struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
 
     struct aws_mqtt_client_connection *connection;
@@ -64,26 +65,26 @@ struct connection_args {
     bool retained_packet_recieved;
 };
 
-// static void s_on_packet_recieved(
-//     struct aws_mqtt_client_connection *connection,
-//     const struct aws_byte_cursor *topic,
-//     const struct aws_byte_cursor *payload,
-//     void *user_data) {
+static void s_on_packet_recieved(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
+    void *user_data) {
 
-//     (void)connection;
-//     (void)topic;
-//     (void)payload;
+    (void)connection;
+    (void)topic;
+    (void)payload;
 
-//     struct aws_byte_cursor expected_payload = {
-//         .ptr = s_payload,
-//         .len = PAYLOAD_LEN,
-//     };
-//     (void)expected_payload;
-//     assert(aws_byte_cursor_eq(payload, &expected_payload));
+    struct aws_byte_cursor expected_payload = {
+        .ptr = s_payload,
+        .len = PAYLOAD_LEN,
+    };
+    (void)expected_payload;
+    assert(aws_byte_cursor_eq(payload, &expected_payload));
 
-//     struct connection_args *args = user_data;
-//     args->retained_packet_recieved = true;
-// }
+    struct connection_args *args = user_data;
+    args->retained_packet_recieved = true;
+}
 
 static void s_mqtt_publish_complete(struct aws_mqtt_client_connection *connection, uint16_t packet_id, void *userdata) {
 
@@ -107,9 +108,23 @@ static void s_mqtt_on_connack_1(
 
     struct connection_args *args = user_data;
 
+    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
+
+    static bool is_connack_2 = false;
+    if (is_connack_2) {
+        aws_mqtt_client_connection_subscribe(
+            connection, &subscribe_topic_cur, AWS_MQTT_QOS_EXACTLY_ONCE, &s_on_packet_recieved, user_data, NULL, NULL);
+
+        aws_mutex_lock(args->mutex);
+        aws_condition_variable_notify_one(args->condition_variable);
+        aws_mutex_unlock(args->mutex);
+
+        return;
+    }
+    is_connack_2 = true;
+
     const struct aws_string *payload = aws_string_new_from_array(args->allocator, s_payload, PAYLOAD_LEN);
 
-    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
     struct aws_byte_cursor payload_cur = aws_byte_cursor_from_string(payload);
     aws_mqtt_client_connection_publish(
         connection,
@@ -120,29 +135,11 @@ static void s_mqtt_on_connack_1(
         &s_mqtt_publish_complete,
         (void *)payload);
 
+
+    aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
+    aws_mutex_unlock(args->mutex);
 }
-
-// static void s_mqtt_on_connack_2(
-//     struct aws_mqtt_client_connection *connection,
-//     enum aws_mqtt_connect_return_code return_code,
-//     bool session_present,
-//     void *user_data) {
-
-//     (void)return_code;
-//     (void)session_present;
-
-//     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
-//     assert(session_present == false);
-
-//     struct connection_args *args = user_data;
-
-//     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
-//     aws_mqtt_client_connection_subscribe(
-//         connection, &subscribe_topic_cur, AWS_MQTT_QOS_EXACTLY_ONCE, &s_on_packet_recieved, user_data, NULL, NULL);
-
-//     aws_condition_variable_notify_one(args->condition_variable);
-// }
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
 
@@ -153,7 +150,9 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
 
     struct connection_args *args = user_data;
 
+    aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
+    aws_mutex_unlock(args->mutex);
 }
 
 int main(int argc, char **argv) {
@@ -168,6 +167,7 @@ int main(int argc, char **argv) {
     struct connection_args args;
     AWS_ZERO_STRUCT(args);
     args.allocator = &paho_client_allocator;
+    args.mutex = &mutex;
     args.condition_variable = &condition_variable;
 
     struct aws_event_loop_group el_group;
@@ -208,37 +208,35 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    // callbacks.on_connack = &s_mqtt_on_connack_2;
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &s_client_id_2, true, 0));
 
-    // ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &s_client_id_2, true, 0));
+    aws_mutex_lock(&mutex);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    aws_mutex_unlock(&mutex);
 
-    // aws_mutex_lock(&mutex);
-    // ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    // aws_mutex_unlock(&mutex);
+    sleep(3);
 
-    // sleep(3);
+    ASSERT_TRUE(args.retained_packet_recieved);
 
-    // ASSERT_TRUE(args.retained_packet_recieved);
-
-    // struct aws_byte_cursor topic_filter =
-    //     aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    // aws_mqtt_client_connection_unsubscribe(args.connection, &topic_filter, NULL, NULL);
+    struct aws_byte_cursor topic_filter =
+        aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
+    aws_mqtt_client_connection_unsubscribe(args.connection, &topic_filter, NULL, NULL);
 
     // aws_mqtt_client_connection_ping(args.connection);
 
-    // sleep(4);
+    sleep(4);
 
-    // size_t outstanding_reqs = aws_hash_table_get_entry_count(&args.connection->outstanding_requests);
-    // ASSERT_UINT_EQUALS(0, outstanding_reqs);
+    size_t outstanding_reqs = aws_hash_table_get_entry_count(&args.connection->outstanding_requests);
+    ASSERT_UINT_EQUALS(0, outstanding_reqs);
 
-    // size_t outstanding_subs = aws_hash_table_get_entry_count(&args.connection->subscriptions.root->subtopics);
-    // ASSERT_UINT_EQUALS(0, outstanding_subs);
+    size_t outstanding_subs = aws_hash_table_get_entry_count(&args.connection->subscriptions.root->subtopics);
+    ASSERT_UINT_EQUALS(0, outstanding_subs);
 
-    // aws_mqtt_client_connection_disconnect(args.connection);
+    aws_mqtt_client_connection_disconnect(args.connection);
 
-    // aws_mutex_lock(&mutex);
-    // ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    // aws_mutex_unlock(&mutex);
+    aws_mutex_lock(&mutex);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    aws_mutex_unlock(&mutex);
 
     aws_mqtt_client_connection_destroy(args.connection);
     args.connection = NULL;
