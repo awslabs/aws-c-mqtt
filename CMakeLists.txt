@@ -36,25 +36,29 @@ target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
 
-if (UNIX AND NOT APPLE)
-    find_package(s2n REQUIRED)
-endif ()
-find_package(aws-c-common REQUIRED)
 find_package(aws-c-io REQUIRED)
-target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC aws-c-io)
+target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC AWS::aws-c-io)
 
 install(FILES ${AWS_MQTT_HEADERS} DESTINATION "include/aws/mqtt")
 install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "include/aws/testing/mqtt")
 
 install(
-        TARGETS ${CMAKE_PROJECT_NAME} EXPORT ${CMAKE_PROJECT_NAME}-config
+        TARGETS ${CMAKE_PROJECT_NAME}
+        EXPORT ${CMAKE_PROJECT_NAME}-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
         LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-        COMPONENT library
 )
 
-export(TARGETS ${CMAKE_PROJECT_NAME} FILE ${CMAKE_PROJECT_NAME}-config.cmake)
-install(EXPORT ${CMAKE_PROJECT_NAME}-config DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/")
+install(EXPORT "${CMAKE_PROJECT_NAME}-targets"
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/"
+        NAMESPACE AWS::)
+
+configure_file("cmake/${CMAKE_PROJECT_NAME}-config.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
+        @ONLY)
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/")
 
 include(CTest)
 add_subdirectory(tests)
