@@ -55,6 +55,9 @@ enum aws_mqtt_error {
     AWS_ERROR_END_MQTT_RANGE = 0x1800,
 };
 
+/** Function called on cleanup of a userdata. */
+typedef void(aws_mqtt_userdata_cleanup_fn)(void *userdata);
+
 AWS_EXTERN_C_BEGIN
 
 AWS_MQTT_API

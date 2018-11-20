@@ -26,9 +26,6 @@ typedef void(aws_mqtt_publish_received_fn)(
     const struct aws_byte_cursor *payload,
     void *user_data);
 
-/** Function called on cleanup when an intact userdata is encountered. */
-typedef void(aws_mqtt_topic_userdata_fn)(void *userdata);
-
 struct aws_mqtt_topic_node {
 
     /* This node's part of the topic filter. If in another node's subtopics, this is the key. */
@@ -49,7 +46,7 @@ struct aws_mqtt_topic_node {
     enum aws_mqtt_qos qos;
     /* Callback to call on message recieved */
     aws_mqtt_publish_received_fn *callback;
-    aws_mqtt_topic_userdata_fn *cleanup;
+    aws_mqtt_userdata_cleanup_fn *cleanup;
     void *userdata;
 };
 
@@ -86,7 +83,7 @@ int aws_mqtt_topic_tree_insert(
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
-    aws_mqtt_topic_userdata_fn *cleanup,
+    aws_mqtt_userdata_cleanup_fn *cleanup,
     void *userdata);
 
 /**

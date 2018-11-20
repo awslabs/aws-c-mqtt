@@ -104,7 +104,14 @@ static void s_mqtt_on_connack(
     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
 
     aws_mqtt_client_connection_subscribe(
-        args->connection, &subscribe_topic_cur, AWS_MQTT_QOS_AT_LEAST_ONCE, &s_on_packet_recieved, args, NULL, NULL);
+        args->connection,
+        &subscribe_topic_cur,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        &s_on_packet_recieved,
+        args,
+        NULL,
+        NULL,
+        NULL);
 
     aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
