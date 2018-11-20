@@ -196,7 +196,13 @@ static void s_mqtt_client_shutdown(
     aws_channel_slot_remove(connection->slot);
     connection->slot = NULL;
 
-    if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+    /* Alert the connection we've shutdown */
+    bool attempt_reconnect = connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+    if (connection->callbacks.on_disconnect) {
+        attempt_reconnect = connection->callbacks.on_disconnect(connection, error_code, connection->callbacks.user_data);
+    }
+
+    if (attempt_reconnect) {
         /* Unintentionally disconnecting, reconnect */
 
         struct aws_task *reconnect_task = aws_mem_acquire(connection->allocator, sizeof(struct aws_task));
@@ -205,9 +211,6 @@ static void s_mqtt_client_shutdown(
         /* Attempt the reconnect immediately */
         reconnect_task->fn(reconnect_task, reconnect_task->arg, AWS_TASK_STATUS_RUN_READY);
     }
-
-    /* Alert the connection we've shutdown */
-    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect, error_code);
 }
 
 static uint64_t s_hash_uint16_t(const void *item) {
