@@ -122,13 +122,13 @@ static void s_mqtt_on_connection_failed(
     fprintf(stderr, "Error recieved: %s\n", aws_error_debug_str(error_code));
 }
 
-static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
+static bool s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
 
     (void)connection;
 
     if (error_code != AWS_OP_SUCCESS) {
         fprintf(stderr, "Disconnected, error: %s\n", aws_error_debug_str(error_code));
-        return;
+        return false;
     }
 
     struct connection_args *args = user_data;
@@ -139,6 +139,8 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
     aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
     aws_mutex_unlock(args->mutex);
+
+    return false;
 }
 
 int main(int argc, char **argv) {
@@ -179,7 +181,6 @@ int main(int argc, char **argv) {
 
     struct aws_tls_connection_options tls_con_opt;
     aws_tls_connection_options_init_from_ctx(&tls_con_opt, tls_ctx);
-    aws_tls_connection_options_set_server_name(&tls_con_opt, (const char *)aws_string_bytes(s_hostname));
 
     struct aws_socket_options socket_options;
     AWS_ZERO_STRUCT(socket_options);

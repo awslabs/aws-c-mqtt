@@ -49,8 +49,9 @@ struct aws_mqtt_client_connection_callbacks {
         enum aws_mqtt_connect_return_code return_code,
         bool session_present,
         void *user_data);
-    /* Called when a connection is closed, right before any resources are deleted. */
-    void (*on_disconnect)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
+    /* Called when a connection is closed, right before any resources are deleted.
+     * Return true to attempt a reconnect. */
+    bool (*on_disconnect)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
 
     void *user_data;
 };

@@ -73,12 +73,12 @@ static void s_mqtt_client_init(
 
     (void)bootstrap;
 
-    struct aws_mqtt_client_connection *connection = user_data;
-
     if (error_code != AWS_OP_SUCCESS) {
-        MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, error_code);
+        /* No need to call error callback, s_mqtt_client_shutdown will be called, which will call to user */
         return;
     }
+
+    struct aws_mqtt_client_connection *connection = user_data;
 
     /* Reset the current timeout timer */
     connection->reconnect_timeouts.current = connection->reconnect_timeouts.min;
@@ -87,7 +87,7 @@ static void s_mqtt_client_init(
     connection->slot = aws_channel_slot_new(channel);
 
     if (!connection->slot) {
-        MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        aws_channel_shutdown(channel, aws_last_error());
         return;
     }
 
@@ -196,7 +196,14 @@ static void s_mqtt_client_shutdown(
     aws_channel_slot_remove(connection->slot);
     connection->slot = NULL;
 
-    if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+    /* Alert the connection we've shutdown */
+    bool attempt_reconnect = connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+    if (connection->callbacks.on_disconnect) {
+        attempt_reconnect =
+            connection->callbacks.on_disconnect(connection, error_code, connection->callbacks.user_data);
+    }
+
+    if (attempt_reconnect) {
         /* Unintentionally disconnecting, reconnect */
 
         struct aws_task *reconnect_task = aws_mem_acquire(connection->allocator, sizeof(struct aws_task));
@@ -205,9 +212,6 @@ static void s_mqtt_client_shutdown(
         /* Attempt the reconnect immediately */
         reconnect_task->fn(reconnect_task, reconnect_task->arg, AWS_TASK_STATUS_RUN_READY);
     }
-
-    /* Alert the connection we've shutdown */
-    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect, error_code);
 }
 
 static uint64_t s_hash_uint16_t(const void *item) {
@@ -287,6 +291,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
 
         goto handle_error;
     }
+
+    /* Finish populating the tls_connection_options */
+    aws_tls_connection_options_set_server_name(connection->tls_options, (const char *)connection->host_name->bytes);
 
     /* Initialize the handler */
     connection->handler.alloc = connection->allocator;
