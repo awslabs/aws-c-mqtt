@@ -73,12 +73,12 @@ static void s_mqtt_client_init(
 
     (void)bootstrap;
 
-    struct aws_mqtt_client_connection *connection = user_data;
-
     if (error_code != AWS_OP_SUCCESS) {
-        MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, error_code);
+        /* No need to call error callback, s_mqtt_client_shutdown will be called, which will call to user */
         return;
     }
+
+    struct aws_mqtt_client_connection *connection = user_data;
 
     /* Reset the current timeout timer */
     connection->reconnect_timeouts.current = connection->reconnect_timeouts.min;
@@ -87,7 +87,7 @@ static void s_mqtt_client_init(
     connection->slot = aws_channel_slot_new(channel);
 
     if (!connection->slot) {
-        MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        aws_channel_shutdown(channel, aws_last_error());
         return;
     }
 
@@ -199,7 +199,8 @@ static void s_mqtt_client_shutdown(
     /* Alert the connection we've shutdown */
     bool attempt_reconnect = connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING;
     if (connection->callbacks.on_disconnect) {
-        attempt_reconnect = connection->callbacks.on_disconnect(connection, error_code, connection->callbacks.user_data);
+        attempt_reconnect =
+            connection->callbacks.on_disconnect(connection, error_code, connection->callbacks.user_data);
     }
 
     if (attempt_reconnect) {
