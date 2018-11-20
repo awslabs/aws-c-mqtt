@@ -179,7 +179,6 @@ int main(int argc, char **argv) {
 
     struct aws_tls_connection_options tls_con_opt;
     aws_tls_connection_options_init_from_ctx(&tls_con_opt, tls_ctx);
-    aws_tls_connection_options_set_server_name(&tls_con_opt, (const char *)aws_string_bytes(s_hostname));
 
     struct aws_socket_options socket_options;
     AWS_ZERO_STRUCT(socket_options);

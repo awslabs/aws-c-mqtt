@@ -288,6 +288,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
         goto handle_error;
     }
 
+    /* Finish populating the tls_connection_options */
+    aws_tls_connection_options_set_server_name(connection->tls_options, (const char *)connection->host_name->bytes);
+
     /* Initialize the handler */
     connection->handler.alloc = connection->allocator;
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
