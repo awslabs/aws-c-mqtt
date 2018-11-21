@@ -520,14 +520,24 @@ int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *con
  * Subscribe
  ******************************************************************************/
 
-struct subscribe_task_arg {
+/* The lifetime of this struct is the same as the lifetime of the subscription */
+struct subscribe_task_topic {
     struct aws_mqtt_client_connection *connection;
-    const struct aws_string *filter;
-    enum aws_mqtt_qos qos;
 
-    aws_mqtt_client_publish_received_fn *on_publish;
-    aws_mqtt_userdata_cleanup_fn *on_cleanup;
-    void *on_publish_ud;
+    struct aws_mqtt_topic_subscription request;
+    struct aws_string *filter;
+};
+
+/* THe lifetime of this struct is from subscribe -> suback */
+struct subscribe_task_arg {
+
+    struct aws_mqtt_client_connection *connection;
+
+    /* list of subscribe_task_topic *s */
+    struct aws_array_list topics;
+
+    aws_mqtt_suback_fn *on_suback;
+    void *on_suback_ud;
 };
 
 static void s_on_publish_client_wrapper(
@@ -535,21 +545,21 @@ static void s_on_publish_client_wrapper(
     const struct aws_byte_cursor *payload,
     void *userdata) {
 
-    struct subscribe_task_arg *task_arg = userdata;
+    struct subscribe_task_topic *task_topic = userdata;
 
     /* Call out to the user callback */
-    task_arg->on_publish(task_arg->connection, topic, payload, task_arg->on_publish_ud);
+    task_topic->request.on_publish(task_topic->connection, topic, payload, task_topic->request.on_publish_ud);
 }
 
 static void s_on_topic_clean_up(void *userdata) {
 
-    struct subscribe_task_arg *task_arg = userdata;
+    struct subscribe_task_topic *task_topic = userdata;
 
-    if (task_arg->on_cleanup) {
-        task_arg->on_cleanup(task_arg->on_publish_ud);
+    if (task_topic->request.on_cleanup) {
+        task_topic->request.on_cleanup(task_topic->request.on_publish_ud);
     }
 
-    aws_mem_release(task_arg->connection->allocator, task_arg);
+    aws_mem_release(task_topic->connection->allocator, task_topic);
 }
 
 static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
@@ -558,15 +568,34 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
 
     struct aws_io_message *message = NULL;
 
-    struct aws_byte_cursor topic_cursor = aws_byte_cursor_from_string(task_arg->filter);
-
     /* Send the subscribe packet */
     struct aws_mqtt_packet_subscribe subscribe;
     if (aws_mqtt_packet_subscribe_init(&subscribe, task_arg->connection->allocator, message_id)) {
         goto handle_error;
     }
-    if (aws_mqtt_packet_subscribe_add_topic(&subscribe, topic_cursor, task_arg->qos)) {
-        goto handle_error;
+
+    const size_t num_topics = aws_array_list_length(&task_arg->topics);
+    for (size_t i = 0; i < num_topics; ++i) {
+
+        struct subscribe_task_topic *topic = NULL;
+        int result = aws_array_list_get_at(&task_arg->topics, &topic, i);
+        assert(result == AWS_OP_SUCCESS); /* We know we're within bounds */
+        (void)result;
+
+        if (aws_mqtt_packet_subscribe_add_topic(&subscribe, topic->request.topic, topic->request.qos)) {
+            goto handle_error;
+        }
+
+        if (aws_mqtt_topic_tree_insert(
+                &task_arg->connection->subscriptions,
+                topic->filter,
+                topic->request.qos,
+                s_on_publish_client_wrapper,
+                s_on_topic_clean_up,
+                topic)) {
+
+            goto handle_error;
+        }
     }
 
     message = mqtt_get_message_for_packet(task_arg->connection, &subscribe.fixed_header);
@@ -584,20 +613,20 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
         goto handle_error;
     }
 
-    if (aws_mqtt_topic_tree_insert(
-            &task_arg->connection->subscriptions,
-            task_arg->filter,
-            task_arg->qos,
-            s_on_publish_client_wrapper,
-            s_on_topic_clean_up,
-            task_arg)) {
-
-        goto handle_error;
-    }
-
     return false;
 
 handle_error:
+
+    /* Apparently you have to have an expression directly after a label, and defining a variable doesn't count. Neat. */
+    (void)0;
+
+    const size_t num_added_topics = aws_array_list_length(&subscribe.topic_filters);
+    for (size_t i = 0; i < num_added_topics; ++i) {
+        struct aws_mqtt_subscription *sub = NULL;
+        aws_array_list_get_at_ptr(&subscribe.topic_filters, (void **)&sub, i);
+
+        aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &sub->topic_filter);
+    }
 
     aws_mqtt_packet_subscribe_clean_up(&subscribe);
 
@@ -605,21 +634,132 @@ handle_error:
         aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
     }
 
-    aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &topic_cursor);
-
     aws_mem_release(task_arg->connection->allocator, task_arg);
 
     return true;
 }
 
+static void s_subscribe_complete(struct aws_mqtt_client_connection *connection, uint16_t packet_id, void *userdata) {
+
+    struct subscribe_task_arg *task_arg = userdata;
+
+    if (task_arg->on_suback) {
+        task_arg->on_suback(connection, packet_id, &task_arg->topics, task_arg->on_suback_ud);
+    }
+
+    aws_array_list_clean_up(&task_arg->topics);
+
+    aws_mem_release(task_arg->connection->allocator, task_arg);
+}
+
 uint16_t aws_mqtt_client_connection_subscribe(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_array_list *topic_filters,
+    aws_mqtt_suback_fn *on_suback,
+    void *on_suback_ud) {
+
+    assert(connection);
+
+    struct subscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
+    if (!task_arg) {
+        goto handle_error;
+    }
+
+    task_arg->connection = connection;
+    task_arg->on_suback = on_suback;
+    task_arg->on_suback_ud = on_suback_ud;
+
+    const size_t num_topics = aws_array_list_length(topic_filters);
+
+    aws_array_list_init_dynamic(&task_arg->topics, connection->allocator, num_topics, sizeof(void *));
+
+    for (size_t i = 0; i < num_topics; ++i) {
+
+        struct aws_mqtt_topic_subscription *request = NULL;
+        aws_array_list_get_at_ptr(topic_filters, (void **)&request, i);
+
+        if (!aws_mqtt_is_valid_topic_filter(&request->topic)) {
+            aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+            goto handle_error;
+        }
+
+        struct subscribe_task_topic *task_topic =
+            aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_topic));
+        task_topic->connection = connection;
+        task_topic->request = *request;
+
+        task_topic->filter = aws_string_new_from_array(
+            connection->allocator, task_topic->request.topic.ptr, task_topic->request.topic.len);
+        if (!task_topic->filter) {
+            goto handle_error;
+        }
+
+        /* Update request topic cursor to refer to owned string */
+        task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
+
+        /* Push into the list */
+        aws_array_list_push_back(&task_arg->topics, &request);
+    }
+
+    uint16_t packet_id =
+        mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg);
+
+    if (packet_id) {
+        return packet_id;
+    }
+
+handle_error:
+
+    if (task_arg) {
+        const size_t num_added_topics = aws_array_list_length(&task_arg->topics);
+        for (size_t i = 0; i < num_added_topics; ++i) {
+
+            struct subscribe_task_topic *task_topic = NULL;
+            aws_array_list_get_at(&task_arg->topics, (void **)&task_topic, i);
+
+            aws_string_destroy(task_topic->filter);
+            aws_mem_release(connection->allocator, task_topic);
+        }
+
+        aws_mem_release(connection->allocator, task_arg);
+    }
+    return 0;
+}
+
+/*******************************************************************************
+ * Subscribe Single
+ ******************************************************************************/
+
+static void s_subscribe_single_complete(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    void *userdata) {
+
+    struct subscribe_task_arg *task_arg = userdata;
+
+    assert(aws_array_list_length(&task_arg->topics) == 1);
+
+    if (task_arg->on_suback) {
+        struct subscribe_task_topic *topic = NULL;
+        int result = aws_array_list_get_at_ptr(&task_arg->topics, (void **)&topic, 0);
+        assert(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
+        (void)result;
+
+        aws_mqtt_suback_single_fn *single_suback = (aws_mqtt_suback_single_fn *)task_arg->on_suback;
+        single_suback(connection, packet_id, &topic->request.topic, topic->request.qos, task_arg->on_suback_ud);
+    }
+
+    aws_mem_release(task_arg->connection->allocator, task_arg);
+}
+
+uint16_t aws_mqtt_client_connection_subscribe_single(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_client_publish_received_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
-    aws_mqtt_op_complete_fn *on_suback,
+    aws_mqtt_suback_single_fn *on_suback,
     void *on_suback_ud) {
 
     assert(connection);
@@ -629,24 +769,49 @@ uint16_t aws_mqtt_client_connection_subscribe(
         return 0;
     }
 
-    struct subscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
+    /* Because we know we're only going to have 1 topic, we can cheat and allocate the array_list in the same block as
+     * the task argument. */
+    void *task_topic_storage = NULL;
+    struct subscribe_task_topic *task_topic = NULL;
+    struct subscribe_task_arg *task_arg = aws_mem_acquire_many(
+        connection->allocator,
+        2,
+        &task_arg,
+        sizeof(struct subscribe_task_arg),
+        &task_topic_storage,
+        sizeof(struct subscribe_task_topic));
+
     if (!task_arg) {
         goto handle_error;
     }
 
     task_arg->connection = connection;
-    task_arg->on_publish = on_publish;
-    task_arg->on_publish_ud = on_publish_ud;
-    task_arg->on_cleanup = on_ud_cleanup;
+    task_arg->on_suback = (aws_mqtt_suback_fn *)on_suback;
+    task_arg->on_suback_ud = on_suback_ud;
 
-    task_arg->qos = qos;
-    task_arg->filter = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
-    if (!task_arg->filter) {
+    aws_array_list_init_static(&task_arg->topics, task_topic_storage, 1, sizeof(void *));
+
+    /* Allocate the topic and push into the list */
+    task_topic = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_topic));
+    aws_array_list_push_back(&task_arg->topics, &task_topic);
+
+    task_topic->filter = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
+    if (!task_topic->filter) {
         goto handle_error;
     }
 
+    task_topic->connection = connection;
+    task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
+    task_topic->request.qos = qos;
+    task_topic->request.on_publish = on_publish;
+    task_topic->request.on_cleanup = on_ud_cleanup;
+    task_topic->request.on_publish_ud = on_publish_ud;
+
+    /* Update request topic cursor to refer to owned string */
+    task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
+
     uint16_t packet_id =
-        mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, on_suback, on_suback_ud);
+        mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg);
 
     if (packet_id) {
         return packet_id;
@@ -655,9 +820,10 @@ uint16_t aws_mqtt_client_connection_subscribe(
 handle_error:
 
     if (task_arg) {
-        if (task_arg->filter) {
-            aws_string_destroy((void *)task_arg->filter);
-        }
+
+        aws_string_destroy(task_topic->filter);
+        aws_mem_release(connection->allocator, task_topic);
+
         aws_mem_release(connection->allocator, task_arg);
     }
     return 0;

@@ -103,7 +103,7 @@ static void s_mqtt_on_connack(
 
     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
 
-    aws_mqtt_client_connection_subscribe(
+    aws_mqtt_client_connection_subscribe_single(
         args->connection,
         &subscribe_topic_cur,
         AWS_MQTT_QOS_AT_LEAST_ONCE,
@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
     aws_client_bootstrap_init(&bootstrap, args.allocator, &elg, NULL, NULL);
 
     struct aws_tls_ctx_options tls_ctx_opt;
-    aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "9f0631f03a-certificate.pem.crt", "9f0631f03a-private.pem.key");
+    aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "iot-certificate.pem.crt", "iot-private.pem.key");
     aws_tls_ctx_options_set_alpn_list(&tls_ctx_opt, "x-amzn-mqtt-ca");
     aws_tls_ctx_options_override_default_trust_store(&tls_ctx_opt, NULL, "AmazonRootCA1.pem");
 

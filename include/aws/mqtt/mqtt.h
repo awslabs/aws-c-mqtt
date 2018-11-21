@@ -22,10 +22,11 @@
 
 /* Quality of Service associated with a publish action or subscription [MQTT-4.3]. */
 enum aws_mqtt_qos {
-    AWS_MQTT_QOS_AT_MOST_ONCE = 0,
-    AWS_MQTT_QOS_AT_LEAST_ONCE = 1,
-    AWS_MQTT_QOS_EXACTLY_ONCE = 2,
+    AWS_MQTT_QOS_AT_MOST_ONCE = 0x0,
+    AWS_MQTT_QOS_AT_LEAST_ONCE = 0x1,
+    AWS_MQTT_QOS_EXACTLY_ONCE = 0x2,
     /* reserved = 3 */
+    AWS_MQTT_QOS_FAILURE = 0x80, /* Only used in SUBACK packets */
 };
 
 /* Result of a connect request [MQTT-3.2.2.3]. */
