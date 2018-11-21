@@ -526,6 +526,7 @@ struct subscribe_task_arg {
     enum aws_mqtt_qos qos;
 
     aws_mqtt_client_publish_received_fn *on_publish;
+    aws_mqtt_userdata_cleanup_fn *on_cleanup;
     void *on_publish_ud;
 };
 
@@ -543,6 +544,11 @@ static void s_on_publish_client_wrapper(
 static void s_on_topic_clean_up(void *userdata) {
 
     struct subscribe_task_arg *task_arg = userdata;
+
+    if (task_arg->on_cleanup) {
+        task_arg->on_cleanup(task_arg->on_publish_ud);
+    }
+
     aws_mem_release(task_arg->connection->allocator, task_arg);
 }
 
@@ -616,6 +622,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     enum aws_mqtt_qos qos,
     aws_mqtt_client_publish_received_fn *on_publish,
     void *on_publish_ud,
+    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
     aws_mqtt_op_complete_fn *on_suback,
     void *on_suback_ud) {
 
@@ -634,6 +641,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     task_arg->connection = connection;
     task_arg->on_publish = on_publish;
     task_arg->on_publish_ud = on_publish_ud;
+    task_arg->on_cleanup = on_ud_cleanup;
 
     task_arg->qos = qos;
     task_arg->filter = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);

@@ -113,7 +113,14 @@ static void s_mqtt_on_connack_1(
     static bool is_connack_2 = false;
     if (is_connack_2) {
         aws_mqtt_client_connection_subscribe(
-            connection, &subscribe_topic_cur, AWS_MQTT_QOS_EXACTLY_ONCE, &s_on_packet_recieved, user_data, NULL, NULL);
+            connection,
+            &subscribe_topic_cur,
+            AWS_MQTT_QOS_EXACTLY_ONCE,
+            &s_on_packet_recieved,
+            user_data,
+            NULL,
+            NULL,
+            NULL);
 
         aws_mutex_lock(args->mutex);
         aws_condition_variable_notify_one(args->condition_variable);

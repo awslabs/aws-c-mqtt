@@ -216,6 +216,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     enum aws_mqtt_qos qos,
     aws_mqtt_client_publish_received_fn *on_publish,
     void *on_publish_ud,
+    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
     aws_mqtt_op_complete_fn *on_suback,
     void *on_suback_ud);
 

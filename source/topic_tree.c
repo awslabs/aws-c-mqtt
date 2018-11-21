@@ -115,7 +115,7 @@ int aws_mqtt_topic_tree_insert(
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
-    aws_mqtt_topic_userdata_fn *cleanup,
+    aws_mqtt_userdata_cleanup_fn *cleanup,
     void *userdata) {
 
     assert(tree);
