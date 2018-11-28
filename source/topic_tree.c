@@ -124,12 +124,12 @@ int aws_mqtt_topic_tree_insert(
 
     struct aws_mqtt_topic_node *current = tree->root;
 
-    struct aws_byte_buf topic_filter_buf = aws_byte_buf_from_array(aws_string_bytes(topic_filter), topic_filter->len);
+    struct aws_byte_cursor topic_filter_cur = aws_byte_cursor_from_string(topic_filter);
     struct aws_byte_cursor sub_part;
     AWS_ZERO_STRUCT(sub_part);
     struct aws_byte_cursor last_part;
     AWS_ZERO_STRUCT(last_part);
-    while (aws_byte_buf_next_split(&topic_filter_buf, '/', &sub_part)) {
+    while (aws_byte_cursor_next_split(&topic_filter_cur, '/', &sub_part)) {
 
         last_part = sub_part;
 
@@ -214,8 +214,7 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
         return AWS_OP_ERR;
     }
 
-    struct aws_byte_buf topic_filter_buf = aws_byte_buf_from_array(topic_filter->ptr, topic_filter->len);
-    if (aws_byte_buf_split_on_char(&topic_filter_buf, '/', &sub_topic_parts)) {
+    if (aws_byte_cursor_split_on_char(topic_filter, '/', &sub_topic_parts)) {
         aws_array_list_clean_up(&sub_topic_parts);
         return AWS_OP_ERR;
     }
@@ -366,11 +365,10 @@ static void s_topic_tree_publish_do_recurse(
 
     struct aws_byte_cursor hash_cur = aws_byte_cursor_from_string(s_multi_level_wildcard);
     struct aws_byte_cursor plus_cur = aws_byte_cursor_from_string(s_single_level_wildcard);
-    struct aws_byte_buf topic_buf = aws_byte_buf_from_array(pub->topic_name.ptr, pub->topic_name.len);
 
     struct aws_hash_element *elem = NULL;
 
-    if (!aws_byte_buf_next_split(&topic_buf, '/', sub_part)) {
+    if (!aws_byte_cursor_next_split(&pub->topic_name, '/', sub_part)) {
         /* If there are no more subtopics, this is the end and current should be called. */
         enum aws_mqtt_qos qos = ((pub->fixed_header.flags >> 1) & 0x3);
 

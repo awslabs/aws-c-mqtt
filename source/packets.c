@@ -29,22 +29,22 @@ static size_t s_sizeof_encoded_buffer(struct aws_byte_cursor *buf) {
     return sizeof(uint16_t) + buf->len;
 }
 
-static int s_encode_buffer(struct aws_byte_cursor *cur, const struct aws_byte_cursor buf) {
+static int s_encode_buffer(struct aws_byte_buf *buf, const struct aws_byte_cursor cur) {
 
-    assert(cur);
+    assert(buf);
 
     /* Make sure the buffer isn't too big */
-    if (buf.len > UINT16_MAX) {
+    if (cur.len > UINT16_MAX) {
         return aws_raise_error(AWS_ERROR_MQTT_BUFFER_TOO_BIG);
     }
 
     /* Write the length */
-    if (!aws_byte_cursor_write_be16(cur, (uint16_t)buf.len)) {
+    if (!aws_byte_buf_write_be16(buf, (uint16_t)cur.len)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
     /* Write the data */
-    if (!aws_byte_cursor_write(cur, buf.ptr, buf.len)) {
+    if (!aws_byte_buf_write(buf, cur.ptr, cur.len)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -83,15 +83,15 @@ static void s_ack_init(struct aws_mqtt_packet_ack *packet, enum aws_mqtt_packet_
     packet->packet_identifier = packet_identifier;
 }
 
-int aws_mqtt_packet_ack_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_ack *packet) {
+int aws_mqtt_packet_ack_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_ack *packet) {
 
-    assert(cur);
+    assert(buf);
     assert(packet);
 
     /*************************************************************************/
     /* Fixed Header */
 
-    if (aws_mqtt_fixed_header_encode(cur, &packet->fixed_header)) {
+    if (aws_mqtt_fixed_header_encode(buf, &packet->fixed_header)) {
         return AWS_OP_ERR;
     }
 
@@ -99,7 +99,7 @@ int aws_mqtt_packet_ack_encode(struct aws_byte_cursor *cur, const struct aws_mqt
     /* Variable Header                                                       */
 
     /* Write packet identifier */
-    if (!aws_byte_cursor_write_be16(cur, packet->packet_identifier)) {
+    if (!aws_byte_buf_write_be16(buf, packet->packet_identifier)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -214,9 +214,9 @@ int aws_mqtt_packet_connect_add_will(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_connect *packet) {
+int aws_mqtt_packet_connect_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_connect *packet) {
 
-    assert(cur);
+    assert(buf);
     assert(packet);
 
     /* Do validation */
@@ -228,7 +228,7 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws
     /*************************************************************************/
     /* Fixed Header */
 
-    if (aws_mqtt_fixed_header_encode(cur, &packet->fixed_header)) {
+    if (aws_mqtt_fixed_header_encode(buf, &packet->fixed_header)) {
         return AWS_OP_ERR;
     }
 
@@ -236,12 +236,12 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws
     /* Variable Header                                                       */
 
     /* Write protocol name */
-    if (s_encode_buffer(cur, s_protocol_name)) {
+    if (s_encode_buffer(buf, s_protocol_name)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
     /* Write protocol level */
-    if (!aws_byte_cursor_write_u8(cur, S_PROTOCOL_LEVEL)) {
+    if (!aws_byte_buf_write_u8(buf, S_PROTOCOL_LEVEL)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -250,12 +250,12 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws
         packet->clean_session << 1 | packet->has_will << 2 | packet->will_qos << 3 | packet->will_retain << 5 |
         packet->has_password << 6 | packet->has_username << 7);
 
-    if (!aws_byte_cursor_write_u8(cur, connect_flags)) {
+    if (!aws_byte_buf_write_u8(buf, connect_flags)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
     /* Write keep alive */
-    if (!aws_byte_cursor_write_be16(cur, packet->keep_alive_timeout)) {
+    if (!aws_byte_buf_write_be16(buf, packet->keep_alive_timeout)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -263,30 +263,30 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_cursor *cur, const struct aws
     /* Payload                                                               */
 
     /* Client identifier is required, write it */
-    if (s_encode_buffer(cur, packet->client_identifier)) {
+    if (s_encode_buffer(buf, packet->client_identifier)) {
         return AWS_OP_ERR;
     }
 
     /* Write will */
     if (packet->has_will) {
-        if (s_encode_buffer(cur, packet->will_topic)) {
+        if (s_encode_buffer(buf, packet->will_topic)) {
             return AWS_OP_ERR;
         }
-        if (s_encode_buffer(cur, packet->will_message)) {
+        if (s_encode_buffer(buf, packet->will_message)) {
             return AWS_OP_ERR;
         }
     }
 
     /* Write username */
     if (packet->has_username) {
-        if (s_encode_buffer(cur, packet->username)) {
+        if (s_encode_buffer(buf, packet->username)) {
             return AWS_OP_ERR;
         }
     }
 
     /* Write password */
     if (packet->has_password) {
-        if (s_encode_buffer(cur, packet->password)) {
+        if (s_encode_buffer(buf, packet->password)) {
             return AWS_OP_ERR;
         }
     }
@@ -413,15 +413,15 @@ int aws_mqtt_packet_connack_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_connack_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_connack *packet) {
+int aws_mqtt_packet_connack_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_connack *packet) {
 
-    assert(cur);
+    assert(buf);
     assert(packet);
 
     /*************************************************************************/
     /* Fixed Header */
 
-    if (aws_mqtt_fixed_header_encode(cur, &packet->fixed_header)) {
+    if (aws_mqtt_fixed_header_encode(buf, &packet->fixed_header)) {
         return AWS_OP_ERR;
     }
 
@@ -430,12 +430,12 @@ int aws_mqtt_packet_connack_encode(struct aws_byte_cursor *cur, const struct aws
 
     /* Read connack flags */
     uint8_t connack_flags = packet->session_present & 0x1;
-    if (!aws_byte_cursor_write_u8(cur, connack_flags)) {
+    if (!aws_byte_buf_write_u8(buf, connack_flags)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
     /* Read return code */
-    if (!aws_byte_cursor_write_u8(cur, packet->connect_return_code)) {
+    if (!aws_byte_buf_write_u8(buf, packet->connect_return_code)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -507,15 +507,15 @@ int aws_mqtt_packet_publish_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_publish_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_publish *packet) {
+int aws_mqtt_packet_publish_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet) {
 
-    assert(cur);
+    assert(buf);
     assert(packet);
 
     /*************************************************************************/
     /* Fixed Header */
 
-    if (aws_mqtt_fixed_header_encode(cur, &packet->fixed_header)) {
+    if (aws_mqtt_fixed_header_encode(buf, &packet->fixed_header)) {
         return AWS_OP_ERR;
     }
 
@@ -523,14 +523,14 @@ int aws_mqtt_packet_publish_encode(struct aws_byte_cursor *cur, const struct aws
     /* Variable Header                                                       */
 
     /* Write topic name */
-    if (s_encode_buffer(cur, packet->topic_name)) {
+    if (s_encode_buffer(buf, packet->topic_name)) {
         return AWS_OP_ERR;
     }
 
     enum aws_mqtt_qos qos = ((packet->fixed_header.flags >> 1) & 0x3);
     if (qos > 0) {
         /* Write packet identifier */
-        if (!aws_byte_cursor_write_be16(cur, packet->packet_identifier)) {
+        if (!aws_byte_buf_write_be16(buf, packet->packet_identifier)) {
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }
     }
@@ -538,7 +538,7 @@ int aws_mqtt_packet_publish_encode(struct aws_byte_cursor *cur, const struct aws
     /*************************************************************************/
     /* Payload                                                               */
 
-    if (!aws_byte_cursor_write(cur, packet->payload.ptr, packet->payload.len)) {
+    if (!aws_byte_buf_write(buf, packet->payload.ptr, packet->payload.len)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -686,15 +686,15 @@ int aws_mqtt_packet_subscribe_add_topic(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_subscribe_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_subscribe *packet) {
+int aws_mqtt_packet_subscribe_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_subscribe *packet) {
 
-    assert(cur);
+    assert(buf);
     assert(packet);
 
     /*************************************************************************/
     /* Fixed Header */
 
-    if (aws_mqtt_fixed_header_encode(cur, &packet->fixed_header)) {
+    if (aws_mqtt_fixed_header_encode(buf, &packet->fixed_header)) {
         return AWS_OP_ERR;
     }
 
@@ -702,7 +702,7 @@ int aws_mqtt_packet_subscribe_encode(struct aws_byte_cursor *cur, const struct a
     /* Variable Header                                                       */
 
     /* Write packet identifier */
-    if (!aws_byte_cursor_write_be16(cur, packet->packet_identifier)) {
+    if (!aws_byte_buf_write_be16(buf, packet->packet_identifier)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -715,10 +715,10 @@ int aws_mqtt_packet_subscribe_encode(struct aws_byte_cursor *cur, const struct a
 
             return AWS_OP_ERR;
         }
-        s_encode_buffer(cur, subscription->topic_filter);
+        s_encode_buffer(buf, subscription->topic_filter);
 
         uint8_t eos_byte = subscription->qos & 0x3;
-        if (!aws_byte_cursor_write_u8(cur, eos_byte)) {
+        if (!aws_byte_buf_write_u8(buf, eos_byte)) {
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }
     }
@@ -840,15 +840,15 @@ int aws_mqtt_packet_unsubscribe_add_topic(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_unsubscribe *packet) {
+int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_unsubscribe *packet) {
 
-    assert(cur);
+    assert(buf);
     assert(packet);
 
     /*************************************************************************/
     /* Fixed Header */
 
-    if (aws_mqtt_fixed_header_encode(cur, &packet->fixed_header)) {
+    if (aws_mqtt_fixed_header_encode(buf, &packet->fixed_header)) {
         return AWS_OP_ERR;
     }
 
@@ -856,7 +856,7 @@ int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_cursor *cur, const struct
     /* Variable Header                                                       */
 
     /* Write packet identifier */
-    if (!aws_byte_cursor_write_be16(cur, packet->packet_identifier)) {
+    if (!aws_byte_buf_write_be16(buf, packet->packet_identifier)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -869,7 +869,7 @@ int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_cursor *cur, const struct
 
             return AWS_OP_ERR;
         }
-        s_encode_buffer(cur, topic_filter);
+        s_encode_buffer(buf, topic_filter);
     }
 
     return AWS_OP_SUCCESS;
@@ -955,15 +955,15 @@ int aws_mqtt_packet_disconnect_init(struct aws_mqtt_packet_connection *packet) {
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_connection_encode(struct aws_byte_cursor *cur, const struct aws_mqtt_packet_connection *packet) {
+int aws_mqtt_packet_connection_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_connection *packet) {
 
-    assert(cur);
+    assert(buf);
     assert(packet);
 
     /*************************************************************************/
     /* Fixed Header */
 
-    if (aws_mqtt_fixed_header_encode(cur, &packet->fixed_header)) {
+    if (aws_mqtt_fixed_header_encode(buf, &packet->fixed_header)) {
         return AWS_OP_ERR;
     }
 

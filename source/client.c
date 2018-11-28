@@ -130,14 +130,10 @@ static void s_mqtt_client_init(
     if (!message) {
         goto handle_error;
     }
-    struct aws_byte_cursor message_cursor = {
-        .ptr = message->message_data.buffer,
-        .len = message->message_data.capacity,
-    };
-    if (aws_mqtt_packet_connect_encode(&message_cursor, &connect)) {
+
+    if (aws_mqtt_packet_connect_encode(&message->message_data, &connect)) {
         goto handle_error;
     }
-    message->message_data.len = message->message_data.capacity - message_cursor.len;
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         goto handle_error;
@@ -379,7 +375,7 @@ int aws_mqtt_client_connection_set_will(
     }
 
     struct aws_byte_buf topic_buf = aws_byte_buf_from_array(topic->ptr, topic->len);
-    if (aws_byte_buf_init_copy(connection->allocator, &connection->will.topic, &topic_buf)) {
+    if (aws_byte_buf_init_copy(&connection->will.topic, connection->allocator, &topic_buf)) {
         goto cleanup;
     }
 
@@ -387,7 +383,7 @@ int aws_mqtt_client_connection_set_will(
     connection->will.retain = retain;
 
     struct aws_byte_buf payload_buf = aws_byte_buf_from_array(payload->ptr, payload->len);
-    if (aws_byte_buf_init_copy(connection->allocator, &connection->will.payload, &payload_buf)) {
+    if (aws_byte_buf_init_copy(&connection->will.payload, connection->allocator, &payload_buf)) {
         goto cleanup;
     }
 
@@ -458,7 +454,7 @@ int aws_mqtt_client_connection_connect(
 
         /* Only set connection->client_id if a new one was provided */
         struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id->ptr, client_id->len);
-        if (aws_byte_buf_init_copy(connection->allocator, &connection->client_id, &client_id_buf)) {
+        if (aws_byte_buf_init_copy(&connection->client_id, connection->allocator, &client_id_buf)) {
             return AWS_OP_ERR;
         }
     } else {
@@ -573,14 +569,10 @@ static bool s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *u
     if (!message) {
         goto handle_error;
     }
-    struct aws_byte_cursor message_cursor = {
-        .ptr = message->message_data.buffer,
-        .len = message->message_data.capacity,
-    };
-    if (aws_mqtt_packet_subscribe_encode(&message_cursor, &subscribe)) {
+
+    if (aws_mqtt_packet_subscribe_encode(&message->message_data, &subscribe)) {
         goto handle_error;
     }
-    message->message_data.len = message->message_data.capacity - message_cursor.len;
 
     aws_mqtt_packet_subscribe_clean_up(&subscribe);
 
@@ -697,14 +689,10 @@ static bool s_unsubscribe_send(uint16_t message_id, bool is_first_attempt, void 
     if (!message) {
         goto handle_error;
     }
-    struct aws_byte_cursor message_cursor = {
-        .ptr = message->message_data.buffer,
-        .len = message->message_data.capacity,
-    };
-    if (aws_mqtt_packet_unsubscribe_encode(&message_cursor, &unsubscribe)) {
+
+    if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &unsubscribe)) {
         goto handle_error;
     }
-    message->message_data.len = message->message_data.capacity - message_cursor.len;
 
     aws_mqtt_packet_unsubscribe_clean_up(&unsubscribe);
 
@@ -789,14 +777,10 @@ static bool s_publish_send(uint16_t message_id, bool is_first_attempt, void *use
     if (!message) {
         goto handle_error;
     }
-    struct aws_byte_cursor message_cursor = {
-        .ptr = message->message_data.buffer,
-        .len = message->message_data.capacity,
-    };
-    if (aws_mqtt_packet_publish_encode(&message_cursor, &publish)) {
+
+    if (aws_mqtt_packet_publish_encode(&message->message_data, &publish)) {
         goto handle_error;
     }
-    message->message_data.len = message->message_data.capacity - message_cursor.len;
 
     if (aws_channel_slot_send_message(publish_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
 
@@ -877,14 +861,10 @@ static bool s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *use
         if (!message) {
             goto handle_error;
         }
-        struct aws_byte_cursor message_cursor = {
-            .ptr = message->message_data.buffer,
-            .len = message->message_data.capacity,
-        };
-        if (aws_mqtt_packet_connection_encode(&message_cursor, &pingreq)) {
+
+        if (aws_mqtt_packet_connection_encode(&message->message_data, &pingreq)) {
             goto handle_error;
         }
-        message->message_data.len = message->message_data.capacity - message_cursor.len;
 
         if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
 

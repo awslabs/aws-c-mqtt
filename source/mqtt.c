@@ -36,13 +36,11 @@ static bool s_is_valid_topic(const struct aws_byte_cursor *topic, bool is_filter
         return false;
     }
 
-    struct aws_byte_buf topic_buf = aws_byte_buf_from_array(topic->ptr, topic->len);
-
     bool saw_hash = false;
 
     struct aws_byte_cursor topic_part;
     AWS_ZERO_STRUCT(topic_part);
-    while (aws_byte_buf_next_split(&topic_buf, '/', &topic_part)) {
+    while (aws_byte_cursor_next_split(topic, '/', &topic_part)) {
 
         if (saw_hash) {
             /* [MQTT-4.7.1-2] If last part was a '#' and there's still another part, it's an invalid topic */
