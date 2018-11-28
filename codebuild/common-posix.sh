@@ -25,7 +25,10 @@ cd ../
 
 mkdir -p install
 
-install_library s2n 55699d9ce02285b5ad1674fc08929452f994e20e
+# If TRAVIS_OS_NAME is OSX, skip this step (will resolve to empty string on CodeBuild)
+if [ "$TRAVIS_OS_NAME" != "osx" ]; then
+    install_library s2n 55699d9ce02285b5ad1674fc08929452f994e20e
+fi
 install_library aws-c-common
 install_library aws-c-io
 
