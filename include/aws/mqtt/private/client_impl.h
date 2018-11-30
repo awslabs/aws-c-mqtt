@@ -44,11 +44,18 @@ enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_DISCONNECTING,
 };
 
+enum aws_mqtt_client_request_state {
+    AWS_MQTT_CLIENT_REQUEST_COMPLETE,
+    AWS_MQTT_CLIENT_REQUEST_ONGOING,
+    AWS_MQTT_CLIENT_REQUEST_ERROR,
+};
+
 extern const uint64_t request_timeout_ns;
 
 /* Called after the timeout if a matching ack packet hasn't arrived.
    Return true to consider request complete, false to schedule a timeout task. */
-typedef bool(aws_mqtt_send_request_fn)(uint16_t message_id, bool is_first_attempt, void *userdata);
+typedef enum aws_mqtt_client_request_state(
+    aws_mqtt_send_request_fn)(uint16_t message_id, bool is_first_attempt, void *userdata);
 
 struct aws_mqtt_outstanding_request {
     struct aws_linked_list_node list_node;
@@ -142,7 +149,7 @@ uint16_t mqtt_create_request(
     void *on_complete_ud);
 
 /* Call when an ack packet comes back from the server. */
-void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16_t message_id);
+void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int error_code, uint16_t message_id);
 
 /* Call to close the connection with an error code */
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
