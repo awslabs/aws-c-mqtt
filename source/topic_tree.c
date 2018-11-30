@@ -369,13 +369,9 @@ static void s_topic_tree_publish_do_recurse(
     struct aws_hash_element *elem = NULL;
 
     if (!aws_byte_cursor_next_split(&pub->topic_name, '/', sub_part)) {
-        /* If there are no more subtopics, this is the end and current should be called. */
-        enum aws_mqtt_qos qos = ((pub->fixed_header.flags >> 1) & 0x3);
 
         /* If this is the last node and is a sub, call it */
-        if (s_topic_node_is_subscription(current) && current->qos >= qos) {
-            current->callback(&pub->topic_name, &pub->payload, current->userdata);
-        }
+        current->callback(&pub->topic_name, &pub->payload, current->userdata);
         return;
     }
 
