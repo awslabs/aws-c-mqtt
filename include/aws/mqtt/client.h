@@ -40,7 +40,7 @@ struct aws_mqtt_client_connection;
 
 struct aws_mqtt_client_connection_callbacks {
     /* Called if the connection to the server is not completed.
-     * Note that if a CONNACK is recieved, this function will not be called no matter what the return code is */
+     * Note that if a CONNACK is received, this function will not be called no matter what the return code is */
     void (*on_connection_failed)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
     /* Called when a connection acknowlegement is received.
      * If return_code is not ACCEPT, the connetion is automatically closed. */
@@ -80,7 +80,7 @@ typedef void(aws_mqtt_suback_single_fn)(
     int error_code,
     void *userdata);
 
-/** Type of function called when a publish recieved matches a subscription (client specific) */
+/** Type of function called when a publish received matches a subscription (client specific) */
 typedef void(aws_mqtt_client_publish_received_fn)(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
@@ -227,11 +227,11 @@ AWS_MQTT_API
 int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection);
 
 /**
- * Subscribe to topic filters. on_publish will be called when a PUBLISH matching each topic_filter is recieved.
+ * Subscribe to topic filters. on_publish will be called when a PUBLISH matching each topic_filter is received.
  *
  * \param[in] connection    The connection to subscribe on
  * \param[in] topics        An array_list of aws_mqtt_topic_subscriptions (NOT pointers) describing the requests.
- * \param[in] on_suback     Called when a SUBACK has been recieved from the server and the subscription is complete
+ * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
  * \param[in] on_suback_ud  Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0.
@@ -244,15 +244,15 @@ uint16_t aws_mqtt_client_connection_subscribe(
     void *on_suback_ud);
 
 /**
- * Subscribe to a single topic filter. on_publish will be called when a PUBLISH matching topic_filter is recieved.
+ * Subscribe to a single topic filter. on_publish will be called when a PUBLISH matching topic_filter is received.
  *
  * \param[in] connection    The connection to subscribe on
  * \param[in] topic_filter  The topic filter to subscribe on.  This resource must persist until on_suback.
  * \param[in] qos           The maximum QoS of messages to recieve
- * \param[in] on_publish    Called when a PUBLISH packet matching topic_filter is recieved
+ * \param[in] on_publish    Called when a PUBLISH packet matching topic_filter is received
  * \param[in] on_publish_ud Passed to on_publish
  * \param[in] on_ud_cleanup Called when a subscription is removed, on_publish_ud is passed.
- * \param[in] on_suback     Called when a SUBACK has been recieved from the server and the subscription is complete
+ * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
  * \param[in] on_suback_ud  Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0.
@@ -273,7 +273,7 @@ uint16_t aws_mqtt_client_connection_subscribe_single(
  *
  * \param[in] connection        The connection to unsubscribe on
  * \param[in] topic_filter      The topic filter to unsubscribe on. This resource must persist until on_unsuback.
- * \param[in] on_unsuback       Called when a UNSUBACK has been recieved from the server and the subscription is removed
+ * \param[in] on_unsuback       Called when a UNSUBACK has been received from the server and the subscription is removed
  * \param[in] on_unsuback_ud    Passed to on_unsuback
  *
  * \returns The packet id of the unsubscribe packet if successfully sent, otherwise 0.
@@ -294,8 +294,8 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
  * \param[in] retain        True to have the server save the packet, and send to all new subscriptions matching topic
  * \param[in] payload       The data to send as the payload of the publish
  * \param[in] on_complete   For QoS 0, called as soon as the packet is sent
- *                          For QoS 1, called when PUBACK is recieved
- *                          For QoS 2, called when PUBCOMP is recieved
+ *                          For QoS 1, called when PUBACK is received
+ *                          For QoS 2, called when PUBCOMP is received
  *
  * \returns The packet id of the publish packet if successfully sent, otherwise 0.
  */
@@ -311,7 +311,7 @@ uint16_t aws_mqtt_client_connection_publish(
 
 /**
  * Sends a PINGREQ packet to the server to keep the connection alive.
- * If a PINGRESP is not recieved within a reasonable period of time, the connection will be closed.
+ * If a PINGRESP is not received within a reasonable period of time, the connection will be closed.
  *
  * \params[in] connection   The connection to ping on
  *
