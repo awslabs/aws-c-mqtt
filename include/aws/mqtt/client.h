@@ -64,7 +64,7 @@ typedef void(
 typedef void(aws_mqtt_suback_fn)(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
-    const struct aws_array_list *topic_subacks,
+    const struct aws_array_list *topic_subacks, /* contains aws_mqtt_topic_subscription pointers */
     void *userdata);
 
 /** Called when a single-topic subscription request is complete */

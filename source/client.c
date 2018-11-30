@@ -528,7 +528,7 @@ struct subscribe_task_topic {
     struct aws_string *filter;
 };
 
-/* THe lifetime of this struct is from subscribe -> suback */
+/* The lifetime of this struct is from subscribe -> suback */
 struct subscribe_task_arg {
 
     struct aws_mqtt_client_connection *connection;
@@ -662,7 +662,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
 
     struct subscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
-        goto handle_error;
+        return 0;
     }
 
     task_arg->connection = connection;
@@ -671,7 +671,9 @@ uint16_t aws_mqtt_client_connection_subscribe(
 
     const size_t num_topics = aws_array_list_length(topic_filters);
 
-    aws_array_list_init_dynamic(&task_arg->topics, connection->allocator, num_topics, sizeof(void *));
+    if (aws_array_list_init_dynamic(&task_arg->topics, connection->allocator, num_topics, sizeof(void *))) {
+        goto handle_error;
+    }
 
     for (size_t i = 0; i < num_topics; ++i) {
 
@@ -685,12 +687,17 @@ uint16_t aws_mqtt_client_connection_subscribe(
 
         struct subscribe_task_topic *task_topic =
             aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_topic));
+        if (!task_topic) {
+            goto handle_error;
+        }
+
         task_topic->connection = connection;
         task_topic->request = *request;
 
         task_topic->filter = aws_string_new_from_array(
             connection->allocator, task_topic->request.topic.ptr, task_topic->request.topic.len);
         if (!task_topic->filter) {
+            aws_mem_release(connection->allocator, task_topic);
             goto handle_error;
         }
 
@@ -711,14 +718,19 @@ uint16_t aws_mqtt_client_connection_subscribe(
 handle_error:
 
     if (task_arg) {
-        const size_t num_added_topics = aws_array_list_length(&task_arg->topics);
-        for (size_t i = 0; i < num_added_topics; ++i) {
 
-            struct subscribe_task_topic *task_topic = NULL;
-            aws_array_list_get_at(&task_arg->topics, (void **)&task_topic, i);
+        if (task_arg->topics.data) {
+            const size_t num_added_topics = aws_array_list_length(&task_arg->topics);
+            for (size_t i = 0; i < num_added_topics; ++i) {
 
-            aws_string_destroy(task_topic->filter);
-            aws_mem_release(connection->allocator, task_topic);
+                struct subscribe_task_topic *task_topic = NULL;
+                aws_array_list_get_at(&task_arg->topics, (void **)&task_topic, i);
+
+                aws_string_destroy(task_topic->filter);
+                aws_mem_release(connection->allocator, task_topic);
+            }
+
+            aws_array_list_clean_up(&task_arg->topics);
         }
 
         aws_mem_release(connection->allocator, task_arg);
@@ -793,6 +805,9 @@ uint16_t aws_mqtt_client_connection_subscribe_single(
 
     /* Allocate the topic and push into the list */
     task_topic = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_topic));
+    if (!task_topic) {
+        goto handle_error;
+    }
     aws_array_list_push_back(&task_arg->topics, &task_topic);
 
     task_topic->filter = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
@@ -819,10 +834,14 @@ uint16_t aws_mqtt_client_connection_subscribe_single(
 
 handle_error:
 
-    if (task_arg) {
-
-        aws_string_destroy(task_topic->filter);
+    if (task_topic) {
+        if (task_topic->filter) {
+            aws_string_destroy(task_topic->filter);
+        }
         aws_mem_release(connection->allocator, task_topic);
+    }
+
+    if (task_arg) {
 
         aws_mem_release(connection->allocator, task_arg);
     }
