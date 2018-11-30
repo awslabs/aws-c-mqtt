@@ -140,7 +140,7 @@ static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, s
         return AWS_OP_ERR;
     }
 
-    mqtt_request_complete(connection, ack.packet_identifier);
+    mqtt_request_complete(connection, AWS_OP_SUCCESS, ack.packet_identifier);
 
     return AWS_OP_SUCCESS;
 }
@@ -377,13 +377,28 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (!request->completed) {
             /* If not complete, attempt retry */
-            if (request->send_request(request->message_id, !request->initiated, request->send_request_ud)) {
-                /* If the send_request function reports the request is complete,
-                   remove from the hash table and call the callback. */
-                request->completed = true;
-                if (request->on_complete) {
-                    request->on_complete(request->connection, request->message_id, request->on_complete_ud);
-                }
+            enum aws_mqtt_client_request_state state =
+                request->send_request(request->message_id, !request->initiated, request->send_request_ud);
+
+            int error_code = AWS_OP_SUCCESS;
+            switch (state) {
+                case AWS_MQTT_CLIENT_REQUEST_ERROR:
+                    error_code = aws_last_error();
+                    /* fall-thru */
+
+                case AWS_MQTT_CLIENT_REQUEST_COMPLETE:
+                    /* If the send_request function reports the request is complete,
+                    remove from the hash table and call the callback. */
+                    request->completed = true;
+                    if (request->on_complete) {
+                        request->on_complete(
+                            request->connection, request->message_id, error_code, request->on_complete_ud);
+                    }
+                    break;
+
+                case AWS_MQTT_CLIENT_REQUEST_ONGOING:
+                    /* Nothing to do here, just continue */
+                    break;
             }
         }
         request->initiated = true;
@@ -476,7 +491,7 @@ uint16_t mqtt_create_request(
     return next_request->message_id;
 }
 
-void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16_t message_id) {
+void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int error_code, uint16_t message_id) {
 
     struct aws_hash_element *elem = NULL;
     aws_hash_table_find(&connection->outstanding_requests, &message_id, &elem);
@@ -489,7 +504,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, uint16
 
     /* Alert the user */
     if (request->on_complete) {
-        request->on_complete(request->connection, request->message_id, request->on_complete_ud);
+        request->on_complete(request->connection, request->message_id, error_code, request->on_complete_ud);
     }
 }
 
