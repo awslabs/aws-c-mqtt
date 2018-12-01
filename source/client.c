@@ -539,6 +539,9 @@ struct subscribe_task_arg {
     /* Packet to populate */
     struct aws_mqtt_packet_subscribe subscribe;
 
+    /* Topic tree transaction */
+    struct aws_array_list transaction;
+
     aws_mqtt_suback_fn *on_suback;
     void *on_suback_ud;
 };
@@ -576,6 +579,10 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
         }
 
         const size_t num_topics = aws_array_list_length(&task_arg->topics);
+        assert(num_topics > 0);
+
+        aws_array_list_init_dynamic(&task_arg->transaction, task_arg->connection->allocator, num_topics, aws_mqtt_topic_tree_action_size);
+
         for (size_t i = 0; i < num_topics; ++i) {
 
             struct subscribe_task_topic *topic = NULL;
@@ -587,8 +594,9 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
                 return AWS_MQTT_CLIENT_REQUEST_ERROR;
             }
 
-            if (aws_mqtt_topic_tree_insert(
+            if (aws_mqtt_topic_tree_transaction_insert(
                     &task_arg->connection->subscriptions,
+                    &task_arg->transaction,
                     topic->filter,
                     topic->request.qos,
                     s_on_publish_client_wrapper,
@@ -616,6 +624,11 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
     /* No need to handle this error, if the send fails, it'll just retry */
     aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
 
+    if (is_first_attempt) {
+        aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &task_arg->transaction);
+        aws_array_list_clean_up(&task_arg->transaction);
+    }
+
     return AWS_MQTT_CLIENT_REQUEST_ONGOING;
 }
 
@@ -626,6 +639,11 @@ static void s_subscribe_complete(
     void *userdata) {
 
     struct subscribe_task_arg *task_arg = userdata;
+
+    if (error_code != AWS_OP_ERR) {
+        aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &task_arg->transaction);
+        aws_array_list_clean_up(&task_arg->transaction);
+    }
 
     if (task_arg->on_suback) {
         task_arg->on_suback(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
@@ -846,6 +864,9 @@ struct unsubscribe_task_arg {
     /* Packet to populate */
     struct aws_mqtt_packet_unsubscribe unsubscribe;
 
+    /* Topic tree transaction */
+    struct aws_array_list transaction;
+
     aws_mqtt_op_complete_fn *on_unsuback;
     void *on_unsuback_ud;
 };
@@ -859,13 +880,20 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     struct aws_io_message *message = NULL;
 
     if (is_first_attempt) {
-        aws_mqtt_topic_tree_remove(&task_arg->connection->subscriptions, &task_arg->filter);
+
+        static size_t num_topics = 1;
+
+        aws_array_list_init_dynamic(&task_arg->transaction, task_arg->connection->allocator, num_topics, aws_mqtt_topic_tree_action_size);
 
         /* Send the unsubscribe packet */
         if (aws_mqtt_packet_unsubscribe_init(&task_arg->unsubscribe, task_arg->connection->allocator, message_id)) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
         if (aws_mqtt_packet_unsubscribe_add_topic(&task_arg->unsubscribe, task_arg->filter)) {
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+
+        if (aws_mqtt_topic_tree_transaction_remove(&task_arg->connection->subscriptions, &task_arg->transaction, &task_arg->filter)) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
     }
@@ -882,6 +910,11 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
     aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
 
+    if (is_first_attempt) {
+        aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &task_arg->transaction);
+        aws_array_list_clean_up(&task_arg->transaction);
+    }
+
     return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
 }
 
@@ -892,6 +925,11 @@ static void s_unsubscribe_complete(
     void *userdata) {
 
     struct unsubscribe_task_arg *task_arg = userdata;
+
+    if (error_code != AWS_OP_ERR) {
+        aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &task_arg->transaction);
+        aws_array_list_clean_up(&task_arg->transaction);
+    }
 
     if (task_arg->on_unsuback) {
         task_arg->on_unsuback(connection, packet_id, error_code, task_arg->on_unsuback_ud);

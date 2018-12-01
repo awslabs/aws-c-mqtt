@@ -55,6 +55,8 @@ struct aws_mqtt_topic_tree {
     struct aws_allocator *allocator;
 };
 
+extern size_t aws_mqtt_topic_tree_action_size;
+
 /**
  * Initialize a topic tree with an allocator to later use.
  * Note that calling init allocates root.
@@ -69,6 +71,7 @@ void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
  * Insert a new topic filter into the subscription tree (subscribe).
  *
  * \param[in]  tree         The tree to insert into.
+ * \param[in]  transaction  The transaction to add the insert action to.
  * \param[in]  topic_filter The topic filter to subscribe on. May contain wildcards.
  * \param[in]  callback     The callback to call on a publish with a matching topic.
  * \param[in]  connection   The connection object to pass to the callback. This is a void* to support client and server
@@ -77,9 +80,11 @@ void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
  * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
  *
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
+ *          If AWS_OP_ERR is returned, aws_mqtt_topic_tree_transaction_rollback should be called to prevent leaks.
  */
-int aws_mqtt_topic_tree_insert(
+int aws_mqtt_topic_tree_transaction_insert(
     struct aws_mqtt_topic_tree *tree,
+    struct aws_array_list *transaction,
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
@@ -90,12 +95,74 @@ int aws_mqtt_topic_tree_insert(
  * Remove a topic filter from the subscription tree (unsubscribe).
  *
  * \param[in]  tree         The tree to remove from.
+ * \param[in]  transaction  The transaction to add the insert action to.
  * \param[in]  topic_filter The filter to remove (must be exactly the same as the topic_filter passed to insert).
  * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
  *
  * \returns AWS_OP_SUCCESS on successful removal, AWS_OP_ERR with aws_last_error() populated on failure.
+ *          If AWS_OP_ERR is returned, aws_mqtt_topic_tree_transaction_rollback should be called to prevent leaks.
  */
-int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter);
+int aws_mqtt_topic_tree_transaction_remove(
+    struct aws_mqtt_topic_tree *tree,
+    struct aws_array_list *transaction,
+    const struct aws_byte_cursor *topic_filter);
+
+void aws_mqtt_topic_tree_transaction_commit(struct aws_mqtt_topic_tree *tree, struct aws_array_list *transaction);
+
+void aws_mqtt_topic_tree_transaction_roll_back(struct aws_mqtt_topic_tree *tree, struct aws_array_list *transaction);
+
+/**
+ * Insert a new topic filter into the subscription tree (subscribe).
+ *
+ * \param[in]  tree         The tree to insert into.
+ * \param[in]  topic_filter The topic filter to subscribe on. May contain wildcards.
+ * \param[in]  callback     The callback to call on a publish with a matching topic.
+ * \param[in]  connection   The connection object to pass to the callback. This is a void* to support client and server
+ *                          connections in the future.
+ * \param[in]  userdata     The userdata to pass to callback.
+ * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
+ *
+ * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
+ */
+AWS_STATIC_IMPL
+int aws_mqtt_topic_tree_insert(
+    struct aws_mqtt_topic_tree *tree,
+    const struct aws_string *topic_filter,
+    enum aws_mqtt_qos qos,
+    aws_mqtt_publish_received_fn *callback,
+    aws_mqtt_userdata_cleanup_fn *cleanup,
+    void *userdata) {
+
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, 1, aws_mqtt_topic_tree_action_size);
+
+    if (aws_mqtt_topic_tree_transaction_insert(tree, &transaction, topic_filter, qos, callback, cleanup, userdata)) {
+
+        aws_mqtt_topic_tree_transaction_roll_back(tree, &transaction);
+        return AWS_OP_ERR;
+    }
+
+    aws_mqtt_topic_tree_transaction_commit(tree, &transaction);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_STATIC_IMPL
+int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter) {
+
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, 1, aws_mqtt_topic_tree_action_size);
+
+    if (aws_mqtt_topic_tree_transaction_remove(tree, &transaction, topic_filter)) {
+
+        aws_mqtt_topic_tree_transaction_roll_back(tree, &transaction);
+        return AWS_OP_ERR;
+    }
+
+    aws_mqtt_topic_tree_transaction_commit(tree, &transaction);
+    return AWS_OP_SUCCESS;
+}
 
 /**
  * Dispatches a publish packet to all subscriptions matching the publish topic.
