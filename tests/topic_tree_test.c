@@ -187,7 +187,7 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
 
     was_called = false;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
-    // ASSERT_TRUE(was_called); #TODO This will fail until remove is implemented with transactions
+    ASSERT_TRUE(was_called);
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
