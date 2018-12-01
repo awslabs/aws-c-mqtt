@@ -127,9 +127,12 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
 
     /* Put it back so we can test removal of a partial tree. */
     /* Bonus points: test transactions here */
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(&tree, &transaction, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(&tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(&tree, &transaction, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
     aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
 
     /* Should remove the last /a, but not the first 2. */
@@ -168,7 +171,8 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
     struct aws_array_list transaction;
     aws_array_list_init_static(&transaction, transaction_buf, 3, aws_mqtt_topic_tree_action_size);
 
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(&tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
     aws_mqtt_topic_tree_transaction_roll_back(&tree, &transaction);
 
     /* Ensure that the intermediate 'a' node was removed as well. */
