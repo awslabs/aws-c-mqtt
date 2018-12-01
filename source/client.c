@@ -577,7 +577,8 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
         const size_t num_topics = aws_array_list_length(&task_arg->topics);
         assert(num_topics > 0);
 
-        aws_array_list_init_dynamic(&task_arg->transaction, task_arg->connection->allocator, num_topics, aws_mqtt_topic_tree_action_size);
+        aws_array_list_init_dynamic(
+            &task_arg->transaction, task_arg->connection->allocator, num_topics, aws_mqtt_topic_tree_action_size);
 
         for (size_t i = 0; i < num_topics; ++i) {
 
@@ -879,7 +880,8 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
         static size_t num_topics = 1;
 
-        aws_array_list_init_dynamic(&task_arg->transaction, task_arg->connection->allocator, num_topics, aws_mqtt_topic_tree_action_size);
+        aws_array_list_init_dynamic(
+            &task_arg->transaction, task_arg->connection->allocator, num_topics, aws_mqtt_topic_tree_action_size);
 
         /* Send the unsubscribe packet */
         if (aws_mqtt_packet_unsubscribe_init(&task_arg->unsubscribe, task_arg->connection->allocator, message_id)) {
@@ -889,7 +891,8 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
 
-        if (aws_mqtt_topic_tree_transaction_remove(&task_arg->connection->subscriptions, &task_arg->transaction, &task_arg->filter)) {
+        if (aws_mqtt_topic_tree_transaction_remove(
+                &task_arg->connection->subscriptions, &task_arg->transaction, &task_arg->filter)) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
     }

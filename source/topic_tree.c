@@ -97,7 +97,10 @@ static void s_topic_tree_action_destroy(struct topic_tree_action *action) {
     AWS_ZERO_STRUCT(*action);
 }
 
-static int s_topic_tree_action_to_remove(struct topic_tree_action *action, struct aws_allocator *allocator, size_t size_hint) {
+static int s_topic_tree_action_to_remove(
+    struct topic_tree_action *action,
+    struct aws_allocator *allocator,
+    size_t size_hint) {
 
     if (action->mode != AWS_MQTT_TOPIC_TREE_REMOVE) {
         if (aws_array_list_init_dynamic(&action->to_remove, allocator, size_hint, sizeof(void *))) {
@@ -204,8 +207,6 @@ bool s_topic_node_is_subscription(const struct aws_mqtt_topic_node *node) {
  * Action Commit
  ******************************************************************************/
 
-
-
 /* Searches subtree until a topic_filter with a different pointer value is found. */
 static int s_topic_node_string_finder(void *userdata, struct aws_hash_element *elem) {
 
@@ -270,7 +271,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
 
             if (current) {
                 /* If found the node, traverse up and remove each with no sub-topics.
-                * Then update all nodes that were using current's topic_filter for topic. */
+                 * Then update all nodes that were using current's topic_filter for topic. */
 
                 /* "unsubscribe" current. */
                 if (current->cleanup && current->userdata) {
@@ -331,7 +332,8 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                     aws_array_list_get_at(&action->to_remove, &parent, nodes_left);
                     assert(parent); /* Must be in bounds */
 
-                    size_t topic_offset = parent->topic.ptr - aws_string_bytes(parent->topic_filter) + parent->topic.len + 1;
+                    size_t topic_offset =
+                        parent->topic.ptr - aws_string_bytes(parent->topic_filter) + parent->topic.len + 1;
 
                     /* -1 to avoid touching current */
                     for (size_t i = nodes_left; i > 0; --i) {
@@ -342,12 +344,12 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                         topic_offset -= (parent->topic.len + 1);
 
                         if (parent->topic_filter == old_topic_filter) {
-                            /* Uh oh, Mom's using my topic string again! Steal it and replace it with a new one, Indiana Jones
-                            * style. */
+                            /* Uh oh, Mom's using my topic string again! Steal it and replace it with a new one, Indiana
+                             * Jones style. */
 
                             if (!new_topic_filter) {
                                 /* Set new_tf to old_tf so it's easier to check against the existing node.
-                                * Basically, it's an INOUT param. */
+                                 * Basically, it's an INOUT param. */
                                 new_topic_filter = old_topic_filter;
 
                                 /* Search all subtopics until we find one that isn't current. */
@@ -355,7 +357,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                                     &parent->subtopics, s_topic_node_string_finder, (void *)&new_topic_filter);
 
                                 /* This would only happen if there is only one topic in subtopics (current's) and
-                                * it has no children (in which case it should have been removed above). */
+                                 * it has no children (in which case it should have been removed above). */
                                 assert(new_topic_filter != old_topic_filter);
 
                                 /* Now that the new string has been found, the old one can be destroyed. */
