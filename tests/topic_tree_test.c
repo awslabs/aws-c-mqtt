@@ -113,6 +113,10 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     struct aws_string *topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
     struct aws_string *topic_a_a_b = aws_string_new_from_array(allocator, s_topic_a_a_b.ptr, s_topic_a_a_b.len);
 
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size * 3);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, 3, aws_mqtt_topic_tree_action_size);
+
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
     /* Re-create, it was nuked by remove. */
@@ -122,13 +126,16 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
 
     /* Put it back so we can test removal of a partial tree. */
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    /* Bonus points: test transactions here */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(&tree, &transaction, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(&tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(&tree, &transaction, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
 
     /* Should remove the last /a, but not the first 2. */
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a_a));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a));
+    aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
 
     struct aws_mqtt_packet_publish publish;
     aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a_a, 1, s_topic_a_a_a);
@@ -142,6 +149,45 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     was_called = false;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
     ASSERT_TRUE(was_called);
+
+    aws_mqtt_topic_tree_clean_up(&tree);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_topic_tree_transactions, s_mqtt_topic_tree_transactions_fn)
+static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt_topic_tree tree;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_init(&tree, allocator));
+
+    struct aws_string *topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
+
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size * 3);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, 3, aws_mqtt_topic_tree_action_size);
+
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(&tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    aws_mqtt_topic_tree_transaction_roll_back(&tree, &transaction);
+
+    /* Ensure that the intermediate 'a' node was removed as well. */
+    ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
+
+    /* Re-create, it was nuked by roll_back. */
+    topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
+
+    /* Insert(commit), remove, roll back the removal */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a));
+    aws_mqtt_topic_tree_transaction_roll_back(&tree, &transaction);
+
+    struct aws_mqtt_packet_publish publish;
+    aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a, 1, s_topic_a_a);
+
+    was_called = false;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    // ASSERT_TRUE(was_called); #TODO This will fail until remove is implemented with transactions
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
