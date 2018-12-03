@@ -189,8 +189,10 @@ static void s_mqtt_client_shutdown(
     struct aws_mqtt_client_connection *connection = user_data;
 
     /* Always clear slot, as that's what's been shutdown */
-    aws_channel_slot_remove(connection->slot);
-    connection->slot = NULL;
+    if (connection->slot) {
+        aws_channel_slot_remove(connection->slot);
+        connection->slot = NULL;
+    }
 
     /* Alert the connection we've shutdown */
     bool attempt_reconnect = connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING;
