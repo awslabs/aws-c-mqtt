@@ -539,8 +539,7 @@ struct subscribe_task_arg {
     /* Packet to populate */
     struct aws_mqtt_packet_subscribe subscribe;
 
-    /* Topic tree transaction */
-    struct aws_array_list transaction;
+    bool tree_updated;
 
     aws_mqtt_suback_fn *on_suback;
     void *on_suback_ud;
@@ -570,67 +569,86 @@ static void s_on_topic_clean_up(void *userdata) {
 
 static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
 
-    struct subscribe_task_arg *task_arg = userdata;
+    (void)is_first_attempt;
 
-    if (is_first_attempt) {
-        /* Send the subscribe packet */
+    struct subscribe_task_arg *task_arg = userdata;
+    bool initing_packet = task_arg->subscribe.fixed_header.packet_type == 0;
+    struct aws_io_message *message = NULL;
+
+    if (initing_packet) {
+        /* Init the subscribe packet */
         if (aws_mqtt_packet_subscribe_init(&task_arg->subscribe, task_arg->connection->allocator, message_id)) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
+    }
 
-        const size_t num_topics = aws_array_list_length(&task_arg->topics);
-        assert(num_topics > 0);
+    const size_t num_topics = aws_array_list_length(&task_arg->topics);
+    assert(num_topics > 0);
 
-        aws_array_list_init_dynamic(
-            &task_arg->transaction, task_arg->connection->allocator, num_topics, aws_mqtt_topic_tree_action_size);
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics * aws_mqtt_topic_tree_action_size);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, num_topics, aws_mqtt_topic_tree_action_size);
 
-        for (size_t i = 0; i < num_topics; ++i) {
+    for (size_t i = 0; i < num_topics; ++i) {
 
-            struct subscribe_task_topic *topic = NULL;
-            int result = aws_array_list_get_at(&task_arg->topics, &topic, i);
-            assert(result == AWS_OP_SUCCESS); /* We know we're within bounds */
-            (void)result;
+        struct subscribe_task_topic *topic = NULL;
+        int result = aws_array_list_get_at(&task_arg->topics, &topic, i);
+        assert(result == AWS_OP_SUCCESS); /* We know we're within bounds */
+        (void)result;
 
+        if (initing_packet) {
             if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->request.topic, topic->request.qos)) {
-                return AWS_MQTT_CLIENT_REQUEST_ERROR;
+                goto handle_error;
             }
+        }
 
+        if (!task_arg->tree_updated) {
             if (aws_mqtt_topic_tree_transaction_insert(
                     &task_arg->connection->subscriptions,
-                    &task_arg->transaction,
+                    &transaction,
                     topic->filter,
                     topic->request.qos,
                     s_on_publish_client_wrapper,
                     s_on_topic_clean_up,
                     topic)) {
 
-                return AWS_MQTT_CLIENT_REQUEST_ERROR;
+                goto handle_error;
             }
         }
     }
 
-    struct aws_io_message *message =
-        mqtt_get_message_for_packet(task_arg->connection, &task_arg->subscribe.fixed_header);
+    message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->subscribe.fixed_header);
     if (!message) {
 
-        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        goto handle_error;
     }
 
     if (aws_mqtt_packet_subscribe_encode(&message->message_data, &task_arg->subscribe)) {
 
-        aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
-        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        goto handle_error;
     }
 
     /* No need to handle this error, if the send fails, it'll just retry */
     aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
 
-    if (is_first_attempt) {
-        aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &task_arg->transaction);
-        aws_array_list_clean_up(&task_arg->transaction);
+    if (!task_arg->tree_updated) {
+        aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &transaction);
     }
 
+    aws_array_list_clean_up(&transaction);
     return AWS_MQTT_CLIENT_REQUEST_ONGOING;
+
+handle_error:
+
+    if (message) {
+        aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+    }
+    if (!task_arg->tree_updated) {
+        aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &transaction);
+    }
+
+    aws_array_list_clean_up(&transaction);
+    return AWS_MQTT_CLIENT_REQUEST_ERROR;
 }
 
 static void s_subscribe_complete(
@@ -640,11 +658,6 @@ static void s_subscribe_complete(
     void *userdata) {
 
     struct subscribe_task_arg *task_arg = userdata;
-
-    if (error_code != AWS_OP_ERR) {
-        aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &task_arg->transaction);
-        aws_array_list_clean_up(&task_arg->transaction);
-    }
 
     if (task_arg->on_suback) {
         task_arg->on_suback(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
@@ -667,6 +680,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     if (!task_arg) {
         return 0;
     }
+    AWS_ZERO_STRUCT(*task_arg);
 
     task_arg->connection = connection;
     task_arg->on_suback = on_suback;
@@ -803,8 +817,10 @@ uint16_t aws_mqtt_client_connection_subscribe_single(
     if (!task_arg) {
         goto handle_error;
     }
+    AWS_ZERO_STRUCT(*task_arg);
 
     task_arg->connection = connection;
+    task_arg->tree_updated = false;
     task_arg->on_suback = (aws_mqtt_suback_fn *)on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
@@ -865,8 +881,7 @@ struct unsubscribe_task_arg {
     /* Packet to populate */
     struct aws_mqtt_packet_unsubscribe unsubscribe;
 
-    /* Topic tree transaction */
-    struct aws_array_list transaction;
+    bool tree_updated;
 
     aws_mqtt_op_complete_fn *on_unsuback;
     void *on_unsuback_ud;
@@ -877,48 +892,66 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     bool is_first_attempt,
     void *userdata) {
 
+    (void)is_first_attempt;
+
     struct unsubscribe_task_arg *task_arg = userdata;
     struct aws_io_message *message = NULL;
 
-    if (is_first_attempt) {
+    static const size_t num_topics = 1;
 
-        static size_t num_topics = 1;
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics * aws_mqtt_topic_tree_action_size);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, num_topics, aws_mqtt_topic_tree_action_size);
 
-        aws_array_list_init_dynamic(
-            &task_arg->transaction, task_arg->connection->allocator, num_topics, aws_mqtt_topic_tree_action_size);
-
-        /* Send the unsubscribe packet */
-        if (aws_mqtt_packet_unsubscribe_init(&task_arg->unsubscribe, task_arg->connection->allocator, message_id)) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-        if (aws_mqtt_packet_unsubscribe_add_topic(&task_arg->unsubscribe, task_arg->filter)) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
+    if (!task_arg->tree_updated) {
 
         if (aws_mqtt_topic_tree_transaction_remove(
-                &task_arg->connection->subscriptions, &task_arg->transaction, &task_arg->filter)) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+                &task_arg->connection->subscriptions, &transaction, &task_arg->filter)) {
+            goto handle_error;
+        }
+    }
+
+    if (task_arg->unsubscribe.fixed_header.packet_type == 0) {
+        /* If unsubscribe packet is uninitialized, init it */
+        if (aws_mqtt_packet_unsubscribe_init(&task_arg->unsubscribe, task_arg->connection->allocator, message_id)) {
+            goto handle_error;
+        }
+        if (aws_mqtt_packet_unsubscribe_add_topic(&task_arg->unsubscribe, task_arg->filter)) {
+            goto handle_error;
         }
     }
 
     message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->unsubscribe.fixed_header);
     if (!message) {
-        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        goto handle_error;
     }
 
     if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &task_arg->unsubscribe)) {
         aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
-        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        goto handle_error;
     }
 
     aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
 
-    if (is_first_attempt) {
-        aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &task_arg->transaction);
-        aws_array_list_clean_up(&task_arg->transaction);
+    if (!task_arg->tree_updated) {
+        aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &transaction);
+        task_arg->tree_updated = true;
     }
 
+    aws_array_list_clean_up(&transaction);
     return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
+
+handle_error:
+
+    if (message) {
+        aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+    }
+    if (!task_arg->tree_updated) {
+        aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &transaction);
+    }
+
+    aws_array_list_clean_up(&transaction);
+    return AWS_MQTT_CLIENT_REQUEST_ERROR;
 }
 
 static void s_unsubscribe_complete(
@@ -930,8 +963,6 @@ static void s_unsubscribe_complete(
     struct unsubscribe_task_arg *task_arg = userdata;
 
     if (error_code != AWS_OP_ERR) {
-        aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &task_arg->transaction);
-        aws_array_list_clean_up(&task_arg->transaction);
     }
 
     if (task_arg->on_unsuback) {
@@ -959,8 +990,10 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     if (!task_arg) {
         return 0;
     }
+    AWS_ZERO_STRUCT(*task_arg);
     task_arg->connection = connection;
     task_arg->filter = *topic_filter;
+    task_arg->tree_updated = false;
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
 
