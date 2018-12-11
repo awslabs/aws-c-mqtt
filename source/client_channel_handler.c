@@ -408,8 +408,14 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
 
             struct aws_hash_element elem;
             int was_present = 0;
+
+            aws_mutex_lock(&request->connection->outstanding_requests.mutex);
+
             aws_hash_table_remove(
-                &request->connection->outstanding_requests, &request->message_id, &elem, &was_present);
+                &request->connection->outstanding_requests.table, &request->message_id, &elem, &was_present);
+
+            aws_mutex_unlock(&request->connection->outstanding_requests.mutex);
+
             assert(was_present);
 
             aws_memory_pool_release(&request->connection->requests_pool, elem.value);
@@ -449,15 +455,26 @@ uint16_t mqtt_create_request(
 
     struct aws_hash_element *elem = NULL;
     uint16_t next_id = 0;
+
+    aws_mutex_lock(&connection->outstanding_requests.mutex);
     do {
 
         ++next_id;
-        aws_hash_table_find(&connection->outstanding_requests, &next_id, &elem);
+        aws_hash_table_find(&connection->outstanding_requests.table, &next_id, &elem);
 
     } while (elem);
 
     assert(next_id); /* Somehow have UINT16_MAX outstanding requests, definitely a bug */
     next_request->message_id = next_id;
+
+    /* Store the request by message_id */
+    if (aws_hash_table_put(&connection->outstanding_requests.table, &next_request->message_id, next_request, NULL)) {
+
+        aws_memory_pool_release(&connection->requests_pool, next_request);
+        return 0;
+    }
+
+    aws_mutex_unlock(&connection->outstanding_requests.mutex);
 
     next_request->allocator = connection->allocator;
     next_request->connection = connection;
@@ -467,13 +484,6 @@ uint16_t mqtt_create_request(
     next_request->send_request_ud = send_request_ud;
     next_request->on_complete = on_complete;
     next_request->on_complete_ud = on_complete_ud;
-
-    /* Store the request by message_id */
-    if (aws_hash_table_put(&connection->outstanding_requests, &next_request->message_id, next_request, NULL)) {
-
-        aws_memory_pool_release(&connection->requests_pool, next_request);
-        return 0;
-    }
 
     aws_channel_task_init(&next_request->timeout_task, s_request_timeout_task, next_request);
 
@@ -494,18 +504,21 @@ uint16_t mqtt_create_request(
 void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int error_code, uint16_t message_id) {
 
     struct aws_hash_element *elem = NULL;
-    aws_hash_table_find(&connection->outstanding_requests, &message_id, &elem);
+    aws_mutex_lock(&connection->outstanding_requests.mutex);
+
+    aws_hash_table_find(&connection->outstanding_requests.table, &message_id, &elem);
     assert(elem);
 
-    struct aws_mqtt_outstanding_request *request = elem->value;
+    aws_mutex_unlock(&connection->outstanding_requests.mutex);
 
-    /* Mark as complete for the cleanup task */
-    request->completed = true;
+    struct aws_mqtt_outstanding_request *request = elem->value;
 
     /* Alert the user */
     if (request->on_complete) {
         request->on_complete(request->connection, request->message_id, error_code, request->on_complete_ud);
     }
+    /* Mark as complete for the cleanup task */
+    request->completed = true;
 }
 
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {

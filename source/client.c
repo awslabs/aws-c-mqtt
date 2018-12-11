@@ -195,7 +195,8 @@ static void s_mqtt_client_shutdown(
     }
 
     /* Alert the connection we've shutdown */
-    bool attempt_reconnect = connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+    bool attempt_reconnect =
+        connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING && error_code != AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
     if (connection->callbacks.on_disconnect) {
         attempt_reconnect =
             connection->callbacks.on_disconnect(connection, error_code, connection->callbacks.user_data);
@@ -261,6 +262,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     connection->state = AWS_MQTT_CLIENT_STATE_INIT;
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
+    aws_mutex_init(&connection->outstanding_requests.mutex);
     aws_linked_list_init(&connection->pending_requests.list);
 
     if (aws_mutex_init(&connection->pending_requests.mutex)) {
@@ -274,7 +276,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     }
 
     if (aws_hash_table_init(
-            &connection->outstanding_requests,
+            &connection->outstanding_requests.table,
             connection->allocator,
             sizeof(struct aws_mqtt_outstanding_request *),
             s_hash_uint16_t,
@@ -306,9 +308,7 @@ handle_error:
 
     aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
 
-    if (connection->outstanding_requests.p_impl) {
-        aws_hash_table_clean_up(&connection->outstanding_requests);
-    }
+    aws_hash_table_clean_up(&connection->outstanding_requests.table);
 
     if (connection->requests_pool.data_ptr) {
         aws_memory_pool_clean_up(&connection->requests_pool);
@@ -352,7 +352,7 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
 
     /* Cleanup outstanding requests */
-    aws_hash_table_clean_up(&connection->outstanding_requests);
+    aws_hash_table_clean_up(&connection->outstanding_requests.table);
     aws_memory_pool_clean_up(&connection->requests_pool);
 
     if (connection->slot) {
@@ -539,6 +539,7 @@ struct subscribe_task_arg {
     /* Packet to populate */
     struct aws_mqtt_packet_subscribe subscribe;
 
+    /* true if transaction was committed to the topic tree, false requires a retry */
     bool tree_updated;
 
     aws_mqtt_suback_fn *on_suback;
@@ -772,7 +773,7 @@ static void s_subscribe_single_complete(
 
     if (task_arg->on_suback) {
         struct subscribe_task_topic *topic = NULL;
-        int result = aws_array_list_get_at_ptr(&task_arg->topics, (void **)&topic, 0);
+        int result = aws_array_list_get_at(&task_arg->topics, &topic, 0);
         assert(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
         (void)result;
 
@@ -820,7 +821,6 @@ uint16_t aws_mqtt_client_connection_subscribe_single(
     AWS_ZERO_STRUCT(*task_arg);
 
     task_arg->connection = connection;
-    task_arg->tree_updated = false;
     task_arg->on_suback = (aws_mqtt_suback_fn *)on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
@@ -881,6 +881,7 @@ struct unsubscribe_task_arg {
     /* Packet to populate */
     struct aws_mqtt_packet_unsubscribe unsubscribe;
 
+    /* true if transaction was committed to the topic tree, false requires a retry */
     bool tree_updated;
 
     aws_mqtt_op_complete_fn *on_unsuback;
@@ -993,7 +994,6 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     AWS_ZERO_STRUCT(*task_arg);
     task_arg->connection = connection;
     task_arg->filter = *topic_filter;
-    task_arg->tree_updated = false;
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
 
