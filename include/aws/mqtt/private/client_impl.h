@@ -45,15 +45,17 @@ enum aws_mqtt_client_connection_state {
 };
 
 enum aws_mqtt_client_request_state {
-    AWS_MQTT_CLIENT_REQUEST_COMPLETE,
     AWS_MQTT_CLIENT_REQUEST_ONGOING,
+    AWS_MQTT_CLIENT_REQUEST_COMPLETE,
     AWS_MQTT_CLIENT_REQUEST_ERROR,
 };
 
 extern const uint64_t request_timeout_ns;
 
 /* Called after the timeout if a matching ack packet hasn't arrived.
-   Return true to consider request complete, false to schedule a timeout task. */
+   Return AWS_MQTT_CLIENT_REQUEST_ONGOING to check on the task later.
+   Return AWS_MQTT_CLIENT_REQUEST_COMPLETE to consider request complete.
+   Return AWS_MQTT_CLIENT_REQUEST_ERROR cancel the task and report an error to the caller. */
 typedef enum aws_mqtt_client_request_state(
     aws_mqtt_send_request_fn)(uint16_t message_id, bool is_first_attempt, void *userdata);
 
