@@ -102,8 +102,11 @@ struct aws_mqtt_client_connection {
 
     /* aws_mqtt_outstanding_request */
     struct aws_memory_pool requests_pool;
-    /* uint16_t -> aws_mqtt_outstanding_request */
-    struct aws_hash_table outstanding_requests;
+    struct {
+        /* uint16_t -> aws_mqtt_outstanding_request */
+        struct aws_hash_table table;
+        struct aws_mutex mutex;
+    } outstanding_requests;
     /* List of all requests that cannot be scheduled until the connection comes online */
     struct {
         struct aws_linked_list list;

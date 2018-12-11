@@ -241,7 +241,7 @@ int main(int argc, char **argv) {
 
     sleep(4);
 
-    size_t outstanding_reqs = aws_hash_table_get_entry_count(&args.connection->outstanding_requests);
+    size_t outstanding_reqs = aws_hash_table_get_entry_count(&args.connection->outstanding_requests.table);
     ASSERT_UINT_EQUALS(0, outstanding_reqs);
 
     size_t outstanding_subs = aws_hash_table_get_entry_count(&args.connection->subscriptions.root->subtopics);
