@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
     aws_client_bootstrap_init(&bootstrap, args.allocator, &elg, NULL, NULL);
 
     struct aws_tls_ctx_options tls_ctx_opt;
-    aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "9f0631f03a-certificate.pem.crt", "9f0631f03a-private.pem.key");
+    aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "iot-certificate.pem.crt", "iot-private.pem.key");
     aws_tls_ctx_options_set_alpn_list(&tls_ctx_opt, "x-amzn-mqtt-ca");
     aws_tls_ctx_options_override_default_trust_store(&tls_ctx_opt, NULL, "AmazonRootCA1.pem");
 

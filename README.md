@@ -114,13 +114,13 @@ Closes an open connection. Does not clean up any resources, that's to be done by
 probably from the `on_disconnected` connection callback.
 
 ```c
-uint16_t aws_mqtt_client_connection_subscribe(
+uint16_t aws_mqtt_client_connection_subscribe_single(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_client_publish_received_fn *on_publish,
     void *on_publish_ud,
-    aws_mqtt_op_complete_fn *on_suback,
+    aws_mqtt_suback_single_fn *on_suback,
     void *on_suback_ud);
 ```
 Subscribes to the topic filter given with the given QoS. `on_publish` will be called whenever a packet matching
