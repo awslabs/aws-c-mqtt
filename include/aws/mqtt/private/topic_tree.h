@@ -55,6 +55,10 @@ struct aws_mqtt_topic_tree {
     struct aws_allocator *allocator;
 };
 
+/**
+ * The size of transaction instances.
+ * When you initialize an aws_array_list for use as a transaction, pass this as the item size.
+ */
 extern size_t aws_mqtt_topic_tree_action_size;
 
 /**
@@ -72,6 +76,7 @@ void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
  *
  * \param[in]  tree         The tree to insert into.
  * \param[in]  transaction  The transaction to add the insert action to.
+ *                          Must be initialized with aws_mqtt_topic_tree_action_size as item size.
  * \param[in]  topic_filter The topic filter to subscribe on. May contain wildcards.
  * \param[in]  callback     The callback to call on a publish with a matching topic.
  * \param[in]  connection   The connection object to pass to the callback. This is a void* to support client and server
@@ -96,6 +101,7 @@ int aws_mqtt_topic_tree_transaction_insert(
  *
  * \param[in]  tree         The tree to remove from.
  * \param[in]  transaction  The transaction to add the insert action to.
+ *                          Must be initialized with aws_mqtt_topic_tree_action_size as item size.
  * \param[in]  topic_filter The filter to remove (must be exactly the same as the topic_filter passed to insert).
  * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
  *

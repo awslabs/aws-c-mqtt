@@ -119,7 +119,7 @@ static void s_mqtt_on_connack_1(
 
     static bool is_connack_2 = false;
     if (is_connack_2) {
-        aws_mqtt_client_connection_subscribe_single(
+        aws_mqtt_client_connection_subscribe(
             connection,
             &subscribe_topic_cur,
             AWS_MQTT_QOS_EXACTLY_ONCE,

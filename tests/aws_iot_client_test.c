@@ -103,7 +103,7 @@ static void s_mqtt_on_connack(
 
     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
 
-    aws_mqtt_client_connection_subscribe_single(
+    aws_mqtt_client_connection_subscribe(
         args->connection,
         &subscribe_topic_cur,
         AWS_MQTT_QOS_AT_LEAST_ONCE,

@@ -103,7 +103,7 @@ struct aws_mqtt_client_connection {
     /* aws_mqtt_outstanding_request */
     struct aws_memory_pool requests_pool;
     struct {
-        /* uint16_t -> aws_mqtt_outstanding_request */
+        /* uint16_t (packet id) -> aws_mqtt_outstanding_request */
         struct aws_hash_table table;
         struct aws_mutex mutex;
     } outstanding_requests;

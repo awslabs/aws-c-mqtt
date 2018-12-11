@@ -669,7 +669,7 @@ static void s_subscribe_complete(
     aws_mem_release(task_arg->connection->allocator, task_arg);
 }
 
-uint16_t aws_mqtt_client_connection_subscribe(
+uint16_t aws_mqtt_client_connection_subscribe_multiple(
     struct aws_mqtt_client_connection *connection,
     const struct aws_array_list *topic_filters,
     aws_mqtt_suback_fn *on_suback,
@@ -786,7 +786,7 @@ static void s_subscribe_single_complete(
     aws_mem_release(task_arg->connection->allocator, task_arg);
 }
 
-uint16_t aws_mqtt_client_connection_subscribe_single(
+uint16_t aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
