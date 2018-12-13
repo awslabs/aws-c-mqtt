@@ -46,7 +46,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "aws_iot_client_test");
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
 AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "a1ba5f1mpna9k5-ats.iot.us-east-1.amazonaws.com");
 
-enum { PUBLSIHES = 20 };
+enum { PUBLISHES = 20 };
 
 enum { PAYLOAD_LEN = 20000 };
 static uint8_t s_payload[PAYLOAD_LEN];
@@ -98,7 +98,7 @@ static void s_on_packet_recieved(
     struct connection_args *args = userdata;
     ++args->packets_gotten;
 
-    if (args->packets_gotten == PUBLSIHES) {
+    if (args->packets_gotten == PUBLISHES) {
 
         aws_mutex_lock(args->mutex);
         aws_condition_variable_notify_one(args->condition_variable);
@@ -245,7 +245,7 @@ int main(int argc, char **argv) {
 
     struct aws_byte_cursor payload_cur = aws_byte_cursor_from_buf(&payload_buf);
 
-    for (int i = 0; i < PUBLSIHES; ++i) {
+    for (int i = 0; i < PUBLISHES; ++i) {
         aws_mqtt_client_connection_publish(
             args.connection,
             &subscribe_topic_cur,
@@ -255,8 +255,8 @@ int main(int argc, char **argv) {
             &s_on_puback,
             &args);
 
-        /* Don't throttle me daddy */
-        if (i % 100 == 0) {
+        /* Keep the service endpoint from throttling the connection */
+        if (i != 0 && i % 100 == 0) {
             sleep(1);
         }
     }
@@ -265,7 +265,7 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    ASSERT_UINT_EQUALS(PUBLSIHES, args.packets_gotten);
+    ASSERT_UINT_EQUALS(PUBLISHES, args.packets_gotten);
 
     aws_mqtt_client_connection_disconnect(args.connection);
 

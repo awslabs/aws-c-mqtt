@@ -210,7 +210,7 @@ AWS_MQTT_API
 int aws_mqtt_packet_publish_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet);
 
 AWS_MQTT_API
-int aws_mqtt_packet_publish_encode_no_payload(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet);
+int aws_mqtt_packet_publish_encode_headers(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet);
 
 AWS_MQTT_API
 int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_publish *packet);

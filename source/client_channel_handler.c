@@ -300,7 +300,7 @@ static int s_process_read_message(
             return AWS_OP_SUCCESS;
         }
 
-        /* Handle the pending packet */
+        /* Handle the completed pending packet */
         struct aws_byte_cursor packet_data = aws_byte_cursor_from_buf(&connection->pending_packet);
         result = s_process_mqtt_packet(connection, aws_mqtt_get_packet_type(packet_data.ptr), packet_data);
 
@@ -329,9 +329,10 @@ static int s_process_read_message(
         if (result) {
             if (aws_last_error() == AWS_ERROR_SHORT_BUFFER) {
                 /* Message data too short, store data and come back later. */
-                connection->pending_packet.capacity = fixed_header_size + packet_header.remaining_length;
                 if (aws_byte_buf_init(
-                        &connection->pending_packet, connection->allocator, connection->pending_packet.capacity)) {
+                        &connection->pending_packet,
+                        connection->allocator,
+                        fixed_header_size + packet_header.remaining_length)) {
 
                     return AWS_OP_ERR;
                 }

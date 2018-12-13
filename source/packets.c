@@ -509,7 +509,7 @@ int aws_mqtt_packet_publish_init(
 
 int aws_mqtt_packet_publish_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet) {
 
-    if (aws_mqtt_packet_publish_encode_no_payload(buf, packet)) {
+    if (aws_mqtt_packet_publish_encode_headers(buf, packet)) {
         return AWS_OP_ERR;
     }
 
@@ -523,7 +523,7 @@ int aws_mqtt_packet_publish_encode(struct aws_byte_buf *buf, const struct aws_mq
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_packet_publish_encode_no_payload(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet) {
+int aws_mqtt_packet_publish_encode_headers(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet) {
 
     assert(buf);
     assert(packet);

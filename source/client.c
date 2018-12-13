@@ -1046,7 +1046,7 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t message_id, bo
     }
 
     /* Encode the headers, and everything but the payload */
-    if (aws_mqtt_packet_publish_encode_no_payload(&message->message_data, &task_arg->publish)) {
+    if (aws_mqtt_packet_publish_encode_headers(&message->message_data, &task_arg->publish)) {
         return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
