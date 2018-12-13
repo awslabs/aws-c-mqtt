@@ -940,7 +940,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     }
 
     aws_array_list_clean_up(&transaction);
-    return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
+    return AWS_MQTT_CLIENT_REQUEST_ONGOING;
 
 handle_error:
 
@@ -1045,14 +1045,39 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t message_id, bo
         return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
-    if (aws_mqtt_packet_publish_encode(&message->message_data, &task_arg->publish)) {
+    /* Encode the headers, and everything but the payload */
+    if (aws_mqtt_packet_publish_encode_no_payload(&message->message_data, &task_arg->publish)) {
         return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
-    if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+    struct aws_byte_cursor payload_cur = task_arg->payload;
+    {
+    write_payload_chunk:
+        (void)NULL;
 
-        aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
-        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        const size_t left_in_message = message->message_data.capacity - message->message_data.len;
+        const size_t to_write = payload_cur.len < left_in_message ? payload_cur.len : left_in_message;
+
+        /* Write this chunk */
+        struct aws_byte_cursor to_write_cur = aws_byte_cursor_advance(&payload_cur, to_write);
+        assert(to_write_cur.ptr); /* to_write is guaranteed to be inside the bounds of payload_cur */
+        if (!aws_byte_buf_write_from_whole_cursor(&message->message_data, to_write_cur)) {
+
+            aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+
+        if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+
+            aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+
+        /* If there's still payload left, get a new message and start again. */
+        if (payload_cur.len) {
+            message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->publish.fixed_header);
+            goto write_payload_chunk;
+        }
     }
 
     /* If QoS == 0, there will be no ack, so consider the request done now. */

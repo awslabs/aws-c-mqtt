@@ -236,6 +236,26 @@ static packet_handler_fn *s_packet_handlers[] = {
  * Channel Handler
  ******************************************************************************/
 
+static int s_process_mqtt_packet(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_packet_type packet_type,
+    struct aws_byte_cursor packet) {
+
+    /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
+    if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING && packet_type != AWS_MQTT_PACKET_CONNACK) {
+
+        aws_mqtt_client_connection_disconnect(connection);
+        return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+    }
+
+    if (AWS_UNLIKELY(packet_type > AWS_MQTT_PACKET_DISCONNECT || packet_type < AWS_MQTT_PACKET_CONNECT)) {
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
+    }
+
+    /* Handle the packet */
+    return s_packet_handlers[packet_type](connection, packet);
+}
+
 /**
  * Handles incoming messages from the server.
  */
@@ -250,31 +270,96 @@ static int s_process_read_message(
         return AWS_OP_ERR;
     }
 
-    enum aws_mqtt_packet_type type = aws_mqtt_get_packet_type(message->message_data.buffer);
-
-    /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
-    if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING && type != AWS_MQTT_PACKET_CONNACK) {
-
-        aws_mqtt_client_connection_disconnect(connection);
-        return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
-    }
-
+    /* This cursor will be updated as we read through the message. */
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
-    if (AWS_UNLIKELY(type > AWS_MQTT_PACKET_DISCONNECT || type < AWS_MQTT_PACKET_CONNECT)) {
-        return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
+    /* If there's pending packet left over from last time, attempt to complete it. */
+    if (connection->pending_packet.len) {
+
+        int result = AWS_OP_SUCCESS;
+
+        /* This determines how much to read from the message (min(expected_remaining, message.len)) */
+        size_t to_read = connection->pending_packet.capacity - connection->pending_packet.len;
+        /* This will be set to false if this message still won't complete the packet object. */
+        bool packet_complete = true;
+        if (to_read > message_cursor.len) {
+            to_read = message_cursor.len;
+            packet_complete = false;
+        }
+
+        /* Write the chunk to the buffer.
+         * This will either complete the packet, or be the entirety of message if more data is required. */
+        struct aws_byte_cursor chunk = aws_byte_cursor_advance(&message_cursor, to_read);
+        result = (int)aws_byte_buf_write_from_whole_cursor(&connection->pending_packet, chunk) - 1;
+        if (result) {
+            goto handle_error;
+        }
+
+        /* If the packet is still incomplete, don't do anything with the data. */
+        if (!packet_complete) {
+            return AWS_OP_SUCCESS;
+        }
+
+        /* Handle the pending packet */
+        struct aws_byte_cursor packet_data = aws_byte_cursor_from_buf(&connection->pending_packet);
+        result = s_process_mqtt_packet(connection, aws_mqtt_get_packet_type(packet_data.ptr), packet_data);
+
+    handle_error:
+        /* Clean up the pending packet */
+        aws_byte_buf_clean_up(&connection->pending_packet);
+        AWS_ZERO_STRUCT(connection->pending_packet);
+
+        if (result) {
+            return AWS_OP_ERR;
+        }
     }
 
-    /* Handle the packet */
-    int result = s_packet_handlers[type](connection, message_cursor);
+    while (message_cursor.len) {
 
+        /* Temp byte cursor so we can decode the header without advancing message_cursor. */
+        struct aws_byte_cursor header_decode = message_cursor;
+
+        struct aws_mqtt_fixed_header packet_header;
+        AWS_ZERO_STRUCT(packet_header);
+        int result = aws_mqtt_fixed_header_decode(&header_decode, &packet_header);
+
+        /* Calculate how much data was read. */
+        const size_t fixed_header_size = message_cursor.len - header_decode.len;
+
+        if (result) {
+            if (aws_last_error() == AWS_ERROR_SHORT_BUFFER) {
+                /* Message data too short, store data and come back later. */
+                connection->pending_packet.capacity = fixed_header_size + packet_header.remaining_length;
+                if (aws_byte_buf_init(
+                        &connection->pending_packet, connection->allocator, connection->pending_packet.capacity)) {
+
+                    return AWS_OP_ERR;
+                }
+
+                /* Write the partial packet. */
+                if (!aws_byte_buf_write_from_whole_cursor(&connection->pending_packet, message_cursor)) {
+                    aws_byte_buf_clean_up(&connection->pending_packet);
+                    return AWS_OP_ERR;
+                }
+
+                aws_reset_error();
+                goto cleanup;
+            } else {
+                return AWS_OP_ERR;
+            }
+        }
+
+        struct aws_byte_cursor packet_data =
+            aws_byte_cursor_advance(&message_cursor, fixed_header_size + packet_header.remaining_length);
+        s_process_mqtt_packet(connection, packet_header.packet_type, packet_data);
+    }
+
+cleanup:
     /* Do cleanup */
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
-    if (result == AWS_OP_SUCCESS) {
-        aws_channel_release_message_to_pool(slot->channel, message);
-    }
+    aws_channel_release_message_to_pool(slot->channel, message);
 
-    return result;
+    return AWS_OP_SUCCESS;
 }
 
 static int s_shutdown(

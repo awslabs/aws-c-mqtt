@@ -509,6 +509,22 @@ int aws_mqtt_packet_publish_init(
 
 int aws_mqtt_packet_publish_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet) {
 
+    if (aws_mqtt_packet_publish_encode_no_payload(buf, packet)) {
+        return AWS_OP_ERR;
+    }
+
+    /*************************************************************************/
+    /* Payload                                                               */
+
+    if (!aws_byte_buf_write(buf, packet->payload.ptr, packet->payload.len)) {
+        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt_packet_publish_encode_no_payload(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet) {
+
     assert(buf);
     assert(packet);
 
@@ -533,13 +549,6 @@ int aws_mqtt_packet_publish_encode(struct aws_byte_buf *buf, const struct aws_mq
         if (!aws_byte_buf_write_be16(buf, packet->packet_identifier)) {
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }
-    }
-
-    /*************************************************************************/
-    /* Payload                                                               */
-
-    if (!aws_byte_buf_write(buf, packet->payload.ptr, packet->payload.len)) {
-        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
     return AWS_OP_SUCCESS;

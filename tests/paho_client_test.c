@@ -25,6 +25,7 @@
 #include <aws/io/socket_channel_handler.h>
 
 #include <aws/common/condition_variable.h>
+#include <aws/common/device_random.h>
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
@@ -51,8 +52,8 @@ static struct aws_byte_cursor s_client_id_2 = {
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
 AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "localhost");
 
-static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
-enum { PAYLOAD_LEN = sizeof(s_payload) };
+enum { PAYLOAD_LEN = 20000 };
+static uint8_t s_payload[PAYLOAD_LEN];
 
 struct connection_args {
     struct aws_allocator *allocator;
@@ -84,6 +85,10 @@ static void s_on_packet_recieved(
 
     struct connection_args *args = user_data;
     args->retained_packet_recieved = true;
+
+    aws_mutex_lock(args->mutex);
+    aws_condition_variable_notify_one(args->condition_variable);
+    aws_mutex_unlock(args->mutex);
 }
 
 static void s_mqtt_publish_complete(
@@ -129,10 +134,6 @@ static void s_mqtt_on_connack_1(
             NULL,
             NULL);
 
-        aws_mutex_lock(args->mutex);
-        aws_condition_variable_notify_one(args->condition_variable);
-        aws_mutex_unlock(args->mutex);
-
         return;
     }
     is_connack_2 = true;
@@ -148,6 +149,25 @@ static void s_mqtt_on_connack_1(
         &payload_cur,
         &s_mqtt_publish_complete,
         (void *)payload);
+
+    aws_mutex_lock(args->mutex);
+    aws_condition_variable_notify_one(args->condition_variable);
+    aws_mutex_unlock(args->mutex);
+}
+
+static void s_mqtt_unsub_complete(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    int error_code,
+    void *userdata) {
+
+    (void)connection;
+    (void)packet_id;
+    (void)error_code;
+
+    assert(error_code == AWS_OP_SUCCESS);
+
+    struct connection_args *args = userdata;
 
     aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
@@ -178,6 +198,10 @@ int main(int argc, char **argv) {
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+
+    /* Populate the payload */
+    struct aws_byte_buf payload_buf = aws_byte_buf_from_empty_array(s_payload, PAYLOAD_LEN);
+    aws_device_random_buffer(&payload_buf);
 
     struct connection_args args;
     AWS_ZERO_STRUCT(args);
@@ -235,9 +259,12 @@ int main(int argc, char **argv) {
 
     struct aws_byte_cursor topic_filter =
         aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    aws_mqtt_client_connection_unsubscribe(args.connection, &topic_filter, NULL, NULL);
+    aws_mqtt_client_connection_unsubscribe(args.connection, &topic_filter, &s_mqtt_unsub_complete, &args);
 
-    // aws_mqtt_client_connection_ping(args.connection);
+    /* Wait for UNSUBACK */
+    aws_mutex_lock(&mutex);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    aws_mutex_unlock(&mutex);
 
     sleep(4);
 

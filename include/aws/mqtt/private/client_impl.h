@@ -123,6 +123,9 @@ struct aws_mqtt_client_connection {
         uint64_t max;
     } reconnect_timeouts;
 
+    /* If an incomplete packet arrives, store the data here. */
+    struct aws_byte_buf pending_packet;
+
     /* Connect parameters */
     struct aws_byte_buf client_id;
     bool clean_session;

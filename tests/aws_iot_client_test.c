@@ -26,6 +26,7 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/condition_variable.h>
+#include <aws/common/device_random.h>
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
@@ -45,8 +46,10 @@ AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "aws_iot_client_test");
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
 AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "a1ba5f1mpna9k5-ats.iot.us-east-1.amazonaws.com");
 
-static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
-enum { PAYLOAD_LEN = sizeof(s_payload) };
+enum { PUBLSIHES = 20 };
+
+enum { PAYLOAD_LEN = 20000 };
+static uint8_t s_payload[PAYLOAD_LEN];
 
 static uint8_t s_will_payload[] = "The client has gone offline!";
 enum { WILL_PAYLOAD_LEN = sizeof(s_will_payload) };
@@ -59,31 +62,48 @@ struct connection_args {
 
     struct aws_mqtt_client_connection *connection;
 
-    bool retained_packet_recieved;
+    size_t pubacks_gotten;
+    size_t packets_gotten;
 };
+
+static void s_on_puback(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    int error_code,
+    void *userdata) {
+
+    (void)connection;
+    (void)packet_id;
+    (void)error_code;
+
+    assert(error_code == AWS_OP_SUCCESS);
+
+    struct connection_args *args = userdata;
+    ++args->pubacks_gotten;
+}
 
 static void s_on_packet_recieved(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
-    void *user_data) {
+    void *userdata) {
 
     (void)connection;
     (void)topic;
-    printf("Message recieved: ");
-    fwrite(payload->ptr, 1, payload->len, stdout);
-    printf("\n");
+    (void)payload;
 
-    struct connection_args *args = user_data;
-    args->retained_packet_recieved = true;
-}
+    assert(payload->len == PAYLOAD_LEN);
+    assert(0 == memcmp(payload->ptr, s_payload, PAYLOAD_LEN));
 
-static void s_mqtt_publish_complete(struct aws_mqtt_client_connection *connection, uint16_t packet_id, void *userdata) {
+    struct connection_args *args = userdata;
+    ++args->packets_gotten;
 
-    (void)connection;
-    (void)packet_id;
+    if (args->packets_gotten == PUBLSIHES) {
 
-    aws_string_destroy(userdata);
+        aws_mutex_lock(args->mutex);
+        aws_condition_variable_notify_one(args->condition_variable);
+        aws_mutex_unlock(args->mutex);
+    }
 }
 
 static void s_mqtt_on_connack(
@@ -170,6 +190,10 @@ int main(int argc, char **argv) {
     aws_io_load_error_strings();
     aws_mqtt_load_error_strings();
 
+    /* Populate the payload */
+    struct aws_byte_buf payload_buf = aws_byte_buf_from_empty_array(s_payload, PAYLOAD_LEN);
+    aws_device_random_buffer(&payload_buf);
+
     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
 
     struct aws_event_loop_group elg;
@@ -219,23 +243,29 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    struct aws_string *payload = aws_string_new_from_array(args.allocator, s_payload, PAYLOAD_LEN);
-    struct aws_byte_cursor payload_cur = aws_byte_cursor_from_string(payload);
+    struct aws_byte_cursor payload_cur = aws_byte_cursor_from_buf(&payload_buf);
 
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < PUBLSIHES; ++i) {
         aws_mqtt_client_connection_publish(
             args.connection,
             &subscribe_topic_cur,
             AWS_MQTT_QOS_AT_LEAST_ONCE,
             false,
             &payload_cur,
-            NULL, // &s_mqtt_publish_complete,
-            (void *)payload);
+            &s_on_puback,
+            &args);
 
-        sleep(1);
+        /* Don't throttle me daddy */
+        if (i % 100 == 0) {
+            sleep(1);
+        }
     }
 
-    s_mqtt_publish_complete(args.connection, 0, payload);
+    aws_mutex_lock(&mutex);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    aws_mutex_unlock(&mutex);
+
+    ASSERT_UINT_EQUALS(PUBLSIHES, args.packets_gotten);
 
     aws_mqtt_client_connection_disconnect(args.connection);
 
