@@ -415,7 +415,6 @@ static void s_destroy(struct aws_channel_handler *handler) {
     (void)connection;
 }
 
-
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
     (void)handler;
     return 0;
