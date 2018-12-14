@@ -359,7 +359,7 @@ static int s_process_read_message(
 cleanup:
     /* Do cleanup */
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
-    aws_channel_release_message_to_pool(slot->channel, message);
+    aws_mem_release(message->allocator, message);
 
     return AWS_OP_SUCCESS;
 }

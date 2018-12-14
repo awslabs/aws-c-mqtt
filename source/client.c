@@ -145,7 +145,7 @@ handle_error:
     MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
 
     if (message) {
-        aws_channel_release_message_to_pool(connection->slot->channel, message);
+        aws_mem_release(message->allocator, message);
     }
 }
 
@@ -642,7 +642,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
 handle_error:
 
     if (message) {
-        aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+        aws_mem_release(message->allocator, message);
     }
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &transaction);
@@ -928,7 +928,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     }
 
     if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &task_arg->unsubscribe)) {
-        aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+        aws_mem_release(message->allocator, message);
         goto handle_error;
     }
 
@@ -945,7 +945,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 handle_error:
 
     if (message) {
-        aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+        aws_mem_release(message->allocator, message);
     }
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &transaction);
@@ -1063,13 +1063,13 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t message_id, bo
         assert(to_write_cur.ptr); /* to_write is guaranteed to be inside the bounds of payload_cur */
         if (!aws_byte_buf_write_from_whole_cursor(&message->message_data, to_write_cur)) {
 
-            aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+            aws_mem_release(message->allocator, message);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
 
         if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
 
-            aws_channel_release_message_to_pool(task_arg->connection->slot->channel, message);
+            aws_mem_release(message->allocator, message);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
 
@@ -1158,7 +1158,7 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bo
 
         if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
 
-            aws_channel_release_message_to_pool(connection->slot->channel, message);
+            aws_mem_release(message->allocator, message);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
 
