@@ -415,6 +415,12 @@ static void s_destroy(struct aws_channel_handler *handler) {
     (void)connection;
 }
 
+
+static size_t s_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
+    return 0;
+}
+
 struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void) {
 
     static struct aws_channel_handler_vtable s_vtable = {
@@ -423,6 +429,7 @@ struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void) {
         .increment_read_window = NULL,
         .shutdown = &s_shutdown,
         .initial_window_size = &s_initial_window_size,
+        .message_overhead = &s_message_overhead,
         .destroy = &s_destroy,
     };
 
