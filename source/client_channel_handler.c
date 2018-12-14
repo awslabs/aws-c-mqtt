@@ -290,6 +290,7 @@ static int s_process_read_message(
         /* Write the chunk to the buffer.
          * This will either complete the packet, or be the entirety of message if more data is required. */
         struct aws_byte_cursor chunk = aws_byte_cursor_advance(&message_cursor, to_read);
+        assert(chunk.ptr); /* Guaranteed to be in bounds */
         result = (int)aws_byte_buf_write_from_whole_cursor(&connection->pending_packet, chunk) - 1;
         if (result) {
             goto handle_error;
