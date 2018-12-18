@@ -634,6 +634,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
 
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &transaction);
+        task_arg->tree_updated = true;
     }
 
     aws_array_list_clean_up(&transaction);
