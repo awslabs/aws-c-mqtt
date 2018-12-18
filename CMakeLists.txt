@@ -4,7 +4,7 @@ project(aws-c-mqtt C)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_INSTALL_PREFIX}/lib/cmake")
 
 include(AwsCFlags)
-include(Sanitizers)
+include(AwsSanitizers)
 include(CheckCCompilerFlag)
 
 file(GLOB AWS_MQTT_HEADERS
@@ -31,6 +31,10 @@ file(GLOB MQTT_SRC
 add_library(${CMAKE_PROJECT_NAME} ${LIBTYPE} ${MQTT_HEADERS} ${MQTT_SRC})
 aws_set_common_properties(${CMAKE_PROJECT_NAME})
 aws_add_sanitizers(${CMAKE_PROJECT_NAME})
+
+# We are not ABI stable yet
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES VERSION 1.0.0)
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

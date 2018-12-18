@@ -1,6 +1,6 @@
 include(CTest)
 include(AwsTestHarness)
-include(LibFuzzer)
+include(AwsLibFuzzer)
 enable_testing()
 
 set(TEST_SRC packet_encoding_test.c topic_tree_test.c)
