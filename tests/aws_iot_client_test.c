@@ -199,8 +199,7 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group elg;
     aws_event_loop_group_default_init(&elg, args.allocator, 1);
 
-    struct aws_client_bootstrap bootstrap;
-    aws_client_bootstrap_init(&bootstrap, args.allocator, &elg, NULL, NULL);
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &elg, NULL, NULL);
 
     struct aws_tls_ctx_options tls_ctx_opt;
     aws_tls_ctx_options_init_client_mtls(&tls_ctx_opt, "iot-certificate.pem.crt", "iot-private.pem.key");
@@ -227,7 +226,7 @@ int main(int argc, char **argv) {
     callbacks.user_data = &args;
 
     struct aws_mqtt_client client;
-    aws_mqtt_client_init(&client, args.allocator, &bootstrap);
+    aws_mqtt_client_init(&client, args.allocator, bootstrap);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
     args.connection =
@@ -275,7 +274,7 @@ int main(int argc, char **argv) {
 
     aws_mqtt_client_clean_up(&client);
 
-    aws_client_bootstrap_clean_up(&bootstrap);
+    aws_client_bootstrap_destroy(bootstrap);
 
     aws_event_loop_group_clean_up(&elg);
 
