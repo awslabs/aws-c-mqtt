@@ -89,4 +89,4 @@ fi
 mkdir -p $deps_dir
 
 install_dep aws-c-common
-install_dep aws-c-io its-refcount-o-clock
+install_dep aws-c-io
