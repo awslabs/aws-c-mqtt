@@ -199,8 +199,7 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 1));
 
-    struct aws_client_bootstrap bootstrap;
-    aws_client_bootstrap_init(&bootstrap, args.allocator, &el_group, NULL, NULL);
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &el_group, NULL, NULL);
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -215,7 +214,7 @@ int main(int argc, char **argv) {
     callbacks.user_data = &args;
 
     struct aws_mqtt_client client;
-    ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, &bootstrap));
+    ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, bootstrap));
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
     args.connection = aws_mqtt_client_connection_new(&client, callbacks, &host_name_cur, 1883, &options, NULL);
@@ -307,7 +306,7 @@ int main(int argc, char **argv) {
     aws_mqtt_client_connection_destroy(args.connection);
     args.connection = NULL;
 
-    aws_client_bootstrap_clean_up(&bootstrap);
+    aws_client_bootstrap_destroy(bootstrap);
 
     aws_event_loop_group_clean_up(&el_group);
 
