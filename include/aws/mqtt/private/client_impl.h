@@ -149,7 +149,7 @@ struct aws_io_message *mqtt_get_message_for_packet(
 
 /* This function registers a new outstanding request, calls send_request
  and returns the message identifier to use (or 0 on error). */
-uint16_t mqtt_create_request(
+uint16_t AWS_MQTT_API mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
@@ -157,9 +157,10 @@ uint16_t mqtt_create_request(
     void *on_complete_ud);
 
 /* Call when an ack packet comes back from the server. */
-void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int error_code, uint16_t message_id);
+void AWS_MQTT_API
+    mqtt_request_complete(struct aws_mqtt_client_connection *connection, int error_code, uint16_t message_id);
 
 /* Call to close the connection with an error code */
-void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
+void AWS_MQTT_API mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */

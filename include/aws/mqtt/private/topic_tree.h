@@ -59,17 +59,17 @@ struct aws_mqtt_topic_tree {
  * The size of transaction instances.
  * When you initialize an aws_array_list for use as a transaction, pass this as the item size.
  */
-extern size_t aws_mqtt_topic_tree_action_size;
+extern AWS_MQTT_API size_t aws_mqtt_topic_tree_action_size;
 
 /**
  * Initialize a topic tree with an allocator to later use.
  * Note that calling init allocates root.
  */
-int aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_allocator *allocator);
+int AWS_MQTT_API aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_allocator *allocator);
 /**
  * Cleanup and deallocate an entire topic tree.
  */
-void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
+void AWS_MQTT_API aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
 
 /**
  * Insert a new topic filter into the subscription tree (subscribe).
@@ -87,7 +87,7 @@ void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
  *          If AWS_OP_ERR is returned, aws_mqtt_topic_tree_transaction_rollback should be called to prevent leaks.
  */
-int aws_mqtt_topic_tree_transaction_insert(
+int AWS_MQTT_API aws_mqtt_topic_tree_transaction_insert(
     struct aws_mqtt_topic_tree *tree,
     struct aws_array_list *transaction,
     const struct aws_string *topic_filter,
@@ -108,14 +108,16 @@ int aws_mqtt_topic_tree_transaction_insert(
  * \returns AWS_OP_SUCCESS on successful removal, AWS_OP_ERR with aws_last_error() populated on failure.
  *          If AWS_OP_ERR is returned, aws_mqtt_topic_tree_transaction_rollback should be called to prevent leaks.
  */
-int aws_mqtt_topic_tree_transaction_remove(
+int AWS_MQTT_API aws_mqtt_topic_tree_transaction_remove(
     struct aws_mqtt_topic_tree *tree,
     struct aws_array_list *transaction,
     const struct aws_byte_cursor *topic_filter);
 
-void aws_mqtt_topic_tree_transaction_commit(struct aws_mqtt_topic_tree *tree, struct aws_array_list *transaction);
+void AWS_MQTT_API
+    aws_mqtt_topic_tree_transaction_commit(struct aws_mqtt_topic_tree *tree, struct aws_array_list *transaction);
 
-void aws_mqtt_topic_tree_transaction_roll_back(struct aws_mqtt_topic_tree *tree, struct aws_array_list *transaction);
+void AWS_MQTT_API
+    aws_mqtt_topic_tree_transaction_roll_back(struct aws_mqtt_topic_tree *tree, struct aws_array_list *transaction);
 
 /**
  * Insert a new topic filter into the subscription tree (subscribe).
@@ -130,45 +132,17 @@ void aws_mqtt_topic_tree_transaction_roll_back(struct aws_mqtt_topic_tree *tree,
  *
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-AWS_STATIC_IMPL
+AWS_MQTT_API
 int aws_mqtt_topic_tree_insert(
     struct aws_mqtt_topic_tree *tree,
     const struct aws_string *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
     aws_mqtt_userdata_cleanup_fn *cleanup,
-    void *userdata) {
+    void *userdata);
 
-    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size);
-    struct aws_array_list transaction;
-    aws_array_list_init_static(&transaction, transaction_buf, 1, aws_mqtt_topic_tree_action_size);
-
-    if (aws_mqtt_topic_tree_transaction_insert(tree, &transaction, topic_filter, qos, callback, cleanup, userdata)) {
-
-        aws_mqtt_topic_tree_transaction_roll_back(tree, &transaction);
-        return AWS_OP_ERR;
-    }
-
-    aws_mqtt_topic_tree_transaction_commit(tree, &transaction);
-    return AWS_OP_SUCCESS;
-}
-
-AWS_STATIC_IMPL
-int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter) {
-
-    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size);
-    struct aws_array_list transaction;
-    aws_array_list_init_static(&transaction, transaction_buf, 1, aws_mqtt_topic_tree_action_size);
-
-    if (aws_mqtt_topic_tree_transaction_remove(tree, &transaction, topic_filter)) {
-
-        aws_mqtt_topic_tree_transaction_roll_back(tree, &transaction);
-        return AWS_OP_ERR;
-    }
-
-    aws_mqtt_topic_tree_transaction_commit(tree, &transaction);
-    return AWS_OP_SUCCESS;
-}
+AWS_MQTT_API
+int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter);
 
 /**
  * Dispatches a publish packet to all subscriptions matching the publish topic.
@@ -178,6 +152,7 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
  *
  * \returns AWS_OP_SUCCESS on successful publish, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-int aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub);
+int AWS_MQTT_API
+    aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub);
 
 #endif /* AWS_MQTT_PRIVATE_TOPIC_TREE_H */

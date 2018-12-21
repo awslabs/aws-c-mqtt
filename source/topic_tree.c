@@ -55,6 +55,7 @@ struct topic_tree_action {
     /* REMOVE */
     struct aws_array_list to_remove; /* topic_tree_node* */
 };
+
 size_t aws_mqtt_topic_tree_action_size = sizeof(struct topic_tree_action);
 
 static struct topic_tree_action *s_topic_tree_action_create(struct aws_array_list *transaction) {
@@ -617,6 +618,44 @@ void aws_mqtt_topic_tree_transaction_roll_back(struct aws_mqtt_topic_tree *tree,
         s_topic_tree_action_roll_back(action, tree);
     }
     aws_array_list_clear(transaction);
+}
+
+int aws_mqtt_topic_tree_insert(
+    struct aws_mqtt_topic_tree *tree,
+    const struct aws_string *topic_filter,
+    enum aws_mqtt_qos qos,
+    aws_mqtt_publish_received_fn *callback,
+    aws_mqtt_userdata_cleanup_fn *cleanup,
+    void *userdata) {
+
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, 1, aws_mqtt_topic_tree_action_size);
+
+    if (aws_mqtt_topic_tree_transaction_insert(tree, &transaction, topic_filter, qos, callback, cleanup, userdata)) {
+
+        aws_mqtt_topic_tree_transaction_roll_back(tree, &transaction);
+        return AWS_OP_ERR;
+    }
+
+    aws_mqtt_topic_tree_transaction_commit(tree, &transaction);
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter) {
+
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, 1, aws_mqtt_topic_tree_action_size);
+
+    if (aws_mqtt_topic_tree_transaction_remove(tree, &transaction, topic_filter)) {
+
+        aws_mqtt_topic_tree_transaction_roll_back(tree, &transaction);
+        return AWS_OP_ERR;
+    }
+
+    aws_mqtt_topic_tree_transaction_commit(tree, &transaction);
+    return AWS_OP_SUCCESS;
 }
 
 /*******************************************************************************
