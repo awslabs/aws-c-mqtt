@@ -65,11 +65,11 @@ extern AWS_MQTT_API size_t aws_mqtt_topic_tree_action_size;
  * Initialize a topic tree with an allocator to later use.
  * Note that calling init allocates root.
  */
-int AWS_MQTT_API aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_allocator *allocator);
+AWS_MQTT_API int aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_allocator *allocator);
 /**
  * Cleanup and deallocate an entire topic tree.
  */
-void AWS_MQTT_API aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
+AWS_MQTT_API void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
 
 /**
  * Insert a new topic filter into the subscription tree (subscribe).
@@ -87,7 +87,7 @@ void AWS_MQTT_API aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree)
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
  *          If AWS_OP_ERR is returned, aws_mqtt_topic_tree_transaction_rollback should be called to prevent leaks.
  */
-int AWS_MQTT_API aws_mqtt_topic_tree_transaction_insert(
+AWS_MQTT_API int aws_mqtt_topic_tree_transaction_insert(
     struct aws_mqtt_topic_tree *tree,
     struct aws_array_list *transaction,
     const struct aws_string *topic_filter,
@@ -108,16 +108,18 @@ int AWS_MQTT_API aws_mqtt_topic_tree_transaction_insert(
  * \returns AWS_OP_SUCCESS on successful removal, AWS_OP_ERR with aws_last_error() populated on failure.
  *          If AWS_OP_ERR is returned, aws_mqtt_topic_tree_transaction_rollback should be called to prevent leaks.
  */
-int AWS_MQTT_API aws_mqtt_topic_tree_transaction_remove(
+AWS_MQTT_API int aws_mqtt_topic_tree_transaction_remove(
     struct aws_mqtt_topic_tree *tree,
     struct aws_array_list *transaction,
     const struct aws_byte_cursor *topic_filter);
 
-void AWS_MQTT_API
-    aws_mqtt_topic_tree_transaction_commit(struct aws_mqtt_topic_tree *tree, struct aws_array_list *transaction);
+AWS_MQTT_API void aws_mqtt_topic_tree_transaction_commit(
+    struct aws_mqtt_topic_tree *tree,
+    struct aws_array_list *transaction);
 
-void AWS_MQTT_API
-    aws_mqtt_topic_tree_transaction_roll_back(struct aws_mqtt_topic_tree *tree, struct aws_array_list *transaction);
+AWS_MQTT_API void aws_mqtt_topic_tree_transaction_roll_back(
+    struct aws_mqtt_topic_tree *tree,
+    struct aws_array_list *transaction);
 
 /**
  * Insert a new topic filter into the subscription tree (subscribe).

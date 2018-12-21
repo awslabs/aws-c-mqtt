@@ -52,21 +52,21 @@ struct aws_mqtt_fixed_header {
 /**
  * Get the type of packet from the first byte of the buffer [MQTT-2.2.1].
  */
-enum aws_mqtt_packet_type AWS_MQTT_API aws_mqtt_get_packet_type(const uint8_t *buffer);
+AWS_MQTT_API enum aws_mqtt_packet_type aws_mqtt_get_packet_type(const uint8_t *buffer);
 
 /**
  * Get traits describing a packet described by header [MQTT-2.2.2].
  */
-bool AWS_MQTT_API aws_mqtt_packet_has_flags(const struct aws_mqtt_fixed_header *header);
+AWS_MQTT_API bool aws_mqtt_packet_has_flags(const struct aws_mqtt_fixed_header *header);
 
 /**
  * Write a fixed header to a byte stream.
  */
-int AWS_MQTT_API aws_mqtt_fixed_header_encode(struct aws_byte_buf *buf, const struct aws_mqtt_fixed_header *header);
+AWS_MQTT_API int aws_mqtt_fixed_header_encode(struct aws_byte_buf *buf, const struct aws_mqtt_fixed_header *header);
 
 /**
  * Read a fixed header from a byte stream.
  */
-int AWS_MQTT_API aws_mqtt_fixed_header_decode(struct aws_byte_cursor *cur, struct aws_mqtt_fixed_header *header);
+AWS_MQTT_API int aws_mqtt_fixed_header_decode(struct aws_byte_cursor *cur, struct aws_mqtt_fixed_header *header);
 
 #endif /* AWS_MQTT_PRIVATE_FIXED_HEADER_H */
