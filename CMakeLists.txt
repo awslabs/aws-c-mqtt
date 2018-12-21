@@ -28,9 +28,14 @@ file(GLOB MQTT_SRC
         ${AWS_MQTT_SRC}
         )
 
-add_library(${CMAKE_PROJECT_NAME} ${LIBTYPE} ${MQTT_HEADERS} ${MQTT_SRC})
+add_library(${CMAKE_PROJECT_NAME} ${MQTT_HEADERS} ${MQTT_SRC})
 aws_set_common_properties(${CMAKE_PROJECT_NAME})
 aws_add_sanitizers(${CMAKE_PROJECT_NAME})
+
+if (BUILD_SHARED_LIBS)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_MQTT_USE_IMPORT_EXPORT")
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DAWS_MQTT_EXPORTS")
+endif()
 
 # We are not ABI stable yet
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES VERSION 1.0.0)
