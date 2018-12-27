@@ -97,7 +97,7 @@ static int s_mqtt_topic_tree_match_fn(struct aws_allocator *allocator, void *ctx
     ASSERT_TRUE(s_check_topic_match(allocator, "///", "///"));
     ASSERT_FALSE(s_check_topic_match(allocator, "///", "//"));
 
-    const char* sub_topics[] = {"a/b/c", "a/+/c", "a/#"};
+    const char *sub_topics[] = {"a/b/c", "a/+/c", "a/#"};
     ASSERT_INT_EQUALS(s_check_multi_topic_match(allocator, sub_topics, AWS_ARRAY_SIZE(sub_topics), "a/b/c"), 3);
     ASSERT_INT_EQUALS(s_check_multi_topic_match(allocator, sub_topics, AWS_ARRAY_SIZE(sub_topics), "a/Z/c"), 2);
     ASSERT_INT_EQUALS(s_check_multi_topic_match(allocator, sub_topics, AWS_ARRAY_SIZE(sub_topics), "a/b/Z"), 1);
@@ -168,7 +168,7 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
 
     times_called = false;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
-    ASSERT_INT_EQUALS(times_called, 1);;
+    ASSERT_INT_EQUALS(times_called, 1);
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
