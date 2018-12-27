@@ -24,25 +24,32 @@ static struct aws_byte_cursor s_empty_cursor = {
     .len = 0,
 };
 
-static bool was_called = false;
+static int times_called = 0;
 static void on_publish(const struct aws_byte_cursor *topic, const struct aws_byte_cursor *payload, void *user_data) {
 
     (void)topic;
     (void)payload;
     (void)user_data;
 
-    was_called = true;
+    times_called++;
 }
 
-static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub_filter, const char *pub_topic) {
+/* Subscribes to multiple topics and returns the number that matched with the pub_topic */
+static int s_check_multi_topic_match(
+    struct aws_allocator *allocator,
+    const char **sub_filters,
+    size_t sub_filters_len,
+    const char *pub_topic) {
 
-    was_called = false;
+    times_called = 0;
 
     struct aws_mqtt_topic_tree tree;
     aws_mqtt_topic_tree_init(&tree, allocator);
 
-    struct aws_string *topic_filter = aws_string_new_from_c_str(allocator, sub_filter);
-    aws_mqtt_topic_tree_insert(&tree, topic_filter, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL);
+    for (size_t i = 0; i < sub_filters_len; ++i) {
+        struct aws_string *topic_filter = aws_string_new_from_c_str(allocator, sub_filters[i]);
+        aws_mqtt_topic_tree_insert(&tree, topic_filter, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL);
+    }
 
     struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_array(pub_topic, strlen(pub_topic));
     struct aws_mqtt_packet_publish publish;
@@ -52,7 +59,11 @@ static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
-    return was_called;
+    return times_called;
+}
+static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub_filter, const char *pub_topic) {
+    int matches = s_check_multi_topic_match(allocator, &sub_filter, 1, pub_topic);
+    return matches == 1;
 }
 
 AWS_TEST_CASE(mqtt_topic_tree_match, s_mqtt_topic_tree_match_fn)
@@ -85,6 +96,12 @@ static int s_mqtt_topic_tree_match_fn(struct aws_allocator *allocator, void *ctx
 
     ASSERT_TRUE(s_check_topic_match(allocator, "///", "///"));
     ASSERT_FALSE(s_check_topic_match(allocator, "///", "//"));
+
+    const char* sub_topics[] = {"a/b/c", "a/+/c", "a/#"};
+    ASSERT_INT_EQUALS(s_check_multi_topic_match(allocator, sub_topics, AWS_ARRAY_SIZE(sub_topics), "a/b/c"), 3);
+    ASSERT_INT_EQUALS(s_check_multi_topic_match(allocator, sub_topics, AWS_ARRAY_SIZE(sub_topics), "a/Z/c"), 2);
+    ASSERT_INT_EQUALS(s_check_multi_topic_match(allocator, sub_topics, AWS_ARRAY_SIZE(sub_topics), "a/b/Z"), 1);
+    ASSERT_INT_EQUALS(s_check_multi_topic_match(allocator, sub_topics, AWS_ARRAY_SIZE(sub_topics), "Z/b/c"), 0);
 
     return AWS_OP_SUCCESS;
 }
@@ -143,15 +160,15 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     struct aws_mqtt_packet_publish publish;
     aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a_a, 1, s_topic_a_a_a);
 
-    was_called = false;
+    times_called = 0;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
-    ASSERT_FALSE(was_called);
+    ASSERT_INT_EQUALS(times_called, 0);
 
     publish.topic_name = s_topic_a_a_b;
 
-    was_called = false;
+    times_called = false;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
-    ASSERT_TRUE(was_called);
+    ASSERT_INT_EQUALS(times_called, 1);;
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
@@ -189,9 +206,9 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
     struct aws_mqtt_packet_publish publish;
     aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a, 1, s_topic_a_a);
 
-    was_called = false;
+    times_called = 0;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
-    ASSERT_TRUE(was_called);
+    ASSERT_INT_EQUALS(times_called, 1);
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
