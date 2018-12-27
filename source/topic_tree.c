@@ -663,16 +663,17 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
  ******************************************************************************/
 
 static void s_topic_tree_publish_do_recurse(
-    struct aws_byte_cursor *sub_part,
+    const struct aws_byte_cursor *current_sub_part,
     const struct aws_mqtt_topic_node *current,
-    struct aws_mqtt_packet_publish *pub) {
+    const struct aws_mqtt_packet_publish *pub) {
 
     struct aws_byte_cursor hash_cur = aws_byte_cursor_from_string(s_multi_level_wildcard);
     struct aws_byte_cursor plus_cur = aws_byte_cursor_from_string(s_single_level_wildcard);
 
     struct aws_hash_element *elem = NULL;
 
-    if (!aws_byte_cursor_next_split(&pub->topic_name, '/', sub_part)) {
+    struct aws_byte_cursor sub_part = *current_sub_part;
+    if (!aws_byte_cursor_next_split(&pub->topic_name, '/', &sub_part)) {
 
         /* If this is the last node and is a sub, call it */
         if (s_topic_node_is_subscription(current)) {
@@ -696,14 +697,14 @@ static void s_topic_tree_publish_do_recurse(
     aws_hash_table_find(&current->subtopics, &plus_cur, &elem);
     if (elem) {
         /* Recurse sub topics */
-        s_topic_tree_publish_do_recurse(sub_part, elem->value, pub);
+        s_topic_tree_publish_do_recurse(&sub_part, elem->value, pub);
     }
 
     /* Check actual topic name */
-    aws_hash_table_find(&current->subtopics, sub_part, &elem);
+    aws_hash_table_find(&current->subtopics, &sub_part, &elem);
     if (elem) {
         /* Found the actual topic, recurse to it */
-        s_topic_tree_publish_do_recurse(sub_part, elem->value, pub);
+        s_topic_tree_publish_do_recurse(&sub_part, elem->value, pub);
     }
 }
 
