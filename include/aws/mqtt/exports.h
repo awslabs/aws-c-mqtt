@@ -15,7 +15,7 @@
  * permissions and limitations under the License.
  */
 #if defined(USE_WINDOWS_DLL_SEMANTICS) || defined(WIN32)
-#    ifdef USE_IMPORT_EXPORT
+#    ifdef AWS_MQTT_USE_IMPORT_EXPORT
 #        ifdef AWS_MQTT_EXPORTS
 #            define AWS_MQTT_API __declspec(dllexport)
 #        else

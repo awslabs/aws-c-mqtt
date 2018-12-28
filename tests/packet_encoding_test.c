@@ -17,6 +17,11 @@
 
 #include <aws/mqtt/private/packets.h>
 
+#ifdef _MSC_VER
+#    pragma warning(push)
+#    pragma warning(disable : 4232) /* function pointer to dll symbol */
+#endif
+
 enum { S_BUFFER_SIZE = 128 };
 
 struct packet_test_fixture;
@@ -533,3 +538,7 @@ PACKET_TEST_CONNETION(PINGREQ, pingreq)
 PACKET_TEST_CONNETION(PINGRESP, pingresp)
 PACKET_TEST_CONNETION(DISCONNECT, disconnect)
 #undef PACKET_TEST_CONNETION
+
+#ifdef _MSC_VER
+#    pragma warning(pop)
+#endif
