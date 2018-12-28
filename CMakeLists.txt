@@ -40,10 +40,6 @@ if (BUILD_SHARED_LIBS)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DAWS_MQTT_EXPORTS")
 endif()
 
-# We are not ABI stable yet
-set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES VERSION 1.0.0)
-set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
-
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
