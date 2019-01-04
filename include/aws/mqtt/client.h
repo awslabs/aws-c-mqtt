@@ -38,24 +38,6 @@ struct aws_mqtt_client {
 
 struct aws_mqtt_client_connection;
 
-struct aws_mqtt_client_connection_callbacks {
-    /* Called if the connection to the server is not completed.
-     * Note that if a CONNACK is received, this function will not be called no matter what the return code is */
-    void (*on_connection_failed)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
-    /* Called when a connection acknowlegement is received.
-     * If return_code is not ACCEPT, the connetion is automatically closed. */
-    void (*on_connack)(
-        struct aws_mqtt_client_connection *connection,
-        enum aws_mqtt_connect_return_code return_code,
-        bool session_present,
-        void *user_data);
-    /* Called when a connection is closed, right before any resources are deleted.
-     * Return true to attempt a reconnect. */
-    bool (*on_disconnect)(struct aws_mqtt_client_connection *connection, int error_code, void *user_data);
-
-    void *user_data;
-};
-
 /** Callback called when a request roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). */
 typedef void(aws_mqtt_op_complete_fn)(
     struct aws_mqtt_client_connection *connection,
@@ -63,8 +45,36 @@ typedef void(aws_mqtt_op_complete_fn)(
     int error_code,
     void *userdata);
 
+/**
+ * Called when a connection attempt is completed, either in success or error.
+ *
+ * If error code is AWS_OP_SUCCESS, then a CONNACK has been received from the server and return_code and session_present
+ *      contain the values received.
+ * If error_code is not AWS_OP_SUCCESS, it refers to the internal error that occured during connection, and return_code
+ *      and session_present are invalid.
+ */
+typedef void(aws_mqtt_client_on_connection_complete_fn)(
+    struct aws_mqtt_client_connection *connection,
+    int error_code,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present,
+    void *userdata);
+
+/* Called if the connection to the server is lost. */
+typedef void(aws_mqtt_client_on_connection_interrupted_fn)(
+    struct aws_mqtt_client_connection *connection,
+    int error_code,
+    void *userdata);
+
+/* Called when a connection to the server is resumed. */
+typedef void(aws_mqtt_client_on_connection_resumed_fn)(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present,
+    void *userdata);
+
 /** Called when a multi-topic subscription request is complete */
-typedef void(aws_mqtt_suback_fn)(
+typedef void(aws_mqtt_suback_multi_fn)(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
     const struct aws_array_list *topic_subacks, /* contains aws_mqtt_topic_subscription pointers */
@@ -72,7 +82,7 @@ typedef void(aws_mqtt_suback_fn)(
     void *userdata);
 
 /** Called when a single-topic subscription request is complete */
-typedef void(aws_mqtt_suback_single_fn)(
+typedef void(aws_mqtt_suback_fn)(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
     const struct aws_byte_cursor *topic,
@@ -85,7 +95,10 @@ typedef void(aws_mqtt_client_publish_received_fn)(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
-    void *user_data);
+    void *userdata);
+
+/* Called when a connection is closed, right before any resources are deleted */
+typedef void(aws_mqtt_client_on_disconnect_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
 /** Passed to subscribe() and suback callbacks */
 struct aws_mqtt_topic_subscription {
@@ -141,7 +154,6 @@ void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
 AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client *client,
-    struct aws_mqtt_client_connection_callbacks callbacks,
     const struct aws_byte_cursor *host_name,
     uint16_t port,
     struct aws_socket_options *socket_options,
@@ -197,6 +209,23 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     uint64_t max_timeout);
 
 /**
+ * Sets the callbacks to call when a connection is interrupted and resumed.
+ *
+ * \param[in] connection        The connection object
+ * \param[in] on_interrupted    The function to call when a connection is lost
+ * \param[in] on_interrupted_ud Userdata for on_interrupted
+ * \param[in] on_resumed    The function to call when a connection is resumed
+ * \param[in] on_resumed_ud Userdata for on_resumed
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_connection_interruption_handlers(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted,
+    void *on_interrupted_ud,
+    aws_mqtt_client_on_connection_resumed_fn *on_resumed,
+    void *on_resumed_ud);
+
+/**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
  * Once the connection is opened, on_connack will be called.
  *
@@ -213,7 +242,9 @@ int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *client_id,
     bool clean_session,
-    uint16_t keep_alive_time);
+    uint16_t keep_alive_time,
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
+    void *userdata);
 
 /**
  * Closes the connection asyncronously, calls the on_disconnect callback, and destroys the connection object.
@@ -224,7 +255,10 @@ int aws_mqtt_client_connection_connect(
  *              otherwise AWS_OP_ERR and aws_last_error() is set.
  */
 AWS_MQTT_API
-int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection);
+int aws_mqtt_client_connection_disconnect(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_disconnect_fn *on_disconnect,
+    void *userdata);
 
 /**
  * Subscribe to topic filters. on_publish will be called when a PUBLISH matching each topic_filter is received.
@@ -240,7 +274,7 @@ AWS_MQTT_API
 uint16_t aws_mqtt_client_connection_subscribe_multiple(
     struct aws_mqtt_client_connection *connection,
     const struct aws_array_list *topic_filters,
-    aws_mqtt_suback_fn *on_suback,
+    aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_ud);
 
 /**
@@ -265,7 +299,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     aws_mqtt_client_publish_received_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
-    aws_mqtt_suback_single_fn *on_suback,
+    aws_mqtt_suback_fn *on_suback,
     void *on_suback_ud);
 
 /**

@@ -142,7 +142,7 @@ static void s_mqtt_client_init(
     return;
 
 handle_error:
-    MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, aws_last_error(), 0, false);
 
     if (message) {
         aws_mem_release(message->allocator, message);
@@ -152,10 +152,16 @@ handle_error:
 static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_task_status status) {
     struct aws_mqtt_client_connection *connection = userdata;
 
-    if (status == AWS_TASK_STATUS_RUN_READY && !connection->slot) {
+    if (status == AWS_TASK_STATUS_RUN_READY && connection->state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
         /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
 
-        aws_mqtt_client_connection_connect(connection, NULL, connection->clean_session, connection->keep_alive_time);
+        aws_mqtt_client_connection_connect(
+            connection,
+            NULL,
+            connection->clean_session,
+            connection->keep_alive_time,
+            connection->on_connection_complete,
+            connection->on_connection_complete_ud);
 
         struct aws_event_loop *el = aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
 
@@ -197,9 +203,34 @@ static void s_mqtt_client_shutdown(
     /* Alert the connection we've shutdown */
     bool attempt_reconnect =
         connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING && error_code != AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
-    if (connection->callbacks.on_disconnect) {
-        attempt_reconnect =
-            connection->callbacks.on_disconnect(connection, error_code, connection->callbacks.user_data);
+
+    /* Call appropriate callback. */
+    if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+
+        connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+        MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+
+    } else if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
+
+        connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+        MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+
+    } else {
+
+        if (attempt_reconnect) {
+            connection->state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
+        } else {
+            connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+        }
+
+        MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
+
+        if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            /* This will only be true if the user called disconnect from the on_interrupted callback */
+            connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+            MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+            attempt_reconnect = false;
+        }
     }
 
     if (attempt_reconnect) {
@@ -235,7 +266,6 @@ static void s_outstanding_request_destroy(void *item) {
 
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     struct aws_mqtt_client *client,
-    struct aws_mqtt_client_connection_callbacks callbacks,
     const struct aws_byte_cursor *host_name,
     uint16_t port,
     struct aws_socket_options *socket_options,
@@ -258,8 +288,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     connection->port = port;
     connection->tls_options = tls_options;
     connection->socket_options = socket_options;
-    connection->callbacks = callbacks;
-    connection->state = AWS_MQTT_CLIENT_STATE_INIT;
+    connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
     aws_mutex_init(&connection->outstanding_requests.mutex);
@@ -436,6 +465,21 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     return AWS_OP_SUCCESS;
 }
 
+int aws_mqtt_client_connection_set_connection_interruption_handlers(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted,
+    void *on_interrupted_ud,
+    aws_mqtt_client_on_connection_resumed_fn *on_resumed,
+    void *on_resumed_ud) {
+
+    connection->on_interrupted = on_interrupted;
+    connection->on_interrupted_ud = on_interrupted_ud;
+    connection->on_resumed = on_resumed;
+    connection->on_resumed_ud = on_resumed_ud;
+
+    return AWS_OP_SUCCESS;
+}
+
 /*******************************************************************************
  * Connect
  ******************************************************************************/
@@ -444,11 +488,19 @@ int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *client_id,
     bool clean_session,
-    uint16_t keep_alive_time) {
+    uint16_t keep_alive_time,
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
+    void *userdata) {
+
+    if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
+        return AWS_OP_ERR;
+    }
 
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
     connection->clean_session = clean_session;
     connection->keep_alive_time = keep_alive_time;
+    connection->on_connection_complete = on_connection_complete;
+    connection->on_connection_complete_ud = userdata;
 
     if (client_id) {
         /* Clean up old client_id */
@@ -496,7 +548,7 @@ int aws_mqtt_client_connection_connect(
     }
     if (result) {
         /* Connection attempt failed */
-        MQTT_CLIENT_CALL_CALLBACK(connection, on_connection_failed, aws_last_error());
+        MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, aws_last_error(), 0, false);
         return AWS_OP_ERR;
     }
 
@@ -507,9 +559,16 @@ int aws_mqtt_client_connection_connect(
  * Disconnect
  ******************************************************************************/
 
-int aws_mqtt_client_connection_disconnect(struct aws_mqtt_client_connection *connection) {
+int aws_mqtt_client_connection_disconnect(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_disconnect_fn *on_disconnect,
+    void *userdata) {
 
-    if (connection && connection->slot) {
+    if (connection->state < AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+
+        connection->on_disconnect = on_disconnect;
+        connection->on_disconnect_ud = userdata;
+
         mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
     }
 
@@ -542,7 +601,7 @@ struct subscribe_task_arg {
     /* true if transaction was committed to the topic tree, false requires a retry */
     bool tree_updated;
 
-    aws_mqtt_suback_fn *on_suback;
+    aws_mqtt_suback_multi_fn *on_suback;
     void *on_suback_ud;
 };
 
@@ -673,7 +732,7 @@ static void s_subscribe_complete(
 uint16_t aws_mqtt_client_connection_subscribe_multiple(
     struct aws_mqtt_client_connection *connection,
     const struct aws_array_list *topic_filters,
-    aws_mqtt_suback_fn *on_suback,
+    aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_ud) {
 
     assert(connection);
@@ -778,7 +837,7 @@ static void s_subscribe_single_complete(
         assert(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
         (void)result;
 
-        aws_mqtt_suback_single_fn *suback = (aws_mqtt_suback_single_fn *)task_arg->on_suback;
+        aws_mqtt_suback_fn *suback = (aws_mqtt_suback_fn *)task_arg->on_suback;
         suback(connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
     }
 
@@ -794,7 +853,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     aws_mqtt_client_publish_received_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
-    aws_mqtt_suback_single_fn *on_suback,
+    aws_mqtt_suback_fn *on_suback,
     void *on_suback_ud) {
 
     assert(connection);
@@ -822,7 +881,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     AWS_ZERO_STRUCT(*task_arg);
 
     task_arg->connection = connection;
-    task_arg->on_suback = (aws_mqtt_suback_fn *)on_suback;
+    task_arg->on_suback = (aws_mqtt_suback_multi_fn *)on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
     aws_array_list_init_static(&task_arg->topics, task_topic_storage, 1, sizeof(void *));

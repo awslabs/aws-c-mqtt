@@ -114,16 +114,19 @@ static void s_mqtt_on_puback(
     aws_mutex_unlock(args->mutex);
 }
 
-static void s_mqtt_on_connack(
+static void s_mqtt_on_connection_complete(
     struct aws_mqtt_client_connection *connection,
+    int error_code,
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *user_data) {
 
     (void)connection;
+    (void)error_code;
     (void)return_code;
     (void)session_present;
 
+    assert(error_code == AWS_OP_SUCCESS);
     assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     assert(session_present == false);
 
@@ -157,12 +160,9 @@ static void s_mqtt_on_unsuback(
     aws_mutex_unlock(args->mutex);
 }
 
-static bool s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, int error_code, void *user_data) {
+static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, void *user_data) {
 
     (void)connection;
-    (void)error_code;
-
-    assert(error_code == AWS_OP_SUCCESS);
 
     struct connection_args *args = user_data;
 
@@ -171,8 +171,6 @@ static bool s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
     aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
     aws_mutex_unlock(args->mutex);
-
-    return false;
 }
 
 int main(int argc, char **argv) {
@@ -207,20 +205,15 @@ int main(int argc, char **argv) {
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_mqtt_client_connection_callbacks callbacks;
-    AWS_ZERO_STRUCT(callbacks);
-    callbacks.on_connack = &s_mqtt_on_connack;
-    callbacks.on_disconnect = &s_mqtt_on_disconnect;
-    callbacks.user_data = &args;
-
     struct aws_mqtt_client client;
     ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, bootstrap));
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
-    args.connection = aws_mqtt_client_connection_new(&client, callbacks, &host_name_cur, 1883, &options, NULL);
+    args.connection = aws_mqtt_client_connection_new(&client, &host_name_cur, 1883, &options, NULL);
     ASSERT_NOT_NULL(args.connection);
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &s_client_id_1, true, 0));
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(
+        args.connection, &s_client_id_1, true, 0, s_mqtt_on_connection_complete, &args));
 
     /* Wait for connack */
     aws_mutex_lock(&mutex);
@@ -240,7 +233,7 @@ int main(int argc, char **argv) {
 
     printf("2 done\n");
 
-    aws_mqtt_client_connection_disconnect(args.connection);
+    aws_mqtt_client_connection_disconnect(args.connection, s_mqtt_on_disconnect, &args);
 
     /* Wait for disconnack */
     aws_mutex_lock(&mutex);
@@ -249,7 +242,8 @@ int main(int argc, char **argv) {
 
     printf("3 done\n");
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &s_client_id_2, true, 0));
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(
+        args.connection, &s_client_id_2, true, 0, s_mqtt_on_connection_complete, &args));
 
     /* Wait for connack */
     aws_mutex_lock(&mutex);
@@ -297,7 +291,7 @@ int main(int argc, char **argv) {
     size_t outstanding_subs = aws_hash_table_get_entry_count(&args.connection->subscriptions.root->subtopics);
     ASSERT_UINT_EQUALS(0, outstanding_subs);
 
-    aws_mqtt_client_connection_disconnect(args.connection);
+    aws_mqtt_client_connection_disconnect(args.connection, s_mqtt_on_disconnect, &args);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
