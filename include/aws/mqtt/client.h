@@ -229,10 +229,12 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
  * Once the connection is opened, on_connack will be called.
  *
- * \param[in] connection        The connection object
- * \param[in] client_id         The clientid to place in the CONNECT packet. May be NULL to reuse last set client_id.
- * \param[in] clean_session     True to discard all server session data and start fresh
- * \param[in] keep_alive_time   The keep alive value to place in the CONNECT PACKET
+ * \param[in] connection                The connection object
+ * \param[in] client_id                 The clientid to place in the CONNECT packet. May be NULL to reuse last set client_id.
+ * \param[in] clean_session             True to discard all server session data and start fresh
+ * \param[in] keep_alive_time           The keep alive value to place in the CONNECT PACKET
+ * \param[in] on_connection_complete    The callback to fire when the connection attempt completes
+ * \param[in] userdata                  Passed to the userdata param of on_connection_complete
  *
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
@@ -243,6 +245,26 @@ int aws_mqtt_client_connection_connect(
     const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time,
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
+    void *userdata);
+
+/**
+ * Opens the actual connection defined by aws_mqtt_client_connection_new.
+ * Once the connection is opened, on_connack will be called.
+ *
+ * Must be called on a connection that has previously been open,
+ * as the parameters passed during the last connection will be reused.
+ *
+ * \param[in] connection                The connection object
+ * \param[in] on_connection_complete    The callback to fire when the connection attempt completes
+ * \param[in] userdata                  Passed to the userdata param of on_connection_complete
+ *
+ * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
+ *              otherwise AWS_OP_ERR and aws_last_error() will be set.
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_reconnect(
+    struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
     void *userdata);
 

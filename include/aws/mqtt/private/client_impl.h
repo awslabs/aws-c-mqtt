@@ -84,6 +84,12 @@ struct aws_mqtt_outstanding_request {
     void *on_complete_ud;
 };
 
+struct aws_mqtt_reconnect_task {
+    struct aws_task task;
+    struct aws_atomic_var connection_ptr;
+    struct aws_allocator *allocator;
+};
+
 struct aws_mqtt_client_connection {
 
     struct aws_allocator *allocator;
@@ -128,6 +134,7 @@ struct aws_mqtt_client_connection {
         struct aws_linked_list list;
         struct aws_mutex mutex;
     } pending_requests;
+    struct aws_mqtt_reconnect_task *reconnect_task;
 
     uint64_t last_pingresp_timestamp;
 

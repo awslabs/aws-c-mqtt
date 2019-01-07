@@ -139,6 +139,29 @@ static void s_mqtt_on_connection_complete(
     aws_mutex_unlock(args->mutex);
 }
 
+static void s_mqtt_on_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
+
+    (void)connection;
+    (void)error_code;
+    (void)userdata;
+
+    printf("Connection offline\n");
+}
+
+static void s_mqtt_on_resumed(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present,
+    void *userdata) {
+
+    (void)connection;
+    (void)return_code;
+    (void)session_present;
+    (void)userdata;
+
+    printf("Connection resumed\n");
+}
+
 static void s_mqtt_on_unsuback(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
@@ -211,6 +234,9 @@ int main(int argc, char **argv) {
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
     args.connection = aws_mqtt_client_connection_new(&client, &host_name_cur, 1883, &options, NULL);
     ASSERT_NOT_NULL(args.connection);
+
+    aws_mqtt_client_connection_set_connection_interruption_handlers(
+        args.connection, s_mqtt_on_interrupted, NULL, s_mqtt_on_resumed, NULL);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(
         args.connection, &s_client_id_1, true, 0, s_mqtt_on_connection_complete, &args));

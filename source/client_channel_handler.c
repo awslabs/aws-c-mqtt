@@ -50,11 +50,16 @@ static int s_packet_handler_connack(
         return AWS_OP_ERR;
     }
 
-    if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
-        connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+    /* User requested disconnect, don't do anything */
+    if (connection->state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+        return AWS_OP_SUCCESS;
     }
 
-    if (connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
+    const bool was_reconnecting = connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
+
+    connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+
+    if (was_reconnecting) {
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
     } else {
         MQTT_CLIENT_CALL_CALLBACK_ARGS(
@@ -470,7 +475,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
 
     if (request->cancelled) {
         /* If the request was cancelled, assume all containers are gone and just free */
-        aws_mem_release(request->allocator, request);
+        aws_memory_pool_release(&request->connection->requests_pool, request);
         return;
     }
 
