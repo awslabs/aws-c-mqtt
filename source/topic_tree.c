@@ -113,6 +113,13 @@ static int s_topic_tree_action_to_remove(
     return AWS_OP_SUCCESS;
 }
 
+static bool byte_cursor_eq(const void *a, const void *b) {
+    const struct aws_byte_cursor *cur_a = a;
+    const struct aws_byte_cursor *cur_b = b;
+
+    return aws_byte_cursor_eq(cur_a, cur_b);
+}
+
 /*******************************************************************************
  * Init
  ******************************************************************************/
@@ -135,8 +142,7 @@ static struct aws_mqtt_topic_node *s_topic_node_new(
     }
 
     /* Init the sub topics map */
-    if (aws_hash_table_init(
-            &node->subtopics, allocator, 0, aws_hash_byte_cursor_ptr, aws_byte_cursor_ptr_eq, NULL, NULL)) {
+    if (aws_hash_table_init(&node->subtopics, allocator, 0, aws_hash_byte_cursor_ptr, byte_cursor_eq, NULL, NULL)) {
 
         aws_mem_release(allocator, node);
         return NULL;
