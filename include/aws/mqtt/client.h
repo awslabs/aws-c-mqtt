@@ -230,7 +230,7 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
  * Once the connection is opened, on_connack will be called.
  *
  * \param[in] connection                The connection object
- * \param[in] client_id                 The clientid to place in the CONNECT packet. May be NULL to reuse last set client_id.
+ * \param[in] client_id                 The clientid to place in the CONNECT packet.
  * \param[in] clean_session             True to discard all server session data and start fresh
  * \param[in] keep_alive_time           The keep alive value to place in the CONNECT PACKET
  * \param[in] on_connection_complete    The callback to fire when the connection attempt completes
