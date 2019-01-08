@@ -30,18 +30,25 @@
 #include <aws/io/message_pool.h>
 #include <aws/io/tls_channel_handler.h>
 
-#define MQTT_CLIENT_CALL_CALLBACK(client_ptr, callback, ...)                                                           \
+#define MQTT_CLIENT_CALL_CALLBACK(client_ptr, callback)                                                                \
     do {                                                                                                               \
-        if (client_ptr->callbacks.callback) {                                                                          \
-            client_ptr->callbacks.callback(client_ptr, __VA_ARGS__, client_ptr->callbacks.user_data);                  \
+        if ((client_ptr)->callback) {                                                                                  \
+            (client_ptr)->callback((client_ptr), (client_ptr)->callback##_ud);                                         \
+        }                                                                                                              \
+    } while (false)
+#define MQTT_CLIENT_CALL_CALLBACK_ARGS(client_ptr, callback, ...)                                                      \
+    do {                                                                                                               \
+        if ((client_ptr)->callback) {                                                                                  \
+            (client_ptr)->callback((client_ptr), __VA_ARGS__, (client_ptr)->callback##_ud);                            \
         }                                                                                                              \
     } while (false)
 
 enum aws_mqtt_client_connection_state {
-    AWS_MQTT_CLIENT_STATE_INIT,
     AWS_MQTT_CLIENT_STATE_CONNECTING,
     AWS_MQTT_CLIENT_STATE_CONNECTED,
+    AWS_MQTT_CLIENT_STATE_RECONNECTING,
     AWS_MQTT_CLIENT_STATE_DISCONNECTING,
+    AWS_MQTT_CLIENT_STATE_DISCONNECTED,
 };
 
 enum aws_mqtt_client_request_state {
@@ -77,6 +84,12 @@ struct aws_mqtt_outstanding_request {
     void *on_complete_ud;
 };
 
+struct aws_mqtt_reconnect_task {
+    struct aws_task task;
+    struct aws_atomic_var connection_ptr;
+    struct aws_allocator *allocator;
+};
+
 struct aws_mqtt_client_connection {
 
     struct aws_allocator *allocator;
@@ -89,8 +102,15 @@ struct aws_mqtt_client_connection {
     struct aws_tls_connection_options *tls_options;
     struct aws_socket_options *socket_options;
 
-    /* User callbacks */
-    struct aws_mqtt_client_connection_callbacks callbacks;
+    /* User connection callbacks */
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
+    void *on_connection_complete_ud;
+    aws_mqtt_client_on_disconnect_fn *on_disconnect;
+    void *on_disconnect_ud;
+    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
+    void *on_interrupted_ud;
+    aws_mqtt_client_on_connection_resumed_fn *on_resumed;
+    void *on_resumed_ud;
 
     /* The state of the connection */
     enum aws_mqtt_client_connection_state state;
@@ -114,13 +134,15 @@ struct aws_mqtt_client_connection {
         struct aws_linked_list list;
         struct aws_mutex mutex;
     } pending_requests;
+    struct aws_mqtt_reconnect_task *reconnect_task;
 
     uint64_t last_pingresp_timestamp;
 
     struct {
-        uint64_t current;
-        uint64_t min;
-        uint64_t max;
+        uint64_t current;      /* seconds */
+        uint64_t min;          /* seconds */
+        uint64_t max;          /* seconds */
+        uint64_t next_attempt; /* milliseconds */
     } reconnect_timeouts;
 
     /* If an incomplete packet arrives, store the data here. */

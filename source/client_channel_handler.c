@@ -50,9 +50,21 @@ static int s_packet_handler_connack(
         return AWS_OP_ERR;
     }
 
+    /* User requested disconnect, don't do anything */
+    if (connection->state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+        return AWS_OP_SUCCESS;
+    }
+
+    const bool was_reconnecting = connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
+
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
 
-    MQTT_CLIENT_CALL_CALLBACK(connection, on_connack, connack.connect_return_code, connack.session_present);
+    if (was_reconnecting) {
+        MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
+    } else {
+        MQTT_CLIENT_CALL_CALLBACK_ARGS(
+            connection, on_connection_complete, AWS_OP_SUCCESS, connack.connect_return_code, connack.session_present);
+    }
 
     if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
         /* If successfully connected, schedule all pending tasks */
@@ -79,7 +91,7 @@ static int s_packet_handler_connack(
         }
     } else {
         /* If error code returned, disconnect */
-        aws_mqtt_client_connection_disconnect(connection);
+        mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
     return AWS_OP_SUCCESS;
@@ -244,7 +256,7 @@ static int s_process_mqtt_packet(
     /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
     if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING && packet_type != AWS_MQTT_PACKET_CONNACK) {
 
-        aws_mqtt_client_connection_disconnect(connection);
+        mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_PROTOCOL_ERROR);
         return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
@@ -463,7 +475,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
 
     if (request->cancelled) {
         /* If the request was cancelled, assume all containers are gone and just free */
-        aws_mem_release(request->allocator, request);
+        aws_memory_pool_release(&request->connection->requests_pool, request);
         return;
     }
 
@@ -512,7 +524,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             assert(was_present);
 
             aws_memory_pool_release(&request->connection->requests_pool, elem.value);
-        } else if (request->connection->slot) {
+        } else if (request->connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
             /* If not complete and online, schedule retry task */
 
             uint64_t ttr = 0;
@@ -581,7 +593,7 @@ uint16_t mqtt_create_request(
     aws_channel_task_init(&next_request->timeout_task, s_request_timeout_task, next_request);
 
     /* Send the request now if on channel's thread, otherwise schedule a task */
-    if (!connection->slot) {
+    if (connection->state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
         aws_mutex_lock(&connection->pending_requests.mutex);
         aws_linked_list_push_back(&connection->pending_requests.list, &next_request->list_node);
         aws_mutex_unlock(&connection->pending_requests.mutex);
@@ -617,6 +629,13 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
 
     connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+
+    /* If there is an outstanding reconnect task, cancel it */
+    if (connection->reconnect_task) {
+        aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
+        connection->reconnect_task = NULL;
+    }
+
     if (connection->slot) {
         aws_channel_shutdown(connection->slot->channel, error_code);
     }
