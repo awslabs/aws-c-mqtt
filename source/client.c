@@ -165,16 +165,25 @@ static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_t
     if (status == AWS_TASK_STATUS_RUN_READY && connection) {
         /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
 
-        aws_mqtt_client_connection_reconnect(
-            connection, connection->on_connection_complete, connection->on_connection_complete_ud);
-
         aws_high_res_clock_get_ticks(&connection->reconnect_timeouts.next_attempt);
         connection->reconnect_timeouts.next_attempt += aws_timestamp_convert(
             connection->reconnect_timeouts.current, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
-        connection->reconnect_timeouts.current *= 2;
-        if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max) {
+        /* Check before multipying to avoid potential overflow */
+        if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max / 2) {
             connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
+        } else {
+            connection->reconnect_timeouts.current *= 2;
+        }
+
+        if (aws_mqtt_client_connection_reconnect(
+                connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
+
+            /* If reconnect attempt failed, schedule the next attempt */
+            struct aws_event_loop *el =
+                aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+            aws_event_loop_schedule_task_future(
+                el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
         }
     } else {
 
@@ -507,10 +516,17 @@ int aws_mqtt_client_connection_connect(
     /* Only set connection->client_id if a new one was provided */
     struct aws_byte_buf client_id_buf = aws_byte_buf_from_array(client_id->ptr, client_id->len);
     if (aws_byte_buf_init_copy(&connection->client_id, connection->allocator, &client_id_buf)) {
+        aws_mem_release(connection->allocator, connection->reconnect_task);
         return AWS_OP_ERR;
     }
 
-    return aws_mqtt_client_connection_reconnect(connection, on_connection_complete, userdata);
+    if (aws_mqtt_client_connection_reconnect(connection, on_connection_complete, userdata)) {
+        aws_mem_release(connection->allocator, connection->reconnect_task);
+        aws_byte_buf_clean_up(&connection->client_id);
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 /*******************************************************************************
@@ -583,17 +599,18 @@ int aws_mqtt_client_connection_disconnect(
     aws_mqtt_client_on_disconnect_fn *on_disconnect,
     void *userdata) {
 
-    if (connection->state < AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+    if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED ||
+        connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
 
         connection->on_disconnect = on_disconnect;
         connection->on_disconnect_ud = userdata;
 
         mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
-    } else {
-        on_disconnect(connection, userdata);
+
+        return AWS_OP_SUCCESS;
     }
 
-    return AWS_OP_SUCCESS;
+    return aws_raise_error(AWS_ERROR_MQTT_NOT_CONNECTED);
 }
 
 /*******************************************************************************

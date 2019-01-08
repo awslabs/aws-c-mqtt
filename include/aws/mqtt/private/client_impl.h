@@ -139,10 +139,10 @@ struct aws_mqtt_client_connection {
     uint64_t last_pingresp_timestamp;
 
     struct {
-        uint64_t current;
-        uint64_t min;
-        uint64_t max;
-        uint64_t next_attempt;
+        uint64_t current;      /* seconds */
+        uint64_t min;          /* seconds */
+        uint64_t max;          /* seconds */
+        uint64_t next_attempt; /* milliseconds */
     } reconnect_timeouts;
 
     /* If an incomplete packet arrives, store the data here. */

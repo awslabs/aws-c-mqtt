@@ -138,6 +138,9 @@ void aws_mqtt_load_error_strings() {
                 AWS_ERROR_MQTT_PROTOCOL_ERROR,
                 "Protocol error occured."),
             AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_NOT_CONNECTED,
+                "The requested operation is invalid as the connection is not open."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_ALREADY_CONNECTED,
                 "The requested operation is invalid as the connection is already open."),
         };
