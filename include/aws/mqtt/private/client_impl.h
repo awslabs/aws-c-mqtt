@@ -142,6 +142,7 @@ struct aws_mqtt_client_connection {
         uint64_t current;
         uint64_t min;
         uint64_t max;
+        uint64_t next_attempt;
     } reconnect_timeouts;
 
     /* If an incomplete packet arrives, store the data here. */
