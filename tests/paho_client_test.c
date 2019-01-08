@@ -41,12 +41,8 @@
 #    include <unistd.h>
 #endif
 
-static struct aws_byte_cursor s_client_id_1 = {
+static struct aws_byte_cursor s_client_id = {
     .ptr = (uint8_t *)"MyClientId1",
-    .len = 11,
-};
-static struct aws_byte_cursor s_client_id_2 = {
-    .ptr = (uint8_t *)"MyClientId2",
     .len = 11,
 };
 AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
@@ -232,14 +228,23 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, bootstrap));
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
-    args.connection = aws_mqtt_client_connection_new(&client, &host_name_cur, 1883, &options, NULL);
+    args.connection = aws_mqtt_client_connection_new(&client);
     ASSERT_NOT_NULL(args.connection);
 
     aws_mqtt_client_connection_set_connection_interruption_handlers(
         args.connection, s_mqtt_on_interrupted, NULL, s_mqtt_on_resumed, NULL);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(
-        args.connection, &s_client_id_1, true, 0, s_mqtt_on_connection_complete, &args));
+        args.connection,
+        &host_name_cur,
+        1883,
+        &options,
+        NULL,
+        &s_client_id,
+        true,
+        0,
+        s_mqtt_on_connection_complete,
+        &args));
 
     /* Wait for connack */
     aws_mutex_lock(&mutex);
@@ -268,8 +273,7 @@ int main(int argc, char **argv) {
 
     printf("3 done\n");
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(
-        args.connection, &s_client_id_2, true, 0, s_mqtt_on_connection_complete, &args));
+    ASSERT_SUCCESS(aws_mqtt_client_connection_reconnect(args.connection, s_mqtt_on_connection_complete, &args));
 
     /* Wait for connack */
     aws_mutex_lock(&mutex);

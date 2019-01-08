@@ -272,12 +272,7 @@ static void s_outstanding_request_destroy(void *item) {
     }
 }
 
-struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
-    struct aws_mqtt_client *client,
-    const struct aws_byte_cursor *host_name,
-    uint16_t port,
-    struct aws_socket_options *socket_options,
-    struct aws_tls_connection_options *tls_options) {
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client) {
 
     assert(client);
 
@@ -292,10 +287,6 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     AWS_ZERO_STRUCT(*connection);
     connection->allocator = client->allocator;
     connection->client = client;
-    connection->host_name = aws_string_new_from_array(connection->allocator, host_name->ptr, host_name->len);
-    connection->port = port;
-    connection->tls_options = tls_options;
-    connection->socket_options = socket_options;
     connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
@@ -484,6 +475,10 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
 
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *host_name,
+    uint16_t port,
+    struct aws_socket_options *socket_options,
+    struct aws_tls_connection_options *tls_options,
     const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time,
@@ -494,6 +489,10 @@ int aws_mqtt_client_connection_connect(
         return aws_raise_error(AWS_ERROR_MQTT_ALREADY_CONNECTED);
     }
 
+    connection->host_name = aws_string_new_from_array(connection->allocator, host_name->ptr, host_name->len);
+    connection->port = port;
+    connection->tls_options = tls_options;
+    connection->socket_options = socket_options;
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
     connection->clean_session = clean_session;
     connection->keep_alive_time = keep_alive_time;
