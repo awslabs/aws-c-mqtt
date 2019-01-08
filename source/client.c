@@ -482,7 +482,7 @@ int aws_mqtt_client_connection_connect(
     void *userdata) {
 
     if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
-        return aws_raise_error(AWS_ERROR_MQTT_ALREADY_CONNETED);
+        return aws_raise_error(AWS_ERROR_MQTT_ALREADY_CONNECTED);
     }
 
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
