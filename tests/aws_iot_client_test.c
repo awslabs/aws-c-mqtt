@@ -223,13 +223,23 @@ int main(int argc, char **argv) {
     aws_mqtt_client_init(&client, args.allocator, bootstrap);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
-    args.connection = aws_mqtt_client_connection_new(&client, &host_name_cur, 8883, &socket_options, &tls_con_opt);
+    args.connection = aws_mqtt_client_connection_new(&client);
 
     struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
     aws_mqtt_client_connection_set_will(args.connection, &subscribe_topic_cur, 1, false, &will_cur);
 
     struct aws_byte_cursor client_id_cur = aws_byte_cursor_from_string(s_client_id);
-    aws_mqtt_client_connection_connect(args.connection, &client_id_cur, true, 0, s_mqtt_on_connection_complete, &args);
+    aws_mqtt_client_connection_connect(
+        args.connection,
+        &host_name_cur,
+        8883,
+        &socket_options,
+        &tls_con_opt,
+        &client_id_cur,
+        true,
+        0,
+        s_mqtt_on_connection_complete,
+        &args);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));

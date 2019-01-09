@@ -152,12 +152,7 @@ void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
  * \returns AWS_OP_SUCCESS on success, otherwise AWS_OP_ERR and aws_last_error() is set.
  */
 AWS_MQTT_API
-struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
-    struct aws_mqtt_client *client,
-    const struct aws_byte_cursor *host_name,
-    uint16_t port,
-    struct aws_socket_options *socket_options,
-    struct aws_tls_connection_options *tls_options);
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client);
 
 /**
  * Cleans up and destroys a connection object.
@@ -242,6 +237,10 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
 AWS_MQTT_API
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *host_name,
+    uint16_t port,
+    struct aws_socket_options *socket_options,
+    struct aws_tls_connection_options *tls_options,
     const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time,
