@@ -142,12 +142,6 @@ void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
  * Spawns a new connection object.
  *
  * \param[in] client            The client to spawn the connection from
- * \param[in] callbacks         \see aws_mqtt_client_connection_callbacks
- * \param[in] host_name         The server name to connect to. This resource may be freed immediately after return.
- * \param[in] port              The port on the server to connect to
- * \param[in] socket_options    The socket options to pass to the aws_client_bootstrap functions
- * \param[in] tls_options       TLS settings to use when opening a connection.
- *                                  Pass NULL to connect without TLS (NOT RECOMMENDED)
  *
  * \returns AWS_OP_SUCCESS on success, otherwise AWS_OP_ERR and aws_last_error() is set.
  */
@@ -225,7 +219,14 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
  * Once the connection is opened, on_connack will be called.
  *
  * \param[in] connection                The connection object
+ * \param[in] host_name                 The server name to connect to. This resource may be freed immediately on return.
+ * \param[in] port                      The port on the server to connect to
  * \param[in] client_id                 The clientid to place in the CONNECT packet.
+ * \param[in] socket_options            The socket options to pass to the aws_client_bootstrap functions
+ *                                          This is copied into the connection
+ * \param[in] tls_options               TLS settings to use when opening a connection.
+ *                                          This is copied into the connection
+ *                                          Pass NULL to connect without TLS (NOT RECOMMENDED)
  * \param[in] clean_session             True to discard all server session data and start fresh
  * \param[in] keep_alive_time           The keep alive value to place in the CONNECT PACKET
  * \param[in] on_connection_complete    The callback to fire when the connection attempt completes
@@ -239,8 +240,8 @@ int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *host_name,
     uint16_t port,
-    struct aws_socket_options *socket_options,
-    struct aws_tls_connection_options *tls_options,
+    const struct aws_socket_options *socket_options,
+    const struct aws_tls_connection_options *tls_options,
     const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time,

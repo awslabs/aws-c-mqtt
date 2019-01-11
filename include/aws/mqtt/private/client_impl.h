@@ -28,6 +28,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/message_pool.h>
+#include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 
 #define MQTT_CLIENT_CALL_CALLBACK(client_ptr, callback)                                                                \
@@ -99,8 +100,8 @@ struct aws_mqtt_client_connection {
     /* The host information */
     struct aws_string *host_name;
     uint16_t port;
-    struct aws_tls_connection_options *tls_options;
-    struct aws_socket_options *socket_options;
+    struct aws_tls_connection_options tls_options;
+    struct aws_socket_options socket_options;
 
     /* User connection callbacks */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;

@@ -309,11 +309,6 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
         goto handle_error;
     }
 
-    /* Finish populating the tls_connection_options */
-    if (connection->tls_options) {
-        aws_tls_connection_options_set_server_name(connection->tls_options, (const char *)connection->host_name->bytes);
-    }
-
     /* Initialize the handler */
     connection->handler.alloc = connection->allocator;
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
@@ -477,8 +472,8 @@ int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *host_name,
     uint16_t port,
-    struct aws_socket_options *socket_options,
-    struct aws_tls_connection_options *tls_options,
+    const struct aws_socket_options *socket_options,
+    const struct aws_tls_connection_options *tls_options,
     const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time,
@@ -489,13 +484,25 @@ int aws_mqtt_client_connection_connect(
         return aws_raise_error(AWS_ERROR_MQTT_ALREADY_CONNECTED);
     }
 
+    if (connection->host_name) {
+        aws_string_destroy(connection->host_name);
+    }
+
     connection->host_name = aws_string_new_from_array(connection->allocator, host_name->ptr, host_name->len);
     connection->port = port;
-    connection->tls_options = tls_options;
-    connection->socket_options = socket_options;
+    connection->socket_options = *socket_options;
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
     connection->clean_session = clean_session;
     connection->keep_alive_time = keep_alive_time;
+
+    /* Cheat and set the tls_options host_name to our copy if they're the same */
+    if (tls_options) {
+        connection->tls_options = *tls_options;
+        aws_tls_connection_options_set_server_name(
+            &connection->tls_options, (const char *)connection->host_name->bytes);
+    } else {
+        AWS_ZERO_STRUCT(connection->tls_options);
+    }
 
     /* Clean up old client_id */
     if (connection->client_id.buffer) {
@@ -561,13 +568,13 @@ int aws_mqtt_client_connection_reconnect(
     }
 
     int result = 0;
-    if (connection->tls_options) {
+    if (connection->tls_options.ctx) {
         result = aws_client_bootstrap_new_tls_socket_channel(
             connection->client->bootstrap,
             (const char *)aws_string_bytes(connection->host_name),
             connection->port,
-            connection->socket_options,
-            connection->tls_options,
+            &connection->socket_options,
+            &connection->tls_options,
             &s_mqtt_client_init,
             &s_mqtt_client_shutdown,
             connection);
@@ -576,7 +583,7 @@ int aws_mqtt_client_connection_reconnect(
             connection->client->bootstrap,
             (const char *)aws_string_bytes(connection->host_name),
             connection->port,
-            connection->socket_options,
+            &connection->socket_options,
             &s_mqtt_client_init,
             &s_mqtt_client_shutdown,
             connection);
