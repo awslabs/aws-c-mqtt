@@ -494,11 +494,8 @@ int aws_mqtt_client_connection_connect(
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (tls_options) {
         connection->tls_options = *tls_options;
-
-        const char *host_name_c = (const char *)connection->host_name->bytes;
-        if (0 == strcmp(host_name_c, connection->tls_options.server_name)) {
-            aws_tls_connection_options_set_server_name(&connection->tls_options, host_name_c);
-        }
+        aws_tls_connection_options_set_server_name(
+            &connection->tls_options, (const char *)connection->host_name->bytes);
     }
 
     /* Clean up old client_id */
