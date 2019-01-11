@@ -484,6 +484,10 @@ int aws_mqtt_client_connection_connect(
         return aws_raise_error(AWS_ERROR_MQTT_ALREADY_CONNECTED);
     }
 
+    if (connection->host_name) {
+        aws_string_destroy(connection->host_name);
+    }
+
     connection->host_name = aws_string_new_from_array(connection->allocator, host_name->ptr, host_name->len);
     connection->port = port;
     connection->socket_options = *socket_options;
@@ -496,6 +500,8 @@ int aws_mqtt_client_connection_connect(
         connection->tls_options = *tls_options;
         aws_tls_connection_options_set_server_name(
             &connection->tls_options, (const char *)connection->host_name->bytes);
+    } else {
+        AWS_ZERO_STRUCT(connection->tls_options);
     }
 
     /* Clean up old client_id */
