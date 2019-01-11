@@ -370,7 +370,7 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
 
     /* Cleanup outstanding requests */
-    assert(connection->outstanding_requests.table.p_impl == NULL);
+    aws_hash_table_clean_up(&connection->outstanding_requests.table);
     aws_memory_pool_clean_up(&connection->requests_pool);
 
     if (connection->slot) {
