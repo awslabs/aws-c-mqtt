@@ -3,8 +3,14 @@
 set -e
 
 CMAKE_ARGS="$@"
+BUILD_PATH="/tmp/builds"
+mkdir -p $BUILD_PATH
+INSTALL_PATH="$BUILD_PATH/install"
+mkdir -p $INSTALL_PATH
 
 function install_library {
+    CURRENT_DIR=`pwd`
+    cd $BUILD_PATH
     git clone https://github.com/awslabs/$1.git
     cd $1
 
@@ -12,33 +18,30 @@ function install_library {
         git checkout $2
     fi
 
-    mkdir build
-    cd build
-
-    cmake -DCMAKE_INSTALL_PREFIX=../../install -DENABLE_SANITIZERS=ON $CMAKE_ARGS ../
+    cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH -DCMAKE_PREFIX_PATH=$INSTALL_PATH  -DENABLE_SANITIZERS=ON $CMAKE_ARGS ./
     make install
 
-    cd ../..
+    cd $CURRENT_DIR
 }
-
-cd ../
-
-mkdir -p install
 
 # If TRAVIS_OS_NAME is OSX, skip this step (will resolve to empty string on CodeBuild)
 if [ "$TRAVIS_OS_NAME" != "osx" ]; then
-    install_library s2n 55699d9ce02285b5ad1674fc08929452f994e20e
+    install_library s2n a8a9b8e01f33cbff3b8b7313ac1a3cea0d937cb7
 fi
+
 install_library aws-c-common
 install_library aws-c-io
 
-cd aws-c-mqtt
+if [ "$CODEBUILD_SRC_DIR" ]; then
+    cd $CODEBUILD_SRC_DIR
+fi
+
 mkdir build
 cd build
-cmake -DCMAKE_INSTALL_PREFIX=../../install -DENABLE_SANITIZERS=ON $CMAKE_ARGS ../
-
+cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH -DCMAKE_PREFIX_PATH=$INSTALL_PATH -DENABLE_SANITIZERS=ON $CMAKE_ARGS ../
 make
 
 LSAN_OPTIONS=verbosity=1:log_threads=1 ctest --output-on-failure
 
 cd ..
+
