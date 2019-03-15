@@ -214,7 +214,7 @@ static void s_mqtt_client_shutdown(
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
 
         /* Successfully shutdown, so clear the outstanding requests */
-        aws_hash_table_clean_up(&connection->outstanding_requests.table);
+        aws_hash_table_clear(&connection->outstanding_requests.table);
 
         MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
 
