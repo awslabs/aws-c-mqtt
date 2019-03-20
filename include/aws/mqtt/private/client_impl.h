@@ -58,8 +58,6 @@ enum aws_mqtt_client_request_state {
     AWS_MQTT_CLIENT_REQUEST_ERROR,
 };
 
-extern const uint64_t request_timeout_ns;
-
 /* Called after the timeout if a matching ack packet hasn't arrived.
    Return AWS_MQTT_CLIENT_REQUEST_ONGOING to check on the task later.
    Return AWS_MQTT_CLIENT_REQUEST_COMPLETE to consider request complete.
@@ -136,6 +134,7 @@ struct aws_mqtt_client_connection {
         struct aws_mutex mutex;
     } pending_requests;
     struct aws_mqtt_reconnect_task *reconnect_task;
+    struct aws_channel_task ping_task;
 
     uint64_t last_pingresp_timestamp;
 
@@ -153,6 +152,7 @@ struct aws_mqtt_client_connection {
     struct aws_byte_buf client_id;
     bool clean_session;
     uint16_t keep_alive_time;
+    uint64_t request_timeout_ns;
     struct aws_string *username;
     struct aws_string *password;
     struct {

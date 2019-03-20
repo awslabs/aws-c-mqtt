@@ -239,6 +239,7 @@ int main(int argc, char **argv) {
         &client_id_cur,
         true,
         0,
+        0,
         s_mqtt_on_connection_complete,
         &args);
 

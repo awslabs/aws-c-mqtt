@@ -32,6 +32,8 @@
 #    pragma warning(disable : 4204)
 #endif
 
+static const uint64_t s_default_request_timeout_ns = 3000000000;
+
 /*******************************************************************************
  * Client Init
  ******************************************************************************/
@@ -82,6 +84,9 @@ static void s_mqtt_client_init(
                 aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
             aws_event_loop_schedule_task_future(
                 el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
+        } else {
+            connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+            MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
         }
         return;
     }
@@ -477,6 +482,7 @@ int aws_mqtt_client_connection_connect(
     const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time,
+    uint32_t request_timeout_ms,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
     void *userdata) {
 
@@ -494,6 +500,12 @@ int aws_mqtt_client_connection_connect(
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
     connection->clean_session = clean_session;
     connection->keep_alive_time = keep_alive_time;
+    if (!request_timeout_ms) {
+        connection->request_timeout_ns = s_default_request_timeout_ns;
+    } else {
+        connection->request_timeout_ns =
+            aws_timestamp_convert((uint64_t)request_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    }
 
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (tls_options) {
@@ -611,6 +623,7 @@ int aws_mqtt_client_connection_disconnect(
         connection->on_disconnect = on_disconnect;
         connection->on_disconnect_ud = userdata;
 
+        connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
         mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
 
         return AWS_OP_SUCCESS;
@@ -1269,12 +1282,12 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bo
         return AWS_MQTT_CLIENT_REQUEST_ONGOING;
     }
 
-    /* Check that a pingresp has been recieved since pingreq was sent */
+    /* Check that a pingresp has been received since pingreq was sent */
 
     uint64_t current_time = 0;
     aws_channel_current_clock_time(connection->slot->channel, &current_time);
 
-    if (current_time - connection->last_pingresp_timestamp > request_timeout_ns) {
+    if (current_time - connection->last_pingresp_timestamp > connection->request_timeout_ns) {
         /* It's been too long since the last ping, close the connection */
 
         mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_TIMEOUT);

@@ -228,7 +228,11 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
  *                                          This is copied into the connection
  *                                          Pass NULL to connect without TLS (NOT RECOMMENDED)
  * \param[in] clean_session             True to discard all server session data and start fresh
- * \param[in] keep_alive_time           The keep alive value to place in the CONNECT PACKET
+ * \param[in] keep_alive_time           The keep alive value to place in the CONNECT PACKET, a PING will automatically
+ *                                       be sent at this interval as well. If you specify 0, defaults will be used
+ *                                       and a ping will be sent every 60s.
+ * \param[in] request_timeout_ms        Amount of time before a message is considered timed out. Default is 3s.
+ *                                      Specify 0 for defaults.
  * \param[in] on_connection_complete    The callback to fire when the connection attempt completes
  * \param[in] userdata                  Passed to the userdata param of on_connection_complete
  *
@@ -245,6 +249,7 @@ int aws_mqtt_client_connection_connect(
     const struct aws_byte_cursor *client_id,
     bool clean_session,
     uint16_t keep_alive_time,
+    uint32_t request_timeout_ms,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
     void *userdata);
 
