@@ -120,7 +120,7 @@ struct aws_mqtt_topic_subscription {
  *                           This is copied into the connection
  *                           Pass NULL to connect without TLS (NOT RECOMMENDED)
  * clean_session             True to discard all server session data and start fresh
- * keep_alive_time           The keep alive value to place in the CONNECT PACKET, a PING will automatically
+ * keep_alive_time_secs      The keep alive value to place in the CONNECT PACKET, a PING will automatically
  *                           be sent at this interval as well. If you specify 0, defaults will be used
  *                           and a ping will be sent every 60s. If you're tempted to set this really low
  *                           to find out about connection drops quickly, this is going to consume a lot of cpu.
