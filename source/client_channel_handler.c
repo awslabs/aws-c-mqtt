@@ -19,6 +19,7 @@
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/math.h>
 #include <aws/common/task_scheduler.h>
 
 #ifdef _MSC_VER
@@ -41,25 +42,30 @@ static int s_packet_handler_default(
     return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
 }
 
+static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
+static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
+    aws_channel_task_init(&connection->ping_task, s_on_time_to_ping, connection);
+
+    uint64_t schedule_time = 0;
+    aws_channel_current_clock_time(connection->slot->channel, &schedule_time);
+    if (connection->keep_alive_time) {
+        schedule_time +=
+            aws_timestamp_convert(connection->keep_alive_time, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    } else {
+        schedule_time +=
+            aws_timestamp_convert(s_default_keep_alive_ping_freq_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    }
+
+    aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, schedule_time);
+}
+
 static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
     (void)channel_task;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_mqtt_client_connection *connection = arg;
         aws_mqtt_client_connection_ping(connection);
-        aws_channel_task_init(&connection->ping_task, s_on_time_to_ping, connection);
-
-        uint64_t schedule_time = 0;
-        aws_channel_current_clock_time(connection->slot->channel, &schedule_time);
-        if (connection->keep_alive_time) {
-            schedule_time +=
-                aws_timestamp_convert(connection->keep_alive_time, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-        } else {
-            schedule_time += aws_timestamp_convert(
-                s_default_keep_alive_ping_freq_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-        }
-
-        aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, schedule_time);
+        s_schedule_ping(connection);
     }
 }
 static int s_packet_handler_connack(
@@ -115,20 +121,7 @@ static int s_packet_handler_connack(
         mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
-    aws_channel_task_init(&connection->ping_task, s_on_time_to_ping, connection);
-    uint64_t schedule_time = 0;
-    aws_channel_current_clock_time(connection->slot->channel, &schedule_time);
-
-    if (connection->keep_alive_time) {
-        schedule_time +=
-            aws_timestamp_convert(connection->keep_alive_time, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    } else {
-        schedule_time +=
-            aws_timestamp_convert(s_default_keep_alive_ping_freq_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    }
-
-    aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, schedule_time);
-
+    s_schedule_ping(connection);
     return AWS_OP_SUCCESS;
 }
 

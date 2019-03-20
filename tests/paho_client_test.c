@@ -234,18 +234,20 @@ int main(int argc, char **argv) {
     aws_mqtt_client_connection_set_connection_interruption_handlers(
         args.connection, s_mqtt_on_interrupted, NULL, s_mqtt_on_resumed, NULL);
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(
-        args.connection,
-        &host_name_cur,
-        1883,
-        &options,
-        NULL,
-        &s_client_id,
-        true,
-        0,
-        0,
-        s_mqtt_on_connection_complete,
-        &args));
+    struct aws_mqtt_connection_options conn_options = {
+        .host_name = &host_name_cur,
+        .port = 8883,
+        .socket_options = &options,
+        .tls_options = NULL,
+        .client_id = &s_client_id,
+        .keep_alive_time_secs = 0,
+        .request_timeout_ms = 0,
+        .on_connection_complete = s_mqtt_on_connection_complete,
+        .user_data = &args,
+        .clean_session = true,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &conn_options));
 
     /* Wait for connack */
     aws_mutex_lock(&mutex);

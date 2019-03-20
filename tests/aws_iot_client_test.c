@@ -230,18 +230,21 @@ int main(int argc, char **argv) {
     aws_mqtt_client_connection_set_will(args.connection, &subscribe_topic_cur, 1, false, &will_cur);
 
     struct aws_byte_cursor client_id_cur = aws_byte_cursor_from_string(s_client_id);
-    aws_mqtt_client_connection_connect(
-        args.connection,
-        &host_name_cur,
-        8883,
-        &socket_options,
-        &tls_con_opt,
-        &client_id_cur,
-        true,
-        0,
-        0,
-        s_mqtt_on_connection_complete,
-        &args);
+
+    struct aws_mqtt_connection_options conn_options = {
+        .host_name = &host_name_cur,
+        .port = 8883,
+        .socket_options = &socket_options,
+        .tls_options = &tls_con_opt,
+        .client_id = &client_id_cur,
+        .keep_alive_time_secs = 0,
+        .request_timeout_ms = 0,
+        .on_connection_complete = s_mqtt_on_connection_complete,
+        .user_data = &args,
+        .clean_session = true,
+    };
+
+    aws_mqtt_client_connection_connect(args.connection, &conn_options);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
