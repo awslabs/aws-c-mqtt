@@ -110,6 +110,39 @@ struct aws_mqtt_topic_subscription {
     void *on_publish_ud;
 };
 
+/**
+ * host_name                 The server name to connect to. This resource may be freed immediately on return.
+ * port                      The port on the server to connect to
+ * client_id                 The clientid to place in the CONNECT packet.
+ * socket_options            The socket options to pass to the aws_client_bootstrap functions.
+ *                           This is copied into the connection
+ * tls_options               TLS settings to use when opening a connection.
+ *                           This is copied into the connection
+ *                           Pass NULL to connect without TLS (NOT RECOMMENDED)
+ * clean_session             True to discard all server session data and start fresh
+ * keep_alive_time_secs      The keep alive value to place in the CONNECT PACKET, a PING will automatically
+ *                           be sent at this interval as well. If you specify 0, defaults will be used
+ *                           and a ping will be sent once per 60 minutes.
+ * ping_timeout_ms           Network connection is re-established if a ping response is not received within
+ *                           this amount of time (milliseconds). If you specify 0, a default value of 3 seconds is used.
+ *                           Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
+ * (low-power) scenario, but keep-alive options may not work the same way on every platform and OS version.
+ * on_connection_complete    The callback to fire when the connection attempt completes
+ * user_data                  Passed to the userdata param of on_connection_complete
+ */
+struct aws_mqtt_connection_options {
+    const struct aws_byte_cursor host_name;
+    uint16_t port;
+    const struct aws_socket_options *socket_options;
+    const struct aws_tls_connection_options *tls_options;
+    const struct aws_byte_cursor client_id;
+    uint16_t keep_alive_time_secs;
+    uint32_t ping_timeout_ms;
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
+    void *user_data;
+    bool clean_session;
+};
+
 AWS_EXTERN_C_BEGIN
 
 /**
@@ -219,34 +252,13 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
  * Once the connection is opened, on_connack will be called.
  *
  * \param[in] connection                The connection object
- * \param[in] host_name                 The server name to connect to. This resource may be freed immediately on return.
- * \param[in] port                      The port on the server to connect to
- * \param[in] client_id                 The clientid to place in the CONNECT packet.
- * \param[in] socket_options            The socket options to pass to the aws_client_bootstrap functions
- *                                          This is copied into the connection
- * \param[in] tls_options               TLS settings to use when opening a connection.
- *                                          This is copied into the connection
- *                                          Pass NULL to connect without TLS (NOT RECOMMENDED)
- * \param[in] clean_session             True to discard all server session data and start fresh
- * \param[in] keep_alive_time           The keep alive value to place in the CONNECT PACKET
- * \param[in] on_connection_complete    The callback to fire when the connection attempt completes
- * \param[in] userdata                  Passed to the userdata param of on_connection_complete
- *
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
 AWS_MQTT_API
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_byte_cursor *host_name,
-    uint16_t port,
-    const struct aws_socket_options *socket_options,
-    const struct aws_tls_connection_options *tls_options,
-    const struct aws_byte_cursor *client_id,
-    bool clean_session,
-    uint16_t keep_alive_time,
-    aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
-    void *userdata);
+    const struct aws_mqtt_connection_options *connection_options);
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.

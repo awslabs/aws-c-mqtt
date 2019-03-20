@@ -119,7 +119,7 @@ int aws_mqtt_packet_ack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_pack
     }
 
     /* Validate flags */
-    if (packet->fixed_header.flags != (aws_mqtt_packet_has_flags(&packet->fixed_header) ? S_BIT_1_FLAGS : 0u)) {
+    if (packet->fixed_header.flags != (aws_mqtt_packet_has_flags(&packet->fixed_header) ? S_BIT_1_FLAGS : 0U)) {
 
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_RESERVED_BITS);
     }
