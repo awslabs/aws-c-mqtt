@@ -48,9 +48,9 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
 
     uint64_t schedule_time = 0;
     aws_channel_current_clock_time(connection->slot->channel, &schedule_time);
-    if (connection->keep_alive_time) {
+    if (connection->keep_alive_time_secs) {
         schedule_time +=
-            aws_timestamp_convert(connection->keep_alive_time, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+            aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     } else {
         schedule_time +=
             aws_timestamp_convert(s_default_keep_alive_ping_freq_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);

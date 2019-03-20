@@ -112,7 +112,7 @@ static void s_mqtt_client_init(
         &connect,
         aws_byte_cursor_from_buf(&connection->client_id),
         connection->clean_session,
-        connection->keep_alive_time);
+        connection->keep_alive_time_secs);
 
     if (connection->will.topic.buffer) {
         /* Add will if present */
@@ -492,7 +492,7 @@ int aws_mqtt_client_connection_connect(
     connection->socket_options = *connection_options->socket_options;
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
     connection->clean_session = connection_options->clean_session;
-    connection->keep_alive_time = connection_options->keep_alive_time_secs;
+    connection->keep_alive_time_secs = connection_options->keep_alive_time_secs;
     if (!connection_options->request_timeout_ms) {
         connection->request_timeout_ns = s_default_request_timeout_ns;
     } else {
