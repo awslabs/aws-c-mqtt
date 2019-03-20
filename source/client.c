@@ -487,17 +487,18 @@ int aws_mqtt_client_connection_connect(
     }
 
     connection->host_name = aws_string_new_from_array(
-        connection->allocator, connection_options->host_name->ptr, connection_options->host_name->len);
+        connection->allocator, connection_options->host_name.ptr, connection_options->host_name.len);
     connection->port = connection_options->port;
     connection->socket_options = *connection_options->socket_options;
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
     connection->clean_session = connection_options->clean_session;
     connection->keep_alive_time_secs = connection_options->keep_alive_time_secs;
-    if (!connection_options->request_timeout_ms) {
+
+    if (!connection_options->ping_timeout_ms) {
         connection->request_timeout_ns = s_default_request_timeout_ns;
     } else {
         connection->request_timeout_ns = aws_timestamp_convert(
-            (uint64_t)connection_options->request_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+            (uint64_t)connection_options->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
     /* Cheat and set the tls_options host_name to our copy if they're the same */
@@ -526,7 +527,7 @@ int aws_mqtt_client_connection_connect(
 
     /* Only set connection->client_id if a new one was provided */
     struct aws_byte_buf client_id_buf =
-        aws_byte_buf_from_array(connection_options->client_id->ptr, connection_options->client_id->len);
+        aws_byte_buf_from_array(connection_options->client_id.ptr, connection_options->client_id.len);
     if (aws_byte_buf_init_copy(&connection->client_id, connection->allocator, &client_id_buf)) {
         aws_mem_release(connection->allocator, connection->reconnect_task);
         return AWS_OP_ERR;

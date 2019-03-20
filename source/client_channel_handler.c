@@ -30,7 +30,9 @@
  * Packet State Machine
  ******************************************************************************/
 
-static const uint16_t s_default_keep_alive_ping_freq_secs = 60;
+/* one hour */
+static const uint16_t s_default_keep_alive_ping_freq_secs = 3600;
+
 typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor);
 
 static int s_packet_handler_default(

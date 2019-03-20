@@ -232,13 +232,13 @@ int main(int argc, char **argv) {
     struct aws_byte_cursor client_id_cur = aws_byte_cursor_from_string(s_client_id);
 
     struct aws_mqtt_connection_options conn_options = {
-        .host_name = &host_name_cur,
+        .host_name = host_name_cur,
         .port = 8883,
         .socket_options = &socket_options,
         .tls_options = &tls_con_opt,
-        .client_id = &client_id_cur,
+        .client_id = client_id_cur,
         .keep_alive_time_secs = 0,
-        .request_timeout_ms = 0,
+        .ping_timeout_ms = 0,
         .on_connection_complete = s_mqtt_on_connection_complete,
         .user_data = &args,
         .clean_session = true,
