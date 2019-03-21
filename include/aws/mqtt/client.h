@@ -131,11 +131,11 @@ struct aws_mqtt_topic_subscription {
  * user_data                  Passed to the userdata param of on_connection_complete
  */
 struct aws_mqtt_connection_options {
-    const struct aws_byte_cursor host_name;
+    struct aws_byte_cursor host_name;
     uint16_t port;
-    const struct aws_socket_options *socket_options;
-    const struct aws_tls_connection_options *tls_options;
-    const struct aws_byte_cursor client_id;
+    struct aws_socket_options *socket_options;
+    struct aws_tls_connection_options *tls_options;
+    struct aws_byte_cursor client_id;
     uint16_t keep_alive_time_secs;
     uint32_t ping_timeout_ms;
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
