@@ -425,22 +425,20 @@ static int s_shutdown(
                 struct aws_mqtt_packet_connection disconnect;
                 aws_mqtt_packet_disconnect_init(&disconnect);
 
+                /* if any of these fail, we don't care, because we're disconnecting anyway */
                 struct aws_io_message *message = mqtt_get_message_for_packet(connection, &disconnect.fixed_header);
                 if (!message) {
-                    return AWS_OP_ERR;
+                    goto done;
                 }
-
                 if (aws_mqtt_packet_connection_encode(&message->message_data, &disconnect)) {
-                    return AWS_OP_ERR;
+                    goto done;
                 }
-
-                if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
-                    return AWS_OP_ERR;
-                }
+                aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
             }
         }
     }
 
+done:
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
 
