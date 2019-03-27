@@ -233,7 +233,8 @@ static void s_mqtt_client_shutdown(
 
         assert(
             connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED ||
-            connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING);
+            connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
+            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
 
         if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
 
@@ -243,7 +244,8 @@ static void s_mqtt_client_shutdown(
 
         assert(
             connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
-            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING);
+            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING ||
+            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
 
         /* This will only be true if the user called disconnect from the on_interrupted callback */
         if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
