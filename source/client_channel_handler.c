@@ -87,8 +87,12 @@ static int s_packet_handler_connack(
     const bool was_reconnecting = connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
 
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+    connection->connection_count++;
 
-    if (was_reconnecting) {
+    /* It is possible for a connection to complete, and a hangup to occur before the
+     * CONNECT/CONNACK cycle completes. In that case, we must deliver on_connection_complete
+     * on the first successful CONNACK or user code will never think it's connected */
+    if (was_reconnecting && connection->connection_count > 1) {
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
     } else {
         MQTT_CLIENT_CALL_CALLBACK_ARGS(
@@ -425,22 +429,20 @@ static int s_shutdown(
                 struct aws_mqtt_packet_connection disconnect;
                 aws_mqtt_packet_disconnect_init(&disconnect);
 
+                /* if any of these fail, we don't care, because we're disconnecting anyway */
                 struct aws_io_message *message = mqtt_get_message_for_packet(connection, &disconnect.fixed_header);
                 if (!message) {
-                    return AWS_OP_ERR;
+                    goto done;
                 }
-
                 if (aws_mqtt_packet_connection_encode(&message->message_data, &disconnect)) {
-                    return AWS_OP_ERR;
+                    goto done;
                 }
-
-                if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
-                    return AWS_OP_ERR;
-                }
+                aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
             }
         }
     }
 
+done:
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
 

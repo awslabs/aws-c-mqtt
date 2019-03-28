@@ -210,6 +210,12 @@ static void s_mqtt_client_shutdown(
 
     /* Always clear slot, as that's what's been shutdown */
     if (connection->slot) {
+        if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
+            /* if there was a slot and we were connecting, the socket at least
+             * managed to connect (and was likely hung up gracefully during setup)
+             * so this should behave like a dropped connection */
+            connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+        }
         aws_channel_slot_remove(connection->slot);
         connection->slot = NULL;
     }
@@ -233,7 +239,8 @@ static void s_mqtt_client_shutdown(
 
         assert(
             connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED ||
-            connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING);
+            connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
+            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
 
         if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
 
@@ -243,7 +250,8 @@ static void s_mqtt_client_shutdown(
 
         assert(
             connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
-            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING);
+            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING ||
+            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
 
         /* This will only be true if the user called disconnect from the on_interrupted callback */
         if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
@@ -493,6 +501,7 @@ int aws_mqtt_client_connection_connect(
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTING;
     connection->clean_session = connection_options->clean_session;
     connection->keep_alive_time_secs = connection_options->keep_alive_time_secs;
+    connection->connection_count = 0;
 
     if (!connection_options->ping_timeout_ms) {
         connection->request_timeout_ns = s_default_request_timeout_ns;
