@@ -208,11 +208,14 @@ static void s_mqtt_client_shutdown(
 
     struct aws_mqtt_client_connection *connection = user_data;
 
-    bool socket_was_connected = false;
-
     /* Always clear slot, as that's what's been shutdown */
     if (connection->slot) {
-        socket_was_connected = connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING;
+        if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
+            /* if there was a slot and we were connecting, the socket at least
+             * managed to connect (and was likely hung up gracefully during setup)
+             * so this should behave like a dropped connection */
+            connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+        }
         aws_channel_slot_remove(connection->slot);
         connection->slot = NULL;
     }
@@ -227,7 +230,7 @@ static void s_mqtt_client_shutdown(
 
         MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
 
-    } else if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING && !socket_was_connected) {
+    } else if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
 
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
