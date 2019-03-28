@@ -87,8 +87,12 @@ static int s_packet_handler_connack(
     const bool was_reconnecting = connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
 
     connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+    connection->connection_count++;
 
-    if (was_reconnecting) {
+    /* It is possible for a connection to complete, and a hangup to occur before the
+     * CONNECT/CONNACK cycle completes. In that case, we must deliver on_connection_complete
+     * on the first successful CONNACK or user code will never think it's connected */
+    if (was_reconnecting && connection->connection_count > 1) {
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
     } else {
         MQTT_CLIENT_CALL_CALLBACK_ARGS(

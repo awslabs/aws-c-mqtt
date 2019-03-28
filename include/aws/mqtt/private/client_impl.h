@@ -161,6 +161,8 @@ struct aws_mqtt_client_connection {
         bool retain;
         struct aws_byte_buf payload;
     } will;
+
+    size_t connection_count;
 };
 
 struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
