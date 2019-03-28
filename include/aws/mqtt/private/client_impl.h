@@ -161,7 +161,7 @@ struct aws_mqtt_client_connection {
         bool retain;
         struct aws_byte_buf payload;
     } will;
-    
+
     /* number of times this connection has successfully CONNACK-ed, used
      * to ensure on_connection_completed is sent on the first completed
      * CONNECT/CONNACK cycle */
