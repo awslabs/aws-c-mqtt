@@ -53,7 +53,7 @@ configure connection parameters, and then call `aws_mqtt_client_connection_conne
 * `client` is required in order to use an existing DNS resolver, event loop group, and allocator.
 * `callbacks` provides the connection-level (not operation level) callbacks and the userdata to be given back.
 * `host_name` lists the end point to connect to. This may be a DNS address or an IP address.
-    *This resource may be freed immedately after return.*
+    *This resource may be freed immediately after return.*
 * `port` the port to connect to on `host_name`.
 * `socket_options` describes how to open the connection.
     See [aws-c-io][aws-c-io] for more information about `aws_socket_options`.
