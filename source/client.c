@@ -385,6 +385,7 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     if (connection->slot) {
         aws_channel_slot_remove(connection->slot);
     }
+    aws_tls_connection_options_clean_up(&connection->tls_options);
 
     /* Frees all allocated memory */
     aws_mem_release(connection->allocator, connection);
@@ -512,9 +513,13 @@ int aws_mqtt_client_connection_connect(
 
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (connection_options->tls_options) {
-        connection->tls_options = *connection_options->tls_options;
-        struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(connection->host_name);
-        aws_tls_connection_options_set_server_name(&connection->tls_options, connection->allocator, &host_name_cur);
+        aws_tls_connection_options_copy(&connection->tls_options, connection_options->tls_options);
+
+        if (!connection_options->tls_options->server_name) {
+            struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(connection->host_name);
+            aws_tls_connection_options_set_server_name(&connection->tls_options, connection->allocator, &host_name_cur);
+        }
+
     } else {
         AWS_ZERO_STRUCT(connection->tls_options);
     }
