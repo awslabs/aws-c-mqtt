@@ -85,9 +85,6 @@ static void s_mqtt_client_init(
                 aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
             aws_event_loop_schedule_task_future(
                 el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
-        } else {
-            connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
-            MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
         }
         return;
     }
@@ -192,7 +189,6 @@ static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_t
                 el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
         }
     } else {
-
         aws_mem_release(reconnect->allocator, reconnect);
     }
 }
@@ -319,6 +315,18 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
 
     if (aws_memory_pool_init(
             &connection->requests_pool, connection->allocator, 32, sizeof(struct aws_mqtt_outstanding_request))) {
+
+        goto handle_error;
+    }
+
+    if (aws_hash_table_init(
+            &connection->outstanding_requests.table,
+            connection->allocator,
+            sizeof(struct aws_mqtt_outstanding_request *),
+            s_hash_uint16_t,
+            s_uint16_t_eq,
+            NULL,
+            &s_outstanding_request_destroy)) {
 
         goto handle_error;
     }
@@ -513,11 +521,16 @@ int aws_mqtt_client_connection_connect(
 
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (connection_options->tls_options) {
-        aws_tls_connection_options_copy(&connection->tls_options, connection_options->tls_options);
+        if (aws_tls_connection_options_copy(&connection->tls_options, connection_options->tls_options)) {
+            return AWS_OP_ERR;
+        }
 
         if (!connection_options->tls_options->server_name) {
             struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(connection->host_name);
-            aws_tls_connection_options_set_server_name(&connection->tls_options, connection->allocator, &host_name_cur);
+            if (aws_tls_connection_options_set_server_name(
+                    &connection->tls_options, connection->allocator, &host_name_cur)) {
+                goto error;
+            }
         }
 
     } else {
@@ -533,7 +546,7 @@ int aws_mqtt_client_connection_connect(
     assert(!connection->reconnect_task);
     connection->reconnect_task = aws_mem_acquire(connection->allocator, sizeof(struct aws_mqtt_reconnect_task));
     if (!connection->reconnect_task) {
-        return AWS_OP_ERR;
+        goto error;
     }
     aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
     connection->reconnect_task->allocator = connection->allocator;
@@ -543,18 +556,26 @@ int aws_mqtt_client_connection_connect(
     struct aws_byte_buf client_id_buf =
         aws_byte_buf_from_array(connection_options->client_id.ptr, connection_options->client_id.len);
     if (aws_byte_buf_init_copy(&connection->client_id, connection->allocator, &client_id_buf)) {
-        aws_mem_release(connection->allocator, connection->reconnect_task);
-        return AWS_OP_ERR;
+        goto client_id_alloc_failed;
     }
 
     if (aws_mqtt_client_connection_reconnect(
             connection, connection_options->on_connection_complete, connection_options->user_data)) {
-        aws_mem_release(connection->allocator, connection->reconnect_task);
-        aws_byte_buf_clean_up(&connection->client_id);
-        return AWS_OP_ERR;
+        goto reconnect_failed;
     }
 
     return AWS_OP_SUCCESS;
+
+reconnect_failed:
+    aws_mem_release(connection->allocator, connection->reconnect_task);
+
+client_id_alloc_failed:
+    aws_mem_release(connection->allocator, connection->reconnect_task);
+
+error:
+    aws_tls_connection_options_clean_up(&connection->tls_options);
+    AWS_ZERO_STRUCT(connection->tls_options);
+    return AWS_OP_ERR;
 }
 
 /*******************************************************************************
@@ -574,19 +595,6 @@ int aws_mqtt_client_connection_reconnect(
         so we can clean the local tree out too. */
         aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
         aws_mqtt_topic_tree_init(&connection->subscriptions, connection->allocator);
-    }
-
-    /* Init the outstanding requests hash table, the lifetime is limited to that of the socket connection */
-    if (aws_hash_table_init(
-            &connection->outstanding_requests.table,
-            connection->allocator,
-            sizeof(struct aws_mqtt_outstanding_request *),
-            s_hash_uint16_t,
-            s_uint16_t_eq,
-            NULL,
-            &s_outstanding_request_destroy)) {
-
-        return AWS_OP_ERR;
     }
 
     int result = 0;
