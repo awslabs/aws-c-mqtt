@@ -658,7 +658,17 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     request->completed = true;
 }
 
-void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
+struct mqtt_shutdown_task {
+    int error_code;
+    struct aws_channel_task task;
+};
+
+static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+
+    (void)status;
+
+    struct mqtt_shutdown_task *task = AWS_CONTAINER_OF(channel_task, struct mqtt_shutdown_task, task);
+    struct aws_mqtt_client_connection *connection = arg;
 
     /* If there is an outstanding reconnect task, cancel it */
     if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
@@ -672,7 +682,17 @@ void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int err
         connection->reconnect_task = NULL;
     }
 
+    aws_channel_shutdown(connection->slot->channel, task->error_code);
+
+    aws_mem_release(connection->allocator, task);
+}
+
+void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
+
     if (connection->slot) {
-        aws_channel_shutdown(connection->slot->channel, error_code);
+        struct mqtt_shutdown_task *shutdown_task = aws_mem_acquire(connection->allocator, sizeof(struct mqtt_shutdown_task));
+        shutdown_task->error_code = error_code;
+        aws_channel_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection);
+        aws_channel_schedule_task_now(connection->slot->channel, &shutdown_task->task);
     }
 }
