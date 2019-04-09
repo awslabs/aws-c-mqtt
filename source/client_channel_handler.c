@@ -663,6 +663,12 @@ void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int err
     /* If there is an outstanding reconnect task, cancel it */
     if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
         aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
+
+        /* If the reconnect_task isn't scheduled, free it */
+        if (connection->reconnect_task && !connection->reconnect_task->task.timestamp) {
+            aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+        }
+
         connection->reconnect_task = NULL;
     }
 
