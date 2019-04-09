@@ -214,8 +214,7 @@ static void s_mqtt_client_shutdown(
 
     if (connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
         /* If reconnect attempt failed, schedule the next attempt */
-        struct aws_event_loop *el =
-            aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+        struct aws_event_loop *el = aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
 
         aws_event_loop_schedule_task_future(
             el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);

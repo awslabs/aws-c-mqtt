@@ -690,7 +690,8 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
 
     if (connection->slot) {
-        struct mqtt_shutdown_task *shutdown_task = aws_mem_acquire(connection->allocator, sizeof(struct mqtt_shutdown_task));
+        struct mqtt_shutdown_task *shutdown_task =
+            aws_mem_acquire(connection->allocator, sizeof(struct mqtt_shutdown_task));
         shutdown_task->error_code = error_code;
         aws_channel_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection);
         aws_channel_schedule_task_now(connection->slot->channel, &shutdown_task->task);
