@@ -175,14 +175,14 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    AWS_TEST_ALLOCATOR_INIT(paho_client);
+    AWS_TEST_ALLOCATOR_INIT(iot_client);
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
     struct connection_args args;
     AWS_ZERO_STRUCT(args);
-    args.allocator = &paho_client_allocator;
+    args.allocator = &iot_client_allocator;
     args.mutex = &mutex;
     args.condition_variable = &condition_variable;
 
@@ -210,6 +210,8 @@ int main(int argc, char **argv) {
 
     struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(args.allocator, &tls_ctx_opt);
     ASSERT_NOT_NULL(tls_ctx);
+
+    aws_tls_ctx_options_clean_up(&tls_ctx_opt);
 
     struct aws_tls_connection_options tls_con_opt;
     aws_tls_connection_options_init_from_ctx(&tls_con_opt, tls_ctx);
@@ -243,8 +245,9 @@ int main(int argc, char **argv) {
         .user_data = &args,
         .clean_session = true,
     };
-
     aws_mqtt_client_connection_connect(args.connection, &conn_options);
+
+    aws_tls_connection_options_clean_up(&tls_con_opt);
 
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
@@ -304,7 +307,7 @@ int main(int argc, char **argv) {
 
     aws_tls_clean_up_static_state();
 
-    ASSERT_UINT_EQUALS(paho_client_alloc_impl.freed, paho_client_alloc_impl.allocated);
+    ASSERT_UINT_EQUALS(iot_client_alloc_impl.freed, iot_client_alloc_impl.allocated);
 
     return AWS_OP_SUCCESS;
 }
