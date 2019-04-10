@@ -216,7 +216,10 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 1));
 
-    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &el_group, NULL, NULL);
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, args.allocator, 8, &el_group));
+
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &el_group, &resolver, NULL);
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -333,8 +336,8 @@ int main(int argc, char **argv) {
     aws_mqtt_client_connection_destroy(args.connection);
     args.connection = NULL;
 
-    aws_client_bootstrap_destroy(bootstrap);
-
+    aws_client_bootstrap_release(bootstrap);
+    aws_host_resolver_clean_up(&resolver);
     aws_event_loop_group_clean_up(&el_group);
 
     ASSERT_UINT_EQUALS(paho_client_alloc_impl.freed, paho_client_alloc_impl.allocated);

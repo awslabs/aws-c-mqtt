@@ -200,7 +200,10 @@ int main(int argc, char **argv) {
     struct aws_event_loop_group elg;
     aws_event_loop_group_default_init(&elg, args.allocator, 1);
 
-    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &elg, NULL, NULL);
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, args.allocator, 8, &elg));
+
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &elg, &resolver, NULL);
 
     struct aws_tls_ctx_options tls_ctx_opt;
     ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls_from_path(
@@ -299,8 +302,9 @@ int main(int argc, char **argv) {
 
     aws_mqtt_client_clean_up(&client);
 
-    aws_client_bootstrap_destroy(bootstrap);
+    aws_client_bootstrap_release(bootstrap);
 
+    aws_host_resolver_clean_up(&resolver);
     aws_event_loop_group_clean_up(&elg);
 
     aws_tls_ctx_destroy(tls_ctx);
