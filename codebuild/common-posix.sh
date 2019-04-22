@@ -42,5 +42,15 @@ make
 
 LSAN_OPTIONS=verbosity=1:log_threads=1 ctest --output-on-failure
 
+# If running on linux, run the integration test
+if [ "$TRAVIS_OS_NAME" != "osx" ]; then
+    curl https://www.amazontrust.com/repository/AmazonRootCA1.pem --output /tmp/AmazonRootCA1.pem
+    aws secretsmanager get-secret-value --secret-id "unit-test/certificate" --query "SecretString" | cut -f2 -d":" | cut -f2 -d\" > /tmp/certificate.pem
+    aws secretsmanager get-secret-value --secret-id "unit-test/privatekey" --query "SecretString" | cut -f2 -d":" | cut -f2 -d\" > /tmp/privatekey.pem
+    ENDPOINT=$(aws secretsmanager get-secret-value --secret-id "unit-test/endpoint" --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
+
+    LSAN_OPTIONS=verbosity=1:log_threads=1 ./tests/aws-c-mqtt-iot-client $ENDPOINT /tmp/certificate.pem /tmp/privatekey.pem /tmp/AmazonRootCA1.pem
+fi
+
 cd ..
 
