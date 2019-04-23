@@ -159,6 +159,7 @@ void aws_mqtt_library_init() {
         static struct aws_log_subject_info s_logging_subjects[] = {
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_GENERAL, "mqtt", "Misc MQTT logging"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_CLIENT, "mqtt-client", "MQTT client and connections"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_TOPIC_TREE, "mqtt-topic-tree", "MQTT subscription tree"),
         };
         /* clang-format on */
 

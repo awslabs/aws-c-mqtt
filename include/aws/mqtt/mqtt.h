@@ -61,6 +61,7 @@ enum aws_mqtt_error {
 enum aws_mqtt_log_subject {
     AWS_LS_MQTT_GENERAL = 0x800,
     AWS_LS_MQTT_CLIENT,
+    AWS_LS_MQTT_TOPIC_TREE,
 };
 
 /** Function called on cleanup of a userdata. */
