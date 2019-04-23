@@ -21,6 +21,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/logging.h>
 #include <aws/io/socket.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/tls_channel_handler.h>
@@ -30,6 +31,7 @@
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
+#include <aws/common/uuid.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -42,9 +44,8 @@
 #    include <unistd.h>
 #endif
 
-AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "aws_iot_client_test");
-AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "a/b");
-AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "a1ba5f1mpna9k5-ats.iot.us-east-1.amazonaws.com");
+const char s_client_id_prefix[] = "sdk-c-v2-";
+AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "sdk/test/c");
 
 enum { PUBLISHES = 20 };
 
@@ -172,8 +173,19 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
 }
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
+
+    if (argc < 5) {
+        printf(
+            "4 args required, only %d passed. Usage:\n"
+            "aws-c-mqtt-iot-client [endpoint] [certificate] [private_key] [root_ca]\n",
+            argc - 1);
+        return 1;
+    }
+
+    const char *endpoint = argv[1];
+    const char *cert = argv[2];
+    const char *private_key = argv[3];
+    const char *root_ca = argv[4];
 
     AWS_TEST_ALLOCATOR_INIT(iot_client);
 
@@ -191,6 +203,15 @@ int main(int argc, char **argv) {
     aws_io_load_error_strings();
     aws_mqtt_load_error_strings();
 
+    struct aws_logger_standard_options logger_options = {
+        .level = AWS_LL_DEBUG,
+        .file = stdout,
+    };
+
+    struct aws_logger logger;
+    aws_logger_init_standard(&logger, args.allocator, &logger_options);
+    aws_logger_set(&logger);
+
     /* Populate the payload */
     struct aws_byte_buf payload_buf = aws_byte_buf_from_empty_array(s_payload, PAYLOAD_LEN);
     aws_device_random_buffer(&payload_buf);
@@ -206,10 +227,9 @@ int main(int argc, char **argv) {
     struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &elg, &resolver, NULL);
 
     struct aws_tls_ctx_options tls_ctx_opt;
-    ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls_from_path(
-        &tls_ctx_opt, args.allocator, "iot-certificate.pem.crt", "iot-private.pem.key"));
+    ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls_from_path(&tls_ctx_opt, args.allocator, cert, private_key));
     ASSERT_SUCCESS(aws_tls_ctx_options_set_alpn_list(&tls_ctx_opt, "x-amzn-mqtt-ca"));
-    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(&tls_ctx_opt, NULL, "AmazonRootCA1.pem"));
+    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(&tls_ctx_opt, NULL, root_ca));
 
     struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(args.allocator, &tls_ctx_opt);
     ASSERT_NOT_NULL(tls_ctx);
@@ -228,13 +248,23 @@ int main(int argc, char **argv) {
     struct aws_mqtt_client client;
     aws_mqtt_client_init(&client, args.allocator, bootstrap);
 
-    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
+    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_c_str(endpoint);
     args.connection = aws_mqtt_client_connection_new(&client);
 
     struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
     aws_mqtt_client_connection_set_will(args.connection, &subscribe_topic_cur, 1, false, &will_cur);
 
-    struct aws_byte_cursor client_id_cur = aws_byte_cursor_from_string(s_client_id);
+    /* Generate a random clientid */
+    char client_id[128];
+    struct aws_byte_buf client_id_buf = aws_byte_buf_from_empty_array(client_id, AWS_ARRAY_SIZE(client_id));
+
+    aws_byte_buf_write(&client_id_buf, (const uint8_t *)s_client_id_prefix, AWS_ARRAY_SIZE(s_client_id_prefix));
+
+    struct aws_uuid uuid;
+    aws_uuid_init(&uuid);
+    aws_uuid_to_str(&uuid, &client_id_buf);
+
+    struct aws_byte_cursor client_id_cur = aws_byte_cursor_from_buf(&client_id_buf);
 
     struct aws_mqtt_connection_options conn_options = {
         .host_name = host_name_cur,
@@ -310,6 +340,8 @@ int main(int argc, char **argv) {
     aws_tls_ctx_destroy(tls_ctx);
 
     aws_tls_clean_up_static_state();
+
+    aws_logger_clean_up(&logger);
 
     ASSERT_UINT_EQUALS(iot_client_alloc_impl.freed, iot_client_alloc_impl.allocated);
 
