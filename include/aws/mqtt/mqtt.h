@@ -58,6 +58,11 @@ enum aws_mqtt_error {
     AWS_ERROR_END_MQTT_RANGE = 0x1800,
 };
 
+enum aws_mqtt_log_subject {
+    AWS_LS_MQTT_GENERAL = 0x800,
+    AWS_LS_MQTT_CLIENT,
+};
+
 /** Function called on cleanup of a userdata. */
 typedef void(aws_mqtt_userdata_cleanup_fn)(void *userdata);
 
@@ -68,8 +73,17 @@ bool aws_mqtt_is_valid_topic(const struct aws_byte_cursor *topic);
 AWS_MQTT_API
 bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter);
 
+/**
+ * Initializes internal datastructures used by aws-c-mqtt.
+ * Must be called before using any functionality in aws-c-mqtt.
+ */
+AWS_MQTT_API
+void aws_mqtt_library_init(void);
+
 /*
  * Loads error strings for debugging and logging purposes.
+ *
+ * NOTE: Please call aws_mqtt_library_init() instead.
  */
 AWS_MQTT_API
 void aws_mqtt_load_error_strings(void);
