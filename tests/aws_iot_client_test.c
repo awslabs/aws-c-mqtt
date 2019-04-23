@@ -21,6 +21,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/logging.h>
 #include <aws/io/socket.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/tls_channel_handler.h>
@@ -201,6 +202,15 @@ int main(int argc, char **argv) {
     aws_io_load_error_strings();
     aws_mqtt_load_error_strings();
 
+    struct aws_logger_standard_options logger_options = {
+        .level = AWS_LL_DEBUG,
+        .file = stdout,
+    };
+
+    struct aws_logger logger;
+    aws_logger_init_standard(&logger, args.allocator, &logger_options);
+    aws_logger_set(&logger);
+
     /* Populate the payload */
     struct aws_byte_buf payload_buf = aws_byte_buf_from_empty_array(s_payload, PAYLOAD_LEN);
     aws_device_random_buffer(&payload_buf);
@@ -319,6 +329,8 @@ int main(int argc, char **argv) {
     aws_tls_ctx_destroy(tls_ctx);
 
     aws_tls_clean_up_static_state();
+
+    aws_logger_clean_up(&logger);
 
     ASSERT_UINT_EQUALS(iot_client_alloc_impl.freed, iot_client_alloc_impl.allocated);
 
