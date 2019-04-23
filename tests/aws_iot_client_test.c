@@ -31,6 +31,7 @@
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
+#include <aws/common/uuid.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -43,8 +44,8 @@
 #    include <unistd.h>
 #endif
 
-AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "aws_c_mqtt_test_client");
-AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "test/c");
+const char s_client_id_prefix[] = "sdk-c-v2-";
+AWS_STATIC_STRING_FROM_LITERAL(s_subscribe_topic, "sdk/test/c");
 
 enum { PUBLISHES = 20 };
 
@@ -253,7 +254,17 @@ int main(int argc, char **argv) {
     struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
     aws_mqtt_client_connection_set_will(args.connection, &subscribe_topic_cur, 1, false, &will_cur);
 
-    struct aws_byte_cursor client_id_cur = aws_byte_cursor_from_string(s_client_id);
+    /* Generate a random clientid */
+    char client_id[128];
+    struct aws_byte_buf client_id_buf = aws_byte_buf_from_empty_array(client_id, AWS_ARRAY_SIZE(client_id));
+
+    aws_byte_buf_write(&client_id_buf, (const uint8_t *)s_client_id_prefix, AWS_ARRAY_SIZE(s_client_id_prefix));
+
+    struct aws_uuid uuid;
+    aws_uuid_init(&uuid);
+    aws_uuid_to_str(&uuid, &client_id_buf);
+
+    struct aws_byte_cursor client_id_cur = aws_byte_cursor_from_buf(&client_id_buf);
 
     struct aws_mqtt_connection_options conn_options = {
         .host_name = host_name_cur,
