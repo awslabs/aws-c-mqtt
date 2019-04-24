@@ -1337,8 +1337,6 @@ uint16_t aws_mqtt_client_connection_publish(
 
     assert(connection);
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "Starting publish to topic " PRInSTR, AWS_BYTE_CURSOR_PRI(*topic));
-
     if (!aws_mqtt_is_valid_topic(topic)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
         return 0;
@@ -1358,7 +1356,11 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->on_complete = on_complete;
     arg->userdata = userdata;
 
-    return mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
+    uint16_t packet_id = mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "Starting publish %d to topic " PRInSTR, packet_id, AWS_BYTE_CURSOR_PRI(*topic));
+
+    return packet_id;
 }
 
 /*******************************************************************************
