@@ -143,7 +143,13 @@ static struct aws_mqtt_topic_node *s_topic_node_new(
     AWS_ZERO_STRUCT(*node);
     assert(!topic_filter || full_topic);
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_TOPIC_TREE, "node=%p: Creating new node with topic filter " PRInSTR, (void *)node, AWS_BYTE_CURSOR_PRI(*topic_filter));
+    if (topic_filter) {
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_TOPIC_TREE,
+            "node=%p: Creating new node with topic filter " PRInSTR,
+            (void *)node,
+            AWS_BYTE_CURSOR_PRI(*topic_filter));
+    }
 
     if (topic_filter) {
         node->topic = *topic_filter;
@@ -153,7 +159,8 @@ static struct aws_mqtt_topic_node *s_topic_node_new(
     /* Init the sub topics map */
     if (aws_hash_table_init(&node->subtopics, allocator, 0, aws_hash_byte_cursor_ptr, byte_cursor_eq, NULL, NULL)) {
 
-        AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "node=%p: Failed to initialize subtopics table in topic node", (void *)node);
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_TOPIC_TREE, "node=%p: Failed to initialize subtopics table in topic node", (void *)node);
         aws_mem_release(allocator, node);
         return NULL;
     }
@@ -511,7 +518,10 @@ int aws_mqtt_topic_tree_transaction_insert(
     assert(callback);
 
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Inserting topic filter %s into topic tree", (void *)tree, topic_filter->bytes);
+        AWS_LS_MQTT_TOPIC_TREE,
+        "tree=%p: Inserting topic filter %s into topic tree",
+        (void *)tree,
+        topic_filter->bytes);
 
     struct aws_mqtt_topic_node *current = tree->root;
 
