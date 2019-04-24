@@ -230,14 +230,20 @@ static void s_mqtt_client_init(
 
     struct aws_io_message *message = mqtt_get_message_for_packet(connection, &connect.fixed_header);
     if (!message) {
+
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p Failed to get message from pool", (void *)connection);
         goto handle_error;
     }
 
     if (aws_mqtt_packet_connect_encode(&message->message_data, &connect)) {
+
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p Failed to encode CONNECT packet", (void *)connection);
         goto handle_error;
     }
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p Failed to send encoded CONNECT packet upstream", (void *)connection);
         goto handle_error;
     }
 
@@ -322,7 +328,6 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
         aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_client_connection));
 
     if (!connection) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "client=%p Failed to allocate connection object"(void *)client);
         return NULL;
     }
 
@@ -788,7 +793,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p Attempting send of subscribe %d (%s)",
+        "id=%p Attempting send of subscribe %" PRIu16 " (%s)",
         (void *)task_arg->connection,
         message_id,
         is_first_attempt ? "first attempt" : "resend");
@@ -878,7 +883,7 @@ static void s_subscribe_complete(
 
     struct subscribe_task_arg *task_arg = userdata;
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Subscribe %d completed", (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Subscribe %" PRIu16 " completed", (void *)connection, packet_id);
 
     if (task_arg->on_suback) {
         task_arg->on_suback(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
@@ -949,7 +954,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
     uint16_t packet_id =
         mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg);
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Starting multi-topic subscribe %d", (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Starting multi-topic subscribe %" PRIu16, (void *)connection, packet_id);
 
     if (packet_id) {
         return packet_id;
@@ -991,7 +996,7 @@ static void s_subscribe_single_complete(
 
     struct subscribe_task_arg *task_arg = userdata;
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Subscribe %d completed", (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Subscribe %" PRIu16 " completed", (void *)connection, packet_id);
 
     assert(aws_array_list_length(&task_arg->topics) == 1);
 
@@ -1077,7 +1082,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
-        "id=%p Starting subscribe %d on topic " PRInSTR,
+        "id=%p Starting subscribe %" PRIu16 " on topic " PRInSTR,
         (void *)connection,
         packet_id,
         AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
@@ -1131,7 +1136,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p Attempting send of unsubscribe %d %s",
+        "id=%p Attempting send of unsubscribe %" PRIu16 " %s",
         (void *)task_arg->connection,
         message_id,
         is_first_attempt ? "first attempt" : "resend");
@@ -1201,7 +1206,7 @@ static void s_unsubscribe_complete(
 
     struct unsubscribe_task_arg *task_arg = userdata;
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Unsubscribe %d complete", (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Unsubscribe %" PRIu16 " complete", (void *)connection, packet_id);
 
     if (task_arg->on_unsuback) {
         task_arg->on_unsuback(connection, packet_id, error_code, task_arg->on_unsuback_ud);
@@ -1237,7 +1242,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     uint16_t packet_id =
         mqtt_create_request(connection, &s_unsubscribe_send, task_arg, s_unsubscribe_complete, task_arg);
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Starting unsubscribe %d", (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Starting unsubscribe %" PRIu16, (void *)connection, packet_id);
 
     return packet_id;
 }
@@ -1265,7 +1270,7 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t message_id, bo
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p Attempting send of publish %d %s",
+        "id=%p Attempting send of publish %" PRIu16 " %s",
         (void *)task_arg->connection,
         message_id,
         is_first_attempt ? "first attempt" : "resend");
@@ -1340,7 +1345,7 @@ static void s_publish_complete(
     void *userdata) {
     struct publish_task_arg *task_arg = userdata;
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Publish %d complete", (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Publish %" PRIu16 " complete", (void *)connection, packet_id);
 
     if (task_arg->on_complete) {
         task_arg->on_complete(connection, packet_id, error_code, task_arg->userdata);
@@ -1383,7 +1388,7 @@ uint16_t aws_mqtt_client_connection_publish(
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
-        "id=%p Starting publish %d to topic " PRInSTR,
+        "id=%p Starting publish %" PRIu16 " to topic " PRInSTR,
         (void *)connection,
         packet_id,
         AWS_BYTE_CURSOR_PRI(*topic));
