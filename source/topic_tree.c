@@ -15,6 +15,8 @@
 
 #include <aws/mqtt/private/topic_tree.h>
 
+#include <aws/io/logging.h>
+
 #include <aws/common/byte_buf.h>
 #include <aws/common/task_scheduler.h>
 
@@ -62,34 +64,35 @@ static struct topic_tree_action *s_topic_tree_action_create(struct aws_array_lis
 
     struct topic_tree_action *action = NULL;
 
-    bool was_pushed = false;
-
     /* Push an empty action into the transaction and get a pointer to it. */
     struct topic_tree_action empty_action;
     AWS_ZERO_STRUCT(empty_action);
     if (aws_array_list_push_back(transaction, &empty_action)) {
 
-        goto handle_error;
+        AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "Failed to insert action into transaction, array_list_push_back failed");
+        goto push_back_failed;
     }
-    was_pushed = true;
 
     if (aws_array_list_get_at_ptr(transaction, (void **)&action, aws_array_list_length(transaction) - 1)) {
 
-        goto handle_error;
+        AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "Failed to retrieve most recent action from transaction");
+        goto get_at_failed;
     }
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT_TOPIC_TREE, "action=%p: Created action", (void *)action);
 
     return action;
 
-handle_error:
+get_at_failed:
+    aws_array_list_pop_back(transaction);
 
-    if (was_pushed) {
-        aws_array_list_pop_back(transaction);
-    }
-
+push_back_failed:
     return NULL;
 }
 
 static void s_topic_tree_action_destroy(struct topic_tree_action *action) {
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT_TOPIC_TREE, "action=%p: Destroying action", (void *)action);
 
     if (action->mode == AWS_MQTT_TOPIC_TREE_REMOVE) {
         aws_array_list_clean_up(&action->to_remove);
@@ -105,6 +108,9 @@ static int s_topic_tree_action_to_remove(
 
     if (action->mode != AWS_MQTT_TOPIC_TREE_REMOVE) {
         if (aws_array_list_init_dynamic(&action->to_remove, allocator, size_hint, sizeof(void *))) {
+
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_TOPIC_TREE, "action=%p: Failed to initialize to_remove list in action", (void *)action);
             return AWS_OP_ERR;
         }
         action->mode = AWS_MQTT_TOPIC_TREE_REMOVE;
@@ -131,10 +137,19 @@ static struct aws_mqtt_topic_node *s_topic_node_new(
 
     struct aws_mqtt_topic_node *node = aws_mem_acquire(allocator, sizeof(struct aws_mqtt_topic_node));
     if (!node) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "Failed to allocate new topic node");
         return NULL;
     }
     AWS_ZERO_STRUCT(*node);
     assert(!topic_filter || full_topic);
+
+    if (topic_filter) {
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_TOPIC_TREE,
+            "node=%p: Creating new node with topic filter " PRInSTR,
+            (void *)node,
+            AWS_BYTE_CURSOR_PRI(*topic_filter));
+    }
 
     if (topic_filter) {
         node->topic = *topic_filter;
@@ -144,6 +159,8 @@ static struct aws_mqtt_topic_node *s_topic_node_new(
     /* Init the sub topics map */
     if (aws_hash_table_init(&node->subtopics, allocator, 0, aws_hash_byte_cursor_ptr, byte_cursor_eq, NULL, NULL)) {
 
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_TOPIC_TREE, "node=%p: Failed to initialize subtopics table in topic node", (void *)node);
         aws_mem_release(allocator, node);
         return NULL;
     }
@@ -154,6 +171,8 @@ static struct aws_mqtt_topic_node *s_topic_node_new(
 static int s_topic_node_destroy_hash_foreach_wrap(void *context, struct aws_hash_element *elem);
 
 static void s_topic_node_destroy(struct aws_mqtt_topic_node *node, struct aws_allocator *allocator) {
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT_TOPIC_TREE, "node=%p: Destroying topic tree node", (void *)node);
 
     /* Traverse all children and remove */
     aws_hash_table_foreach(&node->subtopics, s_topic_node_destroy_hash_foreach_wrap, allocator);
@@ -182,6 +201,8 @@ int aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_alloca
     assert(tree);
     assert(allocator);
 
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Creating new topic tree", (void *)tree);
+
     tree->root = s_topic_node_new(allocator, NULL, NULL);
     if (!tree->root) {
         return AWS_OP_ERR;
@@ -198,6 +219,8 @@ int aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_alloca
 void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree) {
 
     assert(tree);
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Cleaning up topic tree", (void *)tree);
 
     if (tree->allocator && tree->root) {
         s_topic_node_destroy(tree->root, tree->allocator);
@@ -234,9 +257,12 @@ static int s_topic_node_string_finder(void *userdata, struct aws_hash_element *e
             return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
         }
 
+        AWS_LOGF_TRACE(AWS_LS_MQTT_TOPIC_TREE, "    Found matching topic string, using %s", node->topic_filter->bytes);
+
         return 0;
     }
 
+    AWS_LOGF_TRACE(AWS_LS_MQTT_TOPIC_TREE, "    Found matching topic string, using %s", node->topic_filter->bytes);
     *topic_filter = node->topic_filter;
     return 0;
 }
@@ -249,6 +275,13 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
     switch (action->mode) {
         case AWS_MQTT_TOPIC_TREE_ADD:
         case AWS_MQTT_TOPIC_TREE_UPDATE: {
+
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_TOPIC_TREE,
+                "tree=%p action=%p: Committing %s topic tree action",
+                (void *)tree,
+                (void *)action,
+                (action->mode == AWS_MQTT_TOPIC_TREE_ADD) ? "add" : "update");
 
             /* Destroy old userdata */
             if (action->node_to_update->cleanup && action->node_to_update->userdata) {
@@ -273,6 +306,12 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
 
         case AWS_MQTT_TOPIC_TREE_REMOVE: {
 
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_TOPIC_TREE,
+                "tree=%p action=%p: Committing remove topic tree action",
+                (void *)tree,
+                (void *)action);
+
             struct aws_mqtt_topic_node *current = action->node_to_update;
             const size_t sub_parts_len = aws_array_list_length(&action->to_remove) - 1;
 
@@ -282,6 +321,8 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
 
                 /* "unsubscribe" current. */
                 if (current->cleanup && current->userdata) {
+                    AWS_LOGF_TRACE(AWS_LS_MQTT_TOPIC_TREE, "node=%p: Cleaning up node's userdata", (void *)current);
+
                     /* If there was userdata assigned to this node, pass it out. */
                     current->cleanup(current->userdata);
                 }
@@ -308,6 +349,14 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                         aws_array_list_get_at(&action->to_remove, &grandma, i - 1);
                         assert(grandma); /* Must be in bounds */
 
+                        AWS_LOGF_TRACE(
+                            AWS_LS_MQTT_TOPIC_TREE,
+                            "tree=%p node=%p: Removing child node %p with topic \"" PRInSTR "\"",
+                            (void *)tree,
+                            (void *)grandma,
+                            (void *)node,
+                            AWS_BYTE_CURSOR_PRI(node->topic));
+
                         aws_hash_table_remove(&grandma->subtopics, &node->topic, NULL, NULL);
 
                         /* Make sure the following loop doesn't hit this node. */
@@ -321,6 +370,14 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                             destroy_current = true;
                         }
                     } else {
+
+                        AWS_LOGF_TRACE(
+                            AWS_LS_MQTT_TOPIC_TREE,
+                            "tree=%p: Node %p with topic \"" PRInSTR
+                            "\" has children or is a subscription, leaving in place",
+                            (void *)tree,
+                            (void *)node,
+                            AWS_BYTE_CURSOR_PRI(node->topic));
 
                         /* Once we've found one node with children, the rest are guaranteed to. */
                         break;
@@ -353,6 +410,12 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                         if (parent->topic_filter == old_topic_filter) {
                             /* Uh oh, Mom's using my topic string again! Steal it and replace it with a new one, Indiana
                              * Jones style. */
+
+                            AWS_LOGF_TRACE(
+                                AWS_LS_MQTT_TOPIC_TREE,
+                                "tree=%p: Found node %p reusing topic filter part, replacing with next child",
+                                (void *)tree,
+                                (void *)parent);
 
                             if (!new_topic_filter) {
                                 /* Set new_tf to old_tf so it's easier to check against the existing node.
@@ -403,6 +466,12 @@ static void s_topic_tree_action_roll_back(struct topic_tree_action *action, stru
 
     switch (action->mode) {
         case AWS_MQTT_TOPIC_TREE_ADD: {
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_TOPIC_TREE,
+                "tree=%p action=%p: Rolling back add transaction action",
+                (void *)tree,
+                (void *)action);
+
             /* Remove the first new node from it's parent's map */
             aws_hash_table_remove(&action->last_found->subtopics, &action->first_created->topic, NULL, NULL);
             /* Recursively destroy all other created nodes */
@@ -416,6 +485,12 @@ static void s_topic_tree_action_roll_back(struct topic_tree_action *action, stru
         }
         case AWS_MQTT_TOPIC_TREE_REMOVE:
         case AWS_MQTT_TOPIC_TREE_UPDATE: {
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_TOPIC_TREE,
+                "tree=%p action=%p: Rolling back remove/update transaction, no changes made",
+                (void *)tree,
+                (void *)action);
+
             /* Aborting a remove or update doesn't require any actions. */
             break;
         }
@@ -441,6 +516,12 @@ int aws_mqtt_topic_tree_transaction_insert(
     assert(transaction);
     assert(topic_filter);
     assert(callback);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_TOPIC_TREE,
+        "tree=%p: Inserting topic filter %s into topic tree",
+        (void *)tree,
+        topic_filter->bytes);
 
     struct aws_mqtt_topic_node *current = tree->root;
 
@@ -488,6 +569,12 @@ int aws_mqtt_topic_tree_transaction_insert(
             elem->value = current;
 
             if (action->mode == AWS_MQTT_TOPIC_TREE_UPDATE) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_TOPIC_TREE,
+                    "tree=%p: Topic part \"" PRInSTR "\" is new, it and all children will be added as new nodes",
+                    (void *)tree,
+                    AWS_BYTE_CURSOR_PRI(sub_part));
+
                 /* Store the node we just made, and make sure we don't store again */
                 action->mode = AWS_MQTT_TOPIC_TREE_ADD;
                 action->first_created = current;
@@ -504,6 +591,13 @@ int aws_mqtt_topic_tree_transaction_insert(
 
     /* Node found (or created), add the topic filter and callbacks */
     if (current->owns_topic_filter) {
+
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_TOPIC_TREE,
+            "tree=%p node=%p: Updating existing node that alrady owns its topic_filter, throwing out parameter",
+            (void *)tree,
+            (void *)current);
+
         /* If the topic filter was already here, this is already a subscription.
            Free the new topic_filter so all existing byte_cursors remain valid. */
         aws_string_destroy((void *)topic_filter);
@@ -529,6 +623,12 @@ int aws_mqtt_topic_tree_transaction_remove(
     assert(transaction);
     assert(topic_filter);
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_TOPIC_TREE,
+        "tree=%p: Removing topic filter \"" PRInSTR "\" from topic tree",
+        (void *)tree,
+        AWS_BYTE_CURSOR_PRI(*topic_filter));
+
     struct topic_tree_action *action = s_topic_tree_action_create(transaction);
     if (!action) {
         return AWS_OP_ERR;
@@ -538,20 +638,24 @@ int aws_mqtt_topic_tree_transaction_remove(
     AWS_ZERO_STRUCT(sub_topic_parts);
 
     if (aws_array_list_init_dynamic(&sub_topic_parts, tree->allocator, 1, sizeof(struct aws_byte_cursor))) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Failed to initialize topic parts array", (void *)tree);
         goto handle_error;
     }
 
     if (aws_byte_cursor_split_on_char(topic_filter, '/', &sub_topic_parts)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Failed to split topic filter", (void *)tree);
         goto handle_error;
     }
     const size_t sub_parts_len = aws_array_list_length(&sub_topic_parts);
     if (!sub_parts_len) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Failed to get topic parts length", (void *)tree);
         goto handle_error;
     }
     s_topic_tree_action_to_remove(action, tree->allocator, sub_parts_len);
 
     struct aws_mqtt_topic_node *current = tree->root;
     if (aws_array_list_push_back(&action->to_remove, &current)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Failed to insert root node into to_remove list", (void *)tree);
         goto handle_error;
     }
 
@@ -568,6 +672,8 @@ int aws_mqtt_topic_tree_transaction_remove(
             /* If the node exists, just traverse it */
             current = elem->value;
             if (aws_array_list_push_back(&action->to_remove, &current)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Failed to insert topic node into to_remove list", (void *)tree);
                 goto handle_error;
             }
         } else {
@@ -718,6 +824,12 @@ int aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct a
 
     assert(tree);
     assert(pub);
+
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_TOPIC_TREE,
+        "tree=%p: Publishing on topic " PRInSTR,
+        (void *)tree,
+        AWS_BYTE_CURSOR_PRI(pub->topic_name));
 
     struct aws_byte_cursor sub_part;
     AWS_ZERO_STRUCT(sub_part);

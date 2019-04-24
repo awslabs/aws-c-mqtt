@@ -201,10 +201,11 @@ int main(int argc, char **argv) {
     aws_tls_init_static_state(args.allocator);
     aws_load_error_strings();
     aws_io_load_error_strings();
-    aws_mqtt_load_error_strings();
+    aws_io_load_log_subject_strings();
+    aws_mqtt_library_init(args.allocator);
 
     struct aws_logger_standard_options logger_options = {
-        .level = AWS_LL_DEBUG,
+        .level = AWS_LL_TRACE,
         .file = stdout,
     };
 

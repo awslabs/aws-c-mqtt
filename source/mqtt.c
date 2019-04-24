@@ -15,6 +15,8 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/io/logging.h>
+
 /*******************************************************************************
  * Topic Validation
  ******************************************************************************/
@@ -91,15 +93,17 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
 }
 
 /*******************************************************************************
- * Load Error String
+ * Library Init
  ******************************************************************************/
 
-void aws_mqtt_load_error_strings() {
+void aws_mqtt_library_init(struct aws_allocator *allocator) {
 
-    static bool s_error_strings_loaded = false;
-    if (!s_error_strings_loaded) {
+    (void)allocator;
 
-        s_error_strings_loaded = true;
+    static bool s_library_initialized = false;
+    if (!s_library_initialized) {
+
+        s_library_initialized = true;
 
 #define AWS_DEFINE_ERROR_INFO_MQTT(C, ES) AWS_DEFINE_ERROR_INFO(C, ES, "libaws-c-mqtt")
         /* clang-format off */
@@ -147,10 +151,26 @@ void aws_mqtt_load_error_strings() {
         /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
 
-        static struct aws_error_info_list s_list = {
+        static struct aws_error_info_list s_error_list = {
             .error_list = s_errors,
             .count = AWS_ARRAY_SIZE(s_errors),
         };
-        aws_register_error_info(&s_list);
+        aws_register_error_info(&s_error_list);
+
+        /* clang-format off */
+        static struct aws_log_subject_info s_logging_subjects[] = {
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_GENERAL, "mqtt", "Misc MQTT logging"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_CLIENT, "mqtt-client", "MQTT client and connections"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_TOPIC_TREE, "mqtt-topic-tree", "MQTT subscription tree"),
+        };
+        /* clang-format on */
+
+        static struct aws_log_subject_info_list s_logging_subjects_list = {
+            .subject_list = s_logging_subjects,
+            .count = AWS_ARRAY_SIZE(s_logging_subjects),
+        };
+        aws_register_log_subject_info_list(&s_logging_subjects_list);
     }
 }
+
+void aws_mqtt_library_clean_up(void) {}
