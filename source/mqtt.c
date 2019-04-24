@@ -96,7 +96,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
  * Library Init
  ******************************************************************************/
 
-void aws_mqtt_library_init() {
+void aws_mqtt_library_init(struct aws_allocator *allocator) {
+
+    (void)allocator;
 
     static bool s_library_initialized = false;
     if (!s_library_initialized) {
@@ -171,6 +173,4 @@ void aws_mqtt_library_init() {
     }
 }
 
-void aws_mqtt_load_error_strings(void) {
-    aws_mqtt_library_init();
-}
+void aws_mqtt_library_clean_up(void) {}

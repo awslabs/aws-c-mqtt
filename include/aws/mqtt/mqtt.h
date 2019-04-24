@@ -59,7 +59,7 @@ enum aws_mqtt_error {
 };
 
 enum aws_mqtt_log_subject {
-    AWS_LS_MQTT_GENERAL = 0x800,
+    AWS_LS_MQTT_GENERAL = 0x1400,
     AWS_LS_MQTT_CLIENT,
     AWS_LS_MQTT_TOPIC_TREE,
 };
@@ -79,15 +79,13 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter);
  * Must be called before using any functionality in aws-c-mqtt.
  */
 AWS_MQTT_API
-void aws_mqtt_library_init(void);
+void aws_mqtt_library_init(struct aws_allocator *allocator);
 
-/*
- * Loads error strings for debugging and logging purposes.
- *
- * NOTE: Please call aws_mqtt_library_init() instead.
+/**
+ * Shuts down the internal datastructures used by aws-c-mqtt.
  */
 AWS_MQTT_API
-void aws_mqtt_load_error_strings(void);
+void aws_mqtt_library_clean_up(void);
 
 AWS_EXTERN_C_END
 

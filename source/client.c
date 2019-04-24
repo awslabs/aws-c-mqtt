@@ -77,7 +77,8 @@ static void s_mqtt_client_shutdown(
 
     struct aws_mqtt_client_connection *connection = user_data;
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p Channel has been shutdown with error code %d", (void *)connection, error_code);
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT, "id=%p Channel has been shutdown with error code %d", (void *)connection, error_code);
 
     /* Always clear slot, as that's what's been shutdown */
     if (connection->slot) {
@@ -104,7 +105,10 @@ static void s_mqtt_client_shutdown(
 
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
 
-        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Disconnect completed, clearing request queue and calling callback", (void *)connection);
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p Disconnect completed, clearing request queue and calling callback",
+            (void *)connection);
 
         /* Successfully shutdown, so clear the outstanding requests */
         aws_hash_table_clear(&connection->outstanding_requests.table);
@@ -113,7 +117,8 @@ static void s_mqtt_client_shutdown(
 
     } else if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
 
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p Initial connection attempt failed, calling callback", (void *)connection);
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT, "id=%p Initial connection attempt failed, calling callback", (void *)connection);
 
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
@@ -127,7 +132,10 @@ static void s_mqtt_client_shutdown(
 
         if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
 
-            AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Connection lost, calling callback and attempting reconnect", (void *)connection);
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p Connection lost, calling callback and attempting reconnect",
+                (void *)connection);
 
             connection->state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
             MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
@@ -142,7 +150,9 @@ static void s_mqtt_client_shutdown(
         if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
 
             AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT, "id=%p Caller requested disconnect from on_interrupted callback, aborting reconnect", (void *)connection);
+                AWS_LS_MQTT_CLIENT,
+                "id=%p Caller requested disconnect from on_interrupted callback, aborting reconnect",
+                (void *)connection);
 
             connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
             MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
@@ -179,7 +189,8 @@ static void s_mqtt_client_init(
         return;
     }
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Connection successfully opened, sending CONNECT packet", (void *)connection);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT, "id=%p Connection successfully opened, sending CONNECT packet", (void *)connection);
 
     /* Reset the current timeout timer */
     connection->reconnect_timeouts.current = connection->reconnect_timeouts.min;
@@ -188,7 +199,10 @@ static void s_mqtt_client_init(
     connection->slot = aws_channel_slot_new(channel);
 
     if (!connection->slot) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p Failed to create new slot, something has gone horribly wrong", (void *)connection);
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p Failed to create new slot, something has gone horribly wrong",
+            (void *)connection);
         aws_channel_shutdown(channel, aws_last_error());
         return;
     }
@@ -883,7 +897,12 @@ static void s_subscribe_complete(
 
     struct subscribe_task_arg *task_arg = userdata;
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Subscribe %" PRIu16 " completed", (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p Subscribe %" PRIu16 " completed with error_code %d",
+        (void *)connection,
+        packet_id,
+        error_code);
 
     if (task_arg->on_suback) {
         task_arg->on_suback(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
@@ -918,6 +937,8 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
         goto handle_error;
     }
 
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Starting multi-topic subscribe", (void *)connection);
+
     for (size_t i = 0; i < num_topics; ++i) {
 
         struct aws_mqtt_topic_subscription *request = NULL;
@@ -947,6 +968,12 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
         /* Update request topic cursor to refer to owned string */
         task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
 
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p     Adding topic \"" PRInSTR "\"",
+            (void *)connection,
+            AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
+
         /* Push into the list */
         aws_array_list_push_back(&task_arg->topics, &request);
     }
@@ -954,7 +981,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
     uint16_t packet_id =
         mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg);
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Starting multi-topic subscribe %" PRIu16, (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Sending multi-topic subscribe %" PRIu16, (void *)connection, packet_id);
 
     if (packet_id) {
         return packet_id;
@@ -996,7 +1023,12 @@ static void s_subscribe_single_complete(
 
     struct subscribe_task_arg *task_arg = userdata;
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Subscribe %" PRIu16 " completed", (void *)connection, packet_id);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p Subscribe %" PRIu16 " completed with error code %d",
+        (void *)connection,
+        packet_id,
+        error_code);
 
     assert(aws_array_list_length(&task_arg->topics) == 1);
 
