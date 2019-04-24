@@ -43,7 +43,7 @@ static int s_packet_handler_default(
     (void)connection;
     (void)message_cursor;
 
-    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Unhandled packet type received");
+    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p Unhandled packet type received", (void *)connection);
     return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
 }
 
@@ -77,7 +77,7 @@ static int s_packet_handler_connack(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor message_cursor) {
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "CONNACK received");
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p CONNACK received", (void *)connection);
 
     struct aws_mqtt_packet_connack connack;
     if (aws_mqtt_packet_connack_decode(&message_cursor, &connack)) {
@@ -259,7 +259,7 @@ static int s_packet_handler_pingresp(
 
     (void)message_cursor;
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "PINGRESP received");
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p PINGRESP received", (void *)connection);
 
     /* Store the timestamp this was received */
     aws_channel_current_clock_time(connection->slot->channel, &connection->last_pingresp_timestamp);
@@ -677,7 +677,7 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     struct mqtt_shutdown_task *task = AWS_CONTAINER_OF(channel_task, struct mqtt_shutdown_task, task);
     struct aws_mqtt_client_connection *connection = arg;
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "Doing disconnect");
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p Doing disconnect", (void *)connection);
 
     /* If there is an outstanding reconnect task, cancel it */
     if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {

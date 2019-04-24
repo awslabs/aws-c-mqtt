@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
     aws_mqtt_library_init();
 
     struct aws_logger_standard_options logger_options = {
-        .level = AWS_LL_DEBUG,
+        .level = AWS_LL_TRACE,
         .file = stdout,
     };
 
