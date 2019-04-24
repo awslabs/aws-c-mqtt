@@ -46,7 +46,7 @@ int aws_mqtt_client_init(
     struct aws_allocator *allocator,
     struct aws_client_bootstrap *bootstrap) {
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "Initalizing MQTT client");
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p Initalizing MQTT client", (void *)client);
 
     AWS_ZERO_STRUCT(*client);
     client->allocator = allocator;
@@ -61,6 +61,8 @@ int aws_mqtt_client_init(
 
 void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
 
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p Cleaning up MQTT client", (void *)client);
+
     AWS_ZERO_STRUCT(*client);
 }
 
@@ -73,9 +75,9 @@ static void s_mqtt_client_shutdown(
     (void)bootstrap;
     (void)channel;
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "Channel has been shutdown with error code %d", error_code);
-
     struct aws_mqtt_client_connection *connection = user_data;
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p Channel has been shutdown with error code %d", (void *)connection, error_code);
 
     /* Always clear slot, as that's what's been shutdown */
     if (connection->slot) {
@@ -93,7 +95,7 @@ static void s_mqtt_client_shutdown(
         /* If reconnect attempt failed, schedule the next attempt */
         struct aws_event_loop *el = aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
 
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "Reconnect failed, retrying");
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p Reconnect failed, retrying", (void *)connection);
 
         aws_event_loop_schedule_task_future(
             el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
@@ -102,7 +104,7 @@ static void s_mqtt_client_shutdown(
 
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
 
-        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "Disconnect completed, clearing request queue and calling callback");
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Disconnect completed, clearing request queue and calling callback", (void *)connection);
 
         /* Successfully shutdown, so clear the outstanding requests */
         aws_hash_table_clear(&connection->outstanding_requests.table);
@@ -111,7 +113,7 @@ static void s_mqtt_client_shutdown(
 
     } else if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
 
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "Initial connection attempt failed, calling callback");
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p Initial connection attempt failed, calling callback", (void *)connection);
 
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
@@ -125,7 +127,7 @@ static void s_mqtt_client_shutdown(
 
         if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
 
-            AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "Connection lost, calling callback and attempting reconnect");
+            AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Connection lost, calling callback and attempting reconnect", (void *)connection);
 
             connection->state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
             MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
@@ -140,7 +142,7 @@ static void s_mqtt_client_shutdown(
         if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
 
             AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT, "Caller requested disconnect from on_interrupted callback, aborting reconnect");
+                AWS_LS_MQTT_CLIENT, "id=%p Caller requested disconnect from on_interrupted callback, aborting reconnect", (void *)connection);
 
             connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
             MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
@@ -177,7 +179,7 @@ static void s_mqtt_client_init(
         return;
     }
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "Connection successfully opened, sending CONNECT packet");
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p Connection successfully opened, sending CONNECT packet", (void *)connection);
 
     /* Reset the current timeout timer */
     connection->reconnect_timeouts.current = connection->reconnect_timeouts.min;
@@ -186,7 +188,7 @@ static void s_mqtt_client_init(
     connection->slot = aws_channel_slot_new(channel);
 
     if (!connection->slot) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Failed to create new slot, something has gone horribly wrong");
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p Failed to create new slot, something has gone horribly wrong", (void *)connection);
         aws_channel_shutdown(channel, aws_last_error());
         return;
     }
@@ -265,7 +267,8 @@ static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_t
 
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
-            "Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
+            "id=%p Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
+            (void *)connection,
             connection->reconnect_timeouts.current);
 
         /* Check before multipying to avoid potential overflow */
@@ -319,7 +322,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
         aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_client_connection));
 
     if (!connection) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Failed to allocate connection object");
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "client=%p Failed to allocate connection object"(void *)client);
         return NULL;
     }
 
