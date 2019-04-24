@@ -385,7 +385,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
             NULL,
             &s_outstanding_request_destroy)) {
 
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to initialize outstanding requests table", (void *)connection);
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: Failed to initialize outstanding requests table", (void *)connection);
         goto failed_init_outstanding_requests_table;
     }
 
@@ -558,7 +559,8 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     aws_mqtt_client_on_connection_resumed_fn *on_resumed,
     void *on_resumed_ud) {
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection interrupted and resumed handlers", (void *)connection);
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT, "id=%p: Setting connection interrupted and resumed handlers", (void *)connection);
 
     connection->on_interrupted = on_interrupted;
     connection->on_interrupted_ud = on_interrupted_ud;
