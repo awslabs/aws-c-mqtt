@@ -15,8 +15,6 @@
 
 #include <aws/mqtt/private/fixed_header.h>
 
-#include <assert.h>
-
 /**
  * Implements encoding & decoding of the remaining_length field across 1-4 bytes [MQTT-2.2.3].
  *
@@ -25,8 +23,8 @@
  */
 static int s_encode_remaining_length(struct aws_byte_buf *buf, size_t remaining_length) {
 
-    assert(buf);
-    assert(remaining_length < UINT32_MAX);
+    AWS_ASSERT(buf);
+    AWS_ASSERT(remaining_length < UINT32_MAX);
 
     do {
         uint8_t encoded_byte = remaining_length % 128;
@@ -43,7 +41,7 @@ static int s_encode_remaining_length(struct aws_byte_buf *buf, size_t remaining_
 }
 static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remaining_length) {
 
-    assert(cur);
+    AWS_ASSERT(cur);
 
     /* Read remaining_length */
     size_t multiplier = 1;
@@ -97,15 +95,15 @@ bool aws_mqtt_packet_has_flags(const struct aws_mqtt_fixed_header *header) {
             return false;
 
         default:
-            assert(0 && "unreachable");
+            AWS_ASSERT(0 && "unreachable");
             return false;
     }
 }
 
 int aws_mqtt_fixed_header_encode(struct aws_byte_buf *buf, const struct aws_mqtt_fixed_header *header) {
 
-    assert(buf);
-    assert(header);
+    AWS_ASSERT(buf);
+    AWS_ASSERT(header);
 
     /* Check that flags are 0 if they must not be present */
     if (!aws_mqtt_packet_has_flags(header) && header->flags != 0) {
@@ -128,8 +126,8 @@ int aws_mqtt_fixed_header_encode(struct aws_byte_buf *buf, const struct aws_mqtt
 
 int aws_mqtt_fixed_header_decode(struct aws_byte_cursor *cur, struct aws_mqtt_fixed_header *header) {
 
-    assert(cur);
-    assert(header);
+    AWS_ASSERT(cur);
+    AWS_ASSERT(header);
 
     /* Read packet type and flags */
     uint8_t byte_1 = 0;

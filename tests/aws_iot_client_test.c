@@ -77,7 +77,7 @@ static void s_on_puback(
     (void)packet_id;
     (void)error_code;
 
-    assert(error_code == AWS_OP_SUCCESS);
+    AWS_ASSERT(error_code == AWS_OP_SUCCESS);
 
     struct connection_args *args = userdata;
     ++args->pubacks_gotten;
@@ -93,8 +93,8 @@ static void s_on_packet_recieved(
     (void)topic;
     (void)payload;
 
-    assert(payload->len == PAYLOAD_LEN);
-    assert(0 == memcmp(payload->ptr, s_payload, PAYLOAD_LEN));
+    AWS_ASSERT(payload->len == PAYLOAD_LEN);
+    AWS_ASSERT(0 == memcmp(payload->ptr, s_payload, PAYLOAD_LEN));
 
     struct connection_args *args = userdata;
     ++args->packets_gotten;
@@ -124,9 +124,9 @@ static void s_mqtt_on_connection_complete(
     (void)return_code;
     (void)session_present;
 
-    assert(error_code == AWS_OP_SUCCESS);
-    assert(return_code == AWS_MQTT_CONNECT_ACCEPTED);
-    assert(session_present == false);
+    AWS_ASSERT(error_code == AWS_OP_SUCCESS);
+    AWS_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
+    AWS_ASSERT(session_present == false);
 
     struct connection_args *args = userdata;
 
@@ -149,7 +149,7 @@ static void s_mqtt_on_suback(
     (void)qos;
     (void)error_code;
 
-    assert(error_code == AWS_OP_SUCCESS);
+    AWS_ASSERT(error_code == AWS_OP_SUCCESS);
 
     struct connection_args *args = userdata;
 

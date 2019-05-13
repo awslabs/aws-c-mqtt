@@ -141,7 +141,7 @@ static struct aws_mqtt_topic_node *s_topic_node_new(
         return NULL;
     }
     AWS_ZERO_STRUCT(*node);
-    assert(!topic_filter || full_topic);
+    AWS_ASSERT(!topic_filter || full_topic);
 
     if (topic_filter) {
         AWS_LOGF_TRACE(
@@ -198,8 +198,8 @@ static int s_topic_node_destroy_hash_foreach_wrap(void *context, struct aws_hash
 
 int aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_allocator *allocator) {
 
-    assert(tree);
-    assert(allocator);
+    AWS_ASSERT(tree);
+    AWS_ASSERT(allocator);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Creating new topic tree", (void *)tree);
 
@@ -218,7 +218,7 @@ int aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_alloca
 
 void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree) {
 
-    assert(tree);
+    AWS_ASSERT(tree);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_TOPIC_TREE, "tree=%p: Cleaning up topic tree", (void *)tree);
 
@@ -270,7 +270,7 @@ static int s_topic_node_string_finder(void *userdata, struct aws_hash_element *e
 static void s_topic_tree_action_commit(struct topic_tree_action *action, struct aws_mqtt_topic_tree *tree) {
     (void)tree;
 
-    assert(action->node_to_update);
+    AWS_ASSERT(action->node_to_update);
 
     switch (action->mode) {
         case AWS_MQTT_TOPIC_TREE_ADD:
@@ -340,14 +340,14 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                 for (size_t i = sub_parts_len; i > 0; --i) {
                     struct aws_mqtt_topic_node *node = NULL;
                     aws_array_list_get_at(&action->to_remove, &node, i);
-                    assert(node); /* Must be in bounds */
+                    AWS_ASSERT(node); /* Must be in bounds */
 
                     if (!s_topic_node_is_subscription(node) && 0 == aws_hash_table_get_entry_count(&node->subtopics)) {
 
                         /* No subscription and no children, this node needs to go. */
                         struct aws_mqtt_topic_node *grandma = NULL;
                         aws_array_list_get_at(&action->to_remove, &grandma, i - 1);
-                        assert(grandma); /* Must be in bounds */
+                        AWS_ASSERT(grandma); /* Must be in bounds */
 
                         AWS_LOGF_TRACE(
                             AWS_LS_MQTT_TOPIC_TREE,
@@ -394,7 +394,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
 
                     struct aws_mqtt_topic_node *parent = NULL;
                     aws_array_list_get_at(&action->to_remove, &parent, nodes_left);
-                    assert(parent); /* Must be in bounds */
+                    AWS_ASSERT(parent); /* Must be in bounds */
 
                     size_t topic_offset =
                         parent->topic.ptr - aws_string_bytes(parent->topic_filter) + parent->topic.len + 1;
@@ -402,7 +402,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                     /* -1 to avoid touching current */
                     for (size_t i = nodes_left; i > 0; --i) {
                         aws_array_list_get_at(&action->to_remove, &parent, i);
-                        assert(parent); /* Must be in bounds */
+                        AWS_ASSERT(parent); /* Must be in bounds */
 
                         /* Remove this topic and following / from offset. */
                         topic_offset -= (parent->topic.len + 1);
@@ -428,7 +428,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
 
                                 /* This would only happen if there is only one topic in subtopics (current's) and
                                  * it has no children (in which case it should have been removed above). */
-                                assert(new_topic_filter != old_topic_filter);
+                                AWS_ASSERT(new_topic_filter != old_topic_filter);
 
                                 /* Now that the new string has been found, the old one can be destroyed. */
                                 aws_string_destroy((void *)current->topic_filter);
@@ -462,7 +462,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
 
 static void s_topic_tree_action_roll_back(struct topic_tree_action *action, struct aws_mqtt_topic_tree *tree) {
 
-    assert(action);
+    AWS_ASSERT(action);
 
     switch (action->mode) {
         case AWS_MQTT_TOPIC_TREE_ADD: {
@@ -512,10 +512,10 @@ int aws_mqtt_topic_tree_transaction_insert(
     aws_mqtt_userdata_cleanup_fn *cleanup,
     void *userdata) {
 
-    assert(tree);
-    assert(transaction);
-    assert(topic_filter);
-    assert(callback);
+    AWS_ASSERT(tree);
+    AWS_ASSERT(transaction);
+    AWS_ASSERT(topic_filter);
+    AWS_ASSERT(callback);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_TOPIC_TREE,
@@ -580,7 +580,7 @@ int aws_mqtt_topic_tree_transaction_insert(
                 action->first_created = current;
             }
         } else {
-            assert(action->mode == AWS_MQTT_TOPIC_TREE_UPDATE); /* Can't have found an existing node while adding */
+            AWS_ASSERT(action->mode == AWS_MQTT_TOPIC_TREE_UPDATE); /* Can't have found an existing node while adding */
 
             /* If the node exists, just traverse it */
             current = elem->value;
@@ -619,9 +619,9 @@ int aws_mqtt_topic_tree_transaction_remove(
     struct aws_array_list *transaction,
     const struct aws_byte_cursor *topic_filter) {
 
-    assert(tree);
-    assert(transaction);
-    assert(topic_filter);
+    AWS_ASSERT(tree);
+    AWS_ASSERT(transaction);
+    AWS_ASSERT(topic_filter);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_TOPIC_TREE,
@@ -708,7 +708,7 @@ void aws_mqtt_topic_tree_transaction_commit(struct aws_mqtt_topic_tree *tree, st
     for (size_t i = 0; i < num_actions; ++i) {
         struct topic_tree_action *action = NULL;
         aws_array_list_get_at_ptr(transaction, (void **)&action, i);
-        assert(action); /* Within bounds */
+        AWS_ASSERT(action); /* Within bounds */
 
         s_topic_tree_action_commit(action, tree);
     }
@@ -725,7 +725,7 @@ void aws_mqtt_topic_tree_transaction_roll_back(struct aws_mqtt_topic_tree *tree,
     for (size_t i = 1; i <= num_actions; ++i) {
         struct topic_tree_action *action = NULL;
         aws_array_list_get_at_ptr(transaction, (void **)&action, num_actions - i);
-        assert(action); /* Within bounds */
+        AWS_ASSERT(action); /* Within bounds */
 
         s_topic_tree_action_roll_back(action, tree);
     }
@@ -800,8 +800,8 @@ static void s_topic_tree_publish_do_recurse(
         /* Match! */
         struct aws_mqtt_topic_node *multi_wildcard = elem->value;
         /* Must be a subscription and have no children */
-        assert(s_topic_node_is_subscription(multi_wildcard));
-        assert(0 == aws_hash_table_get_entry_count(&multi_wildcard->subtopics));
+        AWS_ASSERT(s_topic_node_is_subscription(multi_wildcard));
+        AWS_ASSERT(0 == aws_hash_table_get_entry_count(&multi_wildcard->subtopics));
         multi_wildcard->callback(&pub->topic_name, &pub->payload, multi_wildcard->userdata);
     }
 
@@ -822,8 +822,8 @@ static void s_topic_tree_publish_do_recurse(
 
 int aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub) {
 
-    assert(tree);
-    assert(pub);
+    AWS_ASSERT(tree);
+    AWS_ASSERT(pub);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_TOPIC_TREE,
