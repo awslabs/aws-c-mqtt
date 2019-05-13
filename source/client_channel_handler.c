@@ -343,7 +343,7 @@ static int s_process_read_message(
         /* Write the chunk to the buffer.
          * This will either complete the packet, or be the entirety of message if more data is required. */
         struct aws_byte_cursor chunk = aws_byte_cursor_advance(&message_cursor, to_read);
-        assert(chunk.ptr); /* Guaranteed to be in bounds */
+        AWS_ASSERT(chunk.ptr); /* Guaranteed to be in bounds */
         result = (int)aws_byte_buf_write_from_whole_cursor(&connection->pending_packet, chunk) - 1;
         if (result) {
             goto handle_error;
@@ -560,7 +560,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
 
             aws_mutex_unlock(&request->connection->outstanding_requests.mutex);
 
-            assert(was_present);
+            AWS_ASSERT(was_present);
 
             aws_memory_pool_release(&request->connection->requests_pool, elem.value);
         } else if (request->connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
@@ -588,8 +588,8 @@ uint16_t mqtt_create_request(
     aws_mqtt_op_complete_fn *on_complete,
     void *on_complete_ud) {
 
-    assert(connection);
-    assert(send_request);
+    AWS_ASSERT(connection);
+    AWS_ASSERT(send_request);
 
     struct aws_mqtt_outstanding_request *next_request = aws_memory_pool_acquire(&connection->requests_pool);
     if (!next_request) {
@@ -608,7 +608,7 @@ uint16_t mqtt_create_request(
 
     } while (elem);
 
-    assert(next_id); /* Somehow have UINT16_MAX outstanding requests, definitely a bug */
+    AWS_ASSERT(next_id); /* Somehow have UINT16_MAX outstanding requests, definitely a bug */
     next_request->message_id = next_id;
 
     /* Store the request by message_id */
@@ -651,7 +651,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     aws_mutex_lock(&connection->outstanding_requests.mutex);
 
     aws_hash_table_find(&connection->outstanding_requests.table, &message_id, &elem);
-    assert(elem);
+    AWS_ASSERT(elem);
 
     aws_mutex_unlock(&connection->outstanding_requests.mutex);
 

@@ -27,7 +27,6 @@
 #include <aws/common/clock.h>
 #include <aws/common/task_scheduler.h>
 
-#include <assert.h>
 #include <inttypes.h>
 
 #ifdef _MSC_VER
@@ -125,7 +124,7 @@ static void s_mqtt_client_shutdown(
 
     } else {
 
-        assert(
+        AWS_ASSERT(
             connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED ||
             connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
             connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
@@ -141,7 +140,7 @@ static void s_mqtt_client_shutdown(
             MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
         }
 
-        assert(
+        AWS_ASSERT(
             connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
             connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING ||
             connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
@@ -336,7 +335,7 @@ static void s_outstanding_request_destroy(void *item) {
 
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client) {
 
-    assert(client);
+    AWS_ASSERT(client);
 
     struct aws_mqtt_client_connection *connection =
         aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_client_connection));
@@ -418,8 +417,8 @@ failed_init_pending_requests_mutex:
 
 void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection) {
 
-    assert(connection);
-    assert(connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
+    AWS_ASSERT(connection);
+    AWS_ASSERT(connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
 
@@ -509,8 +508,8 @@ int aws_mqtt_client_connection_set_login(
     const struct aws_byte_cursor *username,
     const struct aws_byte_cursor *password) {
 
-    assert(connection);
-    assert(username);
+    AWS_ASSERT(connection);
+    AWS_ASSERT(username);
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting username and password", (void *)connection);
 
@@ -537,7 +536,7 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     uint64_t min_timeout,
     uint64_t max_timeout) {
 
-    assert(connection);
+    AWS_ASSERT(connection);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
@@ -634,7 +633,7 @@ int aws_mqtt_client_connection_connect(
     }
 
     /* Create the reconnect task for use later (probably) */
-    assert(!connection->reconnect_task);
+    AWS_ASSERT(!connection->reconnect_task);
     connection->reconnect_task = aws_mem_acquire(connection->allocator, sizeof(struct aws_mqtt_reconnect_task));
     if (!connection->reconnect_task) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to allocate reconnect task", (void *)connection);
@@ -822,7 +821,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
     }
 
     const size_t num_topics = aws_array_list_length(&task_arg->topics);
-    assert(num_topics > 0);
+    AWS_ASSERT(num_topics > 0);
 
     AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics * aws_mqtt_topic_tree_action_size);
     struct aws_array_list transaction;
@@ -832,7 +831,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
 
         struct subscribe_task_topic *topic = NULL;
         int result = aws_array_list_get_at(&task_arg->topics, &topic, i);
-        assert(result == AWS_OP_SUCCESS); /* We know we're within bounds */
+        AWS_ASSERT(result == AWS_OP_SUCCESS); /* We know we're within bounds */
         (void)result;
 
         if (initing_packet) {
@@ -921,7 +920,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
     aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_ud) {
 
-    assert(connection);
+    AWS_ASSERT(connection);
 
     struct subscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
@@ -1032,12 +1031,12 @@ static void s_subscribe_single_complete(
         packet_id,
         error_code);
 
-    assert(aws_array_list_length(&task_arg->topics) == 1);
+    AWS_ASSERT(aws_array_list_length(&task_arg->topics) == 1);
 
     if (task_arg->on_suback) {
         struct subscribe_task_topic *topic = NULL;
         int result = aws_array_list_get_at(&task_arg->topics, &topic, 0);
-        assert(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
+        AWS_ASSERT(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
         (void)result;
 
         aws_mqtt_suback_fn *suback = (aws_mqtt_suback_fn *)task_arg->on_suback;
@@ -1059,7 +1058,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     aws_mqtt_suback_fn *on_suback,
     void *on_suback_ud) {
 
-    assert(connection);
+    AWS_ASSERT(connection);
 
     if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
@@ -1256,7 +1255,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_ud) {
 
-    assert(connection);
+    AWS_ASSERT(connection);
 
     if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
@@ -1348,7 +1347,7 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t message_id, bo
 
         /* Write this chunk */
         struct aws_byte_cursor to_write_cur = aws_byte_cursor_advance(&payload_cur, to_write);
-        assert(to_write_cur.ptr); /* to_write is guaranteed to be inside the bounds of payload_cur */
+        AWS_ASSERT(to_write_cur.ptr); /* to_write is guaranteed to be inside the bounds of payload_cur */
         if (!aws_byte_buf_write_from_whole_cursor(&message->message_data, to_write_cur)) {
 
             aws_mem_release(message->allocator, message);
@@ -1397,7 +1396,7 @@ uint16_t aws_mqtt_client_connection_publish(
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata) {
 
-    assert(connection);
+    AWS_ASSERT(connection);
 
     if (!aws_mqtt_is_valid_topic(topic)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
