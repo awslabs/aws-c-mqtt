@@ -15,7 +15,11 @@ elseif(NOT DEFINED CMAKE_INSTALL_LIBDIR)
     set(CMAKE_INSTALL_LIBDIR "lib")
 endif()
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_PREFIX_PATH}/${CMAKE_INSTALL_LIBDIR}/cmake")
+# This is required in order to append /lib/cmake to each element in CMAKE_PREFIX_PATH
+set(AWS_MODULE_DIR "/${CMAKE_INSTALL_LIBDIR}/cmake")
+string(REPLACE ";" "${AWS_MODULE_DIR};" AWS_MODULE_PATH "${CMAKE_PREFIX_PATH}${AWS_MODULE_DIR}")
+# Append that generated list to the module search path
+list(APPEND CMAKE_MODULE_PATH ${AWS_MODULE_PATH})
 
 include(AwsCFlags)
 include(AwsSharedLibSetup)
@@ -48,11 +52,6 @@ aws_set_common_properties(${CMAKE_PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${CMAKE_PROJECT_NAME} "AWS_MQTT")
 
 aws_add_sanitizers(${CMAKE_PROJECT_NAME})
-
-if (BUILD_SHARED_LIBS)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_MQTT_USE_IMPORT_EXPORT")
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DAWS_MQTT_EXPORTS")
-endif()
 
 # We are not ABI stable yet
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES VERSION 1.0.0)
