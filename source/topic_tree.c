@@ -268,7 +268,7 @@ static int s_topic_node_string_finder(void *userdata, struct aws_hash_element *e
 }
 
 static void s_topic_tree_action_commit(struct topic_tree_action *action, struct aws_mqtt_topic_tree *tree) {
-    (void)tree;
+    AWS_UNUSED_PARAM(tree);
 
     AWS_ASSERT(action->node_to_update);
 

@@ -265,7 +265,7 @@ struct packet_test_fixture *fixture) {
 }
 static bool s_test_connect_eq(void *a, void *b, size_t size) {
 
-    (void)size;
+    AWS_UNUSED_PARAM(size);
 
     struct aws_mqtt_packet_connect *l = a;
     struct aws_mqtt_packet_connect *r = b;
@@ -343,7 +343,7 @@ static int s_test_publish_init(struct packet_test_fixture *fixture) {
 }
 static bool s_test_publish_eq(void *a, void *b, size_t size) {
 
-    (void)size;
+    AWS_UNUSED_PARAM(size);
 
     struct aws_mqtt_packet_publish *l = a;
     struct aws_mqtt_packet_publish *r = b;
@@ -395,7 +395,7 @@ static int s_test_subscribe_clean_up(struct packet_test_fixture *fixture) {
 }
 static bool s_test_subscribe_eq(void *a, void *b, size_t size) {
 
-    (void)size;
+    AWS_UNUSED_PARAM(size);
 
     struct aws_mqtt_packet_subscribe *l = a;
     struct aws_mqtt_packet_subscribe *r = b;
@@ -469,7 +469,7 @@ static int s_test_unsubscribe_clean_up(struct packet_test_fixture *fixture) {
 }
 static bool s_test_unsubscribe_eq(void *a, void *b, size_t size) {
 
-    (void)size;
+    AWS_UNUSED_PARAM(size);
 
     struct aws_mqtt_packet_unsubscribe *l = a;
     struct aws_mqtt_packet_unsubscribe *r = b;

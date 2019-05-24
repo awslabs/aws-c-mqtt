@@ -73,9 +73,9 @@ static void s_on_puback(
     int error_code,
     void *userdata) {
 
-    (void)connection;
-    (void)packet_id;
-    (void)error_code;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(packet_id);
+    AWS_UNUSED_PARAM(error_code);
 
     AWS_ASSERT(error_code == AWS_OP_SUCCESS);
 
@@ -89,9 +89,9 @@ static void s_on_packet_recieved(
     const struct aws_byte_cursor *payload,
     void *userdata) {
 
-    (void)connection;
-    (void)topic;
-    (void)payload;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(topic);
+    AWS_UNUSED_PARAM(payload);
 
     AWS_ASSERT(payload->len == PAYLOAD_LEN);
     AWS_ASSERT(0 == memcmp(payload->ptr, s_payload, PAYLOAD_LEN));
@@ -119,10 +119,10 @@ static void s_mqtt_on_connection_complete(
     bool session_present,
     void *userdata) {
 
-    (void)connection;
-    (void)error_code;
-    (void)return_code;
-    (void)session_present;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(error_code);
+    AWS_UNUSED_PARAM(return_code);
+    AWS_UNUSED_PARAM(session_present);
 
     AWS_ASSERT(error_code == AWS_OP_SUCCESS);
     AWS_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
@@ -143,11 +143,11 @@ static void s_mqtt_on_suback(
     int error_code,
     void *userdata) {
 
-    (void)connection;
-    (void)packet_id;
-    (void)topic;
-    (void)qos;
-    (void)error_code;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(packet_id);
+    AWS_UNUSED_PARAM(topic);
+    AWS_UNUSED_PARAM(qos);
+    AWS_UNUSED_PARAM(error_code);
 
     AWS_ASSERT(error_code == AWS_OP_SUCCESS);
 
@@ -160,7 +160,7 @@ static void s_mqtt_on_suback(
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, void *userdata) {
 
-    (void)connection;
+    AWS_UNUSED_PARAM(connection);
 
     struct connection_args *args = userdata;
 

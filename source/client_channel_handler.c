@@ -40,8 +40,8 @@ typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *connection, st
 static int s_packet_handler_default(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor message_cursor) {
-    (void)connection;
-    (void)message_cursor;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(message_cursor);
 
     AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Unhandled packet type received", (void *)connection);
     return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
@@ -65,7 +65,7 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
 }
 
 static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
-    (void)channel_task;
+    AWS_UNUSED_PARAM(channel_task);
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_mqtt_client_connection *connection = arg;
@@ -257,7 +257,7 @@ static int s_packet_handler_pingresp(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor message_cursor) {
 
-    (void)message_cursor;
+    AWS_UNUSED_PARAM(message_cursor);
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: PINGRESP received", (void *)connection);
 
@@ -455,7 +455,7 @@ done:
 
 static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
 
     return SIZE_MAX;
 }
@@ -463,11 +463,11 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 static void s_destroy(struct aws_channel_handler *handler) {
 
     struct aws_mqtt_client_connection *connection = handler->impl;
-    (void)connection;
+    AWS_UNUSED_PARAM(connection);
 }
 
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return 0;
 }
 
@@ -672,7 +672,7 @@ struct mqtt_shutdown_task {
 
 static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
 
-    (void)status;
+    AWS_UNUSED_PARAM(status);
 
     struct mqtt_shutdown_task *task = AWS_CONTAINER_OF(channel_task, struct mqtt_shutdown_task, task);
     struct aws_mqtt_client_connection *connection = arg;

@@ -27,9 +27,9 @@ static struct aws_byte_cursor s_empty_cursor = {
 static int times_called = 0;
 static void on_publish(const struct aws_byte_cursor *topic, const struct aws_byte_cursor *payload, void *user_data) {
 
-    (void)topic;
-    (void)payload;
-    (void)user_data;
+    AWS_UNUSED_PARAM(topic);
+    AWS_UNUSED_PARAM(payload);
+    AWS_UNUSED_PARAM(user_data);
 
     times_called++;
 }
@@ -68,7 +68,7 @@ static bool s_check_topic_match(struct aws_allocator *allocator, const char *sub
 
 AWS_TEST_CASE(mqtt_topic_tree_match, s_mqtt_topic_tree_match_fn)
 static int s_mqtt_topic_tree_match_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     /* Check single-level filters */
     ASSERT_TRUE(s_check_topic_match(allocator, "a", "a"));
@@ -121,7 +121,7 @@ static struct aws_byte_cursor s_topic_a_a_b = {
 
 AWS_TEST_CASE(mqtt_topic_tree_unsubscribe, s_mqtt_topic_tree_unsubscribe_fn)
 static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_mqtt_topic_tree tree;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_init(&tree, allocator));
@@ -177,7 +177,7 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
 
 AWS_TEST_CASE(mqtt_topic_tree_transactions, s_mqtt_topic_tree_transactions_fn)
 static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_mqtt_topic_tree tree;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_init(&tree, allocator));
@@ -217,8 +217,8 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
 
 AWS_TEST_CASE(mqtt_topic_validation, s_mqtt_topic_validation_fn)
 static int s_mqtt_topic_validation_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)allocator;
-    (void)ctx;
+    AWS_UNUSED_PARAM(allocator);
+    AWS_UNUSED_PARAM(ctx);
 
 #define ASSERT_TOPIC_VALIDITY(expected, topic)                                                                         \
     do {                                                                                                               \

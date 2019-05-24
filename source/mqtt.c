@@ -98,7 +98,7 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
 
 void aws_mqtt_library_init(struct aws_allocator *allocator) {
 
-    (void)allocator;
+    AWS_UNUSED_PARAM(allocator);
 
     static bool s_library_initialized = false;
     if (!s_library_initialized) {

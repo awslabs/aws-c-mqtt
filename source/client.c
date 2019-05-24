@@ -71,8 +71,8 @@ static void s_mqtt_client_shutdown(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
-    (void)channel;
+    AWS_UNUSED_PARAM(bootstrap);
+    AWS_UNUSED_PARAM(channel);
 
     struct aws_mqtt_client_connection *connection = user_data;
 
@@ -178,7 +178,7 @@ static void s_mqtt_client_init(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
+    AWS_UNUSED_PARAM(bootstrap);
 
     struct aws_mqtt_client_connection *connection = user_data;
 
@@ -272,7 +272,7 @@ handle_error:
 
 static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_task_status status) {
 
-    (void)task;
+    AWS_UNUSED_PARAM(task);
 
     struct aws_mqtt_reconnect_task *reconnect = userdata;
     struct aws_mqtt_client_connection *connection = aws_atomic_load_ptr(&reconnect->connection_ptr);
@@ -800,7 +800,7 @@ static void s_on_topic_clean_up(void *userdata) {
 
 static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
 
-    (void)is_first_attempt;
+    AWS_UNUSED_PARAM(is_first_attempt);
 
     struct subscribe_task_arg *task_arg = userdata;
     bool initing_packet = task_arg->subscribe.fixed_header.packet_type == 0;
@@ -832,7 +832,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
         struct subscribe_task_topic *topic = NULL;
         int result = aws_array_list_get_at(&task_arg->topics, &topic, i);
         AWS_ASSERT(result == AWS_OP_SUCCESS); /* We know we're within bounds */
-        (void)result;
+        AWS_UNUSED_PARAM(result);
 
         if (initing_packet) {
             if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->request.topic, topic->request.qos)) {
@@ -1037,7 +1037,7 @@ static void s_subscribe_single_complete(
         struct subscribe_task_topic *topic = NULL;
         int result = aws_array_list_get_at(&task_arg->topics, &topic, 0);
         AWS_ASSERT(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
-        (void)result;
+        AWS_UNUSED_PARAM(result);
 
         aws_mqtt_suback_fn *suback = (aws_mqtt_suback_fn *)task_arg->on_suback;
         suback(connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
@@ -1162,7 +1162,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     bool is_first_attempt,
     void *userdata) {
 
-    (void)is_first_attempt;
+    AWS_UNUSED_PARAM(is_first_attempt);
 
     struct unsubscribe_task_arg *task_arg = userdata;
     struct aws_io_message *message = NULL;
@@ -1340,7 +1340,7 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t message_id, bo
     struct aws_byte_cursor payload_cur = task_arg->payload;
     {
     write_payload_chunk:
-        (void)NULL;
+        AWS_UNUSED_PARAM(NULL);
 
         const size_t left_in_message = message->message_data.capacity - message->message_data.len;
         const size_t to_write = payload_cur.len < left_in_message ? payload_cur.len : left_in_message;
@@ -1434,8 +1434,8 @@ uint16_t aws_mqtt_client_connection_publish(
  ******************************************************************************/
 
 static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
-    (void)message_id;
-    (void)is_first_attempt;
+    AWS_UNUSED_PARAM(message_id);
+    AWS_UNUSED_PARAM(is_first_attempt);
 
     struct aws_mqtt_client_connection *connection = userdata;
 

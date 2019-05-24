@@ -68,15 +68,15 @@ static void s_on_packet_recieved(
     const struct aws_byte_cursor *payload,
     void *user_data) {
 
-    (void)connection;
-    (void)topic;
-    (void)payload;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(topic);
+    AWS_UNUSED_PARAM(payload);
 
     struct aws_byte_cursor expected_payload = {
         .ptr = s_payload,
         .len = PAYLOAD_LEN,
     };
-    (void)expected_payload;
+    AWS_UNUSED_PARAM(expected_payload);
     AWS_ASSERT(aws_byte_cursor_eq(payload, &expected_payload));
 
     struct connection_args *args = user_data;
@@ -95,9 +95,9 @@ static void s_mqtt_on_puback(
     int error_code,
     void *userdata) {
 
-    (void)connection;
-    (void)packet_id;
-    (void)error_code;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(packet_id);
+    AWS_UNUSED_PARAM(error_code);
 
     AWS_ASSERT(error_code == AWS_OP_SUCCESS);
 
@@ -117,10 +117,10 @@ static void s_mqtt_on_connection_complete(
     bool session_present,
     void *user_data) {
 
-    (void)connection;
-    (void)error_code;
-    (void)return_code;
-    (void)session_present;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(error_code);
+    AWS_UNUSED_PARAM(return_code);
+    AWS_UNUSED_PARAM(session_present);
 
     AWS_ASSERT(error_code == AWS_OP_SUCCESS);
     AWS_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
@@ -137,9 +137,9 @@ static void s_mqtt_on_connection_complete(
 
 static void s_mqtt_on_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
 
-    (void)connection;
-    (void)error_code;
-    (void)userdata;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(error_code);
+    AWS_UNUSED_PARAM(userdata);
 
     printf("Connection offline\n");
 }
@@ -150,10 +150,10 @@ static void s_mqtt_on_resumed(
     bool session_present,
     void *userdata) {
 
-    (void)connection;
-    (void)return_code;
-    (void)session_present;
-    (void)userdata;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(return_code);
+    AWS_UNUSED_PARAM(session_present);
+    AWS_UNUSED_PARAM(userdata);
 
     printf("Connection resumed\n");
 }
@@ -164,9 +164,9 @@ static void s_mqtt_on_unsuback(
     int error_code,
     void *userdata) {
 
-    (void)connection;
-    (void)packet_id;
-    (void)error_code;
+    AWS_UNUSED_PARAM(connection);
+    AWS_UNUSED_PARAM(packet_id);
+    AWS_UNUSED_PARAM(error_code);
 
     AWS_ASSERT(error_code == AWS_OP_SUCCESS);
 
@@ -181,7 +181,7 @@ static void s_mqtt_on_unsuback(
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, void *user_data) {
 
-    (void)connection;
+    AWS_UNUSED_PARAM(connection);
 
     struct connection_args *args = user_data;
 
@@ -193,8 +193,8 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
 }
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
+    AWS_UNUSED_PARAM(argc);
+    AWS_UNUSED_PARAM(argv);
 
     AWS_TEST_ALLOCATOR_INIT(paho_client);
 
