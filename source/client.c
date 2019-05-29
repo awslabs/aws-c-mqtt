@@ -1345,13 +1345,15 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t message_id, bo
         const size_t left_in_message = message->message_data.capacity - message->message_data.len;
         const size_t to_write = payload_cur.len < left_in_message ? payload_cur.len : left_in_message;
 
-        /* Write this chunk */
-        struct aws_byte_cursor to_write_cur = aws_byte_cursor_advance(&payload_cur, to_write);
-        AWS_ASSERT(to_write_cur.ptr); /* to_write is guaranteed to be inside the bounds of payload_cur */
-        if (!aws_byte_buf_write_from_whole_cursor(&message->message_data, to_write_cur)) {
+        if (to_write) {
+            /* Write this chunk */
+            struct aws_byte_cursor to_write_cur = aws_byte_cursor_advance(&payload_cur, to_write);
+            AWS_ASSERT(to_write_cur.ptr); /* to_write is guaranteed to be inside the bounds of payload_cur */
+            if (!aws_byte_buf_write_from_whole_cursor(&message->message_data, to_write_cur)) {
 
-            aws_mem_release(message->allocator, message);
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+                aws_mem_release(message->allocator, message);
+                return AWS_MQTT_CLIENT_REQUEST_ERROR;
+            }
         }
 
         if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
