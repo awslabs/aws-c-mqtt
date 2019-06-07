@@ -1259,7 +1259,8 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
         return 0;
     }
 
-    struct unsubscribe_task_arg *task_arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct unsubscribe_task_arg));
+    struct unsubscribe_task_arg *task_arg =
+        aws_mem_calloc(connection->allocator, 1, sizeof(struct unsubscribe_task_arg));
     if (!task_arg) {
         return 0;
     }
