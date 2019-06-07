@@ -338,8 +338,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     AWS_ASSERT(client);
 
     struct aws_mqtt_client_connection *connection =
-        aws_mem_acquire(client->allocator, sizeof(struct aws_mqtt_client_connection));
-
+        aws_mem_calloc(client->allocator, 1, sizeof(struct aws_mqtt_client_connection));
     if (!connection) {
         return NULL;
     }
@@ -347,7 +346,6 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Creating new connection", (void *)connection);
 
     /* Initialize the client */
-    AWS_ZERO_STRUCT(*connection);
     connection->allocator = client->allocator;
     connection->client = client;
     connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
@@ -634,7 +632,7 @@ int aws_mqtt_client_connection_connect(
 
     /* Create the reconnect task for use later (probably) */
     AWS_ASSERT(!connection->reconnect_task);
-    connection->reconnect_task = aws_mem_acquire(connection->allocator, sizeof(struct aws_mqtt_reconnect_task));
+    connection->reconnect_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_reconnect_task));
     if (!connection->reconnect_task) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to allocate reconnect task", (void *)connection);
         goto error;
@@ -922,11 +920,10 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
 
     AWS_ASSERT(connection);
 
-    struct subscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
+    struct subscribe_task_arg *task_arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
         return 0;
     }
-    AWS_ZERO_STRUCT(*task_arg);
 
     task_arg->connection = connection;
     task_arg->on_suback = on_suback;
@@ -951,7 +948,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
         }
 
         struct subscribe_task_topic *task_topic =
-            aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_topic));
+            aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_topic));
         if (!task_topic) {
             goto handle_error;
         }
@@ -1089,7 +1086,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     aws_array_list_init_static(&task_arg->topics, task_topic_storage, 1, sizeof(void *));
 
     /* Allocate the topic and push into the list */
-    task_topic = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_topic));
+    task_topic = aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_topic));
     if (!task_topic) {
         goto handle_error;
     }
@@ -1262,11 +1259,11 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
         return 0;
     }
 
-    struct unsubscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct unsubscribe_task_arg));
+    struct unsubscribe_task_arg *task_arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct unsubscribe_task_arg));
     if (!task_arg) {
         return 0;
     }
-    AWS_ZERO_STRUCT(*task_arg);
+
     task_arg->connection = connection;
     task_arg->filter = *topic_filter;
     task_arg->on_unsuback = on_unsuback;
@@ -1405,7 +1402,7 @@ uint16_t aws_mqtt_client_connection_publish(
         return 0;
     }
 
-    struct publish_task_arg *arg = aws_mem_acquire(connection->allocator, sizeof(struct publish_task_arg));
+    struct publish_task_arg *arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct publish_task_arg));
     if (!arg) {
         return 0;
     }

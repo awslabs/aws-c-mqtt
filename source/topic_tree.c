@@ -135,12 +135,12 @@ static struct aws_mqtt_topic_node *s_topic_node_new(
     const struct aws_byte_cursor *topic_filter,
     const struct aws_string *full_topic) {
 
-    struct aws_mqtt_topic_node *node = aws_mem_acquire(allocator, sizeof(struct aws_mqtt_topic_node));
+    struct aws_mqtt_topic_node *node = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_topic_node));
     if (!node) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_TOPIC_TREE, "Failed to allocate new topic node");
         return NULL;
     }
-    AWS_ZERO_STRUCT(*node);
+
     AWS_ASSERT(!topic_filter || full_topic);
 
     if (topic_filter) {
