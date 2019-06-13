@@ -830,6 +830,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
         struct subscribe_task_topic *topic = NULL;
         int result = aws_array_list_get_at(&task_arg->topics, &topic, i);
         AWS_ASSERT(result == AWS_OP_SUCCESS); /* We know we're within bounds */
+        AWS_ASSERT(topic);
         (void)result;
 
         if (initing_packet) {
@@ -996,6 +997,7 @@ handle_error:
 
                 struct subscribe_task_topic *task_topic = NULL;
                 aws_array_list_get_at(&task_arg->topics, (void **)&task_topic, i);
+                AWS_ASSERT(task_topic);
 
                 aws_string_destroy(task_topic->filter);
                 aws_mem_release(connection->allocator, task_topic);
@@ -1034,6 +1036,7 @@ static void s_subscribe_single_complete(
         struct subscribe_task_topic *topic = NULL;
         int result = aws_array_list_get_at(&task_arg->topics, &topic, 0);
         AWS_ASSERT(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
+        AWS_ASSERT(topic);
         (void)result;
 
         aws_mqtt_suback_fn *suback = (aws_mqtt_suback_fn *)task_arg->on_suback;

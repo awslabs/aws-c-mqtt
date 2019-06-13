@@ -30,6 +30,7 @@ static size_t s_sizeof_encoded_buffer(struct aws_byte_cursor *buf) {
 static int s_encode_buffer(struct aws_byte_buf *buf, const struct aws_byte_cursor cur) {
 
     AWS_ASSERT(buf);
+    AWS_ASSERT(cur.ptr && cur.len);
 
     /* Make sure the buffer isn't too big */
     if (cur.len > UINT16_MAX) {
@@ -871,7 +872,7 @@ int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_buf *buf, const struct aw
     const size_t num_filters = aws_array_list_length(&packet->topic_filters);
     for (size_t i = 0; i < num_filters; ++i) {
 
-        struct aws_byte_cursor topic_filter;
+        struct aws_byte_cursor topic_filter = {0};
         if (aws_array_list_get_at(&packet->topic_filters, (void *)&topic_filter, i)) {
 
             return AWS_OP_ERR;
