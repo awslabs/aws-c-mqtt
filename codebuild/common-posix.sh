@@ -30,6 +30,7 @@ fi
 
 install_library aws-c-common
 install_library aws-c-io
+install_library aws-c-compression
 install_library aws-c-http
 
 if [ "$CODEBUILD_SRC_DIR" ]; then
