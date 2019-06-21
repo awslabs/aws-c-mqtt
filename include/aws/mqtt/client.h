@@ -28,6 +28,8 @@
 
 /* forward declares */
 struct aws_client_bootstrap;
+struct aws_http_header;
+struct aws_http_request;
 struct aws_socket_options;
 struct aws_tls_connection_options;
 
@@ -97,8 +99,37 @@ typedef void(aws_mqtt_client_publish_received_fn)(
     const struct aws_byte_cursor *payload,
     void *userdata);
 
-/* Called when a connection is closed, right before any resources are deleted */
+/** Called when a connection is closed, right before any resources are deleted */
 typedef void(aws_mqtt_client_on_disconnect_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+
+/**
+ * Function that may transform the websocket handshake request.
+ * Called each time a websocket connection is attempted.
+ *
+ * The default request uses path "/mqtt". All required headers are present,
+ * plus the optional header "Sec-WebSocket-Protocol: mqtt".
+ *
+ * Return AWS_OP_SUCCESS to continue, or AWS_OP_ERR to stop the connection attempt.
+ */
+typedef int aws_mqtt_transform_websocket_handshake_fn(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_http_request *request,
+    void *userdata);
+
+/**
+ * Function that may accept or reject a websocket handshake response.
+ * Called each time a valid websocket connection is established.
+ *
+ * All required headers have been checked already (ex: "Sec-Websocket-Accept"),
+ * but optional headers have not (Ex: "Sec-Websocket-Protocol").
+ *
+ * Return AWS_OP_SUCCESS to accept the connection or AWS_OP_ERR to stop the connection attempt.
+ */
+typedef int aws_mqtt_validate_websocket_handshake_fn(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_http_header *header_array,
+    size_t num_headers,
+    void *userdata);
 
 /** Passed to subscribe() and suback callbacks */
 struct aws_mqtt_topic_subscription {
@@ -126,7 +157,8 @@ struct aws_mqtt_topic_subscription {
  * ping_timeout_ms           Network connection is re-established if a ping response is not received within
  *                           this amount of time (milliseconds). If you specify 0, a default value of 3 seconds is used.
  *                           Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
- * (low-power) scenario, but keep-alive options may not work the same way on every platform and OS version.
+ *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
+ *                           and OS version.
  * on_connection_complete    The callback to fire when the connection attempt completes
  * user_data                  Passed to the userdata param of on_connection_complete
  */
@@ -214,6 +246,27 @@ int aws_mqtt_client_connection_set_login(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *username,
     const struct aws_byte_cursor *password);
+
+/**
+ * Use MQTT over websockets when connecting.
+ * Requires the MQTT_WITH_WEBSOCKETS build option.
+ *
+ * In this scenario, an HTTP connection is established, which is then upgraded to a websocket connection,
+ * which is then used to send MQTT data.
+ *
+ * \param[in] connection        The connection object.
+ * \param[in] transformer       [optional] Function that may transform the websocket handshake request.
+ * \param[in] transformer_ud    [optional] Userdata for request_transformer.
+ * \param[in] validator         [optional] Function that may reject the websocket handshake response.
+ * \param[in] validator_ud      [optional] Userdata for response_validator.
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_use_websockets(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_transform_websocket_handshake_fn *transformer,
+    void *transformer_ud,
+    aws_mqtt_validate_websocket_handshake_fn *validator,
+    void *validator_ud);
 
 /**
  * Sets the minimum and maximum reconnect timeouts.

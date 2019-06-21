@@ -162,6 +162,14 @@ struct aws_mqtt_client_connection {
         struct aws_byte_buf payload;
     } will;
 
+    struct {
+        aws_mqtt_transform_websocket_handshake_fn *handshake_transformer;
+        void *handshake_transformer_ud;
+        aws_mqtt_validate_websocket_handshake_fn *handshake_validator;
+        void *handshake_validator_ud;
+        bool enabled;
+    } websocket;
+
     /* number of times this connection has successfully CONNACK-ed, used
      * to ensure on_connection_completed is sent on the first completed
      * CONNECT/CONNACK cycle */
