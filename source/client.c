@@ -675,7 +675,7 @@ static int s_websocket_connect(struct aws_mqtt_client_connection *connection) {
     AWS_ASSERT(connection->websocket.enabled);
 
     /* These defaults were chosen because they're commmon in other MQTT libraries.
-     * The user can modify this in their transform callback if they need to. */
+     * The user can modify the request in their transform callback if they need to. */
     const struct aws_byte_cursor default_path = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("/mqtt");
     const struct aws_http_header default_protocol_header = {
         .name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("Sec-WebSocket-Protocol"),
