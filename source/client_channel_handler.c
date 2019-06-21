@@ -53,6 +53,9 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
 
     uint64_t schedule_time = 0;
     aws_channel_current_clock_time(connection->slot->channel, &schedule_time);
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING. current timestamp is %llu",
+            (void *)connection, (unsigned long long)schedule_time);
+
     if (connection->keep_alive_time_secs) {
         schedule_time +=
             aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
@@ -61,6 +64,8 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
             aws_timestamp_convert(s_default_keep_alive_ping_freq_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: The next ping will be run at timestamp %llu",
+                   (void *)connection, (unsigned long long)schedule_time);
     aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, schedule_time);
 }
 
@@ -69,6 +74,8 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_mqtt_client_connection *connection = arg;
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING",
+                       (void *)connection);
         aws_mqtt_client_connection_ping(connection);
         s_schedule_ping(connection);
     }
@@ -81,11 +88,15 @@ static int s_packet_handler_connack(
 
     struct aws_mqtt_packet_connack connack;
     if (aws_mqtt_packet_connack_decode(&message_cursor, &connack)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: error %d parsing CONNACK packet",
+                (void *)connection, aws_last_error());
+
         return AWS_OP_ERR;
     }
 
     /* User requested disconnect, don't do anything */
     if (connection->state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: User has requested disconnect, dropping connection", (void *)connection);
         return AWS_OP_SUCCESS;
     }
 
@@ -98,15 +109,24 @@ static int s_packet_handler_connack(
      * CONNECT/CONNACK cycle completes. In that case, we must deliver on_connection_complete
      * on the first successful CONNACK or user code will never think it's connected */
     if (was_reconnecting && connection->connection_count > 1) {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection is a resumed connection, invoking on_resumed callback",
+                (void *)connection);
+
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
     } else {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection is a new connection, invoking on_connection_complete callback",
+                       (void *)connection);
         MQTT_CLIENT_CALL_CALLBACK_ARGS(
             connection, on_connection_complete, AWS_OP_SUCCESS, connack.connect_return_code, connack.session_present);
     }
 
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection callback completed",
+                   (void *)connection);
+
     if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
         /* If successfully connected, schedule all pending tasks */
-
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted processing offline requests.",
+                       (void *)connection);
         struct aws_linked_list requests;
         aws_linked_list_init(&requests);
 
@@ -122,12 +142,16 @@ static int s_packet_handler_connack(
 
                 struct aws_mqtt_outstanding_request *request =
                     AWS_CONTAINER_OF(current, struct aws_mqtt_outstanding_request, list_node);
+                AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: processing offline request %d",
+                               (void *)connection, (int)request->message_id);
                 aws_channel_schedule_task_now(connection->slot->channel, &request->timeout_task);
 
                 current = current->next;
             } while (current != end);
         }
     } else {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: invalid connect return code %d, disconnecting",
+                       (void *)connection, connack.connect_return_code);
         /* If error code returned, disconnect */
         mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
@@ -263,6 +287,9 @@ static int s_packet_handler_pingresp(
 
     /* Store the timestamp this was received */
     aws_channel_current_clock_time(connection->slot->channel, &connection->last_pingresp_timestamp);
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: New last ping timestamp %llu",
+            (void *)connection, (unsigned long long)connection->last_pingresp_timestamp);
+
 
     return AWS_OP_SUCCESS;
 }
@@ -296,12 +323,13 @@ static int s_process_mqtt_packet(
 
     /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
     if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING && packet_type != AWS_MQTT_PACKET_CONNACK) {
-
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: First message received from the server was not a CONNACK. Terminating connection.", (void *)connection);
         mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_PROTOCOL_ERROR);
         return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
     if (AWS_UNLIKELY(packet_type > AWS_MQTT_PACKET_DISCONNECT || packet_type < AWS_MQTT_PACKET_CONNECT)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Invalid packet type received %d. Terminating connection.", (void *)connection, (int)packet_type);
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
     }
 
@@ -323,12 +351,14 @@ static int s_process_read_message(
         return AWS_OP_ERR;
     }
 
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: precessing read message of size %llu",
+                   (void *)connection, (unsigned long long)message->message_data.len);
+
     /* This cursor will be updated as we read through the message. */
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
     /* If there's pending packet left over from last time, attempt to complete it. */
     if (connection->pending_packet.len) {
-
         int result = AWS_OP_SUCCESS;
 
         /* This determines how much to read from the message (min(expected_remaining, message.len)) */
@@ -351,11 +381,16 @@ static int s_process_read_message(
 
         /* If the packet is still incomplete, don't do anything with the data. */
         if (!packet_complete) {
+            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: partial message is still incomplete, waiting on another read.",
+                           (void *)connection);
+
             return AWS_OP_SUCCESS;
         }
 
         /* Handle the completed pending packet */
         struct aws_byte_cursor packet_data = aws_byte_cursor_from_buf(&connection->pending_packet);
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: full mqtt packet re-assembled, dispatching.",
+                       (void *)connection);
         result = s_process_mqtt_packet(connection, aws_mqtt_get_packet_type(packet_data.ptr), packet_data);
 
     handle_error:
@@ -383,6 +418,8 @@ static int s_process_read_message(
         if (result) {
             if (aws_last_error() == AWS_ERROR_SHORT_BUFFER) {
                 /* Message data too short, store data and come back later. */
+                AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: message is incomplete, waiting on another read.",
+                               (void *)connection);
                 if (aws_byte_buf_init(
                         &connection->pending_packet,
                         connection->allocator,
@@ -406,6 +443,8 @@ static int s_process_read_message(
 
         struct aws_byte_cursor packet_data =
             aws_byte_cursor_advance(&message_cursor, fixed_header_size + packet_header.remaining_length);
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: full mqtt packet read, dispatching.",
+                       (void *)connection);
         s_process_mqtt_packet(connection, packet_header.packet_type, packet_data);
     }
 
@@ -432,6 +471,8 @@ static int s_shutdown(
         if (!free_scarce_resources_immediately) {
 
             if (error_code == AWS_OP_SUCCESS) {
+                AWS_LOGF_INFO(AWS_LS_MQTT_CLIENT, "id=%p: sending disconnect message.",
+                               (void *)connection);
                 /* On clean shutdown, send the disconnect message */
                 struct aws_mqtt_packet_connection disconnect;
                 aws_mqtt_packet_disconnect_init(&disconnect);
@@ -507,12 +548,16 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
     struct aws_mqtt_outstanding_request *request = arg;
 
     if (status == AWS_TASK_STATUS_CANCELED) {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "static: task id %p, was canceled due to the channel shutting down. Canceling request for packet id %d.",
+                      (void *)task, (int)request->message_id);
         /* If task cancelled, assume safe shutdown is in progress and signal hash_table destroy to clean up */
         request->cancelled = true;
         return;
     }
 
     if (request->cancelled) {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: request was canceled. Canceling request for packet id %d.",
+                       (void *)request->connection, (int)request->message_id);
         /* If the request was cancelled, assume all containers are gone and just free */
         aws_memory_pool_release(&request->connection->requests_pool, request);
         return;
@@ -528,6 +573,8 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             switch (state) {
                 case AWS_MQTT_CLIENT_REQUEST_ERROR:
                     error_code = aws_last_error();
+                    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: sending request %d failed with error %d.",
+                                   (void *)request->connection, (int)request->message_id, error_code);
                     /* fall-thru */
 
                 case AWS_MQTT_CLIENT_REQUEST_COMPLETE:
@@ -615,6 +662,7 @@ uint16_t mqtt_create_request(
     if (aws_hash_table_put(&connection->outstanding_requests.table, &next_request->message_id, next_request, NULL)) {
 
         aws_memory_pool_release(&connection->requests_pool, next_request);
+        aws_mutex_unlock(&connection->outstanding_requests.mutex);
         return 0;
     }
 
