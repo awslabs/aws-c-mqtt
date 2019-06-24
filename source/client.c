@@ -329,9 +329,10 @@ static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_t
                 el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
-                "id=%p: Scheduling reconnect, for %" PRIu64,
+                "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
                 (void *)connection,
-                connection->reconnect_timeouts.next_attempt);
+                connection->reconnect_timeouts.next_attempt,
+                (void *)el);
         } else {
             connection->reconnect_task->task.timestamp = 0;
         }
