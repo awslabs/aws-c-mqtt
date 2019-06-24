@@ -56,10 +56,7 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
     uint64_t schedule_time = 0;
     aws_channel_current_clock_time(connection->slot->channel, &schedule_time);
     AWS_LOGF_TRACE(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Scheduling PING. current timestamp is %llu",
-        (void *)connection,
-        (unsigned long long)schedule_time);
+        AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING. current timestamp is %" PRIu64, (void *)connection, schedule_time);
 
     if (connection->keep_alive_time_secs) {
         schedule_time +=
@@ -71,9 +68,9 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: The next ping will be run at timestamp %llu",
+        "id=%p: The next ping will be run at timestamp %" PRIu64,
         (void *)connection,
-        (unsigned long long)schedule_time);
+        schedule_time);
     aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, schedule_time);
 }
 
@@ -366,7 +363,7 @@ static int s_process_mqtt_packet(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Invalid packet type received %d. Terminating connection.",
             (void *)connection,
-            (int)packet_type);
+            packet_type);
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
     }
 
@@ -390,9 +387,9 @@ static int s_process_read_message(
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: precessing read message of size %llu",
+        "id=%p: precessing read message of size %" PRIu64,
         (void *)connection,
-        (unsigned long long)message->message_data.len);
+        message->message_data.len);
 
     /* This cursor will be updated as we read through the message. */
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
@@ -688,10 +685,10 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             ttr += request->connection->request_timeout_ns;
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
-                "id=%p: scheduling timeout task for message id %" PRIu16 " to run at %llu.",
+                "id=%p: scheduling timeout task for message id %" PRIu16 " to run at %" PRIu64,
                 (void *)request->connection,
                 request->message_id,
-                (unsigned long long)ttr);
+                ttr);
 
             aws_channel_schedule_task_future(request->connection->slot->channel, task, ttr);
         } else {

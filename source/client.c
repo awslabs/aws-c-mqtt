@@ -228,18 +228,18 @@ static void s_mqtt_client_init(
 
     if (connection->will.topic.buffer) {
         /* Add will if present */
+
+        struct aws_byte_cursor topic_cur = aws_byte_cursor_from_buf(&connection->will.topic);
+        struct aws_byte_cursor payload_cur = aws_byte_cursor_from_buf(&connection->will.payload);
+
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Adding will to connection on " PRInSTR " with payload " PRInSTR,
             (void *)connection,
-            AWS_BYTE_CURSOR_PRI(aws_byte_cursor_from_buf(&connection->will.topic)),
-            AWS_BYTE_CURSOR_PRI(aws_byte_cursor_from_buf(&connection->will.payload)));
+            AWS_BYTE_CURSOR_PRI(topic_cur),
+            AWS_BYTE_CURSOR_PRI(payload_cur));
         aws_mqtt_packet_connect_add_will(
-            &connect,
-            aws_byte_cursor_from_buf(&connection->will.topic),
-            connection->will.qos,
-            connection->will.retain,
-            aws_byte_cursor_from_buf(&connection->will.payload));
+            &connect, topic_cur, connection->will.qos, connection->will.retain, payload_cur);
     }
 
     if (connection->username) {
