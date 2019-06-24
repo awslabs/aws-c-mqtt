@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-mqtt C)
 
+option(MQTT_WITH_WEBSOCKETS "Enable MQTT connections over websockets. Requires aws-c-http. " OFF)
+
 if (DEFINED CMAKE_PREFIX_PATH)
     file(TO_CMAKE_PATH ${CMAKE_PREFIX_PATH} CMAKE_PREFIX_PATH)
 endif()
@@ -63,6 +65,12 @@ target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
 
 find_package(aws-c-io REQUIRED)
 target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC AWS::aws-c-io)
+
+if (MQTT_WITH_WEBSOCKETS)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_MQTT_WITH_WEBSOCKETS")
+    find_package(aws-c-http REQUIRED)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC AWS::aws-c-http)
+endif ()
 
 aws_prepare_shared_lib_exports(${CMAKE_PROJECT_NAME})
 
