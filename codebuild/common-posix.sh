@@ -42,7 +42,7 @@ cd build
 cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH -DCMAKE_PREFIX_PATH=$INSTALL_PATH -DMQTT_WITH_WEBSOCKETS=ON -DENABLE_SANITIZERS=ON $CMAKE_ARGS ../
 make
 
-LSAN_OPTIONS=verbosity=1:log_threads=1 ctest --output-on-failure
+LSAN_OPTIONS=verbosity=1 ctest --output-on-failure
 
 # If running on linux, run the integration test
 if [ "$TRAVIS_OS_NAME" != "osx" ]; then
