@@ -219,6 +219,12 @@ static void s_mqtt_client_init(
 
     if (connection->will.topic.buffer) {
         /* Add will if present */
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Adding will to connection on " PRInSTR " with payload " PRInSTR,
+            (void *)connection,
+            AWS_BYTE_CURSOR_PRI(aws_byte_cursor_from_buf(&connection->will.topic)),
+            AWS_BYTE_CURSOR_PRI(aws_byte_cursor_from_buf(&connection->will.payload)));
         aws_mqtt_packet_connect_add_will(
             &connect,
             aws_byte_cursor_from_buf(&connection->will.topic),
@@ -229,6 +235,13 @@ static void s_mqtt_client_init(
 
     if (connection->username) {
         struct aws_byte_cursor username_cur = aws_byte_cursor_from_string(connection->username);
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Adding username " PRInSTR " to connection",
+            (void *)connection,
+            AWS_BYTE_CURSOR_PRI(username_cur))
+
         struct aws_byte_cursor password_cur = {
             .ptr = NULL,
             .len = 0,
@@ -305,6 +318,11 @@ static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_t
                 aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
             aws_event_loop_schedule_task_future(
                 el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Scheduling reconnect, for %" PRIu64,
+                (void *)connection,
+                connection->reconnect_timeouts.next_attempt);
         } else {
             connection->reconnect_task->task.timestamp = 0;
         }
@@ -601,6 +619,12 @@ int aws_mqtt_client_connection_connect(
             (uint64_t)connection_options->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: using ping timeout of %" PRIu64 " ns",
+        (void *)connection,
+        connection->request_timeout_ns);
+
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (connection_options->tls_options) {
         if (aws_tls_connection_options_copy(&connection->tls_options, connection_options->tls_options)) {
@@ -681,6 +705,8 @@ int aws_mqtt_client_connection_reconnect(
     connection->on_connection_complete_ud = userdata;
 
     if (connection->clean_session) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: creating a clean session, clearing subscriptions", (void *)connection);
         /* If clean_session is set, all subscriptions will be reset by the server,
         so we can clean the local tree out too. */
         aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
@@ -725,6 +751,8 @@ int aws_mqtt_client_connection_disconnect(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_disconnect_fn *on_disconnect,
     void *userdata) {
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: user called disconnect.", (void *)connection);
 
     if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED ||
         connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
@@ -1473,7 +1501,12 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bo
 
     if (current_time - connection->last_pingresp_timestamp > connection->request_timeout_ns) {
         /* It's been too long since the last ping, close the connection */
-
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: ping timeout detected. Current time is %" PRIu64 " and last ping resp time is %" PRIu64,
+            (void *)connection,
+            current_time,
+            connection->last_pingresp_timestamp);
         mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_TIMEOUT);
     }
 
