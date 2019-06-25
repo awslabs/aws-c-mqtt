@@ -373,7 +373,7 @@ static int s_process_read_message(
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: precessing read message of size %" PRIu64,
+        "id=%p: precessing read message of size %zu",
         (void *)connection,
         message->message_data.len);
 
