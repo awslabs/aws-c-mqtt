@@ -868,7 +868,8 @@ int aws_mqtt_client_connection_connect(
             (void *)connection,
             connection->keep_alive_time_secs,
             connection->request_timeout_ns);
-        AWS_FATAL_ASSERT(0);
+        AWS_FATAL_ASSERT(
+            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS > connection->request_timeout_ns);
     }
 
     AWS_LOGF_INFO(

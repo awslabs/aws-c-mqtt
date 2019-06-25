@@ -429,18 +429,6 @@ uint16_t aws_mqtt_client_connection_publish(
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata);
 
-/**
- * Sends a PINGREQ packet to the server to keep the connection alive.
- * If a PINGRESP is not received within a reasonable period of time, the connection will be closed.
- *
- * \params[in] connection   The connection to ping on
- *
- * \returns AWS_OP_SUCCESS if the connection is open and the PINGREQ is sent or queued to send,
- *              otherwise AWS_OP_ERR and aws_last_error() is set.
- */
-AWS_MQTT_API
-int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
-
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_CLIENT_H */
