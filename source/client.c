@@ -42,6 +42,9 @@
 /* 3 seconds */
 static const uint64_t s_default_request_timeout_ns = 3000000000;
 
+/* 1 hour */
+static const uint64_t s_default_keep_alive_sec = 3600;
+
 /*******************************************************************************
  * Client Init
  ******************************************************************************/
@@ -843,6 +846,10 @@ int aws_mqtt_client_connection_connect(
     connection->clean_session = connection_options->clean_session;
     connection->keep_alive_time_secs = connection_options->keep_alive_time_secs;
     connection->connection_count = 0;
+
+    if (!connection->keep_alive_time_secs) {
+        connection->keep_alive_time_secs = s_default_keep_alive_sec;
+    }
 
     if (!connection_options->ping_timeout_ms) {
         connection->request_timeout_ns = s_default_request_timeout_ns;
