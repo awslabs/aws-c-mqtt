@@ -34,9 +34,6 @@
  * Packet State Machine
  ******************************************************************************/
 
-/* one hour */
-static const uint16_t s_default_keep_alive_ping_freq_secs = 3600;
-
 typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor);
 
 static int s_packet_handler_default(
@@ -58,13 +55,8 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING. current timestamp is %" PRIu64, (void *)connection, schedule_time);
 
-    if (connection->keep_alive_time_secs) {
-        schedule_time +=
-            aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    } else {
-        schedule_time +=
-            aws_timestamp_convert(s_default_keep_alive_ping_freq_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    }
+    schedule_time +=
+        aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
@@ -310,13 +302,7 @@ static int s_packet_handler_pingresp(
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: PINGRESP received", (void *)connection);
 
-    /* Store the timestamp this was received */
-    aws_channel_current_clock_time(connection->slot->channel, &connection->last_pingresp_timestamp);
-    AWS_LOGF_TRACE(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: New last ping timestamp %" PRIu64,
-        (void *)connection,
-        connection->last_pingresp_timestamp);
+    connection->waiting_on_ping_response = false;
 
     return AWS_OP_SUCCESS;
 }

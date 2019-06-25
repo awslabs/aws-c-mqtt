@@ -153,14 +153,14 @@ struct aws_mqtt_topic_subscription {
  * clean_session             True to discard all server session data and start fresh
  * keep_alive_time_secs      The keep alive value to place in the CONNECT PACKET, a PING will automatically
  *                           be sent at this interval as well. If you specify 0, defaults will be used
- *                           and a ping will be sent once per 60 minutes.
- * ping_timeout_ms           Network connection is re-established if a ping response is not received within
- *                           this amount of time (milliseconds). If you specify 0, a default value of 3 seconds is used.
- *                           Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
+ *                           and a ping will be sent once per 60 minutes. This value must be greater than
+ * ping_timeout_ms           Network connection is re-established if a ping response is not received
+ *                           within this amount of time (milliseconds). If you specify 0, a default value of 3 seconds
+ *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
- *                           and OS version.
- * on_connection_complete    The callback to fire when the connection attempt completes
- * user_data                  Passed to the userdata param of on_connection_complete
+ *                           and OS version. This value must be less than keep_alive_time_secs.
+ * on_connection_complete    The callback to fire when the connection attempt completes user_data
+ *                           Passed to the userdata param of on_connection_complete
  */
 struct aws_mqtt_connection_options {
     struct aws_byte_cursor host_name;
@@ -429,18 +429,6 @@ uint16_t aws_mqtt_client_connection_publish(
     const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata);
-
-/**
- * Sends a PINGREQ packet to the server to keep the connection alive.
- * If a PINGRESP is not received within a reasonable period of time, the connection will be closed.
- *
- * \params[in] connection   The connection to ping on
- *
- * \returns AWS_OP_SUCCESS if the connection is open and the PINGREQ is sent or queued to send,
- *              otherwise AWS_OP_ERR and aws_last_error() is set.
- */
-AWS_MQTT_API
-int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
 
 AWS_EXTERN_C_END
 
