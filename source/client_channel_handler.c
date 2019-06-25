@@ -58,13 +58,8 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING. current timestamp is %" PRIu64, (void *)connection, schedule_time);
 
-    if (connection->keep_alive_time_secs) {
-        schedule_time +=
-            aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    } else {
-        schedule_time +=
-            aws_timestamp_convert(s_default_keep_alive_ping_freq_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    }
+    schedule_time +=
+        aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
