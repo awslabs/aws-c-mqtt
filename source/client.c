@@ -863,10 +863,10 @@ int aws_mqtt_client_connection_connect(
             connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->request_timeout_ns)) {
         AWS_LOGF_FATAL(
             AWS_LS_MQTT_CLIENT,
-            "id=%p: Illegal configuration, Connection keep alive %" PRIu16
-            "s must be greater than the request timeouts %" PRIu64 "ns.",
+            "id=%p: Illegal configuration, Connection keep alive %" PRIu64
+            "ns must be greater than the request timeouts %" PRIu64 "ns.",
             (void *)connection,
-            connection->keep_alive_time_secs,
+            (uint64_t)connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS,
             connection->request_timeout_ns);
         AWS_FATAL_ASSERT(
             connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS > connection->request_timeout_ns);
