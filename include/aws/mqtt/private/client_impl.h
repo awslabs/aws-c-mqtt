@@ -136,8 +136,6 @@ struct aws_mqtt_client_connection {
     struct aws_mqtt_reconnect_task *reconnect_task;
     struct aws_channel_task ping_task;
 
-    uint64_t last_pingresp_timestamp;
-
     struct {
         uint64_t current;      /* seconds */
         uint64_t min;          /* seconds */
@@ -174,6 +172,8 @@ struct aws_mqtt_client_connection {
      * to ensure on_connection_completed is sent on the first completed
      * CONNECT/CONNACK cycle */
     size_t connection_count;
+
+    bool waiting_on_ping_response;
 };
 
 struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);

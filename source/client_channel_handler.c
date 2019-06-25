@@ -310,13 +310,7 @@ static int s_packet_handler_pingresp(
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: PINGRESP received", (void *)connection);
 
-    /* Store the timestamp this was received */
-    aws_channel_current_clock_time(connection->slot->channel, &connection->last_pingresp_timestamp);
-    AWS_LOGF_TRACE(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: New last ping timestamp %" PRIu64,
-        (void *)connection,
-        connection->last_pingresp_timestamp);
+    connection->waiting_on_ping_response = false;
 
     return AWS_OP_SUCCESS;
 }

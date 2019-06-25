@@ -851,6 +851,19 @@ int aws_mqtt_client_connection_connect(
             (uint64_t)connection_options->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
+    /* Keep alive time should always be greater than the timeouts. */
+    if (AWS_UNLIKELY(
+            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->request_timeout_ns)) {
+        AWS_LOGF_FATAL(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Illegal configuration, Connection keep alive %" PRIu16
+            "s must be greater than the request timeouts %" PRIu64 "ns.",
+            (void *)connection,
+            connection->keep_alive_time_secs,
+            connection->request_timeout_ns);
+        AWS_FATAL_ASSERT(0);
+    }
+
     AWS_LOGF_INFO(
         AWS_LS_MQTT_CLIENT,
         "id=%p: using ping timeout of %" PRIu64 " ns",
@@ -1735,22 +1748,17 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bo
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
 
+        /* Mark down that now is when the last pingreq was sent */
+        connection->waiting_on_ping_response = true;
+
         return AWS_MQTT_CLIENT_REQUEST_ONGOING;
     }
 
     /* Check that a pingresp has been received since pingreq was sent */
-
-    uint64_t current_time = 0;
-    aws_channel_current_clock_time(connection->slot->channel, &current_time);
-
-    if (current_time - connection->last_pingresp_timestamp > connection->request_timeout_ns) {
+    if (connection->waiting_on_ping_response) {
+        connection->waiting_on_ping_response = false;
         /* It's been too long since the last ping, close the connection */
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: ping timeout detected. Current time is %" PRIu64 " and last ping resp time is %" PRIu64,
-            (void *)connection,
-            current_time,
-            connection->last_pingresp_timestamp);
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: ping timeout detected", (void *)connection);
         mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_TIMEOUT);
     }
 
