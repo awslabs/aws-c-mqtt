@@ -916,7 +916,7 @@ int aws_mqtt_client_connection_connect(
     }
     aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
     connection->reconnect_task->allocator = connection->allocator;
-    aws_task_init(&connection->reconnect_task->task, s_attempt_reconect, connection->reconnect_task);
+    aws_task_init(&connection->reconnect_task->task, s_attempt_reconect, connection->reconnect_task, "mqtt_reconnect");
 
     /* Only set connection->client_id if a new one was provided */
     struct aws_byte_buf client_id_buf =

@@ -48,7 +48,7 @@ static int s_packet_handler_default(
 
 static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
 static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
-    aws_channel_task_init(&connection->ping_task, s_on_time_to_ping, connection);
+    aws_channel_task_init(&connection->ping_task, s_on_time_to_ping, connection, "mqtt_ping");
 
     uint64_t schedule_time = 0;
     aws_channel_current_clock_time(connection->slot->channel, &schedule_time);
@@ -607,7 +607,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
                     error_code = aws_last_error();
                     AWS_LOGF_ERROR(
                         AWS_LS_MQTT_CLIENT,
-                        "id=%p: sending request %d failed with error %" PRIu16 ".",
+                        "id=%p: sending request %" PRIu16 " failed with error %d.",
                         (void *)request->connection,
                         request->message_id,
                         error_code);
@@ -740,7 +740,7 @@ uint16_t mqtt_create_request(
     next_request->on_complete = on_complete;
     next_request->on_complete_ud = on_complete_ud;
 
-    aws_channel_task_init(&next_request->timeout_task, s_request_timeout_task, next_request);
+    aws_channel_task_init(&next_request->timeout_task, s_request_timeout_task, next_request, "mqtt_request_timeout");
 
     /* Send the request now if on channel's thread, otherwise schedule a task */
     if (connection->state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
@@ -837,7 +837,7 @@ void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int err
         struct mqtt_shutdown_task *shutdown_task =
             aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));
         shutdown_task->error_code = error_code;
-        aws_channel_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection);
+        aws_channel_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
         aws_channel_schedule_task_now(connection->slot->channel, &shutdown_task->task);
     }
 }
