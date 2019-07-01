@@ -607,7 +607,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
                     error_code = aws_last_error();
                     AWS_LOGF_ERROR(
                         AWS_LS_MQTT_CLIENT,
-                        "id=%p: sending request %d failed with error %" PRIu16 ".",
+                        "id=%p: sending request %" PRIu16 " failed with error %d.",
                         (void *)request->connection,
                         request->message_id,
                         error_code);
