@@ -147,6 +147,9 @@ void aws_mqtt_library_init(struct aws_allocator *allocator) {
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_ALREADY_CONNECTED,
                 "The requested operation is invalid as the connection is already open."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_BUILT_WITHOUT_WEBSOCKETS,
+                "Library built without MQTT_WITH_WEBSOCKETS option."),
         };
         /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

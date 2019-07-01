@@ -133,7 +133,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_ud);
 ```
-Unsubscribes ffrom the topic filter given. `topic_filter` must persist until `on_unsuback` is called. The packet_id of
+Unsubscribes from the topic filter given. `topic_filter` must persist until `on_unsuback` is called. The packet_id of
 the UNSUBSCRIBE packet will be returned, or 0 on error.
 
 ```c
