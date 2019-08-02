@@ -166,6 +166,8 @@ struct aws_mqtt_client_connection {
         aws_mqtt_validate_websocket_handshake_fn *handshake_validator;
         void *handshake_validator_ud;
         bool enabled;
+
+        struct aws_http_message *handshake_request;
     } websocket;
 
     /* number of times this connection has successfully CONNACK-ed, used

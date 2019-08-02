@@ -693,6 +693,8 @@ static void s_on_websocket_setup(
     s_mqtt_client_init(connection->client->bootstrap, error_code, channel, connection);
 }
 
+static aws_mqtt_transform_websocket_handshake_complete_fn s_websocket_handshake_transform_complete; /* fwd declare */
+
 static int s_websocket_connect(struct aws_mqtt_client_connection *connection) {
     AWS_ASSERT(connection->websocket.enabled);
 
@@ -704,68 +706,62 @@ static int s_websocket_connect(struct aws_mqtt_client_connection *connection) {
         .value = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("mqtt"),
     };
 
-    /* Things that need cleanup later */
-    struct aws_http_request *request = NULL;
-    struct aws_uri uri;
-    AWS_ZERO_STRUCT(uri);
-    struct aws_http_header *header_array = NULL;
-    int result = AWS_OP_SUCCESS;
-
     /* Build websocket handshake request */
-    request = aws_http_request_new_websocket_handshake(
+    connection->websocket.handshake_request = aws_http_message_new_websocket_handshake_request(
         connection->allocator, default_path, aws_byte_cursor_from_string(connection->host_name));
-    if (!request) {
+
+    if (!connection->websocket.handshake_request) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to generate websocket handshake request", (void *)connection);
-        result = AWS_OP_ERR;
         goto error;
     }
 
-    result = aws_http_request_add_header(request, default_protocol_header);
-    if (result) {
+    if (aws_http_message_add_header(connection->websocket.handshake_request, default_protocol_header)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to generate websocket handshake request", (void *)connection);
+        goto error;
+    }
+
+    /* If user registered a transform callback, call it and wait for transform_complete() to be called.
+     * If no callback registered, call the transform_complete() function ourselves. */
+    if (connection->websocket.handshake_transformer) {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Transforming websocket handshake request.", (void *)connection);
+
+        connection->websocket.handshake_transformer(
+            connection->websocket.handshake_request,
+            connection->websocket.handshake_transformer_ud,
+            s_websocket_handshake_transform_complete,
+            connection);
+
+    } else {
+        s_websocket_handshake_transform_complete(
+            connection->websocket.handshake_request, AWS_ERROR_SUCCESS, connection);
+    }
+
+    return AWS_OP_SUCCESS;
+
+error:
+    aws_http_message_destroy(connection->websocket.handshake_request);
+    connection->websocket.handshake_request = NULL;
+    return AWS_OP_ERR;
+}
+
+static void s_websocket_handshake_transform_complete(
+    struct aws_http_message *handshake_request,
+    int error_code,
+    void *complete_ctx) {
+
+    struct aws_mqtt_client_connection *connection = complete_ctx;
+
+    if (error_code) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failure reported by websocket handshake transform callback.",
+            (void *)connection);
+
         goto error;
     }
 
     if (connection->websocket.handshake_transformer) {
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Transforming websocket handshake request.", (void *)connection);
-
-        result = connection->websocket.handshake_transformer(
-            connection, request, connection->websocket.handshake_transformer_ud);
-        if (result) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Failure reported by websocket handshake transform callback.",
-                (void *)connection);
-            goto error;
-        }
-
         AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Done transforming websocket handshake request.", (void *)connection);
-    }
-
-    /* Build URI */
-    struct aws_uri_builder_options uri_options = {
-        .host_name = aws_byte_cursor_from_string(connection->host_name),
-        .port = connection->port,
-        .path = default_path,
-    };
-
-    result = aws_uri_init_from_builder_options(&uri, connection->allocator, &uri_options);
-    if (result) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT, "id=%p: Failed to generate URI for websocket handshake request", (void *)connection);
-        goto error;
-    }
-
-    /* Build headers array */
-    const size_t num_headers = aws_http_request_get_header_count(request);
-    header_array = aws_mem_calloc(connection->allocator, num_headers, sizeof(struct aws_http_header));
-    if (!header_array) {
-        result = AWS_OP_ERR;
-        goto error;
-    }
-
-    for (size_t i = 0; i < num_headers; ++i) {
-        aws_http_request_get_header(request, &header_array[i], i);
     }
 
     /* Call websocket connect() */
@@ -774,27 +770,26 @@ static int s_websocket_connect(struct aws_mqtt_client_connection *connection) {
         .bootstrap = connection->client->bootstrap,
         .socket_options = &connection->socket_options,
         .tls_options = connection->tls_options.ctx ? &connection->tls_options : NULL,
-        .uri = &uri,
-        .handshake_header_array = header_array,
-        .num_handshake_headers = num_headers,
+        .host = aws_byte_cursor_from_string(connection->host_name),
+        .port = connection->port,
+        .handshake_request = handshake_request,
         .initial_window_size = 0, /* Prevent websocket data from arriving before the MQTT handler is installed */
         .user_data = connection,
         .on_connection_setup = s_on_websocket_setup,
         .on_connection_shutdown = s_on_websocket_shutdown,
     };
 
-    result = aws_websocket_client_connect(&websocket_options);
-    if (result) {
+    if (aws_websocket_client_connect(&websocket_options)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to initiate websocket connection.", (void *)connection);
+        error_code = aws_last_error();
         goto error;
     }
 
     /* Success */
+    return;
 
 error:
-    aws_http_request_destroy(request);
-    aws_uri_clean_up(&uri);
-    return result;
+    s_on_websocket_setup(NULL, error_code, 0, NULL, 0, connection);
 }
 
 #else  /* AWS_MQTT_WITH_WEBSOCKETS */
