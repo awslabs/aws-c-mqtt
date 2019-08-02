@@ -789,7 +789,8 @@ static void s_websocket_handshake_transform_complete(
     return;
 
 error:
-    s_on_websocket_setup(NULL, error_code, 0, NULL, 0, connection);
+    /* Proceed to next step, telling it that we failed. */
+    s_on_websocket_setup(NULL, error_code, -1, NULL, 0, connection);
 }
 
 #else  /* AWS_MQTT_WITH_WEBSOCKETS */
