@@ -29,7 +29,7 @@
 /* forward declares */
 struct aws_client_bootstrap;
 struct aws_http_header;
-struct aws_http_request;
+struct aws_http_message;
 struct aws_socket_options;
 struct aws_tls_connection_options;
 
@@ -50,10 +50,9 @@ typedef void(aws_mqtt_op_complete_fn)(
 /**
  * Called when a connection attempt is completed, either in success or error.
  *
- * If error code is AWS_OP_SUCCESS, then a CONNACK has been received from the server and return_code and session_present
- *      contain the values received.
- * If error_code is not AWS_OP_SUCCESS, it refers to the internal error that occured during connection, and return_code
- *      and session_present are invalid.
+ * If error code is AWS_ERROR_SUCCESS, then a CONNACK has been received from the server and return_code and
+ * session_present contain the values received. If error_code is not AWS_ERROR_SUCCESS, it refers to the internal error
+ * that occurred during connection, and return_code and session_present are invalid.
  */
 typedef void(aws_mqtt_client_on_connection_complete_fn)(
     struct aws_mqtt_client_connection *connection,
@@ -103,18 +102,35 @@ typedef void(aws_mqtt_client_publish_received_fn)(
 typedef void(aws_mqtt_client_on_disconnect_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
 /**
+ * Function to invoke when the websocket handshake request transformation completes.
+ * This function MUST be invoked or the application will soft-lock.
+ *
+ * `request` and `complete_ctx` must be the same pointers provided to the `aws_mqtt_transform_websocket_handshake_fn`.
+ * `error_code` should should be AWS_ERROR_SUCCESS if transformation was successful,
+ * otherwise pass a different AWS_ERROR_X value.
+ */
+typedef void(aws_mqtt_transform_websocket_handshake_complete_fn)(
+    struct aws_http_message *request,
+    int error_code,
+    void *complete_ctx);
+
+/**
  * Function that may transform the websocket handshake request.
  * Called each time a websocket connection is attempted.
  *
  * The default request uses path "/mqtt". All required headers are present,
  * plus the optional header "Sec-WebSocket-Protocol: mqtt".
  *
- * Return AWS_OP_SUCCESS to continue, or AWS_OP_ERR to stop the connection attempt.
+ * The user MUST invoke the `complete_fn` when transformation is complete or the application will soft-lock.
+ * When invoking the `complete_fn`, pass along the `request` and `complete_ctx` provided here and an error code.
+ * The error code should be AWS_ERROR_SUCCESS if transformation was successful,
+ * otherwise pass a different AWS_ERROR_X value.
  */
-typedef int aws_mqtt_transform_websocket_handshake_fn(
-    struct aws_mqtt_client_connection *connection,
-    struct aws_http_request *request,
-    void *userdata);
+typedef void(aws_mqtt_transform_websocket_handshake_fn)(
+    struct aws_http_message *request,
+    void *user_data,
+    aws_mqtt_transform_websocket_handshake_complete_fn *complete_fn,
+    void *complete_ctx);
 
 /**
  * Function that may accept or reject a websocket handshake response.
@@ -256,6 +272,7 @@ int aws_mqtt_client_connection_set_login(
  *
  * \param[in] connection        The connection object.
  * \param[in] transformer       [optional] Function that may transform the websocket handshake request.
+ *                              See `aws_mqtt_transform_websocket_handshake_fn` for more info.
  * \param[in] transformer_ud    [optional] Userdata for request_transformer.
  * \param[in] validator         [optional] Function that may reject the websocket handshake response.
  * \param[in] validator_ud      [optional] Userdata for response_validator.
@@ -271,7 +288,7 @@ int aws_mqtt_client_connection_use_websockets(
 /**
  * Sets the minimum and maximum reconnect timeouts.
  *
- * The time between reconnect attempts will start at min and multipy by 2 until max is reached.
+ * The time between reconnect attempts will start at min and multiply by 2 until max is reached.
  *
  * \param[in] connection    The connection object
  * \param[in] min_timeout   The timeout to start with
