@@ -195,3 +195,13 @@ void aws_mqtt_library_clean_up(void) {
         aws_io_library_clean_up();
     }
 }
+
+void aws_mqtt_fatal_assert_library_initialized(void) {
+    if (!s_mqtt_library_initialized) {
+        AWS_LOGF_FATAL(
+            AWS_LS_MQTT_GENERAL,
+            "aws_mqtt_library_init() must be called before using any functionality in aws-c-mqtt.");
+
+        AWS_FATAL_ASSERT(s_mqtt_library_initialized);
+    }
+}
