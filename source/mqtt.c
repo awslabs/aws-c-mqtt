@@ -96,15 +96,6 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
  * Library Init
  ******************************************************************************/
 
-void aws_mqtt_library_init(struct aws_allocator *allocator) {
-
-    (void)allocator;
-
-    static bool s_library_initialized = false;
-    if (!s_library_initialized) {
-
-        s_library_initialized = true;
-
 #define AWS_DEFINE_ERROR_INFO_MQTT(C, ES) AWS_DEFINE_ERROR_INFO(C, ES, "libaws-c-mqtt")
         /* clang-format off */
         static struct aws_error_info s_errors[] = {
@@ -158,7 +149,6 @@ void aws_mqtt_library_init(struct aws_allocator *allocator) {
             .error_list = s_errors,
             .count = AWS_ARRAY_SIZE(s_errors),
         };
-        aws_register_error_info(&s_error_list);
 
         /* clang-format off */
         static struct aws_log_subject_info s_logging_subjects[] = {
@@ -172,8 +162,24 @@ void aws_mqtt_library_init(struct aws_allocator *allocator) {
             .subject_list = s_logging_subjects,
             .count = AWS_ARRAY_SIZE(s_logging_subjects),
         };
+
+static bool s_mqtt_library_initialized = false;
+
+void aws_mqtt_library_init(struct aws_allocator *allocator) {
+
+    (void)allocator;
+
+    if (!s_mqtt_library_initialized) {
+        s_mqtt_library_initialized = true;
+        aws_register_error_info(&s_error_list);
         aws_register_log_subject_info_list(&s_logging_subjects_list);
     }
 }
 
-void aws_mqtt_library_clean_up(void) {}
+void aws_mqtt_library_clean_up(void) {
+    if (s_mqtt_library_initialized) {
+        s_mqtt_library_initialized = false;
+        aws_unregister_error_info(&s_error_list);
+        aws_unregister_log_subject_info_list(&s_logging_subjects_list);
+    }
+}
