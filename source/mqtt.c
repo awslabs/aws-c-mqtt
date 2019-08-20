@@ -17,6 +17,10 @@
 
 #include <aws/io/logging.h>
 
+#ifdef AWS_MQTT_WITH_WEBSOCKETS
+#    include <aws/http/http.h>
+#endif
+
 /*******************************************************************************
  * Topic Validation
  ******************************************************************************/
@@ -97,7 +101,7 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
  ******************************************************************************/
 
 #define AWS_DEFINE_ERROR_INFO_MQTT(C, ES) AWS_DEFINE_ERROR_INFO(C, ES, "libaws-c-mqtt")
-        /* clang-format off */
+/* clang-format off */
         static struct aws_error_info s_errors[] = {
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_INVALID_RESERVED_BITS,
@@ -142,26 +146,26 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_BUILT_WITHOUT_WEBSOCKETS,
                 "Library built without MQTT_WITH_WEBSOCKETS option."),
         };
-        /* clang-format on */
+/* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
 
-        static struct aws_error_info_list s_error_list = {
-            .error_list = s_errors,
-            .count = AWS_ARRAY_SIZE(s_errors),
-        };
+static struct aws_error_info_list s_error_list = {
+    .error_list = s_errors,
+    .count = AWS_ARRAY_SIZE(s_errors),
+};
 
-        /* clang-format off */
+/* clang-format off */
         static struct aws_log_subject_info s_logging_subjects[] = {
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_GENERAL, "mqtt", "Misc MQTT logging"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_CLIENT, "mqtt-client", "MQTT client and connections"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_TOPIC_TREE, "mqtt-topic-tree", "MQTT subscription tree"),
         };
-        /* clang-format on */
+/* clang-format on */
 
-        static struct aws_log_subject_info_list s_logging_subjects_list = {
-            .subject_list = s_logging_subjects,
-            .count = AWS_ARRAY_SIZE(s_logging_subjects),
-        };
+static struct aws_log_subject_info_list s_logging_subjects_list = {
+    .subject_list = s_logging_subjects,
+    .count = AWS_ARRAY_SIZE(s_logging_subjects),
+};
 
 static bool s_mqtt_library_initialized = false;
 
@@ -171,6 +175,10 @@ void aws_mqtt_library_init(struct aws_allocator *allocator) {
 
     if (!s_mqtt_library_initialized) {
         s_mqtt_library_initialized = true;
+        aws_io_library_init(allocator);
+#ifdef AWS_MQTT_WITH_WEBSOCKETS
+        aws_http_library_init(allocator);
+#endif
         aws_register_error_info(&s_error_list);
         aws_register_log_subject_info_list(&s_logging_subjects_list);
     }
@@ -181,5 +189,9 @@ void aws_mqtt_library_clean_up(void) {
         s_mqtt_library_initialized = false;
         aws_unregister_error_info(&s_error_list);
         aws_unregister_log_subject_info_list(&s_logging_subjects_list);
+#ifdef AWS_MQTT_WITH_WEBSOCKETS
+        aws_http_library_clean_up();
+#endif
+        aws_io_library_clean_up();
     }
 }
