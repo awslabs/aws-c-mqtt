@@ -54,6 +54,8 @@ int aws_mqtt_client_init(
     struct aws_allocator *allocator,
     struct aws_client_bootstrap *bootstrap) {
 
+    aws_mqtt_fatal_assert_library_initialized();
+
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p: Initalizing MQTT client", (void *)client);
 
     AWS_ZERO_STRUCT(*client);
