@@ -198,10 +198,6 @@ int main(int argc, char **argv) {
     args.mutex = &mutex;
     args.condition_variable = &condition_variable;
 
-    aws_tls_init_static_state(args.allocator);
-    aws_load_error_strings();
-    aws_io_load_error_strings();
-    aws_io_load_log_subject_strings();
     aws_mqtt_library_init(args.allocator);
 
     struct aws_logger_standard_options logger_options = {
@@ -340,9 +336,9 @@ int main(int argc, char **argv) {
 
     aws_tls_ctx_destroy(tls_ctx);
 
-    aws_tls_clean_up_static_state();
-
     aws_logger_clean_up(&logger);
+
+    aws_mqtt_library_clean_up();
 
     ASSERT_UINT_EQUALS(iot_client_alloc_impl.freed, iot_client_alloc_impl.allocated);
 

@@ -88,6 +88,9 @@ void aws_mqtt_library_init(struct aws_allocator *allocator);
 AWS_MQTT_API
 void aws_mqtt_library_clean_up(void);
 
+AWS_MQTT_API
+void aws_mqtt_fatal_assert_library_initialized(void);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT_H */
