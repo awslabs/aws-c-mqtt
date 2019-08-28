@@ -340,14 +340,14 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                 for (size_t i = sub_parts_len; i > 0; --i) {
                     struct aws_mqtt_topic_node *node = NULL;
                     aws_array_list_get_at(&action->to_remove, &node, i);
-                    AWS_ASSERT(node); /* Must be in bounds */
+                    AWS_FATAL_ASSERT(node); /* Must be in bounds */
 
                     if (!s_topic_node_is_subscription(node) && 0 == aws_hash_table_get_entry_count(&node->subtopics)) {
 
                         /* No subscription and no children, this node needs to go. */
                         struct aws_mqtt_topic_node *grandma = NULL;
                         aws_array_list_get_at(&action->to_remove, &grandma, i - 1);
-                        AWS_ASSERT(grandma); /* Must be in bounds */
+                        AWS_FATAL_ASSERT(grandma); /* Must be in bounds */
 
                         AWS_LOGF_TRACE(
                             AWS_LS_MQTT_TOPIC_TREE,
@@ -394,7 +394,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
 
                     struct aws_mqtt_topic_node *parent = NULL;
                     aws_array_list_get_at(&action->to_remove, &parent, nodes_left);
-                    AWS_ASSERT(parent); /* Must be in bounds */
+                    AWS_FATAL_ASSERT(parent); /* Must be in bounds */
 
                     size_t topic_offset =
                         parent->topic.ptr - aws_string_bytes(parent->topic_filter) + parent->topic.len + 1;
@@ -402,7 +402,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                     /* -1 to avoid touching current */
                     for (size_t i = nodes_left; i > 0; --i) {
                         aws_array_list_get_at(&action->to_remove, &parent, i);
-                        AWS_ASSERT(parent); /* Must be in bounds */
+                        AWS_FATAL_ASSERT(parent); /* Must be in bounds */
 
                         /* Remove this topic and following / from offset. */
                         topic_offset -= (parent->topic.len + 1);
@@ -725,7 +725,7 @@ void aws_mqtt_topic_tree_transaction_roll_back(struct aws_mqtt_topic_tree *tree,
     for (size_t i = 1; i <= num_actions; ++i) {
         struct topic_tree_action *action = NULL;
         aws_array_list_get_at_ptr(transaction, (void **)&action, num_actions - i);
-        AWS_ASSERT(action); /* Within bounds */
+        AWS_FATAL_ASSERT(action); /* Within bounds */
 
         s_topic_tree_action_roll_back(action, tree);
     }
@@ -755,6 +755,9 @@ int aws_mqtt_topic_tree_insert(
 }
 
 int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aws_byte_cursor *topic_filter) {
+
+    AWS_PRECONDITION(tree);
+    AWS_PRECONDITION(topic_filter);
 
     AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size);
     struct aws_array_list transaction;
@@ -822,8 +825,8 @@ static void s_topic_tree_publish_do_recurse(
 
 int aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub) {
 
-    AWS_ASSERT(tree);
-    AWS_ASSERT(pub);
+    AWS_PRECONDITION(tree);
+    AWS_PRECONDITION(pub);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_TOPIC_TREE,

@@ -1110,7 +1110,10 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
     }
 
     const size_t num_topics = aws_array_list_length(&task_arg->topics);
-    AWS_ASSERT(num_topics > 0);
+    if (num_topics <= 0) {
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+    }
 
     AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics * aws_mqtt_topic_tree_action_size);
     struct aws_array_list transaction;
@@ -1120,9 +1123,8 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
 
         struct subscribe_task_topic *topic = NULL;
         int result = aws_array_list_get_at(&task_arg->topics, &topic, i);
-        AWS_ASSERT(result == AWS_OP_SUCCESS); /* We know we're within bounds */
-        AWS_ASSERT(topic);
-        (void)result;
+        AWS_FATAL_ASSERT(result == AWS_OP_SUCCESS); /* We know we're within bounds */
+        AWS_FATAL_ASSERT(topic);
 
         if (initing_packet) {
             if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->request.topic, topic->request.qos)) {
@@ -1326,9 +1328,8 @@ static void s_subscribe_single_complete(
     if (task_arg->on_suback) {
         struct subscribe_task_topic *topic = NULL;
         int result = aws_array_list_get_at(&task_arg->topics, &topic, 0);
-        AWS_ASSERT(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
-        AWS_ASSERT(topic);
-        (void)result;
+        AWS_FATAL_ASSERT(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
+        AWS_FATAL_ASSERT(topic);
 
         aws_mqtt_suback_fn *suback = (aws_mqtt_suback_fn *)task_arg->on_suback;
         suback(connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
