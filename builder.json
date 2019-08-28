@@ -1,0 +1,8 @@
+{
+    "name": "aws-c-mqtt",
+    "upstream": [
+        { "name": "aws-c-io" }
+    ],
+    "downstream": [
+    ]
+}
