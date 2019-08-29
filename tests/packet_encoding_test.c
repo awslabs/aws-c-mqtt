@@ -50,20 +50,6 @@ static bool s_packet_eq_default(void *a, void *b, size_t size) {
            memcmp((uint8_t *)a + HEADER_SIZE, (uint8_t *)b + HEADER_SIZE, size - HEADER_SIZE) == 0;
 }
 
-/* Compares the data inside 2 byte cursors */
-static bool s_byte_cursor_eq(struct aws_byte_cursor l, struct aws_byte_cursor r) {
-
-    if (l.len == r.len) {
-        if (l.len == 0) {
-            return true;
-        }
-
-        return memcmp(l.ptr, r.ptr, l.len) == 0;
-    }
-
-    return false;
-}
-
 /* Contains all of the information required to run a packet's test case */
 struct packet_test_fixture {
     enum aws_mqtt_packet_type type;
@@ -87,11 +73,11 @@ static void s_packet_test_before(struct aws_allocator *allocator, void *ctx) {
 
     /* Setup the fixture */
     fixture->in_packet = aws_mem_acquire(allocator, fixture->size);
-    AWS_ASSERT(fixture->in_packet);
+    AWS_FATAL_ASSERT(fixture->in_packet);
     memset(fixture->in_packet, 0, fixture->size);
 
     fixture->out_packet = aws_mem_acquire(allocator, fixture->size);
-    AWS_ASSERT(fixture->out_packet);
+    AWS_FATAL_ASSERT(fixture->out_packet);
     memset(fixture->out_packet, 0, fixture->size);
 }
 
@@ -213,7 +199,7 @@ static int s_test_ack_init(struct packet_test_fixture *fixture) {
             ASSERT_SUCCESS(aws_mqtt_packet_unsuback_init(fixture->in_packet, packet_id));
             break;
         default:
-            AWS_ASSERT(false);
+            AWS_ASSUME(false);
             break;
     }
 
@@ -274,9 +260,9 @@ static bool s_test_connect_eq(void *a, void *b, size_t size) {
            l->has_will == r->has_will && l->will_qos == r->will_qos && l->will_retain == r->will_retain &&
            l->has_password == r->has_password && l->has_username == r->has_username &&
            l->keep_alive_timeout == r->keep_alive_timeout &&
-           s_byte_cursor_eq(l->client_identifier, r->client_identifier) &&
-           s_byte_cursor_eq(l->will_topic, r->will_topic) && s_byte_cursor_eq(l->username, r->username) &&
-           s_byte_cursor_eq(l->password, r->password);
+           aws_byte_cursor_eq(&l->client_identifier, &r->client_identifier) &&
+           aws_byte_cursor_eq(&l->will_topic, &r->will_topic) && aws_byte_cursor_eq(&l->username, &r->username) &&
+           aws_byte_cursor_eq(&l->password, &r->password);
 }
 PACKET_TEST(CONNECT, connect, &s_test_connect_init, NULL, &s_test_connect_eq)
 
@@ -349,7 +335,7 @@ static bool s_test_publish_eq(void *a, void *b, size_t size) {
     struct aws_mqtt_packet_publish *r = b;
 
     return s_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->packet_identifier == r->packet_identifier &&
-           s_byte_cursor_eq(l->topic_name, r->topic_name) && s_byte_cursor_eq(l->payload, r->payload);
+           aws_byte_cursor_eq(&l->topic_name, &r->topic_name) && aws_byte_cursor_eq(&l->payload, &r->payload);
 }
 PACKET_TEST(PUBLISH, publish, &s_test_publish_init, NULL, &s_test_publish_eq)
 
@@ -414,12 +400,12 @@ static bool s_test_subscribe_eq(void *a, void *b, size_t size) {
         aws_array_list_get_at_ptr(&l->topic_filters, (void **)&lt, i);
         struct aws_mqtt_subscription *rt = NULL;
         aws_array_list_get_at_ptr(&r->topic_filters, (void **)&rt, i);
-        AWS_ASSERT(lt && rt);
+        AWS_ASSUME(lt && rt);
 
         if (lt->qos != rt->qos) {
             return false;
         }
-        if (!s_byte_cursor_eq(lt->topic_filter, rt->topic_filter)) {
+        if (!aws_byte_cursor_eq(&lt->topic_filter, &rt->topic_filter)) {
             return false;
         }
     }
@@ -488,9 +474,9 @@ static bool s_test_unsubscribe_eq(void *a, void *b, size_t size) {
         aws_array_list_get_at_ptr(&l->topic_filters, (void **)&lt, i);
         struct aws_byte_cursor *rt = NULL;
         aws_array_list_get_at_ptr(&r->topic_filters, (void **)&rt, i);
-        AWS_ASSERT(lt && rt);
+        AWS_ASSUME(lt && rt);
 
-        if (!s_byte_cursor_eq(*lt, *rt)) {
+        if (!aws_byte_cursor_eq(lt, rt)) {
             return false;
         }
     }
@@ -516,7 +502,7 @@ static int s_test_connection_init(struct packet_test_fixture *fixture) {
             ASSERT_SUCCESS(aws_mqtt_packet_disconnect_init(fixture->in_packet));
             break;
         default:
-            AWS_ASSERT(false);
+            AWS_FATAL_ASSERT(false);
             break;
     }
 

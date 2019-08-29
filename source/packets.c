@@ -29,8 +29,8 @@ static size_t s_sizeof_encoded_buffer(struct aws_byte_cursor *buf) {
 
 static int s_encode_buffer(struct aws_byte_buf *buf, const struct aws_byte_cursor cur) {
 
-    AWS_ASSERT(buf);
-    AWS_ASSERT(cur.ptr && cur.len);
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(cur.ptr && cur.len);
 
     /* Make sure the buffer isn't too big */
     if (cur.len > UINT16_MAX) {
@@ -52,8 +52,8 @@ static int s_encode_buffer(struct aws_byte_buf *buf, const struct aws_byte_curso
 
 static int s_decode_buffer(struct aws_byte_cursor *cur, struct aws_byte_cursor *buf) {
 
-    AWS_ASSERT(cur);
-    AWS_ASSERT(buf);
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(buf);
 
     /* Read the length */
     uint16_t len;
@@ -72,7 +72,7 @@ static int s_decode_buffer(struct aws_byte_cursor *cur, struct aws_byte_cursor *
 
 static void s_ack_init(struct aws_mqtt_packet_ack *packet, enum aws_mqtt_packet_type type, uint16_t packet_identifier) {
 
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(packet);
 
     AWS_ZERO_STRUCT(*packet);
 
@@ -84,8 +84,8 @@ static void s_ack_init(struct aws_mqtt_packet_ack *packet, enum aws_mqtt_packet_
 
 int aws_mqtt_packet_ack_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_ack *packet) {
 
-    AWS_ASSERT(buf);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -107,8 +107,8 @@ int aws_mqtt_packet_ack_encode(struct aws_byte_buf *buf, const struct aws_mqtt_p
 
 int aws_mqtt_packet_ack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_ack *packet) {
 
-    AWS_ASSERT(cur);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -143,8 +143,8 @@ int aws_mqtt_packet_connect_init(
     bool clean_session,
     uint16_t keep_alive) {
 
-    AWS_ASSERT(packet);
-    AWS_ASSERT(client_identifier.len > 0);
+    AWS_PRECONDITION(packet);
+    AWS_PRECONDITION(client_identifier.len > 0);
 
     AWS_ZERO_STRUCT(*packet);
 
@@ -164,8 +164,8 @@ int aws_mqtt_packet_connect_add_credentials(
     struct aws_byte_cursor username,
     struct aws_byte_cursor password) {
 
-    AWS_ASSERT(packet);
-    AWS_ASSERT(username.len > 0);
+    AWS_PRECONDITION(packet);
+    AWS_PRECONDITION(username.len > 0);
 
     if (!packet->has_username) {
         /* If not already username, add size of length field */
@@ -215,8 +215,8 @@ int aws_mqtt_packet_connect_add_will(
 
 int aws_mqtt_packet_connect_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_connect *packet) {
 
-    AWS_ASSERT(buf);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(packet);
 
     /* Do validation */
     if (packet->has_password && !packet->has_username) {
@@ -295,8 +295,8 @@ int aws_mqtt_packet_connect_encode(struct aws_byte_buf *buf, const struct aws_mq
 
 int aws_mqtt_packet_connect_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connect *packet) {
 
-    AWS_ASSERT(cur);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header                                                          */
@@ -399,7 +399,7 @@ int aws_mqtt_packet_connack_init(
     bool session_present,
     enum aws_mqtt_connect_return_code return_code) {
 
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(packet);
 
     AWS_ZERO_STRUCT(*packet);
 
@@ -414,8 +414,8 @@ int aws_mqtt_packet_connack_init(
 
 int aws_mqtt_packet_connack_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_connack *packet) {
 
-    AWS_ASSERT(buf);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -443,8 +443,8 @@ int aws_mqtt_packet_connack_encode(struct aws_byte_buf *buf, const struct aws_mq
 
 int aws_mqtt_packet_connack_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connack *packet) {
 
-    AWS_ASSERT(cur);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header                                                          */
@@ -483,8 +483,8 @@ int aws_mqtt_packet_publish_init(
     uint16_t packet_identifier,
     struct aws_byte_cursor payload) {
 
-    AWS_ASSERT(packet);
-    AWS_ASSERT(topic_name.len > 0); /* [MQTT-4.7.3-1] */
+    AWS_PRECONDITION(packet);
+    AWS_FATAL_PRECONDITION(topic_name.len > 0); /* [MQTT-4.7.3-1] */
 
     AWS_ZERO_STRUCT(*packet);
 
@@ -524,8 +524,8 @@ int aws_mqtt_packet_publish_encode(struct aws_byte_buf *buf, const struct aws_mq
 
 int aws_mqtt_packet_publish_encode_headers(struct aws_byte_buf *buf, const struct aws_mqtt_packet_publish *packet) {
 
-    AWS_ASSERT(buf);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -555,8 +555,8 @@ int aws_mqtt_packet_publish_encode_headers(struct aws_byte_buf *buf, const struc
 
 int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_publish *packet) {
 
-    AWS_ASSERT(cur);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -647,7 +647,7 @@ int aws_mqtt_packet_subscribe_init(
     struct aws_allocator *allocator,
     uint16_t packet_identifier) {
 
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(packet);
 
     AWS_ZERO_STRUCT(*packet);
 
@@ -666,7 +666,7 @@ int aws_mqtt_packet_subscribe_init(
 
 void aws_mqtt_packet_subscribe_clean_up(struct aws_mqtt_packet_subscribe *packet) {
 
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(packet);
 
     aws_array_list_clean_up(&packet->topic_filters);
 
@@ -678,7 +678,7 @@ int aws_mqtt_packet_subscribe_add_topic(
     struct aws_byte_cursor topic_filter,
     enum aws_mqtt_qos qos) {
 
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(packet);
 
     /* Add to the array list */
     struct aws_mqtt_subscription subscription;
@@ -696,8 +696,8 @@ int aws_mqtt_packet_subscribe_add_topic(
 
 int aws_mqtt_packet_subscribe_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_subscribe *packet) {
 
-    AWS_ASSERT(buf);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -736,8 +736,8 @@ int aws_mqtt_packet_subscribe_encode(struct aws_byte_buf *buf, const struct aws_
 
 int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_subscribe *packet) {
 
-    AWS_ASSERT(cur);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -804,8 +804,8 @@ int aws_mqtt_packet_unsubscribe_init(
     struct aws_allocator *allocator,
     uint16_t packet_identifier) {
 
-    AWS_ASSERT(packet);
-    AWS_ASSERT(allocator);
+    AWS_PRECONDITION(packet);
+    AWS_PRECONDITION(allocator);
 
     AWS_ZERO_STRUCT(*packet);
 
@@ -824,7 +824,7 @@ int aws_mqtt_packet_unsubscribe_init(
 
 void aws_mqtt_packet_unsubscribe_clean_up(struct aws_mqtt_packet_unsubscribe *packet) {
 
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(packet);
 
     aws_array_list_clean_up(&packet->topic_filters);
 
@@ -835,7 +835,7 @@ int aws_mqtt_packet_unsubscribe_add_topic(
     struct aws_mqtt_packet_unsubscribe *packet,
     struct aws_byte_cursor topic_filter) {
 
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(packet);
 
     /* Add to the array list */
     if (aws_array_list_push_back(&packet->topic_filters, &topic_filter)) {
@@ -850,8 +850,8 @@ int aws_mqtt_packet_unsubscribe_add_topic(
 
 int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_unsubscribe *packet) {
 
-    AWS_ASSERT(buf);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -885,8 +885,8 @@ int aws_mqtt_packet_unsubscribe_encode(struct aws_byte_buf *buf, const struct aw
 
 int aws_mqtt_packet_unsubscribe_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_unsubscribe *packet) {
 
-    AWS_ASSERT(cur);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -936,7 +936,7 @@ int aws_mqtt_packet_unsuback_init(struct aws_mqtt_packet_ack *packet, uint16_t p
 
 static void s_connection_init(struct aws_mqtt_packet_connection *packet, enum aws_mqtt_packet_type type) {
 
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(packet);
 
     AWS_ZERO_STRUCT(*packet);
     packet->fixed_header.packet_type = type;
@@ -965,8 +965,8 @@ int aws_mqtt_packet_disconnect_init(struct aws_mqtt_packet_connection *packet) {
 
 int aws_mqtt_packet_connection_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_connection *packet) {
 
-    AWS_ASSERT(buf);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
@@ -980,8 +980,8 @@ int aws_mqtt_packet_connection_encode(struct aws_byte_buf *buf, const struct aws
 
 int aws_mqtt_packet_connection_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_connection *packet) {
 
-    AWS_ASSERT(cur);
-    AWS_ASSERT(packet);
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(packet);
 
     /*************************************************************************/
     /* Fixed Header */
