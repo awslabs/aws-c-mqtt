@@ -73,11 +73,11 @@ static void s_packet_test_before(struct aws_allocator *allocator, void *ctx) {
 
     /* Setup the fixture */
     fixture->in_packet = aws_mem_acquire(allocator, fixture->size);
-    AWS_ASSERT(fixture->in_packet);
+    AWS_FATAL_ASSERT(fixture->in_packet);
     memset(fixture->in_packet, 0, fixture->size);
 
     fixture->out_packet = aws_mem_acquire(allocator, fixture->size);
-    AWS_ASSERT(fixture->out_packet);
+    AWS_FATAL_ASSERT(fixture->out_packet);
     memset(fixture->out_packet, 0, fixture->size);
 }
 
@@ -199,7 +199,7 @@ static int s_test_ack_init(struct packet_test_fixture *fixture) {
             ASSERT_SUCCESS(aws_mqtt_packet_unsuback_init(fixture->in_packet, packet_id));
             break;
         default:
-            AWS_ASSERT(false);
+            AWS_ASSUME(false);
             break;
     }
 
@@ -400,7 +400,7 @@ static bool s_test_subscribe_eq(void *a, void *b, size_t size) {
         aws_array_list_get_at_ptr(&l->topic_filters, (void **)&lt, i);
         struct aws_mqtt_subscription *rt = NULL;
         aws_array_list_get_at_ptr(&r->topic_filters, (void **)&rt, i);
-        AWS_ASSERT(lt && rt);
+        AWS_ASSUME(lt && rt);
 
         if (lt->qos != rt->qos) {
             return false;
@@ -474,7 +474,7 @@ static bool s_test_unsubscribe_eq(void *a, void *b, size_t size) {
         aws_array_list_get_at_ptr(&l->topic_filters, (void **)&lt, i);
         struct aws_byte_cursor *rt = NULL;
         aws_array_list_get_at_ptr(&r->topic_filters, (void **)&rt, i);
-        AWS_ASSERT(lt && rt);
+        AWS_ASSUME(lt && rt);
 
         if (!aws_byte_cursor_eq(lt, rt)) {
             return false;
@@ -502,7 +502,7 @@ static int s_test_connection_init(struct packet_test_fixture *fixture) {
             ASSERT_SUCCESS(aws_mqtt_packet_disconnect_init(fixture->in_packet));
             break;
         default:
-            AWS_ASSERT(false);
+            AWS_FATAL_ASSERT(false);
             break;
     }
 

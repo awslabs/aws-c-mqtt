@@ -368,7 +368,7 @@ static void s_outstanding_request_destroy(void *item) {
 
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client) {
 
-    AWS_ASSERT(client);
+    AWS_PRECONDITION(client);
 
     struct aws_mqtt_client_connection *connection =
         aws_mem_calloc(client->allocator, 1, sizeof(struct aws_mqtt_client_connection));
@@ -448,7 +448,7 @@ failed_init_pending_requests_mutex:
 
 void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection) {
 
-    AWS_ASSERT(connection);
+    AWS_PRECONDITION(connection);
     AWS_ASSERT(connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
@@ -539,8 +539,8 @@ int aws_mqtt_client_connection_set_login(
     const struct aws_byte_cursor *username,
     const struct aws_byte_cursor *password) {
 
-    AWS_ASSERT(connection);
-    AWS_ASSERT(username);
+    AWS_PRECONDITION(connection);
+    AWS_PRECONDITION(username);
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting username and password", (void *)connection);
 
@@ -567,7 +567,7 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     uint64_t min_timeout,
     uint64_t max_timeout) {
 
-    AWS_ASSERT(connection);
+    AWS_PRECONDITION(connection);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
@@ -1122,9 +1122,8 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
     for (size_t i = 0; i < num_topics; ++i) {
 
         struct subscribe_task_topic *topic = NULL;
-        int result = aws_array_list_get_at(&task_arg->topics, &topic, i);
-        AWS_FATAL_ASSERT(result == AWS_OP_SUCCESS); /* We know we're within bounds */
-        AWS_FATAL_ASSERT(topic);
+        aws_array_list_get_at(&task_arg->topics, &topic, i);
+        AWS_ASSUME(topic); /* We know we're within bounds */
 
         if (initing_packet) {
             if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->request.topic, topic->request.qos)) {
@@ -1212,7 +1211,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
     aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_ud) {
 
-    AWS_ASSERT(connection);
+    AWS_PRECONDITION(connection);
 
     struct subscribe_task_arg *task_arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
@@ -1290,7 +1289,7 @@ handle_error:
 
                 struct subscribe_task_topic *task_topic = NULL;
                 aws_array_list_get_at(&task_arg->topics, (void **)&task_topic, i);
-                AWS_ASSERT(task_topic);
+                AWS_ASSUME(task_topic);
 
                 aws_string_destroy(task_topic->filter);
                 aws_mem_release(connection->allocator, task_topic);
@@ -1327,9 +1326,8 @@ static void s_subscribe_single_complete(
 
     if (task_arg->on_suback) {
         struct subscribe_task_topic *topic = NULL;
-        int result = aws_array_list_get_at(&task_arg->topics, &topic, 0);
-        AWS_FATAL_ASSERT(result == AWS_OP_SUCCESS); /* There needs to be exactly 1 topic in this list */
-        AWS_FATAL_ASSERT(topic);
+        aws_array_list_get_at(&task_arg->topics, &topic, 0);
+        AWS_ASSUME(topic); /* There needs to be exactly 1 topic in this list */
 
         aws_mqtt_suback_fn *suback = (aws_mqtt_suback_fn *)task_arg->on_suback;
         suback(connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
@@ -1350,7 +1348,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     aws_mqtt_suback_fn *on_suback,
     void *on_suback_ud) {
 
-    AWS_ASSERT(connection);
+    AWS_PRECONDITION(connection);
 
     if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
@@ -1547,7 +1545,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_ud) {
 
-    AWS_ASSERT(connection);
+    AWS_PRECONDITION(connection);
 
     if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
@@ -1691,7 +1689,7 @@ uint16_t aws_mqtt_client_connection_publish(
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata) {
 
-    AWS_ASSERT(connection);
+    AWS_PRECONDITION(connection);
 
     if (!aws_mqtt_is_valid_topic(topic)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
