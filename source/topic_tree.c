@@ -245,7 +245,7 @@ struct topic_tree_iterate_context {
 
 static int s_topic_tree_iterate_do_recurse(void *context, struct aws_hash_element *current_elem) {
 
-    struct topic_tree_iterate_context* ctx = context;
+    struct topic_tree_iterate_context *ctx = context;
     struct aws_mqtt_topic_node *current = current_elem->value;
 
     if (s_topic_node_is_subscription(current)) {
