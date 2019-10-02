@@ -125,9 +125,8 @@ static void s_mqtt_client_shutdown(
             AWS_LS_MQTT_CLIENT, "id=%p: Initial connection attempt failed, calling callback", (void *)connection);
 
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
-        if (error_code == 0) {
-            error_code = AWS_IO_SOCKET_CLOSED;
-        }
+        AWS_FATAL_ASSERT(error_code != AWS_ERROR_SUCCESS);
+
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
 
     } else {
