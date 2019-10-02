@@ -955,15 +955,6 @@ int aws_mqtt_client_connection_reconnect(
     connection->on_connection_complete = on_connection_complete;
     connection->on_connection_complete_ud = userdata;
 
-    if (connection->clean_session) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT, "id=%p: creating a clean session, clearing subscriptions", (void *)connection);
-        /* If clean_session is set, all subscriptions will be reset by the server,
-        so we can clean the local tree out too. */
-        aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
-        aws_mqtt_topic_tree_init(&connection->subscriptions, connection->allocator);
-    }
-
     int result = 0;
 #ifdef AWS_MQTT_WITH_WEBSOCKETS
     if (connection->websocket.enabled) {
@@ -1777,4 +1768,151 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
     mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
 
     return AWS_OP_SUCCESS;
+}
+
+/*******************************************************************************
+ * Resubscribe
+ ******************************************************************************/
+
+/* The lifetime of this struct is from subscribe -> suback */
+struct resubscribe_task_arg {
+
+    struct aws_mqtt_client_connection *connection;
+
+    /* list of subscribe_task_topic *s */
+    struct aws_array_list topics;
+
+    /* Packet to populate */
+    struct aws_mqtt_packet_subscribe subscribe;
+};
+
+static bool s_reconnect_resub_iterator(const struct aws_byte_cursor *topic, enum aws_mqtt_qos qos, void *user_data) {
+    struct resubscribe_task_arg *task_arg = user_data;
+
+    struct aws_mqtt_topic_subscription sub;
+    AWS_ZERO_STRUCT(sub);
+    sub.topic = *topic;
+    sub.qos = qos;
+
+    aws_array_list_push_back(&task_arg->topics, &sub);
+
+    return true;
+}
+
+static enum aws_mqtt_client_request_state s_resubscribe_send(
+    uint16_t message_id,
+    bool is_first_attempt,
+    void *userdata) {
+
+    (void)is_first_attempt;
+
+    struct resubscribe_task_arg *task_arg = userdata;
+    bool initing_packet = task_arg->subscribe.fixed_header.packet_type == 0;
+    struct aws_io_message *message = NULL;
+
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Attempting send of resubscribe %" PRIu16 " (%s)",
+        (void *)task_arg->connection,
+        message_id,
+        is_first_attempt ? "first attempt" : "resend");
+
+    if (initing_packet) {
+        /* Init the subscribe packet */
+        if (aws_mqtt_packet_subscribe_init(&task_arg->subscribe, task_arg->connection->allocator, message_id)) {
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+
+        const size_t num_topics = aws_array_list_length(&task_arg->topics);
+        if (num_topics <= 0) {
+            aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+
+        for (size_t i = 0; i < num_topics; ++i) {
+
+            struct aws_mqtt_topic_subscription *topic = NULL;
+            aws_array_list_get_at_ptr(&task_arg->topics, (void **)&topic, i);
+            AWS_ASSUME(topic); /* We know we're within bounds */
+
+            if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->topic, topic->qos)) {
+                goto handle_error;
+            }
+        }
+    }
+
+    message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->subscribe.fixed_header);
+    if (!message) {
+
+        goto handle_error;
+    }
+
+    if (aws_mqtt_packet_subscribe_encode(&message->message_data, &task_arg->subscribe)) {
+
+        goto handle_error;
+    }
+
+    /* No need to handle this error, if the send fails, it'll just retry */
+    aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
+
+    return AWS_MQTT_CLIENT_REQUEST_ONGOING;
+
+handle_error:
+
+    if (message) {
+        aws_mem_release(message->allocator, message);
+    }
+
+    return AWS_MQTT_CLIENT_REQUEST_ERROR;
+}
+
+static void s_resubscribe_complete(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    int error_code,
+    void *userdata) {
+
+    struct resubscribe_task_arg *task_arg = userdata;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Resubscribe %" PRIu16 " completed with error_code %d",
+        (void *)connection,
+        packet_id,
+        error_code);
+
+    aws_array_list_clean_up(&task_arg->topics);
+    aws_mqtt_packet_subscribe_clean_up(&task_arg->subscribe);
+    aws_mem_release(task_arg->connection->allocator, task_arg);
+}
+
+void mqtt_resubscribe_existing_topics(struct aws_mqtt_client_connection *connection) {
+    size_t sub_count = aws_mqtt_topic_tree_get_sub_count(&connection->subscriptions);
+    static const size_t sub_size = sizeof(struct aws_mqtt_topic_subscription);
+
+    if (sub_count == 0) {
+        return;
+    }
+
+    struct resubscribe_task_arg *task_arg = NULL;
+    void *buffer = NULL;
+    aws_mem_acquire_many(
+        connection->allocator, 2, &task_arg, sizeof(struct resubscribe_task_arg), &buffer, sub_count * sub_size);
+
+    if (!task_arg) {
+        AWS_LOGF_FATAL(
+            AWS_LS_MQTT_CLIENT, "id=%p: failed to allocate storage for resubscribe arguments", (void *)connection);
+        return;
+    }
+
+    AWS_ZERO_STRUCT(*task_arg);
+    task_arg->connection = connection;
+    aws_array_list_init_static(&task_arg->topics, buffer, sub_count, sub_size);
+    aws_mqtt_topic_tree_iterate(&connection->subscriptions, s_reconnect_resub_iterator, task_arg);
+
+    uint16_t packet_id =
+        mqtt_create_request(task_arg->connection, &s_resubscribe_send, task_arg, &s_resubscribe_complete, task_arg);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic resubscribe %" PRIu16, (void *)connection, packet_id);
 }

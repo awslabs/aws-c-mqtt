@@ -215,4 +215,9 @@ AWS_MQTT_API void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connec
  */
 int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
 
+/**
+ * Resubscribe to all topics in the subscription trie. Called when reconnecting on a clean session.
+ */
+void mqtt_resubscribe_existing_topics(struct aws_mqtt_client_connection *connection);
+
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */
