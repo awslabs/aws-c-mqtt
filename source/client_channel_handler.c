@@ -106,14 +106,6 @@ static int s_packet_handler_connack(
      * CONNECT/CONNACK cycle completes. In that case, we must deliver on_connection_complete
      * on the first successful CONNACK or user code will never think it's connected */
     if (was_reconnecting && connection->connection_count > 1) {
-        if (connection->clean_session) {
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: connection is a resumed connection and clean_session is true, resubscribing to existing topics",
-                (void *)connection);
-
-            mqtt_resubscribe_existing_topics(connection);
-        }
 
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
