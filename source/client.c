@@ -1536,7 +1536,7 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
         connection->allocator, 2, &task_arg, sizeof(struct subscribe_task_arg), &buffer, sub_count * sub_size);
 
     if (!task_arg) {
-        AWS_LOGF_FATAL(
+        AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT, "id=%p: failed to allocate storage for resubscribe arguments", (void *)connection);
         return 0;
     }
@@ -1552,7 +1552,7 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
         mqtt_create_request(task_arg->connection, &s_resubscribe_send, task_arg, &s_subscribe_complete, task_arg);
 
     if (packet_id == 0) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Failed to send multi-topic resubscribe with error %s",
             (void *)connection,

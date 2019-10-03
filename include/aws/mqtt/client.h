@@ -67,7 +67,10 @@ typedef void(aws_mqtt_client_on_connection_interrupted_fn)(
     int error_code,
     void *userdata);
 
-/* Called when a connection to the server is resumed. */
+/**
+ * Called when a connection to the server is resumed
+ * (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
+ */
 typedef void(aws_mqtt_client_on_connection_resumed_fn)(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_connect_return_code return_code,
@@ -306,7 +309,8 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
  * \param[in] connection        The connection object
  * \param[in] on_interrupted    The function to call when a connection is lost
  * \param[in] on_interrupted_ud Userdata for on_interrupted
- * \param[in] on_resumed    The function to call when a connection is resumed
+ * \param[in] on_resumed        The function to call when a connection is resumed
+                                (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
  * \param[in] on_resumed_ud Userdata for on_resumed
  */
 AWS_MQTT_API
