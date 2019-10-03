@@ -92,14 +92,16 @@ static void s_mqtt_client_shutdown(
 
     /* Always clear slot, as that's what's been shutdown */
     if (connection->slot) {
-        if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
-            /* if there was a slot and we were connecting, the socket at least
-             * managed to connect (and was likely hung up gracefully during setup)
-             * so this should behave like a dropped connection */
-            connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
-        }
         aws_channel_slot_remove(connection->slot);
         connection->slot = NULL;
+    }
+
+    /* If there's no error code and this wasn't user-requested, set the error code to something useful */
+    if (error_code == AWS_ERROR_SUCCESS) {
+        if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING &&
+            connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
+            error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
+        }
     }
 
     if (connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
@@ -131,6 +133,7 @@ static void s_mqtt_client_shutdown(
             AWS_LS_MQTT_CLIENT, "id=%p: Initial connection attempt failed, calling callback", (void *)connection);
 
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
 
     } else {
