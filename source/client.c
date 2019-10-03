@@ -1057,7 +1057,10 @@ struct subscribe_task_arg {
     /* true if transaction was committed to the topic tree, false requires a retry */
     bool tree_updated;
 
-    aws_mqtt_suback_multi_fn *on_suback;
+    struct {
+        aws_mqtt_suback_multi_fn *multi;
+        aws_mqtt_suback_fn *single;
+    } on_suback;
     void *on_suback_ud;
 };
 
@@ -1192,8 +1195,15 @@ static void s_subscribe_complete(
         packet_id,
         error_code);
 
-    if (task_arg->on_suback) {
-        task_arg->on_suback(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
+    if (task_arg->on_suback.multi) {
+        task_arg->on_suback.multi(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
+    } else if (task_arg->on_suback.single) {
+        struct subscribe_task_topic *topic = NULL;
+        aws_array_list_get_at(&task_arg->topics, &topic, 0);
+        AWS_ASSUME(topic);
+        struct aws_byte_cursor topic_cur = aws_byte_cursor_from_string(topic->filter);
+        task_arg->on_suback.single(
+            connection, packet_id, &topic_cur, topic->request.qos, error_code, task_arg->on_suback_ud);
     }
 
     aws_array_list_clean_up(&task_arg->topics);
@@ -1215,7 +1225,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
     }
 
     task_arg->connection = connection;
-    task_arg->on_suback = on_suback;
+    task_arg->on_suback.multi = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
     const size_t num_topics = aws_array_list_length(topic_filters);
@@ -1320,12 +1330,12 @@ static void s_subscribe_single_complete(
 
     AWS_ASSERT(aws_array_list_length(&task_arg->topics) == 1);
 
-    if (task_arg->on_suback) {
+    if (task_arg->on_suback.single) {
         struct subscribe_task_topic *topic = NULL;
         aws_array_list_get_at(&task_arg->topics, &topic, 0);
         AWS_ASSUME(topic); /* There needs to be exactly 1 topic in this list */
 
-        aws_mqtt_suback_fn *suback = (aws_mqtt_suback_fn *)task_arg->on_suback;
+        aws_mqtt_suback_fn *suback = task_arg->on_suback.single;
         suback(connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
     }
 
@@ -1369,7 +1379,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
     AWS_ZERO_STRUCT(*task_arg);
 
     task_arg->connection = connection;
-    task_arg->on_suback = (aws_mqtt_suback_multi_fn *)on_suback;
+    task_arg->on_suback.single = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
     aws_array_list_init_static(&task_arg->topics, task_topic_storage, 1, sizeof(void *));
