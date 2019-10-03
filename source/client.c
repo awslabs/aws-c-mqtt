@@ -297,7 +297,7 @@ handle_error:
     }
 }
 
-static void s_attempt_reconect(struct aws_task *task, void *userdata, enum aws_task_status status) {
+static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_task_status status) {
 
     (void)task;
 
@@ -914,7 +914,7 @@ int aws_mqtt_client_connection_connect(
     }
     aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
     connection->reconnect_task->allocator = connection->allocator;
-    aws_task_init(&connection->reconnect_task->task, s_attempt_reconect, connection->reconnect_task, "mqtt_reconnect");
+    aws_task_init(&connection->reconnect_task->task, s_attempt_reconnect, connection->reconnect_task, "mqtt_reconnect");
 
     /* Only set connection->client_id if a new one was provided */
     struct aws_byte_buf client_id_buf =
@@ -1922,6 +1922,15 @@ void mqtt_resubscribe_existing_topics(struct aws_mqtt_client_connection *connect
 
     uint16_t packet_id =
         mqtt_create_request(task_arg->connection, &s_resubscribe_send, task_arg, &s_resubscribe_complete, task_arg);
+
+    if (packet_id == 0) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to send multi-topic resubscribe with error %s",
+            (void *)connection,
+            aws_error_name(aws_last_error()));
+        return;
+    }
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic resubscribe %" PRIu16, (void *)connection, packet_id);
