@@ -96,6 +96,14 @@ static void s_mqtt_client_shutdown(
         connection->slot = NULL;
     }
 
+    /* If there's no error code and this wasn't user-requested, set the error code to something useful */
+    if (error_code == AWS_ERROR_SUCCESS) {
+        if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING &&
+            connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
+            error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
+        }
+    }
+
     if (connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
         /* If reconnect attempt failed, schedule the next attempt */
         struct aws_event_loop *el = aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
@@ -125,7 +133,6 @@ static void s_mqtt_client_shutdown(
             AWS_LS_MQTT_CLIENT, "id=%p: Initial connection attempt failed, calling callback", (void *)connection);
 
         connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
-        AWS_FATAL_ASSERT(error_code != AWS_ERROR_SUCCESS);
 
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
 
