@@ -569,8 +569,14 @@ struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header) {
 
-    return aws_channel_acquire_message_from_pool(
-        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 3 + header->remaining_length);
+    const size_t required_length = 3 + header->remaining_length;
+
+    struct aws_io_message *message = aws_channel_acquire_message_from_pool(
+        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, required_length);
+
+    AWS_FATAL_ASSERT(message->message_data.capacity >= required_length);
+
+    return message;
 }
 
 /*******************************************************************************
