@@ -229,8 +229,78 @@ void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree) {
     }
 }
 
+/*******************************************************************************
+ * Iterate
+ ******************************************************************************/
+
 bool s_topic_node_is_subscription(const struct aws_mqtt_topic_node *node) {
     return node->callback;
+}
+
+struct topic_tree_iterate_context {
+    bool should_continue;
+    aws_mqtt_topic_tree_iterator_fn *iterator;
+    void *user_data;
+};
+
+static int s_topic_tree_iterate_do_recurse(void *context, struct aws_hash_element *current_elem) {
+
+    struct topic_tree_iterate_context *ctx = context;
+    struct aws_mqtt_topic_node *current = current_elem->value;
+
+    if (s_topic_node_is_subscription(current)) {
+        const struct aws_byte_cursor topic_filter = aws_byte_cursor_from_string(current->topic_filter);
+        ctx->should_continue = ctx->iterator(&topic_filter, current->qos, ctx->user_data);
+    }
+
+    if (ctx->should_continue) {
+        aws_hash_table_foreach(&current->subtopics, s_topic_tree_iterate_do_recurse, context);
+    }
+
+    /* One of the children could have updated should_continue, so check again */
+    if (ctx->should_continue) {
+        return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
+    }
+
+    /* If false returned, return immediately. */
+    return 0;
+}
+
+void aws_mqtt_topic_tree_iterate(
+    const struct aws_mqtt_topic_tree *tree,
+    aws_mqtt_topic_tree_iterator_fn *iterator,
+    void *user_data) {
+
+    AWS_PRECONDITION(tree);
+    AWS_PRECONDITION(tree->root);
+    AWS_PRECONDITION(iterator);
+
+    struct topic_tree_iterate_context itr;
+    itr.should_continue = true;
+    itr.iterator = iterator;
+    itr.user_data = user_data;
+
+    aws_hash_table_foreach(&tree->root->subtopics, s_topic_tree_iterate_do_recurse, &itr);
+}
+
+bool s_topic_tree_sub_count_iterator(const struct aws_byte_cursor *topic, enum aws_mqtt_qos qos, void *user_data) {
+    (void)topic;
+    (void)qos;
+    size_t *sub_count = user_data;
+    *sub_count += 1;
+
+    return true;
+}
+
+size_t aws_mqtt_topic_tree_get_sub_count(const struct aws_mqtt_topic_tree *tree) {
+
+    AWS_PRECONDITION(tree);
+    AWS_PRECONDITION(tree->root);
+
+    size_t sub_count = 0;
+    aws_mqtt_topic_tree_iterate(tree, s_topic_tree_sub_count_iterator, &sub_count);
+
+    return sub_count;
 }
 
 /*******************************************************************************

@@ -106,6 +106,7 @@ static int s_packet_handler_connack(
      * CONNECT/CONNACK cycle completes. In that case, we must deliver on_connection_complete
      * on the first successful CONNACK or user code will never think it's connected */
     if (was_reconnecting && connection->connection_count > 1) {
+
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: connection is a resumed connection, invoking on_resumed callback",
@@ -560,8 +561,14 @@ struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header) {
 
-    return aws_channel_acquire_message_from_pool(
-        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 3 + header->remaining_length);
+    const size_t required_length = 3 + header->remaining_length;
+
+    struct aws_io_message *message = aws_channel_acquire_message_from_pool(
+        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, required_length);
+
+    AWS_FATAL_ASSERT(message->message_data.capacity >= required_length);
+
+    return message;
 }
 
 /*******************************************************************************
@@ -814,6 +821,10 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     struct aws_mqtt_client_connection *connection = arg;
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Doing disconnect", (void *)connection);
+
+    /* Clear the subscription trie */
+    aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
+    aws_mqtt_topic_tree_init(&connection->subscriptions, connection->allocator);
 
     /* If there is an outstanding reconnect task, cancel it */
     if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {

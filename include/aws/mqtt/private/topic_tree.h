@@ -26,6 +26,13 @@ typedef void(aws_mqtt_publish_received_fn)(
     const struct aws_byte_cursor *payload,
     void *user_data);
 
+/**
+ * Function called per subscription when iterating through subscriptions.
+ * Return true to continue iteration, or false to stop.
+ */
+typedef bool(
+    aws_mqtt_topic_tree_iterator_fn)(const struct aws_byte_cursor *topic, enum aws_mqtt_qos qos, void *user_data);
+
 struct aws_mqtt_topic_node {
 
     /* This node's part of the topic filter. If in another node's subtopics, this is the key. */
@@ -70,6 +77,21 @@ AWS_MQTT_API int aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, stru
  * Cleanup and deallocate an entire topic tree.
  */
 AWS_MQTT_API void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree);
+
+/**
+ * Iterates through all registered subscriptions, and calls iterator.
+ *
+ * Iterator may return false to stop iterating, or true to continue.
+ */
+AWS_MQTT_API void aws_mqtt_topic_tree_iterate(
+    const struct aws_mqtt_topic_tree *tree,
+    aws_mqtt_topic_tree_iterator_fn *iterator,
+    void *user_data);
+
+/**
+ * Gets the total number of subscriptions in the tree.
+ */
+AWS_MQTT_API size_t aws_mqtt_topic_tree_get_sub_count(const struct aws_mqtt_topic_tree *tree);
 
 /**
  * Insert a new topic filter into the subscription tree (subscribe).

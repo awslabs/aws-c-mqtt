@@ -67,7 +67,10 @@ typedef void(aws_mqtt_client_on_connection_interrupted_fn)(
     int error_code,
     void *userdata);
 
-/* Called when a connection to the server is resumed. */
+/**
+ * Called when a connection to the server is resumed
+ * (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
+ */
 typedef void(aws_mqtt_client_on_connection_resumed_fn)(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_connect_return_code return_code,
@@ -306,7 +309,8 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
  * \param[in] connection        The connection object
  * \param[in] on_interrupted    The function to call when a connection is lost
  * \param[in] on_interrupted_ud Userdata for on_interrupted
- * \param[in] on_resumed    The function to call when a connection is resumed
+ * \param[in] on_resumed        The function to call when a connection is resumed
+                                (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
  * \param[in] on_resumed_ud Userdata for on_resumed
  */
 AWS_MQTT_API
@@ -404,6 +408,21 @@ uint16_t aws_mqtt_client_connection_subscribe(
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
     aws_mqtt_suback_fn *on_suback,
+    void *on_suback_ud);
+
+/**
+ * Resubscribe to all topics currently subscribed to. This is to help when resuming a connection with a clean session.
+ *
+ * \param[in] connection    The connection to subscribe on
+ * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
+ * \param[in] on_suback_ud  Passed to on_suback
+ *
+ * \returns The packet id of the subscribe packet if successfully sent, otherwise 0 (and aws_last_error() will be set).
+ */
+AWS_MQTT_API
+uint16_t aws_mqtt_resubscribe_existing_topics(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_ud);
 
 /**
