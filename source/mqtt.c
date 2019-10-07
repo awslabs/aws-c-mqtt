@@ -148,6 +148,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_UNEXPECTED_HANGUP,
                 "The connection was closed unexpectedly."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE,
+                "Resubscribe not necessary, client is not subscribed to any topics."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
