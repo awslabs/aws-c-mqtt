@@ -1530,7 +1530,7 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
         aws_raise_error(AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE);
         AWS_LOGF_WARN(
             AWS_LS_MQTT_CLIENT,
-            "id=%p: Resubscribe is unnecessary, error %s.",
+            "id=%p: Not subscribed to any topics. Resubscribe is unnecessary, no packet will be sent. Error %s.",
             (void *)connection,
             aws_error_name(aws_last_error()));
         return 0;
