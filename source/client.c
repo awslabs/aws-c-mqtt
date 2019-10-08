@@ -1870,7 +1870,6 @@ uint16_t aws_mqtt_client_connection_publish(
 
 static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bool is_first_attempt, void *userdata) {
     (void)message_id;
-    (void)is_first_attempt;
 
     struct aws_mqtt_client_connection *connection = userdata;
 
@@ -1906,7 +1905,7 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bo
         connection->waiting_on_ping_response = false;
         /* It's been too long since the last ping, close the connection */
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: ping timeout detected", (void *)connection);
-        mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_TIMEOUT);
+        aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
     }
 
     return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
