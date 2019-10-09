@@ -160,7 +160,7 @@ static int s_packet_handler_connack(
             (void *)connection,
             connack.connect_return_code);
         /* If error code returned, disconnect */
-        mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_PROTOCOL_ERROR);
+        aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
     s_schedule_ping(connection);
@@ -341,7 +341,7 @@ static int s_process_mqtt_packet(
             AWS_LS_MQTT_CLIENT,
             "id=%p: First message received from the server was not a CONNACK. Terminating connection.",
             (void *)connection);
-        mqtt_disconnect_impl(connection, AWS_ERROR_MQTT_PROTOCOL_ERROR);
+        aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
         return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
@@ -821,10 +821,6 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     struct aws_mqtt_client_connection *connection = arg;
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Doing disconnect", (void *)connection);
-
-    /* Clear the subscription trie */
-    aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
-    aws_mqtt_topic_tree_init(&connection->subscriptions, connection->allocator);
 
     /* If there is an outstanding reconnect task, cancel it */
     if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
