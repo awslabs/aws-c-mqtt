@@ -603,6 +603,21 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     return AWS_OP_SUCCESS;
 }
 
+int aws_mqtt_client_connection_set_on_any_publish_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_publish_received_fn *on_any_publish,
+    void *on_any_publish_ud) {
+
+    AWS_PRECONDITION(connection);
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting on_any_publish handler", (void *)connection);
+
+    connection->on_any_publish = on_any_publish;
+    connection->on_any_publish_ud = on_any_publish_ud;
+
+    return AWS_OP_SUCCESS;
+}
+
 #ifdef AWS_MQTT_WITH_WEBSOCKETS
 
 int aws_mqtt_client_connection_use_websockets(
