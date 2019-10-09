@@ -59,10 +59,11 @@ struct connection_args {
 
     struct aws_mqtt_client_connection *connection;
 
-    bool retained_packet_recieved;
+    bool retained_packet_received;
+    bool on_any_publish_fired;
 };
 
-static void s_on_packet_recieved(
+static void s_on_packet_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
@@ -80,13 +81,34 @@ static void s_on_packet_recieved(
     AWS_FATAL_ASSERT(aws_byte_cursor_eq(payload, &expected_payload));
 
     struct connection_args *args = user_data;
-    args->retained_packet_recieved = true;
+    args->retained_packet_received = true;
 
     printf("2 started\n");
 
     aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
     aws_mutex_unlock(args->mutex);
+}
+
+static void s_on_any_packet_received(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
+    void *user_data) {
+
+    (void)connection;
+    (void)topic;
+    (void)payload;
+
+    struct aws_byte_cursor expected_payload = {
+        .ptr = s_payload,
+        .len = PAYLOAD_LEN,
+    };
+    (void)expected_payload;
+    AWS_FATAL_ASSERT(aws_byte_cursor_eq(payload, &expected_payload));
+
+    struct connection_args *args = user_data;
+    args->on_any_publish_fired = true;
 }
 
 static void s_mqtt_on_puback(
@@ -198,6 +220,8 @@ int main(int argc, char **argv) {
 
     AWS_TEST_ALLOCATOR_INIT(paho_client);
 
+    aws_mqtt_library_init(&paho_client_allocator);
+
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
@@ -237,9 +261,11 @@ int main(int argc, char **argv) {
     aws_mqtt_client_connection_set_connection_interruption_handlers(
         args.connection, s_mqtt_on_interrupted, NULL, s_mqtt_on_resumed, NULL);
 
+    aws_mqtt_client_connection_set_on_any_publish_handler(args.connection, s_on_any_packet_received, &args);
+
     struct aws_mqtt_connection_options conn_options = {
         .host_name = host_name_cur,
-        .port = 8883,
+        .port = 1883,
         .socket_options = &options,
         .tls_options = NULL,
         .client_id = s_client_id,
@@ -293,7 +319,7 @@ int main(int argc, char **argv) {
         args.connection,
         &subscribe_topic_cur,
         AWS_MQTT_QOS_EXACTLY_ONCE,
-        &s_on_packet_recieved,
+        &s_on_packet_received,
         &args,
         NULL,
         NULL,
@@ -306,7 +332,8 @@ int main(int argc, char **argv) {
 
     printf("2 done\n");
 
-    ASSERT_TRUE(args.retained_packet_recieved);
+    ASSERT_TRUE(args.retained_packet_received);
+    ASSERT_TRUE(args.on_any_publish_fired);
 
     struct aws_byte_cursor topic_filter =
         aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);

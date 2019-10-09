@@ -176,6 +176,8 @@ static int s_packet_handler_publish(
         return AWS_OP_ERR;
     }
 
+    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_any_publish, &publish.topic_name, &publish.payload);
+
     if (aws_mqtt_topic_tree_publish(&connection->subscriptions, &publish)) {
         return AWS_OP_ERR;
     }
@@ -565,8 +567,6 @@ struct aws_io_message *mqtt_get_message_for_packet(
 
     struct aws_io_message *message = aws_channel_acquire_message_from_pool(
         connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, required_length);
-
-    AWS_FATAL_ASSERT(message->message_data.capacity >= required_length);
 
     return message;
 }

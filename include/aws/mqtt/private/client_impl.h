@@ -120,6 +120,8 @@ struct aws_mqtt_client_connection {
 
     /* Keeps track of all open subscriptions */
     struct aws_mqtt_topic_tree subscriptions;
+    aws_mqtt_client_publish_received_fn *on_any_publish;
+    void *on_any_publish_ud;
 
     /* aws_mqtt_outstanding_request */
     struct aws_memory_pool requests_pool;

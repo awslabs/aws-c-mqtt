@@ -322,6 +322,19 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     void *on_resumed_ud);
 
 /**
+ * Sets the callback to call whenever ANY publish packet is received.
+ *
+ * \param[in] connection        The connection object
+ * \param[in] on_any_publish    The function to call when a publish is received (pass NULL to unset)
+ * \param[in] on_any_publish_ud Userdata for on_any_publish
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_on_any_publish_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_publish_received_fn *on_any_publish,
+    void *on_any_publish_ud);
+
+/**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
  * Once the connection is opened, on_connack will be called.
  *
