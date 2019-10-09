@@ -77,13 +77,13 @@ static void s_on_puback(
     (void)packet_id;
     (void)error_code;
 
-    AWS_FATAL_ASSERT(error_code == AWS_OP_SUCCESS);
+    AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
 
     struct connection_args *args = userdata;
     ++args->pubacks_gotten;
 }
 
-static void s_on_packet_recieved(
+static void s_on_packet_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
@@ -124,7 +124,7 @@ static void s_mqtt_on_connection_complete(
     (void)return_code;
     (void)session_present;
 
-    AWS_FATAL_ASSERT(error_code == AWS_OP_SUCCESS);
+    AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
     AWS_FATAL_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     AWS_FATAL_ASSERT(session_present == false);
 
@@ -149,13 +149,64 @@ static void s_mqtt_on_suback(
     (void)qos;
     (void)error_code;
 
-    AWS_FATAL_ASSERT(error_code == AWS_OP_SUCCESS);
+    AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
+    AWS_FATAL_ASSERT(qos != AWS_MQTT_QOS_FAILURE);
 
     struct connection_args *args = userdata;
 
     aws_mutex_lock(args->mutex);
     aws_condition_variable_notify_one(args->condition_variable);
     aws_mutex_unlock(args->mutex);
+}
+
+static void s_on_connection_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
+
+    (void)connection;
+    (void)userdata;
+    printf("CONNECTION INTERRUPTED error_code=%d\n", error_code);
+}
+
+static void s_on_resubscribed(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    const struct aws_array_list *topic_subacks, /* contains aws_mqtt_topic_subscription pointers */
+    int error_code,
+    void *userdata) {
+
+    (void)connection;
+    (void)packet_id;
+    (void)userdata;
+
+    AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
+
+    size_t num_topics = aws_array_list_length(topic_subacks);
+    printf("RESUBSCRIBE_COMPLETE. error_code=%d num_topics=%zu\n", error_code, num_topics);
+    for (size_t i = 0; i < num_topics; ++i) {
+        struct aws_mqtt_topic_subscription sub_i;
+        aws_array_list_get_at(topic_subacks, &sub_i, i);
+        printf("  topic=" PRInSTR " qos=%d\n", AWS_BYTE_CURSOR_PRI(sub_i.topic), sub_i.qos);
+        AWS_FATAL_ASSERT(sub_i.qos != AWS_MQTT_QOS_FAILURE);
+    }
+}
+
+static void s_on_connection_resumed(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present,
+    void *userdata) {
+
+    (void)connection;
+    (void)userdata;
+
+    printf("CONNECTION RESUMED return_code=%d session_present=%d\n", return_code, session_present);
+    if (!session_present) {
+        printf("RESUBSCRIBING...");
+        uint16_t packet_id = aws_mqtt_resubscribe_existing_topics(connection, s_on_resubscribed, NULL);
+        if (!packet_id) {
+            AWS_FATAL_ASSERT(aws_last_error() == AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE);
+            printf("No topics to resubscribe to.");
+        }
+    }
 }
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, void *userdata) {
@@ -248,6 +299,9 @@ int main(int argc, char **argv) {
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_c_str(endpoint);
     args.connection = aws_mqtt_client_connection_new(&client);
 
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_connection_interruption_handlers(
+        args.connection, s_on_connection_interrupted, NULL, s_on_connection_resumed, NULL));
+
     struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
     aws_mqtt_client_connection_set_will(args.connection, &subscribe_topic_cur, 1, false, &will_cur);
 
@@ -287,7 +341,7 @@ int main(int argc, char **argv) {
         args.connection,
         &subscribe_topic_cur,
         AWS_MQTT_QOS_AT_LEAST_ONCE,
-        &s_on_packet_recieved,
+        &s_on_packet_received,
         &args,
         NULL,
         s_mqtt_on_suback,
