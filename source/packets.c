@@ -746,6 +746,10 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
         return AWS_OP_ERR;
     }
 
+    if (packet->fixed_header.remaining_length < sizeof(uint16_t)) {
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_REMAINING_LENGTH);
+    }
+
     /*************************************************************************/
     /* Variable Header                                                       */
 
@@ -893,6 +897,10 @@ int aws_mqtt_packet_unsubscribe_decode(struct aws_byte_cursor *cur, struct aws_m
 
     if (aws_mqtt_fixed_header_decode(cur, &packet->fixed_header)) {
         return AWS_OP_ERR;
+    }
+
+    if (packet->fixed_header.remaining_length < sizeof(uint16_t)) {
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_REMAINING_LENGTH);
     }
 
     /*************************************************************************/
