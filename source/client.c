@@ -1821,7 +1821,8 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     }
 
     aws_array_list_clean_up(&transaction);
-    return AWS_MQTT_CLIENT_REQUEST_ONGOING;
+    /* If the subscribe is local-only, don't wait for a SUBACK to come back. */
+    return task_arg->is_local ? AWS_MQTT_CLIENT_REQUEST_COMPLETE : AWS_MQTT_CLIENT_REQUEST_ONGOING;
 
 handle_error:
 
