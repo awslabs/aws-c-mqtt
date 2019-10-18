@@ -153,7 +153,7 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
 
     /* Should remove the last /a, but not the first 2. */
-    void *userdata = (void *)0xBADC0FFEE;
+    void *userdata = (void *)0xBADCAFE;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a_a, &userdata));
     /* Ensure userdata was set back to NULL correctly. */
     ASSERT_PTR_EQUALS(NULL, userdata);
