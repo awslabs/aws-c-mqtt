@@ -1417,9 +1417,6 @@ uint16_t aws_mqtt_client_connection_subscribe(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    /* Update request topic cursor to refer to owned string */
-    task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
-
     uint16_t packet_id =
         mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg);
 
@@ -1567,9 +1564,6 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
     task_topic->request.on_publish = on_publish;
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
-
-    /* Update request topic cursor to refer to owned string */
-    task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
 
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection, s_subscribe_local_send, task_arg, &s_subscribe_local_complete, task_arg);
