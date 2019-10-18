@@ -687,7 +687,8 @@ int aws_mqtt_topic_tree_transaction_insert(
 int aws_mqtt_topic_tree_transaction_remove(
     struct aws_mqtt_topic_tree *tree,
     struct aws_array_list *transaction,
-    const struct aws_byte_cursor *topic_filter) {
+    const struct aws_byte_cursor *topic_filter,
+    void **old_userdata) {
 
     AWS_PRECONDITION(tree);
     AWS_PRECONDITION(transaction);
@@ -756,6 +757,10 @@ int aws_mqtt_topic_tree_transaction_remove(
     action->node_to_update = current;
 
     aws_array_list_clean_up(&sub_topic_parts);
+
+    if (old_userdata) {
+        *old_userdata = current->userdata;
+    }
 
     return AWS_OP_SUCCESS;
 
@@ -833,7 +838,7 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
     struct aws_array_list transaction;
     aws_array_list_init_static(&transaction, transaction_buf, 1, aws_mqtt_topic_tree_action_size);
 
-    if (aws_mqtt_topic_tree_transaction_remove(tree, &transaction, topic_filter)) {
+    if (aws_mqtt_topic_tree_transaction_remove(tree, &transaction, topic_filter, NULL)) {
 
         aws_mqtt_topic_tree_transaction_roll_back(tree, &transaction);
         return AWS_OP_ERR;

@@ -153,8 +153,11 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
 
     /* Should remove the last /a, but not the first 2. */
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a_a));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a));
+    void *userdata = (void *)0xBADC0FFEE;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a_a, &userdata));
+    /* Ensure userdata was set back to NULL correctly. */
+    ASSERT_PTR_EQUALS(NULL, userdata);
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a, NULL));
     aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
 
     struct aws_mqtt_packet_publish publish;
@@ -200,7 +203,7 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
 
     /* Insert(commit), remove, roll back the removal */
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a, NULL));
     aws_mqtt_topic_tree_transaction_roll_back(&tree, &transaction);
 
     struct aws_mqtt_packet_publish publish;
