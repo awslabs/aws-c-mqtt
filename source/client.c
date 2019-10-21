@@ -1054,6 +1054,7 @@ struct subscribe_task_topic {
 
     struct aws_mqtt_topic_subscription request;
     struct aws_string *filter;
+    bool is_local;
 };
 
 /* The lifetime of this struct is from subscribe -> suback */
@@ -1416,15 +1417,160 @@ uint16_t aws_mqtt_client_connection_subscribe(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    /* Update request topic cursor to refer to owned string */
-    task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
-
     uint16_t packet_id =
         mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Starting subscribe %" PRIu16 " on topic " PRInSTR,
+        (void *)connection,
+        packet_id,
+        AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
+
+    if (packet_id) {
+        return packet_id;
+    }
+
+handle_error:
+
+    if (task_topic) {
+        if (task_topic->filter) {
+            aws_string_destroy(task_topic->filter);
+        }
+        aws_mem_release(connection->allocator, task_topic);
+    }
+
+    if (task_arg) {
+
+        aws_mem_release(connection->allocator, task_arg);
+    }
+    return 0;
+}
+
+/*******************************************************************************
+ * Subscribe Local
+ ******************************************************************************/
+
+/* The lifetime of this struct is from subscribe -> suback */
+struct subscribe_local_task_arg {
+
+    struct aws_mqtt_client_connection *connection;
+
+    struct subscribe_task_topic *task_topic;
+
+    aws_mqtt_suback_fn *on_suback;
+    void *on_suback_ud;
+};
+
+static enum aws_mqtt_client_request_state s_subscribe_local_send(
+    uint16_t message_id,
+    bool is_first_attempt,
+    void *userdata) {
+
+    (void)is_first_attempt;
+
+    struct subscribe_local_task_arg *task_arg = userdata;
+
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Attempting save of local subscribe %" PRIu16 " (%s)",
+        (void *)task_arg->connection,
+        message_id,
+        is_first_attempt ? "first attempt" : "redo");
+
+    struct subscribe_task_topic *topic = task_arg->task_topic;
+    if (aws_mqtt_topic_tree_insert(
+            &task_arg->connection->subscriptions,
+            topic->filter,
+            topic->request.qos,
+            s_on_publish_client_wrapper,
+            s_on_topic_clean_up,
+            topic)) {
+
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+    }
+
+    return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
+}
+
+static void s_subscribe_local_complete(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    int error_code,
+    void *userdata) {
+
+    struct subscribe_local_task_arg *task_arg = userdata;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Local subscribe %" PRIu16 " completed with error code %d",
+        (void *)connection,
+        packet_id,
+        error_code);
+
+    if (task_arg->on_suback) {
+        struct subscribe_task_topic *topic = task_arg->task_topic;
+        aws_mqtt_suback_fn *suback = task_arg->on_suback;
+
+        suback(connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
+    }
+
+    aws_mem_release(task_arg->connection->allocator, task_arg);
+}
+
+uint16_t aws_mqtt_client_connection_subscribe_local(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic_filter,
+    aws_mqtt_client_publish_received_fn *on_publish,
+    void *on_publish_ud,
+    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
+    aws_mqtt_suback_fn *on_suback,
+    void *on_suback_ud) {
+
+    AWS_PRECONDITION(connection);
+
+    if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+        return 0;
+    }
+
+    struct subscribe_task_topic *task_topic = NULL;
+
+    struct subscribe_local_task_arg *task_arg =
+        aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_local_task_arg));
+
+    if (!task_arg) {
+        goto handle_error;
+    }
+    AWS_ZERO_STRUCT(*task_arg);
+
+    task_arg->connection = connection;
+    task_arg->on_suback = on_suback;
+    task_arg->on_suback_ud = on_suback_ud;
+    task_topic = aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_topic));
+    if (!task_topic) {
+        goto handle_error;
+    }
+    task_arg->task_topic = task_topic;
+
+    task_topic->filter = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
+    if (!task_topic->filter) {
+        goto handle_error;
+    }
+
+    task_topic->connection = connection;
+    task_topic->is_local = true;
+    task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
+    task_topic->request.on_publish = on_publish;
+    task_topic->request.on_cleanup = on_ud_cleanup;
+    task_topic->request.on_publish_ud = on_publish_ud;
+
+    uint16_t packet_id = mqtt_create_request(
+        task_arg->connection, s_subscribe_local_send, task_arg, &s_subscribe_local_complete, task_arg);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Starting local subscribe %" PRIu16 " on topic " PRInSTR,
         (void *)connection,
         packet_id,
         AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
@@ -1594,6 +1740,7 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
 struct unsubscribe_task_arg {
     struct aws_mqtt_client_connection *connection;
     struct aws_byte_cursor filter;
+    bool is_local;
     /* Packet to populate */
     struct aws_mqtt_packet_unsubscribe unsubscribe;
 
@@ -1629,33 +1776,38 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
     if (!task_arg->tree_updated) {
 
+        struct subscribe_task_topic *topic;
         if (aws_mqtt_topic_tree_transaction_remove(
-                &task_arg->connection->subscriptions, &transaction, &task_arg->filter)) {
+                &task_arg->connection->subscriptions, &transaction, &task_arg->filter, (void **)&topic)) {
             goto handle_error;
         }
+
+        task_arg->is_local = topic->is_local;
     }
 
-    if (task_arg->unsubscribe.fixed_header.packet_type == 0) {
-        /* If unsubscribe packet is uninitialized, init it */
-        if (aws_mqtt_packet_unsubscribe_init(&task_arg->unsubscribe, task_arg->connection->allocator, message_id)) {
+    if (!task_arg->is_local) {
+        if (task_arg->unsubscribe.fixed_header.packet_type == 0) {
+            /* If unsubscribe packet is uninitialized, init it */
+            if (aws_mqtt_packet_unsubscribe_init(&task_arg->unsubscribe, task_arg->connection->allocator, message_id)) {
+                goto handle_error;
+            }
+            if (aws_mqtt_packet_unsubscribe_add_topic(&task_arg->unsubscribe, task_arg->filter)) {
+                goto handle_error;
+            }
+        }
+
+        message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->unsubscribe.fixed_header);
+        if (!message) {
             goto handle_error;
         }
-        if (aws_mqtt_packet_unsubscribe_add_topic(&task_arg->unsubscribe, task_arg->filter)) {
+
+        if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &task_arg->unsubscribe)) {
+            aws_mem_release(message->allocator, message);
             goto handle_error;
         }
-    }
 
-    message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->unsubscribe.fixed_header);
-    if (!message) {
-        goto handle_error;
+        aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
     }
-
-    if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &task_arg->unsubscribe)) {
-        aws_mem_release(message->allocator, message);
-        goto handle_error;
-    }
-
-    aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
 
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &transaction);
@@ -1663,7 +1815,8 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     }
 
     aws_array_list_clean_up(&transaction);
-    return AWS_MQTT_CLIENT_REQUEST_ONGOING;
+    /* If the subscribe is local-only, don't wait for a SUBACK to come back. */
+    return task_arg->is_local ? AWS_MQTT_CLIENT_REQUEST_COMPLETE : AWS_MQTT_CLIENT_REQUEST_ONGOING;
 
 handle_error:
 

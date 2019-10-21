@@ -104,7 +104,6 @@ AWS_MQTT_API size_t aws_mqtt_topic_tree_get_sub_count(const struct aws_mqtt_topi
  * \param[in]  connection   The connection object to pass to the callback. This is a void* to support client and server
  *                          connections in the future.
  * \param[in]  userdata     The userdata to pass to callback.
- * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
  *
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
  *          If AWS_OP_ERR is returned, aws_mqtt_topic_tree_transaction_rollback should be called to prevent leaks.
@@ -125,7 +124,9 @@ AWS_MQTT_API int aws_mqtt_topic_tree_transaction_insert(
  * \param[in]  transaction  The transaction to add the insert action to.
  *                          Must be initialized with aws_mqtt_topic_tree_action_size as item size.
  * \param[in]  topic_filter The filter to remove (must be exactly the same as the topic_filter passed to insert).
- * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
+ * \param[out] old_userdata The userdata assigned to this subscription will be assigned if not NULL.
+ *                          \NOTE once the transaction is committed, old_userdata may be destroyed,
+ *                              if a cleanup callback was set on insert.
  *
  * \returns AWS_OP_SUCCESS on successful removal, AWS_OP_ERR with aws_last_error() populated on failure.
  *          If AWS_OP_ERR is returned, aws_mqtt_topic_tree_transaction_rollback should be called to prevent leaks.
@@ -133,7 +134,8 @@ AWS_MQTT_API int aws_mqtt_topic_tree_transaction_insert(
 AWS_MQTT_API int aws_mqtt_topic_tree_transaction_remove(
     struct aws_mqtt_topic_tree *tree,
     struct aws_array_list *transaction,
-    const struct aws_byte_cursor *topic_filter);
+    const struct aws_byte_cursor *topic_filter,
+    void **old_userdata);
 
 AWS_MQTT_API void aws_mqtt_topic_tree_transaction_commit(
     struct aws_mqtt_topic_tree *tree,
@@ -152,7 +154,6 @@ AWS_MQTT_API void aws_mqtt_topic_tree_transaction_roll_back(
  * \param[in]  connection   The connection object to pass to the callback. This is a void* to support client and server
  *                          connections in the future.
  * \param[in]  userdata     The userdata to pass to callback.
- * \param[out] old_userdata The userdata assigned to this subscription will be assigned here.
  *
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
  */
