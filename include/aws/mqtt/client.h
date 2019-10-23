@@ -403,7 +403,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
  *
  * \param[in] connection    The connection to subscribe on
  * \param[in] topic_filter  The topic filter to subscribe on.  This resource must persist until on_suback.
- * \param[in] qos           The maximum QoS of messages to recieve
+ * \param[in] qos           The maximum QoS of messages to receive
  * \param[in] on_publish    Called when a PUBLISH packet matching topic_filter is received
  * \param[in] on_publish_ud Passed to on_publish
  * \param[in] on_ud_cleanup Called when a subscription is removed, on_publish_ud is passed.
@@ -417,6 +417,31 @@ uint16_t aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
+    aws_mqtt_client_publish_received_fn *on_publish,
+    void *on_publish_ud,
+    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
+    aws_mqtt_suback_fn *on_suback,
+    void *on_suback_ud);
+
+/**
+ * Subscribe to a single topic filter WITHOUT sending a SUBSCRIBE packet.
+ * This is useful if you expect the broker to send PUBLISHES without first subscribing.
+ * on_publish will be called when a PUBLISH matching topic_filter is received.
+ *
+ * \param[in] connection    The connection to subscribe on
+ * \param[in] topic_filter  The topic filter to subscribe on.  This resource must persist until on_suback.
+ * \param[in] on_publish    Called when a PUBLISH packet matching topic_filter is received
+ * \param[in] on_publish_ud Passed to on_publish
+ * \param[in] on_ud_cleanup Called when a subscription is removed, on_publish_ud is passed.
+ * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
+ * \param[in] on_suback_ud  Passed to on_suback
+ *
+ * \returns The "packet id" of the operation if successfully initiated, otherwise 0.
+ */
+AWS_MQTT_API
+uint16_t aws_mqtt_client_connection_subscribe_local(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic_filter,
     aws_mqtt_client_publish_received_fn *on_publish,
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
