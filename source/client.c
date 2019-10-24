@@ -676,11 +676,13 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
     }
 
     /* Copy the TLS options */
-    if (aws_tls_connection_options_copy(&connection->websocket.proxy.tls_options, proxy_options->tls_options)) {
-        aws_mem_release(connection->allocator, alloc);
-        return AWS_OP_ERR;
+    if (proxy_options->tls_options) {
+        if (aws_tls_connection_options_copy(&connection->websocket.proxy.tls_options, proxy_options->tls_options)) {
+            aws_mem_release(connection->allocator, alloc);
+            return AWS_OP_ERR;
+        }
+        connection->websocket.proxy_options->tls_options = &connection->websocket.proxy.tls_options;
     }
-    connection->websocket.proxy_options->tls_options = &connection->websocket.proxy.tls_options;
 
     /* Write out the various strings */
     bool succ = true;
