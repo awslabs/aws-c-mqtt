@@ -668,7 +668,7 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
 
     /* clang-format off */
     void *alloc = aws_mem_acquire_many(connection->allocator, 4,
-        &connection->websocket.proxy, sizeof(connection->websocket.proxy),
+        &connection->websocket.proxy, sizeof(*connection->websocket.proxy),
         &connection->websocket.proxy_options, sizeof(struct aws_http_proxy_options),
         &host_buffer, proxy_options->host.len,
         &username_buffer, proxy_options->auth_username.len,
