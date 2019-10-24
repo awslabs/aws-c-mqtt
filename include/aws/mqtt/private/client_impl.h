@@ -169,6 +169,14 @@ struct aws_mqtt_client_connection {
         void *handshake_validator_ud;
         bool enabled;
 
+        struct {
+            struct aws_byte_buf host;
+            struct aws_byte_buf auth_username;
+            struct aws_byte_buf auth_password;
+            struct aws_tls_connection_options tls_options;
+        } proxy;
+        struct aws_http_proxy_options *proxy_options;
+
         struct aws_http_message *handshake_request;
     } websocket;
 
