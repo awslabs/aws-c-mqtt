@@ -31,6 +31,7 @@
 #include <inttypes.h>
 
 #ifdef AWS_MQTT_WITH_WEBSOCKETS
+#    include <aws/http/connection.h>
 #    include <aws/http/request_response.h>
 #    include <aws/http/websocket.h>
 #endif
@@ -487,6 +488,15 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     }
     aws_tls_connection_options_clean_up(&connection->tls_options);
 
+    /* Clean up the websocket proxy options */
+    if (connection->websocket.proxy) {
+        aws_tls_connection_options_clean_up(&connection->websocket.proxy->tls_options);
+
+        aws_mem_release(connection->allocator, connection->websocket.proxy);
+        connection->websocket.proxy = NULL;
+        connection->websocket.proxy_options = NULL;
+    }
+
     /* Frees all allocated memory */
     aws_mem_release(connection->allocator, connection);
 }
@@ -634,6 +644,76 @@ int aws_mqtt_client_connection_use_websockets(
     connection->websocket.enabled = true;
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Using websockets", (void *)connection);
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt_client_connection_set_websocket_proxy_options(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_http_proxy_options *proxy_options) {
+
+    /* If there is existing proxy options, nuke em */
+    if (connection->websocket.proxy) {
+        aws_tls_connection_options_clean_up(&connection->websocket.proxy->tls_options);
+
+        aws_mem_release(connection->allocator, connection->websocket.proxy);
+        connection->websocket.proxy = NULL;
+        connection->websocket.proxy_options = NULL;
+    }
+
+    /* Allocate new proxy options object, and add space for buffered strings */
+    void *host_buffer = NULL;
+    void *username_buffer = NULL;
+    void *password_buffer = NULL;
+
+    /* clang-format off */
+    void *alloc = aws_mem_acquire_many(connection->allocator, 4,
+        &connection->websocket.proxy, sizeof(*connection->websocket.proxy),
+        &connection->websocket.proxy_options, sizeof(struct aws_http_proxy_options),
+        &host_buffer, proxy_options->host.len,
+        &username_buffer, proxy_options->auth_username.len,
+        &password_buffer, proxy_options->auth_password.len);
+    /* clang-format on */
+
+    if (!alloc) {
+        return AWS_OP_ERR;
+    }
+
+    /* Copy the TLS options */
+    if (proxy_options->tls_options) {
+        if (aws_tls_connection_options_copy(&connection->websocket.proxy->tls_options, proxy_options->tls_options)) {
+            aws_mem_release(connection->allocator, alloc);
+            return AWS_OP_ERR;
+        }
+        connection->websocket.proxy_options->tls_options = &connection->websocket.proxy->tls_options;
+    }
+
+    /* Init the byte bufs */
+    connection->websocket.proxy->host = aws_byte_buf_from_empty_array(host_buffer, proxy_options->host.len);
+    connection->websocket.proxy->auth_username =
+        aws_byte_buf_from_empty_array(username_buffer, proxy_options->auth_username.len);
+    connection->websocket.proxy->auth_password =
+        aws_byte_buf_from_empty_array(password_buffer, proxy_options->auth_password.len);
+
+    /* Write out the various strings */
+    bool succ = true;
+    succ &= aws_byte_buf_write_from_whole_cursor(&connection->websocket.proxy->host, proxy_options->host);
+    succ &=
+        aws_byte_buf_write_from_whole_cursor(&connection->websocket.proxy->auth_username, proxy_options->auth_username);
+    succ &=
+        aws_byte_buf_write_from_whole_cursor(&connection->websocket.proxy->auth_password, proxy_options->auth_password);
+    AWS_FATAL_ASSERT(succ);
+
+    /* Update the proxy options cursors */
+    connection->websocket.proxy_options->host = aws_byte_cursor_from_buf(&connection->websocket.proxy->host);
+    connection->websocket.proxy_options->auth_username =
+        aws_byte_cursor_from_buf(&connection->websocket.proxy->auth_username);
+    connection->websocket.proxy_options->auth_password =
+        aws_byte_cursor_from_buf(&connection->websocket.proxy->auth_password);
+
+    /* Update proxy options values */
+    connection->websocket.proxy_options->port = proxy_options->port;
+    connection->websocket.proxy_options->auth_type = proxy_options->auth_type;
 
     return AWS_OP_SUCCESS;
 }
@@ -790,6 +870,7 @@ static void s_websocket_handshake_transform_complete(
         .bootstrap = connection->client->bootstrap,
         .socket_options = &connection->socket_options,
         .tls_options = connection->tls_options.ctx ? &connection->tls_options : NULL,
+        .proxy_options = connection->websocket.proxy_options,
         .host = aws_byte_cursor_from_string(connection->host_name),
         .port = connection->port,
         .handshake_request = handshake_request,
@@ -826,6 +907,21 @@ int aws_mqtt_client_connection_use_websockets(
     (void)transformer_ud;
     (void)validator;
     (void)validator_ud;
+
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Cannot use websockets unless library is built with MQTT_WITH_WEBSOCKETS option.",
+        (void *)connection);
+
+    return aws_raise_error(AWS_ERROR_MQTT_BUILT_WITHOUT_WEBSOCKETS);
+}
+
+int aws_mqtt_client_connection_set_websocket_proxy_options(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_http_proxy_options *proxy_options) {
+
+    (void)connection;
+    (void)proxy_options;
 
     AWS_LOGF_ERROR(
         AWS_LS_MQTT_CLIENT,
