@@ -1079,7 +1079,7 @@ int aws_mqtt_client_connection_reconnect(
         if (connection->tls_options.ctx) {
             result = aws_client_bootstrap_new_tls_socket_channel(
                 connection->client->bootstrap,
-                (const char *)aws_string_bytes(connection->host_name),
+                aws_string_c_str(connection->host_name),
                 connection->port,
                 &connection->socket_options,
                 &connection->tls_options,
@@ -1089,7 +1089,7 @@ int aws_mqtt_client_connection_reconnect(
         } else {
             result = aws_client_bootstrap_new_socket_channel(
                 connection->client->bootstrap,
-                (const char *)aws_string_bytes(connection->host_name),
+                aws_string_c_str(connection->host_name),
                 connection->port,
                 &connection->socket_options,
                 &s_mqtt_client_init,
