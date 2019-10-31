@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-mqtt C)
 
-option(MQTT_WITH_WEBSOCKETS "Enable MQTT connections over websockets. Requires aws-c-http. " OFF)
+option(MQTT_WITH_WEBSOCKETS "Enable MQTT connections over websockets. Requires aws-c-http. " ON)
 
 if (POLICY CMP0069)
     cmake_policy(SET CMP0069 NEW) # Enable LTO/IPO if available in the compiler, see AwsCFlags
