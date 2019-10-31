@@ -1986,6 +1986,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
 
 struct publish_task_arg {
     struct aws_mqtt_client_connection *connection;
+    struct aws_string *topic_string;
     struct aws_byte_cursor topic;
     enum aws_mqtt_qos qos;
     bool retain;
@@ -2086,6 +2087,7 @@ static void s_publish_complete(
         task_arg->on_complete(connection, packet_id, error_code, task_arg->userdata);
     }
 
+    aws_string_destroy(task_arg->topic_string);
     aws_mem_release(connection->allocator, task_arg);
 }
 
@@ -2111,7 +2113,8 @@ uint16_t aws_mqtt_client_connection_publish(
     }
 
     arg->connection = connection;
-    arg->topic = *topic;
+    arg->topic_string = aws_string_new_from_array(connection->allocator, topic->ptr, topic->len);
+    arg->topic = aws_byte_cursor_from_string(arg->topic_string);
     arg->qos = qos;
     arg->retain = retain;
     arg->payload = *payload;
