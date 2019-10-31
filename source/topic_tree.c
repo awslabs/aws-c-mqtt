@@ -700,6 +700,8 @@ int aws_mqtt_topic_tree_transaction_remove(
         (void *)tree,
         AWS_BYTE_CURSOR_PRI(*topic_filter));
 
+    /* Default to error because that's what handle_error will do in all cases except node not found */
+    int result = AWS_OP_ERR;
     struct topic_tree_action *action = s_topic_tree_action_create(transaction);
     if (!action) {
         return AWS_OP_ERR;
@@ -749,8 +751,7 @@ int aws_mqtt_topic_tree_transaction_remove(
             }
         } else {
             /* If not, abandon ship */
-            current = NULL;
-            break;
+            goto handle_not_found;
         }
     }
 
@@ -764,13 +765,16 @@ int aws_mqtt_topic_tree_transaction_remove(
 
     return AWS_OP_SUCCESS;
 
+handle_not_found:
+    result = AWS_OP_SUCCESS;
+
 handle_error:
     aws_array_list_clean_up(&sub_topic_parts);
 
     s_topic_tree_action_destroy(action);
     aws_array_list_pop_back(transaction);
 
-    return AWS_OP_ERR;
+    return result;
 }
 
 /*******************************************************************************

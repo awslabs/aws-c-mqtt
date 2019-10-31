@@ -169,9 +169,12 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
 
     publish.topic_name = s_topic_a_a_b;
 
-    times_called = false;
+    times_called = 0;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
     ASSERT_INT_EQUALS(times_called, 1);
+
+    const struct aws_byte_cursor not_in_tree = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("not/in/tree");
+    aws_mqtt_topic_tree_remove(&tree, &not_in_tree);
 
     aws_mqtt_topic_tree_clean_up(&tree);
 

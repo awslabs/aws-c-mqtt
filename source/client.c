@@ -1835,6 +1835,7 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
 
 struct unsubscribe_task_arg {
     struct aws_mqtt_client_connection *connection;
+    struct aws_string *filter_string;
     struct aws_byte_cursor filter;
     bool is_local;
     /* Packet to populate */
@@ -1941,6 +1942,7 @@ static void s_unsubscribe_complete(
         task_arg->on_unsuback(connection, packet_id, error_code, task_arg->on_unsuback_ud);
     }
 
+    aws_string_destroy(task_arg->filter_string);
     aws_mqtt_packet_unsubscribe_clean_up(&task_arg->unsubscribe);
     aws_mem_release(task_arg->connection->allocator, task_arg);
 }
@@ -1965,7 +1967,8 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     }
 
     task_arg->connection = connection;
-    task_arg->filter = *topic_filter;
+    task_arg->filter_string = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
+    task_arg->filter = aws_byte_cursor_from_string(task_arg->filter_string);
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
 
@@ -1983,6 +1986,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
 
 struct publish_task_arg {
     struct aws_mqtt_client_connection *connection;
+    struct aws_string *topic_string;
     struct aws_byte_cursor topic;
     enum aws_mqtt_qos qos;
     bool retain;
@@ -2083,6 +2087,7 @@ static void s_publish_complete(
         task_arg->on_complete(connection, packet_id, error_code, task_arg->userdata);
     }
 
+    aws_string_destroy(task_arg->topic_string);
     aws_mem_release(connection->allocator, task_arg);
 }
 
@@ -2108,7 +2113,8 @@ uint16_t aws_mqtt_client_connection_publish(
     }
 
     arg->connection = connection;
-    arg->topic = *topic;
+    arg->topic_string = aws_string_new_from_array(connection->allocator, topic->ptr, topic->len);
+    arg->topic = aws_byte_cursor_from_string(arg->topic_string);
     arg->qos = qos;
     arg->retain = retain;
     arg->payload = *payload;
