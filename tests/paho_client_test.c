@@ -218,9 +218,9 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    AWS_TEST_ALLOCATOR_INIT(paho_client);
+    struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), AWS_MEMTRACE_BYTES, 0);
 
-    aws_mqtt_library_init(&paho_client_allocator);
+    aws_mqtt_library_init(allocator);
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
 
     struct connection_args args;
     AWS_ZERO_STRUCT(args);
-    args.allocator = &paho_client_allocator;
+    args.allocator = allocator;
     args.mutex = &mutex;
     args.condition_variable = &condition_variable;
 
@@ -367,7 +367,8 @@ int main(int argc, char **argv) {
     aws_host_resolver_clean_up(&resolver);
     aws_event_loop_group_clean_up(&el_group);
 
-    ASSERT_UINT_EQUALS(paho_client_alloc_impl.freed, paho_client_alloc_impl.allocated);
+    ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));
+    allocator = aws_mem_tracer_destroy(allocator);
 
     return AWS_OP_SUCCESS;
 }

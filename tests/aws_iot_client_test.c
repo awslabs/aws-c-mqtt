@@ -238,14 +238,14 @@ int main(int argc, char **argv) {
     const char *private_key = argv[3];
     const char *root_ca = argv[4];
 
-    AWS_TEST_ALLOCATOR_INIT(iot_client);
+    struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), AWS_MEMTRACE_BYTES, 0);
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
     struct connection_args args;
     AWS_ZERO_STRUCT(args);
-    args.allocator = &iot_client_allocator;
+    args.allocator = allocator;
     args.mutex = &mutex;
     args.condition_variable = &condition_variable;
 
@@ -394,7 +394,8 @@ int main(int argc, char **argv) {
 
     aws_mqtt_library_clean_up();
 
-    ASSERT_UINT_EQUALS(iot_client_alloc_impl.freed, iot_client_alloc_impl.allocated);
+    ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));
+    allocator = aws_mem_tracer_destroy(allocator);
 
     return AWS_OP_SUCCESS;
 }
