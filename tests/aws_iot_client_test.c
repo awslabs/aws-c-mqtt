@@ -396,6 +396,7 @@ int main(int argc, char **argv) {
 
     ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));
     allocator = aws_mem_tracer_destroy(allocator);
+    ASSERT_NOT_NULL(allocator);
 
     return AWS_OP_SUCCESS;
 }
