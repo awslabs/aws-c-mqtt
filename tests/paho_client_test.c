@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), AWS_MEMTRACE_BYTES, 0);
+    struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), NULL, AWS_MEMTRACE_BYTES, 0);
 
     aws_mqtt_library_init(allocator);
 
