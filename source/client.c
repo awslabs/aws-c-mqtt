@@ -679,6 +679,9 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
         return AWS_OP_ERR;
     }
 
+    AWS_ZERO_STRUCT(*connection->websocket.proxy);
+    AWS_ZERO_STRUCT(*connection->websocket.proxy_options);
+
     /* Copy the TLS options */
     if (proxy_options->tls_options) {
         if (aws_tls_connection_options_copy(&connection->websocket.proxy->tls_options, proxy_options->tls_options)) {
