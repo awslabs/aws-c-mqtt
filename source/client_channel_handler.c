@@ -797,6 +797,15 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
 
     struct aws_mqtt_outstanding_request *request = elem->value;
 
+    if (request->completed) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: received duplicate completion for message id  %" PRIu16,
+            (void *)connection,
+            message_id);
+        return;
+    }
+
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: invoking on_complete callback.", (void *)connection);
     /* Alert the user */
     if (request->on_complete) {
