@@ -78,55 +78,7 @@ void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
 }
 
 /* Reconnect helpers */
-
-static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_task_status status) {
-
-    (void)task;
-
-    struct aws_mqtt_reconnect_task *reconnect = userdata;
-    struct aws_mqtt_client_connection *connection = aws_atomic_load_ptr(&reconnect->connection_ptr);
-
-    if (status == AWS_TASK_STATUS_RUN_READY && connection) {
-        /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
-
-        aws_high_res_clock_get_ticks(&connection->reconnect_timeouts.next_attempt);
-        connection->reconnect_timeouts.next_attempt += aws_timestamp_convert(
-            connection->reconnect_timeouts.current, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
-            (void *)connection,
-            connection->reconnect_timeouts.current);
-
-        /* Check before multipying to avoid potential overflow */
-        if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max / 2) {
-            connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
-        } else {
-            connection->reconnect_timeouts.current *= 2;
-        }
-
-        if (aws_mqtt_client_connection_reconnect(
-                connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
-
-            /* If reconnect attempt failed, schedule the next attempt */
-            struct aws_event_loop *el =
-                aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
-            aws_event_loop_schedule_task_future(
-                el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
-                (void *)connection,
-                connection->reconnect_timeouts.next_attempt,
-                (void *)el);
-        } else {
-            connection->reconnect_task->task.timestamp = 0;
-        }
-    } else {
-        aws_mem_release(reconnect->allocator, reconnect);
-    }
-}
+static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_task_status status);
 
 int s_create_reconnect_task(struct aws_mqtt_client_connection *connection) {
     AWS_ASSERT(!connection->reconnect_task);
@@ -157,7 +109,7 @@ static void s_destroy_reconnect_task(struct aws_mqtt_client_connection *connecti
     }
 }
 
-static void s_mqtt_connection_shutdown(
+static void s_mqtt_client_shutdown(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -285,7 +237,7 @@ static void s_mqtt_connection_shutdown(
  * Channel has been initialized callback. Sets up channel handler and sends out CONNECT packet.
  * The on_connack callback is called with the CONNACK packet is received from the server.
  */
-static void s_mqtt_connection_init(
+static void s_mqtt_client_init(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -300,7 +252,7 @@ static void s_mqtt_connection_init(
 
     if (error_code != AWS_OP_SUCCESS) {
         /* client shutdown already handles this case, so just call that. */
-        s_mqtt_connection_shutdown(bootstrap, error_code, channel, user_data);
+        s_mqtt_client_shutdown(bootstrap, error_code, channel, user_data);
         return;
     }
 
@@ -396,6 +348,55 @@ handle_error:
 
     if (message) {
         aws_mem_release(message->allocator, message);
+    }
+}
+
+static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_task_status status) {
+
+    (void)task;
+
+    struct aws_mqtt_reconnect_task *reconnect = userdata;
+    struct aws_mqtt_client_connection *connection = aws_atomic_load_ptr(&reconnect->connection_ptr);
+
+    if (status == AWS_TASK_STATUS_RUN_READY && connection) {
+        /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
+
+        aws_high_res_clock_get_ticks(&connection->reconnect_timeouts.next_attempt);
+        connection->reconnect_timeouts.next_attempt += aws_timestamp_convert(
+            connection->reconnect_timeouts.current, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
+            (void *)connection,
+            connection->reconnect_timeouts.current);
+
+        /* Check before multipying to avoid potential overflow */
+        if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max / 2) {
+            connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
+        } else {
+            connection->reconnect_timeouts.current *= 2;
+        }
+
+        if (aws_mqtt_client_connection_reconnect(
+                connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
+
+            /* If reconnect attempt failed, schedule the next attempt */
+            struct aws_event_loop *el =
+                aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+            aws_event_loop_schedule_task_future(
+                el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
+                (void *)connection,
+                connection->reconnect_timeouts.next_attempt,
+                (void *)el);
+        } else {
+            connection->reconnect_task->task.timestamp = 0;
+        }
+    } else {
+        aws_mem_release(reconnect->allocator, reconnect);
     }
 }
 
@@ -792,7 +793,7 @@ static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_c
 
     struct aws_channel *channel = connection->slot ? connection->slot->channel : NULL;
 
-    s_mqtt_connection_shutdown(connection->client->bootstrap, error_code, channel, connection);
+    s_mqtt_client_shutdown(connection->client->bootstrap, error_code, channel, connection);
 
     if (websocket) {
         aws_websocket_release(websocket);
@@ -859,7 +860,7 @@ static void s_on_websocket_setup(
     }
 
     /* Call into the channel-setup callback, the rest of the logic is the same. */
-    s_mqtt_connection_init(connection->client->bootstrap, error_code, channel, connection);
+    s_mqtt_client_init(connection->client->bootstrap, error_code, channel, connection);
 }
 
 static aws_mqtt_transform_websocket_handshake_complete_fn s_websocket_handshake_transform_complete; /* fwd declare */
@@ -1156,8 +1157,8 @@ int aws_mqtt_client_connection_reconnect(
                 connection->port,
                 &connection->socket_options,
                 &connection->tls_options,
-                &s_mqtt_connection_init,
-                &s_mqtt_connection_shutdown,
+                &s_mqtt_client_init,
+                &s_mqtt_client_shutdown,
                 connection);
         } else {
             result = aws_client_bootstrap_new_socket_channel(
@@ -1165,8 +1166,8 @@ int aws_mqtt_client_connection_reconnect(
                 aws_string_c_str(connection->host_name),
                 connection->port,
                 &connection->socket_options,
-                &s_mqtt_connection_init,
-                &s_mqtt_connection_shutdown,
+                &s_mqtt_client_init,
+                &s_mqtt_client_shutdown,
                 connection);
         }
     }
