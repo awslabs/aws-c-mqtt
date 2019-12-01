@@ -92,16 +92,16 @@ static int s_packet_handler_connack(
 
     /* User requested disconnect, don't do anything */
     aws_mutex_lock(&connection->lock);
-    if (connection->state2 >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+    if (connection->state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
         aws_mutex_unlock(&connection->lock);
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: User has requested disconnect, dropping connection", (void *)connection);
         return AWS_OP_SUCCESS;
     }
 
-    const bool was_reconnecting = connection->state2 == AWS_MQTT_CLIENT_STATE_RECONNECTING;
+    const bool was_reconnecting = connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
 
-    connection->state2 = AWS_MQTT_CLIENT_STATE_CONNECTED;
+    connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
 
     aws_mutex_unlock(&connection->lock);
 
@@ -343,7 +343,7 @@ static int s_process_mqtt_packet(
     struct aws_byte_cursor packet) {
 
     aws_mutex_lock(&connection->lock);
-    enum aws_mqtt_client_connection_state state = connection->state2;
+    enum aws_mqtt_client_connection_state state = connection->state;
     aws_mutex_unlock(&connection->lock);
 
     /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
@@ -681,7 +681,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             aws_memory_pool_release(&request->connection->requests_pool, elem.value);
         } else {
             aws_mutex_lock(&request->connection->lock);
-            enum aws_mqtt_client_connection_state state = request->connection->state2;
+            enum aws_mqtt_client_connection_state state = request->connection->state;
             if (state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
                 /* If not complete and online, schedule retry task */
 
@@ -765,7 +765,7 @@ uint16_t mqtt_create_request(
 
     /* Send the request now if on channel's thread, otherwise schedule a task */
     aws_mutex_lock(&connection->lock);
-    if (connection->state2 != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+    if (connection->state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: not currently connected, adding message id %" PRIu16 " to the pending requests list.",

@@ -112,7 +112,7 @@ struct aws_mqtt_client_connection {
     void *on_resumed_ud;
 
     /* The state of the connection */
-    enum aws_mqtt_client_connection_state state2;
+    enum aws_mqtt_client_connection_state state;
     struct aws_mutex lock;
 
     /* Channel handler information */
