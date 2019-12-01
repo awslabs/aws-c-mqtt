@@ -112,7 +112,8 @@ struct aws_mqtt_client_connection {
     void *on_resumed_ud;
 
     /* The state of the connection */
-    enum aws_mqtt_client_connection_state state;
+    enum aws_mqtt_client_connection_state state2;
+    struct aws_mutex lock;
 
     /* Channel handler information */
     struct aws_channel_handler handler;
@@ -209,9 +210,6 @@ AWS_MQTT_API void mqtt_request_complete(
     struct aws_mqtt_client_connection *connection,
     int error_code,
     uint16_t message_id);
-
-/* Call to close the connection with an error code */
-AWS_MQTT_API void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
 
 /*
  * Sends a PINGREQ packet to the server to keep the connection alive. This is not exported and should not ever

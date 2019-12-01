@@ -91,22 +91,26 @@ static int s_packet_handler_connack(
     }
 
     /* User requested disconnect, don't do anything */
-    if (connection->state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+    aws_mutex_lock(&connection->lock);
+    if (connection->state2 >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+        aws_mutex_unlock(&connection->lock);
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: User has requested disconnect, dropping connection", (void *)connection);
         return AWS_OP_SUCCESS;
     }
 
-    const bool was_reconnecting = connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
+    const bool was_reconnecting = connection->state2 == AWS_MQTT_CLIENT_STATE_RECONNECTING;
 
-    connection->state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+    connection->state2 = AWS_MQTT_CLIENT_STATE_CONNECTED;
+
+    aws_mutex_unlock(&connection->lock);
+
     connection->connection_count++;
 
     /* It is possible for a connection to complete, and a hangup to occur before the
      * CONNECT/CONNACK cycle completes. In that case, we must deliver on_connection_complete
      * on the first successful CONNACK or user code will never think it's connected */
     if (was_reconnecting && connection->connection_count > 1) {
-
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: connection is a resumed connection, invoking on_resumed callback",
@@ -118,6 +122,7 @@ static int s_packet_handler_connack(
             AWS_LS_MQTT_CLIENT,
             "id=%p: connection is a new connection, invoking on_connection_complete callback",
             (void *)connection);
+
         MQTT_CLIENT_CALL_CALLBACK_ARGS(
             connection, on_connection_complete, AWS_OP_SUCCESS, connack.connect_return_code, connack.session_present);
     }
@@ -337,8 +342,12 @@ static int s_process_mqtt_packet(
     enum aws_mqtt_packet_type packet_type,
     struct aws_byte_cursor packet) {
 
+    aws_mutex_lock(&connection->lock);
+    enum aws_mqtt_client_connection_state state = connection->state2;
+    aws_mutex_unlock(&connection->lock);
+
     /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
-    if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING && packet_type != AWS_MQTT_PACKET_CONNACK) {
+    if (state == AWS_MQTT_CLIENT_STATE_CONNECTING && packet_type != AWS_MQTT_PACKET_CONNACK) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: First message received from the server was not a CONNACK. Terminating connection.",
@@ -670,30 +679,35 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             AWS_ASSERT(was_present);
 
             aws_memory_pool_release(&request->connection->requests_pool, elem.value);
-        } else if (request->connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
-            /* If not complete and online, schedule retry task */
-
-            uint64_t ttr = 0;
-            aws_channel_current_clock_time(request->connection->slot->channel, &ttr);
-            ttr += request->connection->request_timeout_ns;
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: scheduling timeout task for message id %" PRIu16 " to run at %" PRIu64,
-                (void *)request->connection,
-                request->message_id,
-                ttr);
-
-            aws_channel_schedule_task_future(request->connection->slot->channel, task, ttr);
         } else {
-            /* Else, put the task in the pending list */
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: not currently connected, adding message id %" PRIu16 " to the pending requests list.",
-                (void *)request->connection,
-                request->message_id);
-            aws_mutex_lock(&request->connection->pending_requests.mutex);
-            aws_linked_list_push_back(&request->connection->pending_requests.list, &request->list_node);
-            aws_mutex_unlock(&request->connection->pending_requests.mutex);
+            aws_mutex_lock(&request->connection->lock);
+            enum aws_mqtt_client_connection_state state = request->connection->state2;
+            if (state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
+                /* If not complete and online, schedule retry task */
+
+                uint64_t ttr = 0;
+                aws_channel_current_clock_time(request->connection->slot->channel, &ttr);
+                ttr += request->connection->request_timeout_ns;
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: scheduling timeout task for message id %" PRIu16 " to run at %" PRIu64,
+                    (void *)request->connection,
+                    request->message_id,
+                    ttr);
+
+                aws_channel_schedule_task_future(request->connection->slot->channel, task, ttr);
+            } else {
+                /* Else, put the task in the pending list */
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: not currently connected, adding message id %" PRIu16 " to the pending requests list.",
+                    (void *)request->connection,
+                    request->message_id);
+                aws_mutex_lock(&request->connection->pending_requests.mutex);
+                aws_linked_list_push_back(&request->connection->pending_requests.list, &request->list_node);
+                aws_mutex_unlock(&request->connection->pending_requests.mutex);
+            }
+            aws_mutex_unlock(&request->connection->lock);
         }
     }
 }
@@ -750,7 +764,8 @@ uint16_t mqtt_create_request(
     aws_channel_task_init(&next_request->timeout_task, s_request_timeout_task, next_request, "mqtt_request_timeout");
 
     /* Send the request now if on channel's thread, otherwise schedule a task */
-    if (connection->state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+    aws_mutex_lock(&connection->lock);
+    if (connection->state2 != AWS_MQTT_CLIENT_STATE_CONNECTED) {
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: not currently connected, adding message id %" PRIu16 " to the pending requests list.",
@@ -774,6 +789,7 @@ uint16_t mqtt_create_request(
             next_request->message_id);
         aws_channel_schedule_task_now(connection->slot->channel, &next_request->timeout_task);
     }
+    aws_mutex_unlock(&connection->lock);
 
     return next_request->message_id;
 }
@@ -815,45 +831,4 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
 
     /* Mark as complete for the cleanup task */
     request->completed = true;
-}
-
-struct mqtt_shutdown_task {
-    int error_code;
-    struct aws_channel_task task;
-};
-
-static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
-
-    (void)status;
-
-    struct mqtt_shutdown_task *task = AWS_CONTAINER_OF(channel_task, struct mqtt_shutdown_task, task);
-    struct aws_mqtt_client_connection *connection = arg;
-
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Doing disconnect", (void *)connection);
-
-    /* If there is an outstanding reconnect task, cancel it */
-    if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
-        aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
-
-        /* If the reconnect_task isn't scheduled, free it */
-        if (connection->reconnect_task && !connection->reconnect_task->task.timestamp) {
-            aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
-        }
-
-        connection->reconnect_task = NULL;
-    }
-
-    aws_channel_shutdown(connection->slot->channel, task->error_code);
-
-    aws_mem_release(connection->allocator, task);
-}
-
-void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
-    if (connection->slot) {
-        struct mqtt_shutdown_task *shutdown_task =
-            aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));
-        shutdown_task->error_code = error_code;
-        aws_channel_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
-        aws_channel_schedule_task_now(connection->slot->channel, &shutdown_task->task);
-    }
 }
