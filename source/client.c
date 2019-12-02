@@ -1039,21 +1039,17 @@ int aws_mqtt_client_connection_connect(
         aws_byte_buf_from_array(connection_options->client_id.ptr, connection_options->client_id.len);
     if (aws_byte_buf_init_copy(&connection->client_id, connection->allocator, &client_id_buf)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy client_id into connection", (void *)connection);
-        goto client_id_alloc_failed;
+        goto error;
     }
 
     if (aws_mqtt_client_connection_reconnect(
             connection, connection_options->on_connection_complete, connection_options->user_data)) {
-        goto reconnect_failed;
+        /* client_id has been updated with something but it will get cleaned up when the connection gets cleaned up
+         * so we don't need to worry about it here*/
+        goto error;
     }
 
     return AWS_OP_SUCCESS;
-
-reconnect_failed:
-    aws_byte_buf_clean_up(&connection->client_id);
-
-client_id_alloc_failed:
-    aws_mem_release(connection->allocator, connection->reconnect_task);
 
 error:
     aws_tls_connection_options_clean_up(&connection->tls_options);
