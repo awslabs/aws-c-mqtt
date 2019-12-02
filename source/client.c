@@ -99,7 +99,7 @@ static void s_destroy_reconnect_task(struct aws_mqtt_client_connection *connecti
         aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
 
         /* Cancel if scheduled */
-        if (connection->reconnect_task->task.timestamp > 0) {
+        if (connection->reconnect_task->task.timestamp > 0 && connection->slot && connection->slot->channel) {
             aws_event_loop_cancel_task(
                 aws_channel_get_event_loop(connection->slot->channel), &connection->reconnect_task->task);
         }
