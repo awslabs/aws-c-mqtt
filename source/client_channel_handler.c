@@ -811,6 +811,17 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
 
     aws_mutex_unlock(&connection->outstanding_requests.mutex);
 
+    if (elem == NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: received completion for message id %" PRIu16
+            " but no outstanding request exists.  Assuming this is an ack of a resend when the first request has "
+            "already succeeded.",
+            (void *)connection,
+            message_id);
+        return;
+    }
+
     struct aws_mqtt_outstanding_request *request = elem->value;
 
     if (request->completed) {
