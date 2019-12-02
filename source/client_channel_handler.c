@@ -861,7 +861,9 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
         connection->reconnect_task = NULL;
     }
 
-    aws_channel_shutdown(connection->slot->channel, task->error_code);
+    if (connection->slot && connection->slot->channel) {
+        aws_channel_shutdown(connection->slot->channel, task->error_code);
+    }
 
     aws_mem_release(connection->allocator, task);
 }
