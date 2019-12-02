@@ -350,6 +350,20 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
     }
 }
 
+void aws_create_reconnect_task(struct aws_mqtt_client_connection *connection) {
+    if (connection->reconnect_task == NULL) {
+        connection->reconnect_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_reconnect_task));
+        if (!connection->reconnect_task) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to allocate reconnect task", (void *)connection);
+        } else {
+            aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
+            connection->reconnect_task->allocator = connection->allocator;
+            aws_task_init(
+                &connection->reconnect_task->task, s_attempt_reconnect, connection->reconnect_task, "mqtt_reconnect");
+        }
+    }
+}
+
 static uint64_t s_hash_uint16_t(const void *item) {
     return *(uint16_t *)item;
 }
@@ -1021,17 +1035,6 @@ int aws_mqtt_client_connection_connect(
     if (connection->client_id.buffer) {
         aws_byte_buf_clean_up(&connection->client_id);
     }
-
-    /* Create the reconnect task for use later (probably) */
-    AWS_ASSERT(!connection->reconnect_task);
-    connection->reconnect_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_reconnect_task));
-    if (!connection->reconnect_task) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to allocate reconnect task", (void *)connection);
-        goto error;
-    }
-    aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
-    connection->reconnect_task->allocator = connection->allocator;
-    aws_task_init(&connection->reconnect_task->task, s_attempt_reconnect, connection->reconnect_task, "mqtt_reconnect");
 
     /* Only set connection->client_id if a new one was provided */
     struct aws_byte_buf client_id_buf =

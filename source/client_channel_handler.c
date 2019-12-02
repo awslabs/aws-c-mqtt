@@ -114,6 +114,9 @@ static int s_packet_handler_connack(
 
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
     } else {
+
+        aws_create_reconnect_task(connection);
+
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: connection is a new connection, invoking on_connection_complete callback",
@@ -505,15 +508,28 @@ static int s_shutdown(
                 struct aws_mqtt_packet_connection disconnect;
                 aws_mqtt_packet_disconnect_init(&disconnect);
 
-                /* if any of these fail, we don't care, because we're disconnecting anyway */
                 struct aws_io_message *message = mqtt_get_message_for_packet(connection, &disconnect.fixed_header);
                 if (!message) {
                     goto done;
                 }
+
                 if (aws_mqtt_packet_connection_encode(&message->message_data, &disconnect)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: failed to encode courteous disconnect io message",
+                        (void *)connection);
+                    aws_mem_release(message->allocator, message);
                     goto done;
                 }
-                aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
+
+                if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: failed to send courteous disconnect io message",
+                        (void *)connection);
+                    aws_mem_release(message->allocator, message);
+                    /* fall through to done: */
+                }
             }
         }
     }
@@ -835,11 +851,13 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
         aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
 
-        /* If the reconnect_task isn't scheduled, free it */
-        if (connection->reconnect_task && !connection->reconnect_task->task.timestamp) {
-            aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+        /* Cancel if scheduled */
+        if (connection->reconnect_task->task.timestamp > 0 && connection->slot && connection->slot->channel) {
+            aws_event_loop_cancel_task(
+                aws_channel_get_event_loop(connection->slot->channel), &connection->reconnect_task->task);
         }
 
+        aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
         connection->reconnect_task = NULL;
     }
 
