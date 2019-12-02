@@ -511,9 +511,20 @@ static int s_shutdown(
                     goto done;
                 }
                 if (aws_mqtt_packet_connection_encode(&message->message_data, &disconnect)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: failed to encode courteous disconnect io message",
+                        (void *)connection);
+                    aws_mem_release(message->allocator, message);
                     goto done;
                 }
-                aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
+                if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: failed to send courteous disconnect io message",
+                        (void *)connection);
+                    aws_mem_release(message->allocator, message);
+                }
             }
         }
     }
