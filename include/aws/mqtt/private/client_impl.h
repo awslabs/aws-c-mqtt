@@ -113,7 +113,6 @@ struct aws_mqtt_client_connection {
 
     /* The state of the connection */
     enum aws_mqtt_client_connection_state state;
-    struct aws_mutex lock;
 
     /* Channel handler information */
     struct aws_channel_handler handler;
