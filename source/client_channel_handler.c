@@ -528,7 +528,7 @@ static int s_shutdown(
                         "id=%p: failed to send courteous disconnect io message",
                         (void *)connection);
                     aws_mem_release(message->allocator, message);
-                    /* fall through to done: */
+                    goto done;
                 }
             }
         }
@@ -807,7 +807,6 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     aws_mutex_lock(&connection->outstanding_requests.mutex);
 
     aws_hash_table_find(&connection->outstanding_requests.table, &message_id, &elem);
-    AWS_ASSERT(elem);
 
     aws_mutex_unlock(&connection->outstanding_requests.mutex);
 
@@ -816,7 +815,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
             AWS_LS_MQTT_CLIENT,
             "id=%p: received completion for message id %" PRIu16
             " but no outstanding request exists.  Assuming this is an ack of a resend when the first request has "
-            "already succeeded.",
+            "already completed.",
             (void *)connection,
             message_id);
         return;
@@ -862,13 +861,11 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
         aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
 
-        /* Cancel if scheduled */
-        if (connection->reconnect_task->task.timestamp > 0 && connection->slot && connection->slot->channel) {
-            aws_event_loop_cancel_task(
-                aws_channel_get_event_loop(connection->slot->channel), &connection->reconnect_task->task);
+        /* If the reconnect_task isn't scheduled, free it */
+        if (connection->reconnect_task && !connection->reconnect_task->task.timestamp) {
+            aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
         }
 
-        aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
         connection->reconnect_task = NULL;
     }
 
