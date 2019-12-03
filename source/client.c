@@ -350,6 +350,18 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
     }
 }
 
+void aws_create_reconnect_task(struct aws_mqtt_client_connection *connection) {
+    if (connection->reconnect_task == NULL) {
+        connection->reconnect_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_reconnect_task));
+        AWS_FATAL_ASSERT(connection->reconnect_task != NULL);
+
+        aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
+        connection->reconnect_task->allocator = connection->allocator;
+        aws_task_init(
+            &connection->reconnect_task->task, s_attempt_reconnect, connection->reconnect_task, "mqtt_reconnect");
+    }
+}
+
 static uint64_t s_hash_uint16_t(const void *item) {
     return *(uint16_t *)item;
 }
@@ -1022,37 +1034,22 @@ int aws_mqtt_client_connection_connect(
         aws_byte_buf_clean_up(&connection->client_id);
     }
 
-    /* Create the reconnect task for use later (probably) */
-    AWS_ASSERT(!connection->reconnect_task);
-    connection->reconnect_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_reconnect_task));
-    if (!connection->reconnect_task) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to allocate reconnect task", (void *)connection);
-        goto error;
-    }
-    aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
-    connection->reconnect_task->allocator = connection->allocator;
-    aws_task_init(&connection->reconnect_task->task, s_attempt_reconnect, connection->reconnect_task, "mqtt_reconnect");
-
     /* Only set connection->client_id if a new one was provided */
     struct aws_byte_buf client_id_buf =
         aws_byte_buf_from_array(connection_options->client_id.ptr, connection_options->client_id.len);
     if (aws_byte_buf_init_copy(&connection->client_id, connection->allocator, &client_id_buf)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy client_id into connection", (void *)connection);
-        goto client_id_alloc_failed;
+        goto error;
     }
 
     if (aws_mqtt_client_connection_reconnect(
             connection, connection_options->on_connection_complete, connection_options->user_data)) {
-        goto reconnect_failed;
+        /* client_id has been updated with something but it will get cleaned up when the connection gets cleaned up
+         * so we don't need to worry about it here*/
+        goto error;
     }
 
     return AWS_OP_SUCCESS;
-
-reconnect_failed:
-    aws_mem_release(connection->allocator, connection->reconnect_task);
-
-client_id_alloc_failed:
-    aws_mem_release(connection->allocator, connection->reconnect_task);
 
 error:
     aws_tls_connection_options_clean_up(&connection->tls_options);
