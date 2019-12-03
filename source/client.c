@@ -2131,7 +2131,20 @@ uint16_t aws_mqtt_client_connection_publish(
         packet_id,
         AWS_BYTE_CURSOR_PRI(*topic));
 
-    return packet_id;
+    if (packet_id) {
+        return packet_id;
+    }
+
+    /* bummer, we failed to make a new request */
+
+    /* we know arg is valid, topic_string may or may not be valid */
+    if (arg->topic_string) {
+        aws_string_destroy(arg->topic_string);
+    }
+
+    aws_mem_release(connection->allocator, arg);
+
+    return 0;
 }
 
 /*******************************************************************************
@@ -2185,7 +2198,9 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
+    uint16_t packet_id = mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
 
-    return AWS_OP_SUCCESS;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
+
+    return (packet_id > 0) ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
