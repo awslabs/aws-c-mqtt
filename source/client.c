@@ -1813,20 +1813,20 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
 
     uint16_t packet_id =
         mqtt_create_request(task_arg->connection, &s_resubscribe_send, task_arg, &s_subscribe_complete, task_arg);
-
-    if (packet_id == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Failed to send multi-topic resubscribe with error %s",
-            (void *)connection,
-            aws_error_name(aws_last_error()));
-        return 0;
+    if (packet_id > 0) {
+        AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic resubscribe %" PRIu16, (void *)connection, packet_id);
+        return packet_id;
     }
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic resubscribe %" PRIu16, (void *)connection, packet_id);
+    aws_mem_release(connection->allocator, task_arg);
 
-    return packet_id;
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Failed to send multi-topic resubscribe with error %s",
+        (void *)connection,
+        aws_error_name(aws_last_error()));
+    return 0;
 }
 
 /*******************************************************************************
@@ -2074,6 +2074,15 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t message_id, bo
     return is_qos_0 ? AWS_MQTT_CLIENT_REQUEST_COMPLETE : AWS_MQTT_CLIENT_REQUEST_ONGOING;
 }
 
+static void s_destroy_publish_task_arg(struct publish_task_arg *task_arg, struct aws_allocator *allocator) {
+    if (task_arg == NULL) {
+        return;
+    }
+
+    aws_string_destroy(task_arg->topic_string);
+    aws_mem_release(allocator, task_arg);
+}
+
 static void s_publish_complete(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
@@ -2087,8 +2096,7 @@ static void s_publish_complete(
         task_arg->on_complete(connection, packet_id, error_code, task_arg->userdata);
     }
 
-    aws_string_destroy(task_arg->topic_string);
-    aws_mem_release(connection->allocator, task_arg);
+    s_destroy_publish_task_arg(task_arg, connection->allocator);
 }
 
 uint16_t aws_mqtt_client_connection_publish(
@@ -2123,13 +2131,22 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->userdata = userdata;
 
     uint16_t packet_id = mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
+    if (packet_id == 0) {
+        s_destroy_publish_task_arg(arg, connection->allocator);
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Starting publish %" PRIu16 " to topic " PRInSTR,
-        (void *)connection,
-        packet_id,
-        AWS_BYTE_CURSOR_PRI(*topic));
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to allocate request to publish to topic " PRInSTR,
+            (void *)connection,
+            AWS_BYTE_CURSOR_PRI(*topic));
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Starting publish %" PRIu16 " to topic " PRInSTR,
+            (void *)connection,
+            packet_id,
+            AWS_BYTE_CURSOR_PRI(*topic));
+    }
 
     return packet_id;
 }
