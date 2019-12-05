@@ -632,13 +632,8 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
          *   (1) The request has been completed but disconnect was begun before the task had a chance to run
          *       normally.  We need a way to ensure that aws_memory_pool_release is called for this request.
          *
-         *       We can do that by
-         *          (1) setting request->cancelled to true.  Then the hash table's value removal function will
-         *              ensure aws_memory_pool_release is called when the table is cleared during final disconnect.
-         *          (2) If we're uncomfortable (semantically) with a request that is both "completed" and "cancelled"
-         *              then we could alternatively call aws_memory_pool_release here.
-         *
-         *       If we do not do one of these two, the request will leak and the pool will not clean up properly.
+         *       We can do that by setting request->cancelled to true.  Then the hash table's value removal function
+         *       will ensure aws_memory_pool_release is called when the table is cleared during final disconnect.
          *
          *   (2) The request is incomplete.  In this case, we need to call complete with an error and also
          *       ensure that the hash table removal function calls the memory pool release, by setting
@@ -647,6 +642,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
         if (!request->cancelled) {
             request->cancelled = true;
             if (!request->completed) {
+                request->completed = true; /* logically we are completing the request, just not successfully */
                 AWS_LOGF_DEBUG(
                     AWS_LS_MQTT_CLIENT,
                     "static: task id %p, completing with interrupt request for packet id "
@@ -657,7 +653,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
                     request->on_complete(
                         request->connection,
                         request->message_id,
-                        AWS_ERROR_MQTT_REQUEST_INTERRUPTED,
+                        AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
                         request->on_complete_ud);
                 }
             }
