@@ -374,6 +374,11 @@ static void s_outstanding_request_destroy(void *item) {
     struct aws_mqtt_outstanding_request *request = item;
 
     if (request->cancelled) {
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: (table element remove) Releasing request %" PRIu16 " to connection memory pool",
+            (void *)(request->connection),
+            request->message_id);
         /* Task ran as cancelled already, clean up the memory */
         aws_memory_pool_release(&request->connection->requests_pool, request);
     } else {
@@ -1266,8 +1271,11 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
         goto handle_error;
     }
 
-    /* No need to handle this error, if the send fails, it'll just retry */
-    aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
+    /* This is not necessarily a fatal error; if the subscribe fails, it'll just retry.  Still need to clean up though.
+     */
+    if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+    }
 
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &transaction);
@@ -1761,8 +1769,10 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
         goto handle_error;
     }
 
-    /* No need to handle this error, if the send fails, it'll just retry */
-    aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
+    /* This is not necessarily a fatal error; if the send fails, it'll just retry.  Still need to clean up though. */
+    if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+    }
 
     return AWS_MQTT_CLIENT_REQUEST_ONGOING;
 
@@ -1899,11 +1909,12 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         }
 
         if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &task_arg->unsubscribe)) {
-            aws_mem_release(message->allocator, message);
             goto handle_error;
         }
 
-        aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
+        if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+            goto handle_error;
+        }
     }
 
     if (!task_arg->tree_updated) {
@@ -2168,11 +2179,11 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bo
         }
 
         if (aws_mqtt_packet_connection_encode(&message->message_data, &pingreq)) {
+            aws_mem_release(message->allocator, message);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
 
         if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-
             aws_mem_release(message->allocator, message);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
