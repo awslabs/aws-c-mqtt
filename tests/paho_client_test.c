@@ -243,7 +243,11 @@ int main(int argc, char **argv) {
     struct aws_host_resolver resolver;
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, args.allocator, 8, &el_group));
 
-    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &el_group, &resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &el_group,
+        .host_resolver = &resolver,
+    };
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &bootstrap_options);
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
