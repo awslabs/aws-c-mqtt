@@ -272,7 +272,11 @@ int main(int argc, char **argv) {
     struct aws_host_resolver resolver;
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, args.allocator, 8, &elg));
 
-    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &elg, &resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &elg,
+        .host_resolver = &resolver,
+    };
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &bootstrap_options);
 
     struct aws_tls_ctx_options tls_ctx_opt;
     ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls_from_path(&tls_ctx_opt, args.allocator, cert, private_key));
