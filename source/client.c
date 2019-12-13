@@ -745,11 +745,6 @@ static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_c
 
     s_mqtt_client_shutdown(connection->client->bootstrap, error_code, channel, connection);
 
-    if (connection->websocket.handshake_request) {
-        aws_http_message_release(connection->websocket.handshake_request);
-        connection->websocket.handshake_request = NULL;
-    }
-
     if (websocket) {
         aws_websocket_release(websocket);
     }
@@ -770,6 +765,11 @@ static void s_on_websocket_setup(
 
     struct aws_mqtt_client_connection *connection = user_data;
     struct aws_channel *channel = NULL;
+
+    if (connection->websocket.handshake_request) {
+        aws_http_message_release(connection->websocket.handshake_request);
+        connection->websocket.handshake_request = NULL;
+    }
 
     if (websocket) {
         channel = aws_websocket_get_channel(websocket);
