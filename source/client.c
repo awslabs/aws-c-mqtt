@@ -1894,7 +1894,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
             goto handle_error;
         }
 
-        task_arg->is_local = topic->is_local;
+        task_arg->is_local = topic ? topic->is_local : false;
     }
 
     if (!task_arg->is_local) {
