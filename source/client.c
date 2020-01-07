@@ -350,6 +350,18 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
     }
 }
 
+void aws_create_reconnect_task(struct aws_mqtt_client_connection *connection) {
+    if (connection->reconnect_task == NULL) {
+        connection->reconnect_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_reconnect_task));
+        AWS_FATAL_ASSERT(connection->reconnect_task != NULL);
+
+        aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
+        connection->reconnect_task->allocator = connection->allocator;
+        aws_task_init(
+            &connection->reconnect_task->task, s_attempt_reconnect, connection->reconnect_task, "mqtt_reconnect");
+    }
+}
+
 static uint64_t s_hash_uint16_t(const void *item) {
     return *(uint16_t *)item;
 }
@@ -362,6 +374,11 @@ static void s_outstanding_request_destroy(void *item) {
     struct aws_mqtt_outstanding_request *request = item;
 
     if (request->cancelled) {
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: (table element remove) Releasing request %" PRIu16 " to connection memory pool",
+            (void *)(request->connection),
+            request->message_id);
         /* Task ran as cancelled already, clean up the memory */
         aws_memory_pool_release(&request->connection->requests_pool, request);
     } else {
@@ -679,6 +696,9 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
         return AWS_OP_ERR;
     }
 
+    AWS_ZERO_STRUCT(*connection->websocket.proxy);
+    AWS_ZERO_STRUCT(*connection->websocket.proxy_options);
+
     /* Copy the TLS options */
     if (proxy_options->tls_options) {
         if (aws_tls_connection_options_copy(&connection->websocket.proxy->tls_options, proxy_options->tls_options)) {
@@ -745,6 +765,11 @@ static void s_on_websocket_setup(
 
     struct aws_mqtt_client_connection *connection = user_data;
     struct aws_channel *channel = NULL;
+
+    if (connection->websocket.handshake_request) {
+        aws_http_message_release(connection->websocket.handshake_request);
+        connection->websocket.handshake_request = NULL;
+    }
 
     if (websocket) {
         channel = aws_websocket_get_channel(websocket);
@@ -839,7 +864,7 @@ static int s_websocket_connect(struct aws_mqtt_client_connection *connection) {
     return AWS_OP_SUCCESS;
 
 error:
-    aws_http_message_destroy(connection->websocket.handshake_request);
+    aws_http_message_release(connection->websocket.handshake_request);
     connection->websocket.handshake_request = NULL;
     return AWS_OP_ERR;
 }
@@ -1019,37 +1044,22 @@ int aws_mqtt_client_connection_connect(
         aws_byte_buf_clean_up(&connection->client_id);
     }
 
-    /* Create the reconnect task for use later (probably) */
-    AWS_ASSERT(!connection->reconnect_task);
-    connection->reconnect_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_reconnect_task));
-    if (!connection->reconnect_task) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to allocate reconnect task", (void *)connection);
-        goto error;
-    }
-    aws_atomic_init_ptr(&connection->reconnect_task->connection_ptr, connection);
-    connection->reconnect_task->allocator = connection->allocator;
-    aws_task_init(&connection->reconnect_task->task, s_attempt_reconnect, connection->reconnect_task, "mqtt_reconnect");
-
     /* Only set connection->client_id if a new one was provided */
     struct aws_byte_buf client_id_buf =
         aws_byte_buf_from_array(connection_options->client_id.ptr, connection_options->client_id.len);
     if (aws_byte_buf_init_copy(&connection->client_id, connection->allocator, &client_id_buf)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy client_id into connection", (void *)connection);
-        goto client_id_alloc_failed;
+        goto error;
     }
 
     if (aws_mqtt_client_connection_reconnect(
             connection, connection_options->on_connection_complete, connection_options->user_data)) {
-        goto reconnect_failed;
+        /* client_id has been updated with something but it will get cleaned up when the connection gets cleaned up
+         * so we don't need to worry about it here*/
+        goto error;
     }
 
     return AWS_OP_SUCCESS;
-
-reconnect_failed:
-    aws_mem_release(connection->allocator, connection->reconnect_task);
-
-client_id_alloc_failed:
-    aws_mem_release(connection->allocator, connection->reconnect_task);
 
 error:
     aws_tls_connection_options_clean_up(&connection->tls_options);
@@ -1259,8 +1269,11 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t message_id, 
         goto handle_error;
     }
 
-    /* No need to handle this error, if the send fails, it'll just retry */
-    aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
+    /* This is not necessarily a fatal error; if the subscribe fails, it'll just retry.  Still need to clean up though.
+     */
+    if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+    }
 
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &transaction);
@@ -1754,8 +1767,10 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
         goto handle_error;
     }
 
-    /* No need to handle this error, if the send fails, it'll just retry */
-    aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
+    /* This is not necessarily a fatal error; if the send fails, it'll just retry.  Still need to clean up though. */
+    if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+    }
 
     return AWS_MQTT_CLIENT_REQUEST_ONGOING;
 
@@ -1892,11 +1907,12 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         }
 
         if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &task_arg->unsubscribe)) {
-            aws_mem_release(message->allocator, message);
             goto handle_error;
         }
 
-        aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE);
+        if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+            goto handle_error;
+        }
     }
 
     if (!task_arg->tree_updated) {
@@ -2124,7 +2140,20 @@ uint16_t aws_mqtt_client_connection_publish(
         packet_id,
         AWS_BYTE_CURSOR_PRI(*topic));
 
-    return packet_id;
+    if (packet_id) {
+        return packet_id;
+    }
+
+    /* bummer, we failed to make a new request */
+
+    /* we know arg is valid, topic_string may or may not be valid */
+    if (arg->topic_string) {
+        aws_string_destroy(arg->topic_string);
+    }
+
+    aws_mem_release(connection->allocator, arg);
+
+    return 0;
 }
 
 /*******************************************************************************
@@ -2148,11 +2177,11 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t message_id, bo
         }
 
         if (aws_mqtt_packet_connection_encode(&message->message_data, &pingreq)) {
+            aws_mem_release(message->allocator, message);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
 
         if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-
             aws_mem_release(message->allocator, message);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
@@ -2178,7 +2207,9 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
+    uint16_t packet_id = mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
 
-    return AWS_OP_SUCCESS;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
+
+    return (packet_id > 0) ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }

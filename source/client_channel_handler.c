@@ -114,6 +114,9 @@ static int s_packet_handler_connack(
 
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
     } else {
+
+        aws_create_reconnect_task(connection);
+
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: connection is a new connection, invoking on_connection_complete callback",
@@ -214,10 +217,12 @@ static int s_packet_handler_publish(
         }
 
         if (aws_mqtt_packet_ack_encode(&message->message_data, &puback)) {
+            aws_mem_release(message->allocator, message);
             return AWS_OP_ERR;
         }
 
         if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+            aws_mem_release(message->allocator, message);
             return AWS_OP_ERR;
         }
     }
@@ -260,14 +265,22 @@ static int s_packet_handler_pubrec(
     }
 
     if (aws_mqtt_packet_ack_encode(&message->message_data, &ack)) {
-        return AWS_OP_ERR;
+        goto on_error;
     }
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-        return AWS_OP_ERR;
+        goto on_error;
     }
 
     return AWS_OP_SUCCESS;
+
+on_error:
+
+    if (message) {
+        aws_mem_release(message->allocator, message);
+    }
+
+    return AWS_OP_ERR;
 }
 
 static int s_packet_handler_pubrel(
@@ -287,14 +300,22 @@ static int s_packet_handler_pubrel(
     }
 
     if (aws_mqtt_packet_ack_encode(&message->message_data, &ack)) {
-        return AWS_OP_ERR;
+        goto on_error;
     }
 
     if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-        return AWS_OP_ERR;
+        goto on_error;
     }
 
     return AWS_OP_SUCCESS;
+
+on_error:
+
+    if (message) {
+        aws_mem_release(message->allocator, message);
+    }
+
+    return AWS_OP_ERR;
 }
 
 static int s_packet_handler_pingresp(
@@ -505,15 +526,28 @@ static int s_shutdown(
                 struct aws_mqtt_packet_connection disconnect;
                 aws_mqtt_packet_disconnect_init(&disconnect);
 
-                /* if any of these fail, we don't care, because we're disconnecting anyway */
                 struct aws_io_message *message = mqtt_get_message_for_packet(connection, &disconnect.fixed_header);
                 if (!message) {
                     goto done;
                 }
+
                 if (aws_mqtt_packet_connection_encode(&message->message_data, &disconnect)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: failed to encode courteous disconnect io message",
+                        (void *)connection);
+                    aws_mem_release(message->allocator, message);
                     goto done;
                 }
-                aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
+
+                if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: failed to send courteous disconnect io message",
+                        (void *)connection);
+                    aws_mem_release(message->allocator, message);
+                    goto done;
+                }
             }
         }
     }
@@ -568,6 +602,12 @@ struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_io_message *message = aws_channel_acquire_message_from_pool(
         connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, required_length);
 
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Acquiring memory from pool of required_length %zu",
+        (void *)connection,
+        required_length);
+
     return message;
 }
 
@@ -586,8 +626,38 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             "%" PRIu16 ".",
             (void *)task,
             request->message_id);
-        /* If task cancelled, assume safe shutdown is in progress and signal hash_table destroy to clean up */
-        request->cancelled = true;
+        /*
+         * If the task is cancelled, assume safe shutdown is in progress.
+         * There are two distinct situations where requests end up with a cancelled task:
+         *   (1) The request has been completed but disconnect was begun before the task had a chance to run
+         *       normally.  We need a way to ensure that aws_memory_pool_release is called for this request.
+         *
+         *       We can do that by setting request->cancelled to true.  Then the hash table's value removal function
+         *       will ensure aws_memory_pool_release is called when the table is cleared during final disconnect.
+         *
+         *   (2) The request is incomplete.  In this case, we need to call complete with an error and also
+         *       ensure that the hash table removal function calls the memory pool release, by setting
+         *       cancelled to true.
+         */
+        if (!request->cancelled) {
+            request->cancelled = true;
+            if (!request->completed) {
+                request->completed = true; /* logically we are completing the request, just not successfully */
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "static: task id %p, completing with interrupt request for packet id "
+                    "%" PRIu16 ".",
+                    (void *)task,
+                    request->message_id);
+                if (request->on_complete) {
+                    request->on_complete(
+                        request->connection,
+                        request->message_id,
+                        AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
+                        request->on_complete_ud);
+                }
+            }
+        }
         return;
     }
 
@@ -598,6 +668,11 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             (void *)request->connection,
             request->message_id);
         /* If the request was cancelled, assume all containers are gone and just free */
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: (timeout task run of cancelled request) Releasing request %" PRIu16 " to connection memory pool",
+            (void *)(request->connection),
+            request->message_id);
         aws_memory_pool_release(&request->connection->requests_pool, request);
         return;
     }
@@ -608,7 +683,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             enum aws_mqtt_client_request_state state =
                 request->send_request(request->message_id, !request->initiated, request->send_request_ud);
 
-            int error_code = AWS_OP_SUCCESS;
+            int error_code = AWS_ERROR_SUCCESS;
             switch (state) {
                 case AWS_MQTT_CLIENT_REQUEST_ERROR:
                     error_code = aws_last_error();
@@ -669,6 +744,12 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
 
             AWS_ASSERT(was_present);
 
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: (timeout task run of now-completed request) Releasing request %" PRIu16
+                " to connection memory pool",
+                (void *)(request->connection),
+                request->message_id);
             aws_memory_pool_release(&request->connection->requests_pool, elem.value);
         } else if (request->connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
             /* If not complete and online, schedule retry task */
@@ -731,6 +812,11 @@ uint16_t mqtt_create_request(
     /* Store the request by message_id */
     if (aws_hash_table_put(&connection->outstanding_requests.table, &next_request->message_id, next_request, NULL)) {
 
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: (message allocation failure) Releasing request %" PRIu16 " to connection memory pool",
+            (void *)(next_request->connection),
+            next_request->message_id);
         aws_memory_pool_release(&connection->requests_pool, next_request);
         aws_mutex_unlock(&connection->outstanding_requests.mutex);
         return 0;
@@ -791,11 +877,30 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     aws_mutex_lock(&connection->outstanding_requests.mutex);
 
     aws_hash_table_find(&connection->outstanding_requests.table, &message_id, &elem);
-    AWS_ASSERT(elem);
 
     aws_mutex_unlock(&connection->outstanding_requests.mutex);
 
+    if (elem == NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: received completion for message id %" PRIu16
+            " but no outstanding request exists.  Assuming this is an ack of a resend when the first request has "
+            "already completed.",
+            (void *)connection,
+            message_id);
+        return;
+    }
+
     struct aws_mqtt_outstanding_request *request = elem->value;
+
+    if (request->completed) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: received duplicate completion for message id  %" PRIu16,
+            (void *)connection,
+            message_id);
+        return;
+    }
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: invoking on_complete callback.", (void *)connection);
     /* Alert the user */
@@ -834,7 +939,9 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
         connection->reconnect_task = NULL;
     }
 
-    aws_channel_shutdown(connection->slot->channel, task->error_code);
+    if (connection->slot && connection->slot->channel) {
+        aws_channel_shutdown(connection->slot->channel, task->error_code);
+    }
 
     aws_mem_release(connection->allocator, task);
 }

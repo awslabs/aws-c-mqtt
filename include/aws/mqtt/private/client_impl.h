@@ -213,6 +213,9 @@ AWS_MQTT_API void mqtt_request_complete(
 /* Call to close the connection with an error code */
 AWS_MQTT_API void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
 
+/* Creates the task used to reestablish a broken connection */
+AWS_MQTT_API void aws_create_reconnect_task(struct aws_mqtt_client_connection *connection);
+
 /*
  * Sends a PINGREQ packet to the server to keep the connection alive. This is not exported and should not ever
  * be called directly. This function is driven by the timeout values passed to aws_mqtt_client_connect().
