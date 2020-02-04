@@ -1086,27 +1086,20 @@ int aws_mqtt_client_connection_reconnect(
     } else
 #endif /* AWS_MQTT_WITH_WEBSOCKETS */
     {
-        if (connection->tls_options.ctx) {
-            result = aws_client_bootstrap_new_tls_socket_channel(
-                connection->client->bootstrap,
-                aws_string_c_str(connection->host_name),
-                connection->port,
-                &connection->socket_options,
-                &connection->tls_options,
-                &s_mqtt_client_init,
-                &s_mqtt_client_shutdown,
-                connection);
-        } else {
-            result = aws_client_bootstrap_new_socket_channel(
-                connection->client->bootstrap,
-                aws_string_c_str(connection->host_name),
-                connection->port,
-                &connection->socket_options,
-                &s_mqtt_client_init,
-                &s_mqtt_client_shutdown,
-                connection);
-        }
+        struct aws_socket_channel_bootstrap_options channel_options;
+        AWS_ZERO_STRUCT(channel_options);
+        channel_options.bootstrap = connection->client->bootstrap;
+        channel_options.host_name = aws_string_c_str(connection->host_name);
+        channel_options.port = connection->port;
+        channel_options.socket_options = &connection->socket_options;
+        channel_options.tls_options = &connection->tls_options;
+        channel_options.setup_callback = &s_mqtt_client_init;
+        channel_options.shutdown_callback = &s_mqtt_client_shutdown;
+        channel_options.user_data = connection;
+
+        result = aws_client_bootstrap_new_socket_channel(&channel_options);
     }
+
     if (result) {
         /* Connection attempt failed */
         AWS_LOGF_ERROR(
