@@ -66,19 +66,21 @@ struct packet_test_fixture {
     struct aws_byte_buf buffer;
 };
 
-static void s_packet_test_before(struct aws_allocator *allocator, void *ctx) {
+static int s_packet_test_before(struct aws_allocator *allocator, void *ctx) {
 
     struct packet_test_fixture *fixture = ctx;
     fixture->allocator = allocator;
 
     /* Setup the fixture */
     fixture->in_packet = aws_mem_acquire(allocator, fixture->size);
-    AWS_FATAL_ASSERT(fixture->in_packet);
+    ASSERT_NOT_NULL(fixture->in_packet);
     memset(fixture->in_packet, 0, fixture->size);
 
     fixture->out_packet = aws_mem_acquire(allocator, fixture->size);
-    AWS_FATAL_ASSERT(fixture->out_packet);
+    ASSERT_NOT_NULL(fixture->out_packet);
     memset(fixture->out_packet, 0, fixture->size);
+
+    return AWS_OP_SUCCESS;
 }
 
 static int s_packet_test_run(struct aws_allocator *allocator, void *ctx) {
@@ -120,7 +122,7 @@ static int s_packet_test_run(struct aws_allocator *allocator, void *ctx) {
     return AWS_OP_SUCCESS;
 }
 
-static void s_packet_test_after(struct aws_allocator *allocator, void *ctx) {
+static int s_packet_test_after(struct aws_allocator *allocator, void *ctx) {
 
     struct packet_test_fixture *fixture = ctx;
 
@@ -133,6 +135,8 @@ static void s_packet_test_after(struct aws_allocator *allocator, void *ctx) {
     aws_mem_release(allocator, fixture->in_packet);
     aws_mem_release(allocator, fixture->out_packet);
     aws_byte_buf_clean_up(&fixture->buffer);
+
+    return AWS_OP_SUCCESS;
 }
 
 #define PACKET_TEST_NAME(e_type, t_name, s_name, i, t, e)                                                              \

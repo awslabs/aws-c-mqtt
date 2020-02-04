@@ -3,7 +3,7 @@ include(AwsTestHarness)
 include(AwsLibFuzzer)
 enable_testing()
 
-set(TEST_SRC packet_encoding_test.c topic_tree_test.c)
+set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c)
 file(GLOB TESTS ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
@@ -25,6 +25,8 @@ add_test_case(mqtt_topic_tree_match)
 add_test_case(mqtt_topic_tree_unsubscribe)
 add_test_case(mqtt_topic_tree_transactions)
 add_test_case(mqtt_topic_validation)
+
+add_test_case(mqtt_connect_disconnect)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
