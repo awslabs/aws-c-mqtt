@@ -24,6 +24,7 @@ struct mqtt_mock_server_handler {
     uint16_t last_packet_id;
     size_t pubacks_received;
     size_t connacks_avail;
+    struct aws_mutex lock;
 };
 
 static int s_mqtt_mock_server_handler_process_read_message(
@@ -44,7 +45,12 @@ static int s_mqtt_mock_server_handler_process_read_message(
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_CONNECT) {
         aws_mem_release(message->allocator, message);
 
-        if (testing_handler->connacks_avail--) {
+        size_t connacks_available = 0;
+        aws_mutex_lock(&testing_handler->lock);
+        connacks_available = testing_handler->connacks_avail > 0 ? testing_handler->connacks_avail-- : 0;
+        aws_mutex_unlock(&testing_handler->lock);
+
+        if (connacks_available) {
             struct aws_io_message *connack_msg =
                 aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
 
@@ -64,7 +70,13 @@ static int s_mqtt_mock_server_handler_process_read_message(
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_PINGREQ) {
         aws_mem_release(message->allocator, message);
-        if (testing_handler->ping_resp_avail--) {
+
+        size_t ping_resp_available = 0;
+        aws_mutex_lock(&testing_handler->lock);
+        ping_resp_available = testing_handler->ping_resp_avail > 0 ? testing_handler->ping_resp_avail-- : 0;
+        aws_mutex_unlock(&testing_handler->lock);
+
+        if (ping_resp_available) {
             struct aws_io_message *ping_resp =
                 aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
             aws_mqtt_packet_pingresp_init(&packet);
@@ -107,7 +119,9 @@ static int s_mqtt_mock_server_handler_process_read_message(
     }
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_PUBACK) {
+        aws_mutex_lock(&testing_handler->lock);
         testing_handler->pubacks_received++;
+        aws_mutex_unlock(&testing_handler->lock);
         aws_mem_release(message->allocator, message);
 
         return AWS_OP_SUCCESS;
@@ -115,6 +129,7 @@ static int s_mqtt_mock_server_handler_process_read_message(
 
     aws_mem_release(message->allocator, message);
 
+    aws_mutex_lock(&testing_handler->lock);
     if (aws_array_list_length(&testing_handler->response_messages)) {
         struct aws_byte_buf response_message;
         aws_array_list_front(&testing_handler->response_messages, &response_message);
@@ -125,6 +140,7 @@ static int s_mqtt_mock_server_handler_process_read_message(
         aws_byte_buf_write_from_whole_buffer(&reply->message_data, response_message);
         aws_channel_slot_send_message(slot, reply, AWS_CHANNEL_DIR_WRITE);
     }
+    aws_mutex_unlock(&testing_handler->lock);
 
     return AWS_OP_SUCCESS;
 }
@@ -144,20 +160,25 @@ static void s_mqtt_send_publish_in_thread(
     (void)channel_task;
     (void)status;
     struct mqtt_mock_server_publish_args *publish_args = arg;
-    struct aws_mqtt_packet_publish publish;
-    aws_mqtt_packet_publish_init(
-        &publish,
-        false,
-        publish_args->qos,
-        false,
-        publish_args->topic,
-        ++publish_args->testing_handler->last_packet_id,
-        publish_args->payload);
-    struct aws_io_message *publish_msg = aws_channel_acquire_message_from_pool(
-        publish_args->testing_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, publish_args->payload.len + 256);
 
-    aws_mqtt_packet_publish_encode(&publish_msg->message_data, &publish);
-    aws_channel_slot_send_message(publish_args->testing_handler->slot, publish_msg, AWS_CHANNEL_DIR_WRITE);
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_mqtt_packet_publish publish;
+        aws_mqtt_packet_publish_init(
+            &publish,
+            false,
+            publish_args->qos,
+            false,
+            publish_args->topic,
+            ++publish_args->testing_handler->last_packet_id,
+            publish_args->payload);
+        struct aws_io_message *publish_msg = aws_channel_acquire_message_from_pool(
+            publish_args->testing_handler->slot->channel,
+            AWS_IO_MESSAGE_APPLICATION_DATA,
+            publish_args->payload.len + 256);
+
+        aws_mqtt_packet_publish_encode(&publish_msg->message_data, &publish);
+        aws_channel_slot_send_message(publish_args->testing_handler->slot, publish_msg, AWS_CHANNEL_DIR_WRITE);
+    }
     aws_mem_release(publish_args->testing_handler->handler.alloc, publish_args);
 }
 
@@ -254,6 +275,7 @@ static struct aws_channel_handler *s_new_mqtt_mock_server(struct aws_allocator *
     testing_handler->handler.alloc = allocator;
     testing_handler->ping_resp_avail = SIZE_MAX;
     testing_handler->connacks_avail = SIZE_MAX;
+    aws_mutex_init(&testing_handler->lock);
 
     return &testing_handler->handler;
 }
@@ -274,7 +296,7 @@ static void s_destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
         aws_byte_buf_clean_up(byte_buf_ptr);
     }
     aws_array_list_clean_up(&testing_handler->response_messages);
-
+    aws_mutex_clean_up(&testing_handler->lock);
     aws_mem_release(handler->alloc, testing_handler);
 }
 
@@ -288,9 +310,20 @@ static int s_mqtt_mock_server_push_reply_message(struct aws_channel_handler *han
 static void s_mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, size_t max_ping) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 
+    aws_mutex_lock(&testing_handler->lock);
     testing_handler->ping_resp_avail = max_ping;
+    aws_mutex_unlock(&testing_handler->lock);
 }
 
+static void s_mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_t connack_avail) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    aws_mutex_lock(&testing_handler->lock);
+    testing_handler->connacks_avail = connack_avail;
+    aws_mutex_unlock(&testing_handler->lock);
+}
+
+/* this is only safe to call when not attached to a channel. */
 static struct aws_array_list *s_mqtt_mock_server_get_received_messages(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 

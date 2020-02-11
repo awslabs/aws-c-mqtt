@@ -122,7 +122,8 @@ static int s_packet_test_run(struct aws_allocator *allocator, void *ctx) {
     return AWS_OP_SUCCESS;
 }
 
-static int s_packet_test_after(struct aws_allocator *allocator, void *ctx) {
+static int s_packet_test_after(struct aws_allocator *allocator, int setup_result, void *ctx) {
+    (void)setup_result;
 
     struct packet_test_fixture *fixture = ctx;
 

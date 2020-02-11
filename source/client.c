@@ -1017,6 +1017,7 @@ int aws_mqtt_client_connection_connect(
 
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (connection_options->tls_options) {
+        connection->use_tls = true;
         if (aws_tls_connection_options_copy(&connection->tls_options, connection_options->tls_options)) {
 
             AWS_LOGF_ERROR(
@@ -1092,7 +1093,7 @@ int aws_mqtt_client_connection_reconnect(
         channel_options.host_name = aws_string_c_str(connection->host_name);
         channel_options.port = connection->port;
         channel_options.socket_options = &connection->socket_options;
-        channel_options.tls_options = &connection->tls_options;
+        channel_options.tls_options = connection->use_tls ? &connection->tls_options : NULL;
         channel_options.setup_callback = &s_mqtt_client_init;
         channel_options.shutdown_callback = &s_mqtt_client_shutdown;
         channel_options.user_data = connection;
