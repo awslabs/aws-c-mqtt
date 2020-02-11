@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-    - name: Build ${{ env.PACKAGE_NAME }} and consumers
+    - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
         export DOCKER_IMAGE=docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-al2-x64:${{ env.BUILDER_VERSION }}
@@ -72,7 +72,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-    - name: Build ${{ env.PACKAGE_NAME }} and consumers
+    - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python -c "from urllib.request import urlretrieve; urlretrieve('https://aws-crt-builder.s3.amazonaws.com/${{ env.BUILDER_VERSION }}/builder', 'builder.pyz')"
         python builder.pyz -p ${{ env.PACKAGE_NAME }} build default-downstream
@@ -80,7 +80,7 @@ jobs:
   osx:
     runs-on: macos-latest
     steps:
-    - name: Build ${{ env.PACKAGE_NAME }} and consumers
+    - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('https://aws-crt-builder.s3.amazonaws.com/${{ env.BUILDER_VERSION }}/builder', 'builder')"
         chmod a+x builder
