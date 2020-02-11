@@ -23,6 +23,7 @@ struct mqtt_mock_server_handler {
     size_t ping_resp_avail;
     uint16_t last_packet_id;
     size_t pubacks_received;
+    size_t connacks_avail;
 };
 
 static int s_mqtt_mock_server_handler_process_read_message(
@@ -39,6 +40,27 @@ static int s_mqtt_mock_server_handler_process_read_message(
     struct aws_mqtt_packet_connection packet;
     struct aws_byte_cursor message_cur = aws_byte_cursor_from_buf(&message->message_data);
     aws_mqtt_packet_connection_decode(&message_cur, &packet);
+
+    if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_CONNECT) {
+        aws_mem_release(message->allocator, message);
+
+        if (testing_handler->connacks_avail--) {
+            struct aws_io_message *connack_msg =
+                aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
+
+            struct aws_mqtt_packet_connack conn_ack;
+            aws_mqtt_packet_connack_init(&conn_ack, false, AWS_MQTT_CONNECT_ACCEPTED);
+            aws_mqtt_packet_connack_encode(&connack_msg->message_data, &conn_ack);
+            aws_channel_slot_send_message(slot, connack_msg, AWS_CHANNEL_DIR_WRITE);
+        }
+        return AWS_OP_SUCCESS;
+    }
+
+    if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_DISCONNECT) {
+        aws_mem_release(message->allocator, message);
+        aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+        return AWS_OP_SUCCESS;
+    }
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_PINGREQ) {
         aws_mem_release(message->allocator, message);
@@ -66,6 +88,21 @@ static int s_mqtt_mock_server_handler_process_read_message(
         aws_mqtt_packet_subscribe_clean_up(&subscribe_packet);
         aws_mqtt_packet_ack_encode(&suback_msg->message_data, &suback);
         aws_channel_slot_send_message(slot, suback_msg, AWS_CHANNEL_DIR_WRITE);
+        return AWS_OP_SUCCESS;
+    }
+
+    if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_PUBLISH) {
+        struct aws_mqtt_packet_publish publish_packet;
+        message_cur = aws_byte_cursor_from_buf(&message->message_data);
+        aws_mqtt_packet_publish_decode(&message_cur, &publish_packet);
+        aws_mem_release(message->allocator, message);
+
+        struct aws_io_message *puback_msg =
+            aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
+        struct aws_mqtt_packet_ack puback;
+        aws_mqtt_packet_puback_init(&puback, publish_packet.packet_identifier);
+        aws_mqtt_packet_ack_encode(&puback_msg->message_data, &puback);
+        aws_channel_slot_send_message(slot, puback_msg, AWS_CHANNEL_DIR_WRITE);
         return AWS_OP_SUCCESS;
     }
 
@@ -215,6 +252,8 @@ static struct aws_channel_handler *s_new_mqtt_mock_server(struct aws_allocator *
     testing_handler->handler.impl = testing_handler;
     testing_handler->handler.vtable = &s_mqtt_mock_server_handler_vtable;
     testing_handler->handler.alloc = allocator;
+    testing_handler->ping_resp_avail = SIZE_MAX;
+    testing_handler->connacks_avail = SIZE_MAX;
 
     return &testing_handler->handler;
 }
@@ -239,10 +278,17 @@ static void s_destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, testing_handler);
 }
 
+/*
 static int s_mqtt_mock_server_push_reply_message(struct aws_channel_handler *handler, struct aws_byte_buf *buf) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 
     return aws_array_list_push_back(&testing_handler->response_messages, buf);
+}*/
+
+static void s_mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, size_t max_ping) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    testing_handler->ping_resp_avail = max_ping;
 }
 
 static struct aws_array_list *s_mqtt_mock_server_get_received_messages(struct aws_channel_handler *handler) {
