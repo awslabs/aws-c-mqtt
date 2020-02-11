@@ -17,8 +17,11 @@
  */
 
 #include <aws/common/byte_buf.h>
+#include <aws/common/logging.h>
 
 #include <aws/mqtt/exports.h>
+
+#define AWS_C_MQTT_PACKAGE_ID 5
 
 /* Quality of Service associated with a publish action or subscription [MQTT-4.3]. */
 enum aws_mqtt_qos {
@@ -41,7 +44,7 @@ enum aws_mqtt_connect_return_code {
 };
 
 enum aws_mqtt_error {
-    AWS_ERROR_MQTT_INVALID_RESERVED_BITS = 0x1400,
+    AWS_ERROR_MQTT_INVALID_RESERVED_BITS = AWS_ERROR_ENUM_BEGIN_RANGE(AWS_C_MQTT_PACKAGE_ID),
     AWS_ERROR_MQTT_BUFFER_TOO_BIG,
     AWS_ERROR_MQTT_INVALID_REMAINING_LENGTH,
     AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_NAME,
@@ -59,11 +62,11 @@ enum aws_mqtt_error {
     AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE,
     AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
 
-    AWS_ERROR_END_MQTT_RANGE = 0x1800,
+    AWS_ERROR_END_MQTT_RANGE = AWS_ERROR_ENUM_END_RANGE(AWS_C_MQTT_PACKAGE_ID),
 };
 
 enum aws_mqtt_log_subject {
-    AWS_LS_MQTT_GENERAL = 0x1400,
+    AWS_LS_MQTT_GENERAL = AWS_LOG_SUBJECT_BEGIN_RANGE(AWS_C_MQTT_PACKAGE_ID),
     AWS_LS_MQTT_CLIENT,
     AWS_LS_MQTT_TOPIC_TREE,
 };
