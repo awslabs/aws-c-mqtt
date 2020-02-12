@@ -143,6 +143,8 @@ static void s_on_connection_resumed(
     (void)connection;
     (void)return_code;
     (void)session_present;
+    AWS_LOGF_DEBUG(60000, "reconnect completed");
+
     struct mqtt_connection_state_test *state_test_data = userdata;
 
     aws_mutex_lock(&state_test_data->lock);
@@ -723,6 +725,7 @@ static void s_on_op_complete(
     (void)error_code;
 
     struct mqtt_connection_state_test *state_test_data = userdata;
+    AWS_LOGF_DEBUG(60000, "pub op completed");
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->ops_completed++;
     aws_mutex_unlock(&state_test_data->lock);
