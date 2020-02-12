@@ -503,6 +503,17 @@ cleanup:
     return AWS_OP_SUCCESS;
 }
 
+static void s_on_disconnect_written_to_wire(
+    struct aws_channel *channel,
+    struct aws_io_message *message,
+    int err_code,
+    void *user_data) {
+    (void)channel;
+    (void)message;
+    struct aws_channel_slot *slot = user_data;
+    aws_channel_slot_on_handler_shutdown_complete(slot, AWS_CHANNEL_DIR_WRITE, err_code, false);
+}
+
 static int s_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -531,6 +542,10 @@ static int s_shutdown(
                     goto done;
                 }
 
+                /* let the disconnect flush to the wire before letting the socket close on us.*/
+                message->on_completion = s_on_disconnect_written_to_wire;
+                message->user_data = slot;
+
                 if (aws_mqtt_packet_connection_encode(&message->message_data, &disconnect)) {
                     AWS_LOGF_DEBUG(
                         AWS_LS_MQTT_CLIENT,
@@ -548,6 +563,8 @@ static int s_shutdown(
                     aws_mem_release(message->allocator, message);
                     goto done;
                 }
+
+                return AWS_OP_SUCCESS;
             }
         }
     }
