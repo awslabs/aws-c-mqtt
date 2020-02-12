@@ -130,6 +130,7 @@ static void s_wait_for_interrupt_to_complete(struct mqtt_connection_state_test *
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
         &state_test_data->cvar, &state_test_data->lock, s_is_connection_interrupted, state_test_data);
+    state_test_data->connection_resumed = false;
     state_test_data->connection_interrupted = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
@@ -170,6 +171,9 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     aws_mqtt_library_init(allocator);
 
     struct mqtt_connection_state_test *state_test_data = ctx;
+
+    AWS_ZERO_STRUCT(*state_test_data);
+
     state_test_data->allocator = allocator;
 
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&state_test_data->el_group, allocator, 0));
