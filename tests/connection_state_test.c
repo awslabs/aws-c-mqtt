@@ -91,6 +91,9 @@ static void s_on_incoming_channel_shutdown_fn(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
     struct mqtt_connection_state_test *state_test_data = user_data;
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->server_disconnect_completed = true;
@@ -98,7 +101,10 @@ static void s_on_incoming_channel_shutdown_fn(
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
 
-static void s_on_listener_destroy(struct aws_server_bootstrap *bootstrap, void *user_data) {}
+static void s_on_listener_destroy(struct aws_server_bootstrap *bootstrap, void *user_data) {
+    (void)bootstrap;
+    (void)user_data;
+}
 
 static void s_on_connection_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
     (void)connection;
@@ -227,6 +233,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
 }
 
 static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_result, void *ctx) {
+    (void)allocator;
 
     if (!setup_result) {
         struct mqtt_connection_state_test *state_test_data = ctx;
@@ -284,6 +291,7 @@ static void s_wait_for_connection_to_complete(struct mqtt_connection_state_test 
 }
 
 void s_on_disconnect_fn(struct aws_mqtt_client_connection *connection, void *userdata) {
+    (void)connection;
     struct mqtt_connection_state_test *state_test_data = userdata;
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->client_disconnect_completed = true;
@@ -376,6 +384,7 @@ static void s_wait_for_subscribe_to_complete(struct mqtt_connection_state_test *
  * Makes an Mqtt connect call, then a disconnect. Then verifies a CONNECT and DISCONNECT were sent.
  */
 static int s_test_mqtt_connect_disconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
@@ -432,6 +441,7 @@ AWS_TEST_CASE_FIXTURE(
  * Makes a CONNECT, then the server hangs up, tests that the client reconnects on its own, then sends a DISCONNECT.
  */
 static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
@@ -505,6 +515,7 @@ AWS_TEST_CASE_FIXTURE(
  * this should cause a timeout, then the PING responses are turned back on, and the client should automatically
  * reconnect. Then send a DISCONNECT. */
 static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
@@ -726,6 +737,7 @@ static void s_wait_for_ops_completed(struct mqtt_connection_state_test *state_te
 
 /* Make a CONNECT, PUBLISH to a topic, make sure server received, then send a DISCONNECT. */
 static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
@@ -828,6 +840,7 @@ AWS_TEST_CASE_FIXTURE(
  * that were sent during offline mode. Then send a DISCONNECT.
  */
 static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {

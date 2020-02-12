@@ -433,7 +433,7 @@ static int s_process_read_message(
                 "id=%p: partial message is still incomplete, waiting on another read.",
                 (void *)connection);
 
-            return AWS_OP_SUCCESS;
+            goto cleanup;
         }
 
         /* Handle the completed pending packet */
