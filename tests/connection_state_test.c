@@ -49,10 +49,10 @@ struct mqtt_connection_state_test {
     bool connection_completed;
     bool client_disconnect_completed;
     bool server_disconnect_completed;
-    bool connection_interupted;
+    bool connection_interrupted;
     bool connection_resumed;
     bool subscribe_completed;
-    int interuption_error;
+    int interruption_error;
     enum aws_mqtt_connect_return_code mqtt_return_code;
     int error;
     struct aws_condition_variable cvar;
@@ -106,22 +106,22 @@ static void s_on_connection_interupted(struct aws_mqtt_client_connection *connec
     struct mqtt_connection_state_test *state_test_data = userdata;
 
     aws_mutex_lock(&state_test_data->lock);
-    state_test_data->connection_interupted = true;
-    state_test_data->interuption_error = error_code;
+    state_test_data->connection_interrupted = true;
+    state_test_data->interruption_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
 
 static bool s_is_connection_interupted(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->connection_interupted;
+    return state_test_data->connection_interrupted;
 }
 
 static void s_wait_for_interupt_to_complete(struct mqtt_connection_state_test *state_test_data) {
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
         &state_test_data->cvar, &state_test_data->lock, s_is_connection_interupted, state_test_data);
-    state_test_data->connection_interupted = false;
+    state_test_data->connection_interrupted = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
 
@@ -529,7 +529,7 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
 
-    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->interuption_error);
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->interruption_error);
 
     struct aws_array_list *received_messages =
         s_mqtt_mock_server_get_received_messages(state_test_data->test_channel_handler);
@@ -625,7 +625,9 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
         state_test_data->test_channel_handler, &sub_topic, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
 
     s_wait_for_publish(state_test_data);
-
+    /* disconnect will sometimes beat out queueing a message here, so give the ACK time to be sent, just sleep the
+     * thread 100ms. */
+    aws_thread_current_sleep(100000000);
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
