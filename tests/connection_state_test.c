@@ -625,9 +625,8 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
         state_test_data->test_channel_handler, &sub_topic, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
 
     s_wait_for_publish(state_test_data);
-    /* disconnect will sometimes beat out queueing a message here, so give the ACK time to be sent, just sleep the
-     * thread 100ms. */
-    aws_thread_current_sleep(100000000);
+    s_mqtt_mock_server_wait_for_pubacks(state_test_data->test_channel_handler, 2);
+
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);

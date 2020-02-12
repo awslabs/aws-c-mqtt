@@ -25,6 +25,7 @@ struct mqtt_mock_server_handler {
     size_t pubacks_received;
     size_t connacks_avail;
     struct aws_mutex lock;
+    struct aws_condition_variable cvar;
 };
 
 static int s_mqtt_mock_server_handler_process_read_message(
@@ -123,6 +124,7 @@ static int s_mqtt_mock_server_handler_process_read_message(
         testing_handler->pubacks_received++;
         aws_mutex_unlock(&testing_handler->lock);
         aws_mem_release(message->allocator, message);
+        aws_condition_variable_notify_one(&testing_handler->cvar);
 
         return AWS_OP_SUCCESS;
     }
@@ -276,6 +278,7 @@ static struct aws_channel_handler *s_new_mqtt_mock_server(struct aws_allocator *
     testing_handler->ping_resp_avail = SIZE_MAX;
     testing_handler->connacks_avail = SIZE_MAX;
     aws_mutex_init(&testing_handler->lock);
+    aws_condition_variable_init(&testing_handler->cvar);
 
     return &testing_handler->handler;
 }
@@ -328,4 +331,27 @@ static struct aws_array_list *s_mqtt_mock_server_get_received_messages(struct aw
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 
     return &testing_handler->received_messages;
+}
+
+struct puback_waiter {
+    struct mqtt_mock_server_handler *testing_handler;
+    size_t wait_for_count;
+};
+
+static bool s_is_pubacks_complete(void *arg) {
+    struct puback_waiter *waiter = arg;
+
+    return waiter->testing_handler->pubacks_received >= waiter->wait_for_count;
+}
+
+static void s_mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *handler, size_t puback_count) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    struct puback_waiter waiter;
+    waiter.testing_handler = testing_handler;
+    waiter.wait_for_count = puback_count;
+
+    aws_mutex_lock(&testing_handler->lock);
+    aws_condition_variable_wait_pred(&testing_handler->cvar, &testing_handler->lock, s_is_pubacks_complete, &waiter);
+    aws_mutex_unlock(&testing_handler->lock);
 }
