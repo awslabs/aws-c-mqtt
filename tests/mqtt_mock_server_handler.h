@@ -41,6 +41,8 @@ static int s_mqtt_mock_server_handler_process_packet(
     aws_mqtt_packet_connection_decode(&message_cur_cpy, &packet);
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_CONNECT) {
+        AWS_LOGF_DEBUG(60000, "server, CONNECT recevied");
+
         size_t connacks_available = 0;
         aws_mutex_lock(&testing_handler->lock);
         connacks_available = testing_handler->connacks_avail > 0 ? testing_handler->connacks_avail-- : 0;
@@ -59,11 +61,15 @@ static int s_mqtt_mock_server_handler_process_packet(
     }
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_DISCONNECT) {
+        AWS_LOGF_DEBUG(60000, "server, DISCONNECT recevied");
+
         aws_channel_shutdown(testing_handler->slot->channel, AWS_OP_SUCCESS);
         return AWS_OP_SUCCESS;
     }
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_PINGREQ) {
+        AWS_LOGF_DEBUG(60000, "server, PINGREQ recevied");
+
         size_t ping_resp_available = 0;
         aws_mutex_lock(&testing_handler->lock);
         ping_resp_available = testing_handler->ping_resp_avail > 0 ? testing_handler->ping_resp_avail-- : 0;
@@ -80,6 +86,8 @@ static int s_mqtt_mock_server_handler_process_packet(
     }
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_SUBSCRIBE) {
+        AWS_LOGF_DEBUG(60000, "server, SUBSCRIBE recevied");
+
         struct aws_mqtt_packet_subscribe subscribe_packet;
         aws_mqtt_packet_subscribe_init(&subscribe_packet, testing_handler->handler.alloc, 0);
         aws_mqtt_packet_subscribe_decode(message_cur, &subscribe_packet);
@@ -95,6 +103,8 @@ static int s_mqtt_mock_server_handler_process_packet(
     }
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_PUBLISH) {
+        AWS_LOGF_DEBUG(60000, "server, PUBLISH recevied");
+
         struct aws_mqtt_packet_publish publish_packet;
         aws_mqtt_packet_publish_decode(message_cur, &publish_packet);
 
@@ -108,6 +118,8 @@ static int s_mqtt_mock_server_handler_process_packet(
     }
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_PUBACK) {
+        AWS_LOGF_DEBUG(60000, "server, PUBACK recevied");
+
         aws_mutex_lock(&testing_handler->lock);
         testing_handler->pubacks_received++;
         aws_mutex_unlock(&testing_handler->lock);
