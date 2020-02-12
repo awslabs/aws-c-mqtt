@@ -123,7 +123,7 @@ static void s_on_connection_interrupted(struct aws_mqtt_client_connection *conne
 
 static bool s_is_connection_interrupted(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->connection_interrupted;
+    return state_test_data->connection_interrupted && state_test_data->server_disconnect_completed;
 }
 
 static void s_wait_for_interrupt_to_complete(struct mqtt_connection_state_test *state_test_data) {
@@ -872,6 +872,7 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
     /* shut it down and make sure the client automatically reconnects.*/
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
     s_wait_for_interrupt_to_complete(state_test_data);
+
     state_test_data->server_disconnect_completed = false;
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
