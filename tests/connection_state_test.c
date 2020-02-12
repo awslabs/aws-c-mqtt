@@ -123,14 +123,13 @@ static void s_on_connection_interrupted(struct aws_mqtt_client_connection *conne
 
 static bool s_is_connection_interrupted(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->connection_interrupted && state_test_data->server_disconnect_completed;
+    return state_test_data->connection_interrupted;
 }
 
 static void s_wait_for_interrupt_to_complete(struct mqtt_connection_state_test *state_test_data) {
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
         &state_test_data->cvar, &state_test_data->lock, s_is_connection_interrupted, state_test_data);
-    state_test_data->connection_resumed = false;
     state_test_data->connection_interrupted = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
@@ -162,7 +161,6 @@ static void s_wait_for_reconnect_to_complete(struct mqtt_connection_state_test *
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
         &state_test_data->cvar, &state_test_data->lock, s_is_connection_resumed, state_test_data);
-    state_test_data->server_disconnect_completed = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
 
