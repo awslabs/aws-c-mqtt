@@ -74,13 +74,14 @@ static void s_on_incoming_channel_setup_fn(
     (void)bootstrap;
     struct mqtt_connection_state_test *state_test_data = user_data;
 
-    aws_mutex_lock(&state_test_data->lock);
-    state_test_data->server_disconnect_completed = false;
-    aws_mutex_unlock(&state_test_data->lock);
-
     state_test_data->error = error_code;
 
     if (!error_code) {
+        aws_mutex_lock(&state_test_data->lock);
+        state_test_data->server_disconnect_completed = false;
+        aws_mutex_unlock(&state_test_data->lock);
+        AWS_LOGF_DEBUG(60000, "server channel setup completed");
+
         state_test_data->server_channel = channel;
         struct aws_channel_slot *test_handler_slot = aws_channel_slot_new(channel);
         aws_channel_slot_insert_end(channel, test_handler_slot);
@@ -102,6 +103,7 @@ static void s_on_incoming_channel_shutdown_fn(
     state_test_data->server_disconnect_completed = true;
     aws_mutex_unlock(&state_test_data->lock);
     aws_condition_variable_notify_one(&state_test_data->cvar);
+    AWS_LOGF_DEBUG(60000, "server channel shutdown completed");
 }
 
 static void s_on_listener_destroy(struct aws_server_bootstrap *bootstrap, void *user_data) {
@@ -118,6 +120,7 @@ static void s_on_connection_interrupted(struct aws_mqtt_client_connection *conne
     state_test_data->connection_interrupted = true;
     state_test_data->interruption_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
+    AWS_LOGF_DEBUG(60000, "connection interrupted");
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
 
@@ -466,7 +469,6 @@ static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator
     /* shut it down and make sure the client automatically reconnects.*/
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
     s_wait_for_reconnect_to_complete(state_test_data);
-    state_test_data->server_disconnect_completed = false;
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
