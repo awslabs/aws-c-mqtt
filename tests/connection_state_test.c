@@ -87,8 +87,8 @@ static void s_on_incoming_channel_setup_fn(
         state_test_data->server_channel = channel;
         struct aws_channel_slot *test_handler_slot = aws_channel_slot_new(channel);
         aws_channel_slot_insert_end(channel, test_handler_slot);
-        aws_channel_slot_set_handler(test_handler_slot, state_test_data->test_channel_handler);
         s_mqtt_mock_server_handler_update_slot(state_test_data->test_channel_handler, test_handler_slot);
+        aws_channel_slot_set_handler(test_handler_slot, state_test_data->test_channel_handler);
     }
 }
 
@@ -881,7 +881,10 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
     struct aws_byte_cursor payload_2 = aws_byte_cursor_from_c_str("Test Message 2");
 
+    aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 2;
+    aws_mutex_lock(&state_test_data->lock);
+
     ASSERT_TRUE(
         aws_mqtt_client_connection_publish(
             state_test_data->mqtt_connection,
