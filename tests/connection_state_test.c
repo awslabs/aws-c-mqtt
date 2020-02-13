@@ -901,10 +901,14 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
             s_on_op_complete,
             state_test_data) > 0);
 
+    aws_mutex_lock(&state_test_data->lock);
     ASSERT_FALSE(state_test_data->connection_resumed);
+    aws_mutex_unlock(&state_test_data->lock);
     s_mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, SIZE_MAX);
     s_wait_for_ops_completed(state_test_data);
+    aws_mutex_lock(&state_test_data->lock);
     ASSERT_TRUE(state_test_data->connection_resumed);
+    aws_mutex_unlock(&state_test_data->lock);
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
