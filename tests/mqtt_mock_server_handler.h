@@ -42,10 +42,12 @@ static int s_mqtt_mock_server_handler_process_packet(
     aws_mqtt_packet_connection_decode(&message_cur_cpy, &packet);
 
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_CONNECT) {
-        AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "server, CONNECT received");
-
         size_t connacks_available = 0;
         aws_mutex_lock(&testing_handler->lock);
+        AWS_LOGF_DEBUG(
+            MOCK_LOG_SUBJECT,
+            "server, CONNECT received, %llu available connacks.",
+            (long long unsigned)testing_handler->connacks_avail);
         connacks_available = testing_handler->connacks_avail > 0 ? testing_handler->connacks_avail-- : 0;
         aws_mutex_unlock(&testing_handler->lock);
 
@@ -56,7 +58,9 @@ static int s_mqtt_mock_server_handler_process_packet(
             struct aws_mqtt_packet_connack conn_ack;
             aws_mqtt_packet_connack_init(&conn_ack, false, AWS_MQTT_CONNECT_ACCEPTED);
             aws_mqtt_packet_connack_encode(&connack_msg->message_data, &conn_ack);
-            aws_channel_slot_send_message(testing_handler->slot, connack_msg, AWS_CHANNEL_DIR_WRITE);
+            if (aws_channel_slot_send_message(testing_handler->slot, connack_msg, AWS_CHANNEL_DIR_WRITE)) {
+                AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "Failed to send connack with error %d", aws_last_error());
+            }
         }
         return AWS_OP_SUCCESS;
     }

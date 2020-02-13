@@ -743,7 +743,6 @@ static void s_wait_for_ops_completed(struct mqtt_connection_state_test *state_te
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_for_pred(
         &state_test_data->cvar, &state_test_data->lock, 10000000000, s_is_ops_completed, state_test_data);
-    state_test_data->expected_ops_completed = 0;
     aws_mutex_unlock(&state_test_data->lock);
 }
 
