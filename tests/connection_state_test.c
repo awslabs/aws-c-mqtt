@@ -32,6 +32,8 @@
 #    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
 #endif
 
+static const int TEST_LOG_SUBJECT = 60000;
+
 struct mqtt_connection_state_test {
     struct aws_allocator *allocator;
     struct aws_channel *server_channel;
@@ -80,7 +82,7 @@ static void s_on_incoming_channel_setup_fn(
         aws_mutex_lock(&state_test_data->lock);
         state_test_data->server_disconnect_completed = false;
         aws_mutex_unlock(&state_test_data->lock);
-        AWS_LOGF_DEBUG(60000, "server channel setup completed");
+        AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "server channel setup completed");
 
         state_test_data->server_channel = channel;
         struct aws_channel_slot *test_handler_slot = aws_channel_slot_new(channel);
@@ -101,9 +103,9 @@ static void s_on_incoming_channel_shutdown_fn(
     struct mqtt_connection_state_test *state_test_data = user_data;
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->server_disconnect_completed = true;
+    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "server channel shutdown completed");
     aws_mutex_unlock(&state_test_data->lock);
     aws_condition_variable_notify_one(&state_test_data->cvar);
-    AWS_LOGF_DEBUG(60000, "server channel shutdown completed");
 }
 
 static void s_on_listener_destroy(struct aws_server_bootstrap *bootstrap, void *user_data) {
@@ -120,7 +122,7 @@ static void s_on_connection_interrupted(struct aws_mqtt_client_connection *conne
     state_test_data->connection_interrupted = true;
     state_test_data->interruption_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
-    AWS_LOGF_DEBUG(60000, "connection interrupted");
+    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "connection interrupted");
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
 
@@ -145,7 +147,7 @@ static void s_on_connection_resumed(
     (void)connection;
     (void)return_code;
     (void)session_present;
-    AWS_LOGF_DEBUG(60000, "reconnect completed");
+    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "reconnect completed");
 
     struct mqtt_connection_state_test *state_test_data = userdata;
 
@@ -179,7 +181,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
 
     state_test_data->allocator = allocator;
 
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&state_test_data->el_group, allocator, 0));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&state_test_data->el_group, allocator, 1));
 
     state_test_data->test_channel_handler = s_new_mqtt_mock_server(allocator);
     ASSERT_NOT_NULL(state_test_data->test_channel_handler);
@@ -725,7 +727,7 @@ static void s_on_op_complete(
     (void)error_code;
 
     struct mqtt_connection_state_test *state_test_data = userdata;
-    AWS_LOGF_DEBUG(60000, "pub op completed");
+    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "pub op completed");
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->ops_completed++;
     aws_mutex_unlock(&state_test_data->lock);
