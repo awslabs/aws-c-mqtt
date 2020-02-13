@@ -883,7 +883,7 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
 
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 2;
-    aws_mutex_lock(&state_test_data->lock);
+    aws_mutex_unlock(&state_test_data->lock);
 
     ASSERT_TRUE(
         aws_mqtt_client_connection_publish(
