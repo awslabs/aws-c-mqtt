@@ -951,7 +951,9 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
     struct aws_array_list *received_messages =
         s_mqtt_mock_server_get_received_messages(state_test_data->test_channel_handler);
     ASSERT_NOT_NULL(received_messages);
-    ASSERT_UINT_EQUALS(5, aws_array_list_length(received_messages));
+    ASSERT_TRUE(aws_array_list_length(received_messages) >= 5 && aws_array_list_length(received_messages) <= 6);
+
+    size_t message_count = aws_array_list_length(received_messages);
 
     struct aws_byte_buf received_message = {0};
     ASSERT_SUCCESS(aws_array_list_get_at(received_messages, &received_message, 0));
@@ -977,7 +979,21 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         connect_packet.client_identifier.ptr,
         connect_packet.client_identifier.len);
 
-    ASSERT_SUCCESS(aws_array_list_get_at(received_messages, &received_message, 2));
+    /* if message count is 6 there was an extra connect message due to the automatic reconnect behavior and timing. */
+    size_t index = 2;
+    if (message_count == 6) {
+        ASSERT_SUCCESS(aws_array_list_get_at(received_messages, &received_message, index++));
+        message_cur = aws_byte_cursor_from_buf(&received_message);
+        ASSERT_SUCCESS(aws_mqtt_packet_connect_decode(&message_cur, &connect_packet));
+        ASSERT_UINT_EQUALS(connection_options.clean_session, connect_packet.clean_session);
+        ASSERT_BIN_ARRAYS_EQUALS(
+            connection_options.client_id.ptr,
+            connection_options.client_id.len,
+            connect_packet.client_identifier.ptr,
+            connect_packet.client_identifier.len);
+    }
+
+    ASSERT_SUCCESS(aws_array_list_get_at(received_messages, &received_message, index++));
     message_cur = aws_byte_cursor_from_buf(&received_message);
 
     struct aws_mqtt_packet_publish publish_packet;
@@ -986,7 +1002,7 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         pub_topic.ptr, pub_topic.len, publish_packet.topic_name.ptr, publish_packet.topic_name.len);
     ASSERT_BIN_ARRAYS_EQUALS(payload_1.ptr, payload_1.len, publish_packet.payload.ptr, publish_packet.payload.len);
 
-    ASSERT_SUCCESS(aws_array_list_get_at(received_messages, &received_message, 3));
+    ASSERT_SUCCESS(aws_array_list_get_at(received_messages, &received_message, index++));
     message_cur = aws_byte_cursor_from_buf(&received_message);
 
     ASSERT_SUCCESS(aws_mqtt_packet_publish_decode(&message_cur, &publish_packet));
@@ -994,7 +1010,7 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         pub_topic.ptr, pub_topic.len, publish_packet.topic_name.ptr, publish_packet.topic_name.len);
     ASSERT_BIN_ARRAYS_EQUALS(payload_2.ptr, payload_2.len, publish_packet.payload.ptr, publish_packet.payload.len);
 
-    ASSERT_SUCCESS(aws_array_list_get_at(received_messages, &received_message, 4));
+    ASSERT_SUCCESS(aws_array_list_get_at(received_messages, &received_message, index++));
     message_cur = aws_byte_cursor_from_buf(&received_message);
 
     struct aws_mqtt_packet_connection packet;

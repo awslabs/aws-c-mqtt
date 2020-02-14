@@ -182,7 +182,10 @@ static void s_mqtt_client_shutdown(
 /*******************************************************************************
  * Connection New
  ******************************************************************************/
-
+/* The assumption here is that a connection always outlives its channels, and the channel this task was scheduled on
+ * always outlives this task, so all we need to do is check the connection state. If we are in a state that waits
+ * for a CONNACK, kill it off. In the case that the connection died between scheduling this task and it being executed
+ * the status will always be CANCELED because this task will be canceled when the owning channel goes away. */
 static void s_connack_received_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
     struct aws_mqtt_client_connection *connection = arg;
 
