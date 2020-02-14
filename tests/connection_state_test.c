@@ -606,6 +606,38 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
+/* Makes a CONNECT, channel is successfully setup, but the server never sends a connack, make sure we timeout. */
+static int s_test_mqtt_connection_connack_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .keep_alive_time_secs = 1,
+        .ping_timeout_ms = 100,
+    };
+
+    s_mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, 0);
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->error);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_connack_timeout,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_connack_timeout_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
 /* Subscribe to a topic prior to connection, make a CONNECT, have the server send PUBLISH messages,
  * make sure they're received, then send a DISCONNECT. */
 static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) {

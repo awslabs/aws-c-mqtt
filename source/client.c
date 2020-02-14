@@ -183,6 +183,20 @@ static void s_mqtt_client_shutdown(
  * Connection New
  ******************************************************************************/
 
+static void s_connack_received_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    struct aws_mqtt_client_connection *connection = arg;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING ||
+            connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt CONNACK response timeout detected", (void *)connection);
+            aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
+        }
+    }
+
+    aws_mem_release(connection->allocator, channel_task);
+}
+
 /**
  * Channel has been initialized callback. Sets up channel handler and sends out CONNECT packet.
  * The on_connack callback is called with the CONNACK packet is received from the server.
@@ -194,6 +208,7 @@ static void s_mqtt_client_init(
     void *user_data) {
 
     (void)bootstrap;
+    struct aws_io_message *message = NULL;
 
     /* Setup callback contract is: if error_code is non-zero then channel is NULL. */
     AWS_FATAL_ASSERT((error_code != 0) == (channel == NULL));
@@ -209,9 +224,6 @@ static void s_mqtt_client_init(
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: Connection successfully opened, sending CONNECT packet", (void *)connection);
 
-    /* Reset the current timeout timer */
-    connection->reconnect_timeouts.current = connection->reconnect_timeouts.min;
-
     /* Create the slot and handler */
     connection->slot = aws_channel_slot_new(channel);
 
@@ -226,6 +238,20 @@ static void s_mqtt_client_init(
 
     aws_channel_slot_insert_end(channel, connection->slot);
     aws_channel_slot_set_handler(connection->slot, &connection->handler);
+
+    struct aws_channel_task *connack_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_channel_task));
+    if (!connack_task) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to allocate timeout task.", (void *)connection);
+        goto handle_error;
+    }
+
+    connack_task->task_fn = s_connack_received_timeout;
+    connack_task->arg = connection;
+
+    uint64_t now = 0;
+    aws_channel_current_clock_time(channel, &now);
+    now += connection->request_timeout_ns;
+    aws_channel_schedule_task_future(channel, connack_task, now);
 
     /* Send the connect packet */
     struct aws_mqtt_packet_connect connect;
@@ -272,7 +298,7 @@ static void s_mqtt_client_init(
         aws_mqtt_packet_connect_add_credentials(&connect, username_cur, password_cur);
     }
 
-    struct aws_io_message *message = mqtt_get_message_for_packet(connection, &connect.fixed_header);
+    message = mqtt_get_message_for_packet(connection, &connect.fixed_header);
     if (!message) {
 
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to get message from pool", (void *)connection);
@@ -295,6 +321,7 @@ static void s_mqtt_client_init(
 
 handle_error:
     MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, aws_last_error(), 0, false);
+    aws_channel_shutdown(channel, aws_last_error());
 
     if (message) {
         aws_mem_release(message->allocator, message);
