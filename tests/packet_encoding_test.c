@@ -73,11 +73,11 @@ static int s_packet_test_before(struct aws_allocator *allocator, void *ctx) {
 
     /* Setup the fixture */
     fixture->in_packet = aws_mem_acquire(allocator, fixture->size);
-    AWS_FATAL_ASSERT(fixture->in_packet);
+    ASSERT_NOT_NULL(fixture->in_packet);
     memset(fixture->in_packet, 0, fixture->size);
 
     fixture->out_packet = aws_mem_acquire(allocator, fixture->size);
-    AWS_FATAL_ASSERT(fixture->out_packet);
+    ASSERT_NOT_NULL(fixture->out_packet);
     memset(fixture->out_packet, 0, fixture->size);
 
     return AWS_OP_SUCCESS;
