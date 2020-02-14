@@ -700,6 +700,11 @@ int aws_mqtt_topic_tree_transaction_remove(
         (void *)tree,
         AWS_BYTE_CURSOR_PRI(*topic_filter));
 
+    /* Initialize output parameter to a safe default */
+    if (old_userdata) {
+        *old_userdata = NULL;
+    }
+
     /* Default to error because that's what handle_error will do in all cases except node not found */
     int result = AWS_OP_ERR;
     struct topic_tree_action *action = s_topic_tree_action_create(transaction);
