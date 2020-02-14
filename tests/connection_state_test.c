@@ -110,6 +110,7 @@ static void s_on_incoming_channel_shutdown_fn(
 }
 
 static void s_on_listener_destroy(struct aws_server_bootstrap *bootstrap, void *user_data) {
+    (void)bootstrap;
     struct mqtt_connection_state_test *state_test_data = user_data;
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->listener_destroyed = true;
