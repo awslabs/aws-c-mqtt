@@ -54,6 +54,7 @@ struct mqtt_connection_state_test {
     bool connection_interrupted;
     bool connection_resumed;
     bool subscribe_completed;
+    bool listener_destroyed;
     int interruption_error;
     enum aws_mqtt_connect_return_code mqtt_return_code;
     int error;
@@ -109,8 +110,23 @@ static void s_on_incoming_channel_shutdown_fn(
 }
 
 static void s_on_listener_destroy(struct aws_server_bootstrap *bootstrap, void *user_data) {
-    (void)bootstrap;
-    (void)user_data;
+    struct mqtt_connection_state_test *state_test_data = user_data;
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->listener_destroyed = true;
+    aws_mutex_unlock(&state_test_data->lock);
+    aws_condition_variable_notify_one(&state_test_data->cvar);
+}
+
+static bool s_is_listener_destroyed(void *arg) {
+    struct mqtt_connection_state_test *state_test_data = arg;
+    return state_test_data->listener_destroyed;
+}
+
+static void s_wait_on_listener_cleanup(struct mqtt_connection_state_test *state_test_data) {
+    aws_mutex_lock(&state_test_data->lock);
+    aws_condition_variable_wait_pred(
+        &state_test_data->cvar, &state_test_data->lock, s_is_listener_destroyed, state_test_data);
+    aws_mutex_unlock(&state_test_data->lock);
 }
 
 static void s_on_connection_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
@@ -262,6 +278,7 @@ static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_
         aws_client_bootstrap_release(state_test_data->client_bootstrap);
         aws_host_resolver_clean_up(&state_test_data->host_resolver);
         aws_server_bootstrap_destroy_socket_listener(state_test_data->server_bootstrap, state_test_data->listener);
+        s_wait_on_listener_cleanup(state_test_data);
         aws_server_bootstrap_release(state_test_data->server_bootstrap);
         aws_event_loop_group_clean_up(&state_test_data->el_group);
         s_destroy_mqtt_mock_server(state_test_data->test_channel_handler);
