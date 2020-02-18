@@ -43,7 +43,7 @@
 /* 3 seconds */
 static const uint64_t s_default_request_timeout_ns = 3000000000;
 
-/* 20 minutes */
+/* 20 minutes - This is the default (and max) for AWS IoT as of 2020.02.18 */
 static const uint16_t s_default_keep_alive_sec = 1200;
 
 /*******************************************************************************
