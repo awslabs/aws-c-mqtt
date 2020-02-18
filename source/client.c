@@ -43,8 +43,8 @@
 /* 3 seconds */
 static const uint64_t s_default_request_timeout_ns = 3000000000;
 
-/* 1 hour */
-static const uint16_t s_default_keep_alive_sec = 3600;
+/* 20 minutes */
+static const uint16_t s_default_keep_alive_sec = 1200;
 
 /*******************************************************************************
  * Client Init
