@@ -248,8 +248,7 @@ static void s_mqtt_client_init(
         goto handle_error;
     }
 
-    connack_task->task_fn = s_connack_received_timeout;
-    connack_task->arg = connection;
+    aws_channel_task_init(connack_task, s_connack_received_timeout, connection, "mqtt_connack_timeout");
 
     uint64_t now = 0;
     aws_channel_current_clock_time(channel, &now);
