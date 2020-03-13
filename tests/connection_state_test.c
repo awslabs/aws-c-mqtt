@@ -224,14 +224,17 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
         LOCAL_SOCK_TEST_PATTERN,
         (long long unsigned)timestamp);
 
-    state_test_data->listener = aws_server_bootstrap_new_socket_listener(
-        state_test_data->server_bootstrap,
-        &state_test_data->endpoint,
-        &socket_options,
-        s_on_incoming_channel_setup_fn,
-        s_on_incoming_channel_shutdown_fn,
-        s_on_listener_destroy,
-        state_test_data);
+    struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
+        .bootstrap = state_test_data->server_bootstrap,
+        .host_name = state_test_data->endpoint.address,
+        .port = state_test_data->endpoint.port,
+        .socket_options = &state_test_data->socket_options,
+        .incoming_callback = s_on_incoming_channel_setup_fn,
+        .shutdown_callback = s_on_incoming_channel_shutdown_fn,
+        .destroy_callback = s_on_listener_destroy,
+        .user_data = state_test_data,
+    };
+    state_test_data->listener = aws_server_bootstrap_new_socket_listener(&server_bootstrap_options);
 
     ASSERT_NOT_NULL(state_test_data->listener);
 
