@@ -95,7 +95,6 @@ bool aws_mqtt_packet_has_flags(const struct aws_mqtt_fixed_header *header) {
             return false;
 
         default:
-            AWS_ASSUME(0 && "unreachable");
             return false;
     }
 }
