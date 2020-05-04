@@ -123,8 +123,12 @@ static void s_mqtt_client_shutdown(
             "id=%p: Disconnect completed, clearing request queue and calling callback",
             (void *)connection);
 
+        aws_mutex_lock(&connection->outstanding_requests.mutex);
+
         /* Successfully shutdown, so clear the outstanding requests */
         aws_hash_table_clear(&connection->outstanding_requests.table);
+
+        aws_mutex_unlock(&connection->outstanding_requests.mutex);
 
         MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
 
@@ -409,7 +413,10 @@ static void s_outstanding_request_destroy(void *item) {
             (void *)(request->connection),
             request->message_id);
         /* Task ran as cancelled already, clean up the memory */
-        aws_memory_pool_release(&request->connection->requests_pool, request);
+        aws_mutex_lock(&request->connection->requests_pool.mutex);
+        aws_memory_pool_release(&request->connection->requests_pool.pool, request);
+        aws_mutex_unlock(&request->connection->requests_pool.mutex);
+
     } else {
         /* Signal task to clean up request */
         request->cancelled = true;
@@ -449,11 +456,16 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
         goto failed_init_subscriptions;
     }
 
+    if (aws_mutex_init(&connection->requests_pool.mutex)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to initialize request pool mutex", (void *)connection);
+        goto failed_init_requests_pool_mutex;
+    }
+
     if (aws_memory_pool_init(
-            &connection->requests_pool, connection->allocator, 32, sizeof(struct aws_mqtt_outstanding_request))) {
+            &connection->requests_pool.pool, connection->allocator, 32, sizeof(struct aws_mqtt_outstanding_request))) {
 
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to initialize request pool", (void *)connection);
-        goto failed_init_request_pool;
+        goto failed_init_requests_pool;
     }
 
     if (aws_hash_table_init(
@@ -478,9 +490,12 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     return connection;
 
 failed_init_outstanding_requests_table:
-    aws_memory_pool_clean_up(&connection->requests_pool);
+    aws_memory_pool_clean_up(&connection->requests_pool.pool);
 
-failed_init_request_pool:
+failed_init_requests_pool:
+    aws_mutex_clean_up(&connection->requests_pool.mutex);
+
+failed_init_requests_pool_mutex:
     aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
 
 failed_init_subscriptions:
@@ -526,8 +541,11 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     aws_mqtt_topic_tree_clean_up(&connection->subscriptions);
 
     /* Cleanup outstanding requests */
+    aws_mutex_clean_up(&connection->outstanding_requests.mutex);
     aws_hash_table_clean_up(&connection->outstanding_requests.table);
-    aws_memory_pool_clean_up(&connection->requests_pool);
+
+    aws_mutex_clean_up(&connection->requests_pool.mutex);
+    aws_memory_pool_clean_up(&connection->requests_pool.pool);
 
     if (connection->slot) {
         aws_channel_slot_remove(connection->slot);
