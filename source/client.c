@@ -412,10 +412,12 @@ static void s_outstanding_request_destroy(void *item) {
             "id=%p: (table element remove) Releasing request %" PRIu16 " to connection memory pool",
             (void *)(request->connection),
             request->message_id);
+
         /* Task ran as cancelled already, clean up the memory */
-        aws_mutex_lock(&request->connection->requests_pool.mutex);
-        aws_memory_pool_release(&request->connection->requests_pool.pool, request);
-        aws_mutex_unlock(&request->connection->requests_pool.mutex);
+        struct aws_mqtt_client_connection *connection = request->connection;
+        aws_mutex_lock(&connection->requests_pool.mutex);
+        aws_memory_pool_release(&connection->requests_pool.pool, request);
+        aws_mutex_unlock(&connection->requests_pool.mutex);
 
     } else {
         /* Signal task to clean up request */
