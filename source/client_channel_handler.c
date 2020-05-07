@@ -676,7 +676,11 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             "id=%p: (timeout task run of cancelled request) Releasing request %" PRIu16 " to connection memory pool",
             (void *)(request->connection),
             request->message_id);
-        aws_memory_pool_release(&request->connection->requests_pool, request);
+
+        struct aws_mqtt_client_connection *connection = request->connection;
+        aws_mutex_lock(&connection->requests_pool.mutex);
+        aws_memory_pool_release(&connection->requests_pool.pool, request);
+        aws_mutex_unlock(&connection->requests_pool.mutex);
         return;
     }
 
@@ -753,7 +757,11 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
                 " to connection memory pool",
                 (void *)(request->connection),
                 request->message_id);
-            aws_memory_pool_release(&request->connection->requests_pool, elem.value);
+
+            struct aws_mqtt_client_connection *connection = request->connection;
+            aws_mutex_lock(&connection->requests_pool.mutex);
+            aws_memory_pool_release(&connection->requests_pool.pool, elem.value);
+            aws_mutex_unlock(&connection->requests_pool.mutex);
         } else if (request->connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
             /* If not complete and online, schedule retry task */
 
@@ -792,7 +800,10 @@ uint16_t mqtt_create_request(
     AWS_ASSERT(connection);
     AWS_ASSERT(send_request);
 
-    struct aws_mqtt_outstanding_request *next_request = aws_memory_pool_acquire(&connection->requests_pool);
+    aws_mutex_lock(&connection->requests_pool.mutex);
+    struct aws_mqtt_outstanding_request *next_request = aws_memory_pool_acquire(&connection->requests_pool.pool);
+    aws_mutex_unlock(&connection->requests_pool.mutex);
+
     if (!next_request) {
         return 0;
     }
@@ -820,7 +831,11 @@ uint16_t mqtt_create_request(
             "id=%p: (message allocation failure) Releasing request %" PRIu16 " to connection memory pool",
             (void *)(next_request->connection),
             next_request->message_id);
-        aws_memory_pool_release(&connection->requests_pool, next_request);
+
+        aws_mutex_lock(&connection->requests_pool.mutex);
+        aws_memory_pool_release(&connection->requests_pool.pool, next_request);
+        aws_mutex_lock(&connection->requests_pool.mutex);
+
         aws_mutex_unlock(&connection->outstanding_requests.mutex);
         return 0;
     }

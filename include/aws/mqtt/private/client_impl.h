@@ -124,7 +124,11 @@ struct aws_mqtt_client_connection {
     void *on_any_publish_ud;
 
     /* aws_mqtt_outstanding_request */
-    struct aws_memory_pool requests_pool;
+    struct {
+        struct aws_memory_pool pool;
+        struct aws_mutex mutex;
+    } requests_pool;
+
     struct {
         /* uint16_t (packet id) -> aws_mqtt_outstanding_request */
         struct aws_hash_table table;
