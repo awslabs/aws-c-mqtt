@@ -8,6 +8,34 @@ This library is licensed under the Apache 2.0 License.
 
 ## Usage
 
+### Building
+
+Note that aws-c-mqtt has several dependencies.  If you are building on Linux, you will also need to follow the build instructions for [s2n](https://github.com/awslabs/s2n/blob/master/docs/USAGE-GUIDE.md) before building the aws-c-io dependency.
+
+````
+git clone git@github.com:awslabs/aws-c-common.git
+cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -S aws-c-common -B aws-c-common/build
+cmake --build aws-c-common/build --target install
+
+git clone git@github.com:awslabs/aws-c-io.git
+cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -S aws-c-io -B aws-c-io/build
+cmake --build aws-c-io/build --target install
+
+git clone git@github.com:awslabs/aws-c-compression.git
+cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -S aws-c-compression -B aws-c-compression/build
+cmake --build aws-c-compression/build --target install
+
+git clone git@github.com:awslabs/aws-c-http.git
+cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -S aws-c-http -B aws-c-http/build
+cmake --build aws-c-http/build --target install
+
+git clone git@github.com:awslabs/aws-c-mqtt.git
+cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -S aws-c-mqtt -B aws-c-mqtt/build
+cmake --build aws-c-mqtt/build --target install
+````
+
+### Overview
+
 This library contains an MQTT implementation that is simple and easy to use, but also quite powerful and low on
 unnecessary copies. Here is a general overview of the API:
 
