@@ -43,7 +43,7 @@ cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -
 cmake --build s2n/build --target install
 ```
 
-#### Building aws-c-auth and Remaining Dependencies
+#### Building aws-c-mqtt and Remaining Dependencies
 
 Note that aws-c-mqtt has several dependencies that need to be built.
 
