@@ -187,7 +187,7 @@ uint16_t aws_mqtt_client_connection_subscribe_single(
     void *on_suback_ud);
 ```
 Subscribes to the topic filter given with the given QoS. `on_publish` will be called whenever a packet matching
-`topic_filter` arrives. `on_suback` will be called when the SUBACK packet has been recieved. `topic_filter` must persist until `on_suback` is called. The packet_id of the SUBSCRIBE packet will be returned, or 0 on error.
+`topic_filter` arrives. `on_suback` will be called when the SUBACK packet has been received. `topic_filter` must persist until `on_suback` is called. The packet_id of the SUBSCRIBE packet will be returned, or 0 on error.
 
 ```c
 uint16_t aws_mqtt_client_connection_unsubscribe(
