@@ -39,7 +39,7 @@ struct topic_tree_action {
         AWS_MQTT_TOPIC_TREE_REMOVE,
     } mode;
 
-    /* All NODES */
+    /* All Nodes */
     struct aws_mqtt_topic_node *node_to_update;
 
     /* ADD/UPDATE */
