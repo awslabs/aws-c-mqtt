@@ -49,6 +49,7 @@ static int s_check_multi_topic_match(
     for (size_t i = 0; i < sub_filters_len; ++i) {
         struct aws_string *topic_filter = aws_string_new_from_c_str(allocator, sub_filters[i]);
         aws_mqtt_topic_tree_insert(&tree, topic_filter, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL);
+        aws_string_destroy(topic_filter);
     }
 
     struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_array(pub_topic, strlen(pub_topic));
@@ -136,8 +137,6 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
 
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
-    /* Re-create, it was nuked by remove. */
-    topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
 
     /* Ensure that the intermediate 'a' node was removed as well. */
     ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
@@ -177,6 +176,66 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     aws_mqtt_topic_tree_remove(&tree, &not_in_tree);
 
     aws_mqtt_topic_tree_clean_up(&tree);
+    aws_string_destroy(topic_a_a);
+    aws_string_destroy(topic_a_a_a);
+    aws_string_destroy(topic_a_a_b);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_topic_tree_duplicate_transactions, s_mqtt_topic_tree_duplicate_transactions_fn)
+static int s_mqtt_topic_tree_duplicate_transactions_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt_topic_tree tree;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_init(&tree, allocator));
+
+    struct aws_string *topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
+    struct aws_string *topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
+    struct aws_string *topic_a_a_a_copy = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
+    struct aws_string *topic_a_a_b = aws_string_new_from_array(allocator, s_topic_a_a_b.ptr, s_topic_a_a_b.len);
+
+    size_t number_topics = 4;
+
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size * number_topics);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, number_topics, aws_mqtt_topic_tree_action_size);
+
+    /* Ensure that the intermediate 'a' node was removed as well. */
+    ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
+
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
+    /* insert duplicate strings, and the string should still be fine */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a_a_copy, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
+
+    ASSERT_TRUE(aws_string_eq_byte_cursor(topic_a_a_a, &s_topic_a_a_a));
+    ASSERT_TRUE(aws_string_eq_byte_cursor(topic_a_a_a_copy, &s_topic_a_a_a));
+
+    /* the result will be the same as we just intert three nodes */
+    ASSERT_UINT_EQUALS(1, aws_hash_table_get_entry_count(&tree.root->subtopics));
+
+    struct aws_mqtt_packet_publish publish;
+    aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a_a, 1, s_topic_a_a_a);
+
+    times_called = 0;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    ASSERT_INT_EQUALS(times_called, 1);
+
+    aws_mqtt_topic_tree_clean_up(&tree);
+    aws_string_destroy(topic_a_a);
+    aws_string_destroy(topic_a_a_a);
+    aws_string_destroy(topic_a_a_a_copy);
+    aws_string_destroy(topic_a_a_b);
 
     return AWS_OP_SUCCESS;
 }
@@ -201,9 +260,6 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
     /* Ensure that the intermediate 'a' node was removed as well. */
     ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
 
-    /* Re-create, it was nuked by roll_back. */
-    topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
-
     /* Insert(commit), remove, roll back the removal */
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a, NULL));
@@ -218,6 +274,7 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
 
     aws_mqtt_topic_tree_clean_up(&tree);
 
+    aws_string_destroy(topic_a_a);
     return AWS_OP_SUCCESS;
 }
 

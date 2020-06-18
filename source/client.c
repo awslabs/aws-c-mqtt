@@ -1245,7 +1245,7 @@ static void s_on_topic_clean_up(void *userdata) {
     if (task_topic->request.on_cleanup) {
         task_topic->request.on_cleanup(task_topic->request.on_publish_ud);
     }
-
+    aws_string_destroy_secure(task_topic->filter);
     aws_mem_release(task_topic->connection->allocator, task_topic);
 }
 

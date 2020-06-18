@@ -39,7 +39,7 @@ struct topic_tree_action {
         AWS_MQTT_TOPIC_TREE_REMOVE,
     } mode;
 
-    /* All Modes */
+    /* All NODES */
     struct aws_mqtt_topic_node *node_to_update;
 
     /* ADD/UPDATE */
@@ -576,7 +576,7 @@ static void s_topic_tree_action_roll_back(struct topic_tree_action *action, stru
 int aws_mqtt_topic_tree_transaction_insert(
     struct aws_mqtt_topic_tree *tree,
     struct aws_array_list *transaction,
-    const struct aws_string *topic_filter,
+    const struct aws_string *topic_filter_ori,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
     aws_mqtt_userdata_cleanup_fn *cleanup,
@@ -584,8 +584,11 @@ int aws_mqtt_topic_tree_transaction_insert(
 
     AWS_PRECONDITION(tree);
     AWS_PRECONDITION(transaction);
-    AWS_PRECONDITION(topic_filter);
+    AWS_PRECONDITION(topic_filter_ori);
     AWS_PRECONDITION(callback);
+
+    /* let topic tree take the ownship of the new string and leave the caller string alone. */
+    struct aws_string *topic_filter = aws_string_new_from_string(tree->allocator, topic_filter_ori);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_TOPIC_TREE,
@@ -664,7 +667,7 @@ int aws_mqtt_topic_tree_transaction_insert(
 
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_TOPIC_TREE,
-            "tree=%p node=%p: Updating existing node that alrady owns its topic_filter, throwing out parameter",
+            "tree=%p node=%p: Updating existing node that already owns its topic_filter, throwing out parameter",
             (void *)tree,
             (void *)current);
 
