@@ -678,7 +678,7 @@ int aws_mqtt_topic_tree_transaction_insert(
 
         /* If the topic filter was already here, this is already a subscription.
            Free the new topic_filter so all existing byte_cursors remain valid. */
-        aws_string_destroy((void *)topic_filter);
+        aws_string_destroy(topic_filter);
     } else {
         /* Node already existed (or was created) but wasn't subscription. */
         action->topic = last_part;
