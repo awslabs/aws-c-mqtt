@@ -592,7 +592,7 @@ int aws_mqtt_topic_tree_transaction_insert(
     AWS_PRECONDITION(topic_filter_ori);
     AWS_PRECONDITION(callback);
 
-    /* let topic tree take the ownship of the new string and leave the caller string alone. */
+    /* let topic tree take the ownership of the new string and leave the caller string alone. */
     struct aws_string *topic_filter = aws_string_new_from_string(tree->allocator, topic_filter_ori);
 
     AWS_LOGF_DEBUG(
