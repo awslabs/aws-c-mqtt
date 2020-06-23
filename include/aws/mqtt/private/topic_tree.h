@@ -20,7 +20,7 @@
 
 #include <aws/mqtt/private/packets.h>
 
-/** Type of function called when a publish recieved matches a subscription */
+/** Type of function called when a publish received matches a subscription */
 typedef void(aws_mqtt_publish_received_fn)(
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
@@ -51,7 +51,7 @@ struct aws_mqtt_topic_node {
     /* The following will only be populated if the node IS a subscription */
     /* Max QoS to deliver. */
     enum aws_mqtt_qos qos;
-    /* Callback to call on message recieved */
+    /* Callback to call on message received */
     aws_mqtt_publish_received_fn *callback;
     aws_mqtt_userdata_cleanup_fn *cleanup;
     void *userdata;
