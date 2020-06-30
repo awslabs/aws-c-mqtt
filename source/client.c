@@ -140,7 +140,6 @@ static void s_mqtt_client_shutdown(
 
         if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
 
-            aws_thread_current_sleep(1000000000);
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Connection lost, calling callback and attempting reconnect",
