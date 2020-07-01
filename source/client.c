@@ -1186,6 +1186,15 @@ int aws_mqtt_client_connection_disconnect(
  * Subscribe
  ******************************************************************************/
 
+/* The lifetime of this struct is the same as the lifetime of the subscription */	
+struct subscribe_task_topic {	
+    struct aws_mqtt_client_connection *connection;	
+
+    struct aws_mqtt_topic_subscription request;	
+    struct aws_string *filter;	
+    bool is_local;	
+};	
+
 /* The lifetime of this struct is from subscribe -> suback */
 struct subscribe_task_arg {
 
@@ -1419,7 +1428,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
             AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
 
         /* Push into the list */
-        aws_array_list_push_back(&task_arg->topics, &task_topic);
+        aws_array_list_push_back(&task_arg->topics, &request);
     }
 
     uint16_t packet_id =
