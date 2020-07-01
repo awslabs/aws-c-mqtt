@@ -81,6 +81,16 @@ static void s_mqtt_client_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
 
+    if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection lost, calling callback and attempting reconnect",
+            (void *)connection);
+
+        connection->state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
+        MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
+    }
+
     /* Always clear slot, as that's what's been shutdown */
     if (connection->slot) {
         aws_channel_slot_remove(connection->slot);
@@ -137,17 +147,6 @@ static void s_mqtt_client_shutdown(
             connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED ||
             connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
             connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
-
-        if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
-
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Connection lost, calling callback and attempting reconnect",
-                (void *)connection);
-
-            connection->state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
-            MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
-        }
 
         AWS_ASSERT(
             connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
@@ -1187,15 +1186,6 @@ int aws_mqtt_client_connection_disconnect(
  * Subscribe
  ******************************************************************************/
 
-/* The lifetime of this struct is the same as the lifetime of the subscription */
-struct subscribe_task_topic {
-    struct aws_mqtt_client_connection *connection;
-
-    struct aws_mqtt_topic_subscription request;
-    struct aws_string *filter;
-    bool is_local;
-};
-
 /* The lifetime of this struct is from subscribe -> suback */
 struct subscribe_task_arg {
 
@@ -1429,7 +1419,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
             AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
 
         /* Push into the list */
-        aws_array_list_push_back(&task_arg->topics, &request);
+        aws_array_list_push_back(&task_arg->topics, &task_topic);
     }
 
     uint16_t packet_id =
