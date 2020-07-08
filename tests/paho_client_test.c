@@ -369,8 +369,6 @@ int main(int argc, char **argv) {
     aws_mqtt_client_connection_destroy(args.connection);
     args.connection = NULL;
 
-    printf("%zu\n", aws_mem_tracer_count(allocator));
-
     aws_client_bootstrap_release(bootstrap);
     aws_host_resolver_clean_up(&resolver);
     aws_event_loop_group_clean_up(&el_group);
