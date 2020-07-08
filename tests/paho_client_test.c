@@ -31,7 +31,7 @@
 #    include <unistd.h>
 #endif
 
-/* Note: to run this test, a broker on localhost:1883 is required, eg: mosquitto */
+/* Note: to successfully run this test, a broker on localhost:1883 is required, eg: mosquitto */
 
 static struct aws_byte_cursor s_client_id = {
     .ptr = (uint8_t *)"MyClientId1",
