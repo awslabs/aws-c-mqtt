@@ -23,6 +23,7 @@ add_test_case(mqtt_packet_disconnect)
 
 add_test_case(mqtt_topic_tree_match)
 add_test_case(mqtt_topic_tree_unsubscribe)
+add_test_case(mqtt_topic_tree_duplicate_transactions)
 add_test_case(mqtt_topic_tree_transactions)
 add_test_case(mqtt_topic_validation)
 

@@ -1,19 +1,9 @@
 #ifndef AWS_MQTT_CLIENT_H
 #define AWS_MQTT_CLIENT_H
 
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/common/hash_table.h>
@@ -173,12 +163,13 @@ struct aws_mqtt_topic_subscription {
  * clean_session             True to discard all server session data and start fresh
  * keep_alive_time_secs      The keep alive value to place in the CONNECT PACKET, a PING will automatically
  *                           be sent at this interval as well. If you specify 0, defaults will be used
- *                           and a ping will be sent once per 60 minutes. This value must be greater than
+ *                           and a ping will be sent once per 20 minutes.
+ *                           This duration must be longer than ping_timeout_ms.
  * ping_timeout_ms           Network connection is re-established if a ping response is not received
  *                           within this amount of time (milliseconds). If you specify 0, a default value of 3 seconds
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
- *                           and OS version. This value must be less than keep_alive_time_secs.
+ *                           and OS version. This duration must be shorter than keep_alive_time_secs.
  * on_connection_complete    The callback to fire when the connection attempt completes user_data
  *                           Passed to the userdata param of on_connection_complete
  */

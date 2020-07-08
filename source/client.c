@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/mqtt/client.h>
 
@@ -1245,7 +1235,7 @@ static void s_on_topic_clean_up(void *userdata) {
     if (task_topic->request.on_cleanup) {
         task_topic->request.on_cleanup(task_topic->request.on_publish_ud);
     }
-
+    aws_string_destroy(task_topic->filter);
     aws_mem_release(task_topic->connection->allocator, task_topic);
 }
 
@@ -1354,6 +1344,11 @@ static void s_subscribe_complete(
 
     struct subscribe_task_arg *task_arg = userdata;
 
+    struct subscribe_task_topic *topic = NULL;
+    aws_array_list_get_at(&task_arg->topics, &topic, 0);
+    AWS_ASSUME(topic);
+    AWS_ASSUME(aws_string_is_valid(topic->filter));
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Subscribe %" PRIu16 " completed with error_code %d",
@@ -1364,12 +1359,8 @@ static void s_subscribe_complete(
     if (task_arg->on_suback.multi) {
         task_arg->on_suback.multi(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
     } else if (task_arg->on_suback.single) {
-        struct subscribe_task_topic *topic = NULL;
-        aws_array_list_get_at(&task_arg->topics, &topic, 0);
-        AWS_ASSUME(topic);
-        struct aws_byte_cursor topic_cur = aws_byte_cursor_from_string(topic->filter);
         task_arg->on_suback.single(
-            connection, packet_id, &topic_cur, topic->request.qos, error_code, task_arg->on_suback_ud);
+            connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
     }
 
     aws_array_list_clean_up(&task_arg->topics);
@@ -1500,7 +1491,7 @@ static void s_subscribe_single_complete(
         struct subscribe_task_topic *topic = NULL;
         aws_array_list_get_at(&task_arg->topics, &topic, 0);
         AWS_ASSUME(topic); /* There needs to be exactly 1 topic in this list */
-
+        AWS_ASSUME(aws_string_is_valid(topic->filter));
         aws_mqtt_suback_fn *suback = task_arg->on_suback.single;
         suback(connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
     }

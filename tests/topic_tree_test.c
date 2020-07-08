@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/mqtt/private/topic_tree.h>
@@ -34,6 +24,11 @@ static void on_publish(const struct aws_byte_cursor *topic, const struct aws_byt
     times_called++;
 }
 
+static void s_string_clean_up(void *userdata) {
+    struct aws_string *string = userdata;
+    aws_string_destroy(string);
+}
+
 /* Subscribes to multiple topics and returns the number that matched with the pub_topic */
 static int s_check_multi_topic_match(
     struct aws_allocator *allocator,
@@ -48,7 +43,8 @@ static int s_check_multi_topic_match(
 
     for (size_t i = 0; i < sub_filters_len; ++i) {
         struct aws_string *topic_filter = aws_string_new_from_c_str(allocator, sub_filters[i]);
-        aws_mqtt_topic_tree_insert(&tree, topic_filter, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL);
+        aws_mqtt_topic_tree_insert(
+            &tree, topic_filter, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_filter);
     }
 
     struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_array(pub_topic, strlen(pub_topic));
@@ -134,29 +130,29 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     struct aws_array_list transaction;
     aws_array_list_init_static(&transaction, transaction_buf, 3, aws_mqtt_topic_tree_action_size);
 
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(
+        &tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_a_a_a));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
     /* Re-create, it was nuked by remove. */
     topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
-
     /* Ensure that the intermediate 'a' node was removed as well. */
     ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
 
     /* Put it back so we can test removal of a partial tree. */
     /* Bonus points: test transactions here */
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
-        &tree, &transaction, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+        &tree, &transaction, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_a_a_a));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
-        &tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+        &tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_a_a));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
-        &tree, &transaction, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+        &tree, &transaction, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_a_a_b));
     aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
 
     /* Should remove the last /a, but not the first 2. */
     void *userdata = (void *)0xBADCAFE;
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a_a, &userdata));
-    /* Ensure userdata was set back to NULL correctly. */
-    ASSERT_PTR_EQUALS(NULL, userdata);
+    /* Ensure userdata was set back to the right user_data correctly. */
+    ASSERT_PTR_EQUALS(topic_a_a_a, userdata);
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a, NULL));
     aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
 
@@ -177,7 +173,84 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     aws_mqtt_topic_tree_remove(&tree, &not_in_tree);
 
     aws_mqtt_topic_tree_clean_up(&tree);
+    return AWS_OP_SUCCESS;
+}
 
+struct s_duplicate_test_ud {
+    struct aws_string *string;
+    bool cleaned;
+};
+
+static void s_userdata_cleanup(void *userdata) {
+    struct s_duplicate_test_ud *ud = userdata;
+    aws_string_destroy(ud->string);
+    ud->cleaned = true;
+}
+
+AWS_TEST_CASE(mqtt_topic_tree_duplicate_transactions, s_mqtt_topic_tree_duplicate_transactions_fn)
+static int s_mqtt_topic_tree_duplicate_transactions_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt_topic_tree tree;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_init(&tree, allocator));
+
+    struct aws_string *topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
+    struct aws_string *topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
+    struct aws_string *topic_a_a_a_copy = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
+    struct aws_string *topic_a_a_b = aws_string_new_from_array(allocator, s_topic_a_a_b.ptr, s_topic_a_a_b.len);
+
+    size_t number_topics = 4;
+
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, aws_mqtt_topic_tree_action_size * number_topics);
+    struct aws_array_list transaction;
+    aws_array_list_init_static(&transaction, transaction_buf, number_topics, aws_mqtt_topic_tree_action_size);
+
+    /* Ensure that the intermediate 'a' node was removed as well. */
+    ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
+
+    struct s_duplicate_test_ud ud_a_a = {.string = topic_a_a, .cleaned = false};
+    struct s_duplicate_test_ud ud_a_a_a = {.string = topic_a_a_a, .cleaned = false};
+    struct s_duplicate_test_ud ud_a_a_a_copy = {.string = topic_a_a_a_copy, .cleaned = false};
+    struct s_duplicate_test_ud ud_a_a_b = {.string = topic_a_a_b, .cleaned = false};
+
+    /* insert duplicate strings, and the old userdata will be cleaned up */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_userdata_cleanup, &ud_a_a_a));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree,
+        &transaction,
+        topic_a_a_a_copy,
+        AWS_MQTT_QOS_AT_MOST_ONCE,
+        &on_publish,
+        s_userdata_cleanup,
+        &ud_a_a_a_copy));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_userdata_cleanup, &ud_a_a));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
+        &tree, &transaction, topic_a_a_b, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_userdata_cleanup, &ud_a_a_b));
+    aws_mqtt_topic_tree_transaction_commit(&tree, &transaction);
+
+    /* The copy replaced the original node, and the old string has been cleaned up, but the new string will live with
+     * the topic tree. */
+    ASSERT_TRUE(ud_a_a_a.cleaned);
+    ASSERT_FALSE(ud_a_a_a_copy.cleaned);
+    ASSERT_FALSE(ud_a_a.cleaned);
+    ASSERT_FALSE(ud_a_a_b.cleaned);
+
+    /* the result will be the same as we just intert three nodes */
+    ASSERT_UINT_EQUALS(1, aws_hash_table_get_entry_count(&tree.root->subtopics));
+
+    struct aws_mqtt_packet_publish publish;
+    aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a, 1, s_topic_a_a);
+
+    times_called = 0;
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    ASSERT_INT_EQUALS(times_called, 1);
+
+    aws_mqtt_topic_tree_clean_up(&tree);
+    ASSERT_TRUE(ud_a_a_a_copy.cleaned);
+    ASSERT_TRUE(ud_a_a.cleaned);
+    ASSERT_TRUE(ud_a_a_b.cleaned);
     return AWS_OP_SUCCESS;
 }
 
@@ -195,17 +268,15 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
     aws_array_list_init_static(&transaction, transaction_buf, 3, aws_mqtt_topic_tree_action_size);
 
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_insert(
-        &tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+        &tree, &transaction, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_a_a));
+    /* The userdata will not be cleaned up by roll back, since the transaction has not been commit yet. */
     aws_mqtt_topic_tree_transaction_roll_back(&tree, &transaction);
 
     /* Ensure that the intermediate 'a' node was removed as well. */
     ASSERT_UINT_EQUALS(0, aws_hash_table_get_entry_count(&tree.root->subtopics));
-
-    /* Re-create, it was nuked by roll_back. */
-    topic_a_a = aws_string_new_from_array(allocator, s_topic_a_a.ptr, s_topic_a_a.len);
-
     /* Insert(commit), remove, roll back the removal */
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(&tree, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, NULL, NULL));
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(
+        &tree, topic_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_a_a));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_transaction_remove(&tree, &transaction, &s_topic_a_a, NULL));
     aws_mqtt_topic_tree_transaction_roll_back(&tree, &transaction);
 
@@ -217,7 +288,6 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
     ASSERT_INT_EQUALS(times_called, 1);
 
     aws_mqtt_topic_tree_clean_up(&tree);
-
     return AWS_OP_SUCCESS;
 }
 

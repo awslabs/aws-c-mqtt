@@ -1,26 +1,16 @@
 #ifndef AWS_MQTT_PRIVATE_TOPIC_TREE_H
 #define AWS_MQTT_PRIVATE_TOPIC_TREE_H
 
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/common/hash_table.h>
 
 #include <aws/mqtt/private/packets.h>
 
-/** Type of function called when a publish recieved matches a subscription */
+/** Type of function called when a publish received matches a subscription */
 typedef void(aws_mqtt_publish_received_fn)(
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
@@ -51,7 +41,7 @@ struct aws_mqtt_topic_node {
     /* The following will only be populated if the node IS a subscription */
     /* Max QoS to deliver. */
     enum aws_mqtt_qos qos;
-    /* Callback to call on message recieved */
+    /* Callback to call on message received */
     aws_mqtt_publish_received_fn *callback;
     aws_mqtt_userdata_cleanup_fn *cleanup;
     void *userdata;
