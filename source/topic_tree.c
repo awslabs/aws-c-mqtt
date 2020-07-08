@@ -664,7 +664,7 @@ int aws_mqtt_topic_tree_transaction_insert(
 
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_TOPIC_TREE,
-            "tree=%p node=%p: Updating existing node that alrady owns its topic_filter, throwing out parameter",
+            "tree=%p node=%p: Updating existing node that already owns its topic_filter, throwing out parameter",
             (void *)tree,
             (void *)current);
 

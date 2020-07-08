@@ -320,7 +320,7 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
  * \param[in] on_interrupted_ud Userdata for on_interrupted
  * \param[in] on_resumed        The function to call when a connection is resumed
                                 (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
- * \param[in] on_resumed_ud Userdata for on_resumed
+ * \param[in] on_resumed_ud     Userdata for on_resumed
  */
 AWS_MQTT_API
 int aws_mqtt_client_connection_set_connection_interruption_handlers(
@@ -357,6 +357,7 @@ int aws_mqtt_client_connection_connect(
     const struct aws_mqtt_connection_options *connection_options);
 
 /**
+ * DEPRECATED
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
  * Once the connection is opened, on_connack will be called.
  *
@@ -370,14 +371,13 @@ int aws_mqtt_client_connection_connect(
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
-AWS_MQTT_API
 int aws_mqtt_client_connection_reconnect(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
     void *userdata);
 
 /**
- * Closes the connection asyncronously, calls the on_disconnect callback, and destroys the connection object.
+ * Closes the connection asynchronously, calls the on_disconnect callback.
  *
  * \param[in] connection    The connection to close
  *
@@ -491,7 +491,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     void *on_unsuback_ud);
 
 /**
- * Send a PUBLSIH packet over connection.
+ * Send a PUBLISH packet over connection.
  *
  * \param[in] connection    The connection to publish on
  * \param[in] topic         The topic to publish on
