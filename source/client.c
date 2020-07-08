@@ -344,7 +344,7 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             (void *)connection,
             connection->reconnect_timeouts.current);
 
-        /* Check before multipLying to avoid potential overflow */
+        /* Check before multiplying to avoid potential overflow */
         if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max / 2) {
             connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
         } else {
