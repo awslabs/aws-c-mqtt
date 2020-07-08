@@ -91,53 +91,59 @@ struct aws_mqtt_client_connection {
     struct aws_tls_connection_options tls_options;
     struct aws_socket_options socket_options;
 
+    /* Only the event-loop thread may touch this data */
+    struct {
+        /* Channel handler information */
+        struct aws_channel_handler handler;
+        struct aws_channel_slot *slot;
+
+        /* Keeps track of all open subscriptions */
+        struct aws_mqtt_topic_tree subscriptions;
+    }thread_data;
+
+    /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
+    struct {
+        struct aws_mutex lock;
+
+        /* Callbacks set separately by user. */
+        aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
+        void *on_interrupted_ud;
+        aws_mqtt_client_on_connection_resumed_fn *on_resumed;
+        void *on_resumed_ud;
+        aws_mqtt_client_publish_received_fn *on_any_publish;
+        void *on_any_publish_ud;
+
+        /* The state of the connection */
+        enum aws_mqtt_client_connection_state state;
+
+        /* aws_mqtt_outstanding_request, TODO: what it is? */
+        struct aws_memory_pool requests_pool;
+        /* uint16_t (packet id) -> aws_mqtt_outstanding_request */
+        struct aws_hash_table outstanding_requests_table;
+        /* List of all requests that cannot be scheduled until the connection comes online */
+        struct aws_linked_list pending_requests_list;
+
+        struct {
+            uint64_t current;      /* seconds */
+            uint64_t min;          /* seconds */
+            uint64_t max;          /* seconds */
+            uint64_t next_attempt; /* milliseconds */
+        } reconnect_timeouts;
+    }synced_data;
+
     /* User connection callbacks */
+    /* TODO: it's set by aws_mqtt_client_connection_connect, but it'll overwrite by XXX_reconnect??? */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *on_connection_complete_ud;
+
     aws_mqtt_client_on_disconnect_fn *on_disconnect;
     void *on_disconnect_ud;
-    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
-    void *on_interrupted_ud;
-    aws_mqtt_client_on_connection_resumed_fn *on_resumed;
-    void *on_resumed_ud;
 
-    /* The state of the connection */
-    enum aws_mqtt_client_connection_state state;
-
-    /* Channel handler information */
-    struct aws_channel_handler handler;
-    struct aws_channel_slot *slot;
-
-    /* Keeps track of all open subscriptions */
-    struct aws_mqtt_topic_tree subscriptions;
-    aws_mqtt_client_publish_received_fn *on_any_publish;
-    void *on_any_publish_ud;
-
-    /* aws_mqtt_outstanding_request */
-    struct {
-        struct aws_memory_pool pool;
-        struct aws_mutex mutex;
-    } requests_pool;
-
-    struct {
-        /* uint16_t (packet id) -> aws_mqtt_outstanding_request */
-        struct aws_hash_table table;
-        struct aws_mutex mutex;
-    } outstanding_requests;
-    /* List of all requests that cannot be scheduled until the connection comes online */
-    struct {
-        struct aws_linked_list list;
-        struct aws_mutex mutex;
-    } pending_requests;
+    /* Connection tasks. */
     struct aws_mqtt_reconnect_task *reconnect_task;
     struct aws_channel_task ping_task;
 
-    struct {
-        uint64_t current;      /* seconds */
-        uint64_t min;          /* seconds */
-        uint64_t max;          /* seconds */
-        uint64_t next_attempt; /* milliseconds */
-    } reconnect_timeouts;
+
 
     /* If an incomplete packet arrives, store the data here. */
     struct aws_byte_buf pending_packet;

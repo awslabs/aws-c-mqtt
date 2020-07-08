@@ -344,7 +344,7 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             (void *)connection,
             connection->reconnect_timeouts.current);
 
-        /* Check before multipying to avoid potential overflow */
+        /* Check before multiplying to avoid potential overflow */
         if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max / 2) {
             connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
         } else {
@@ -506,6 +506,7 @@ failed_init_pending_requests_mutex:
 void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection) {
 
     AWS_PRECONDITION(connection);
+    /* TODO: Either document it like you cannot call destroy if the connection is not disconnected, or take a warning message here instead of just crash. */
     AWS_ASSERT(connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);

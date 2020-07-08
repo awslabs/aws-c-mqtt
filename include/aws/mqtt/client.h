@@ -226,6 +226,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
 
 /**
  * Cleans up and destroys a connection object.
+ * 
+ * \param[in] connection    The connection object
  */
 AWS_MQTT_API
 void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection);
@@ -236,6 +238,8 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
  * \param[in] connection    The connection object
  * \param[in] topic         The topic to publish the will on
  * \param[in] qos           The QoS to publish the will with
+ * \param[in] retain        The retain flag the will with
+ * \param[in] payload       The data if the will message
  */
 AWS_MQTT_API
 int aws_mqtt_client_connection_set_will(
@@ -311,7 +315,7 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
  * \param[in] on_interrupted_ud Userdata for on_interrupted
  * \param[in] on_resumed        The function to call when a connection is resumed
                                 (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
- * \param[in] on_resumed_ud Userdata for on_resumed
+ * \param[in] on_resumed_ud     Userdata for on_resumed
  */
 AWS_MQTT_API
 int aws_mqtt_client_connection_set_connection_interruption_handlers(
@@ -336,7 +340,7 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
- * Once the connection is opened, on_connack will be called.
+ * Once the connection is opened, on_connack will be called. Only called when connection is disconnected.
  *
  * \param[in] connection                The connection object
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
@@ -368,7 +372,7 @@ int aws_mqtt_client_connection_reconnect(
     void *userdata);
 
 /**
- * Closes the connection asyncronously, calls the on_disconnect callback, and destroys the connection object.
+ * Closes the connection asynchronously, calls the on_disconnect callback, and destroys the connection object.
  *
  * \param[in] connection    The connection to close
  *
@@ -482,7 +486,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     void *on_unsuback_ud);
 
 /**
- * Send a PUBLSIH packet over connection.
+ * Send a PUBLISH packet over connection.
  *
  * \param[in] connection    The connection to publish on
  * \param[in] topic         The topic to publish on

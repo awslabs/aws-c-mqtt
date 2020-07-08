@@ -791,7 +791,7 @@ int aws_mqtt_packet_suback_init(struct aws_mqtt_packet_ack *packet, uint16_t pac
 }
 
 /*****************************************************************************/
-/* Unubscribe                                                                */
+/* Unsubscribe                                                               */
 
 int aws_mqtt_packet_unsubscribe_init(
     struct aws_mqtt_packet_unsubscribe *packet,
