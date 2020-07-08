@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/mqtt/private/topic_tree.h>
@@ -39,7 +29,7 @@ struct topic_tree_action {
         AWS_MQTT_TOPIC_TREE_REMOVE,
     } mode;
 
-    /* All Modes */
+    /* All Nodes */
     struct aws_mqtt_topic_node *node_to_update;
 
     /* ADD/UPDATE */
@@ -368,8 +358,13 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                 action->node_to_update->topic = action->topic;
             }
             if (action->topic_filter) {
-                action->node_to_update->topic_filter = action->topic_filter;
-                action->node_to_update->owns_topic_filter = true;
+                if (action->node_to_update->owns_topic_filter && action->node_to_update->topic_filter) {
+                    /* The topic filer is already there, destory the new filter to keep all the byte cursor valid */
+                    aws_string_destroy((void *)action->topic_filter);
+                } else {
+                    action->node_to_update->topic_filter = action->topic_filter;
+                    action->node_to_update->owns_topic_filter = true;
+                }
             }
             break;
         }
@@ -576,7 +571,7 @@ static void s_topic_tree_action_roll_back(struct topic_tree_action *action, stru
 int aws_mqtt_topic_tree_transaction_insert(
     struct aws_mqtt_topic_tree *tree,
     struct aws_array_list *transaction,
-    const struct aws_string *topic_filter,
+    const struct aws_string *topic_filter_ori,
     enum aws_mqtt_qos qos,
     aws_mqtt_publish_received_fn *callback,
     aws_mqtt_userdata_cleanup_fn *cleanup,
@@ -584,8 +579,11 @@ int aws_mqtt_topic_tree_transaction_insert(
 
     AWS_PRECONDITION(tree);
     AWS_PRECONDITION(transaction);
-    AWS_PRECONDITION(topic_filter);
+    AWS_PRECONDITION(topic_filter_ori);
     AWS_PRECONDITION(callback);
+
+    /* let topic tree take the ownership of the new string and leave the caller string alone. */
+    struct aws_string *topic_filter = aws_string_new_from_string(tree->allocator, topic_filter_ori);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_TOPIC_TREE,
@@ -670,7 +668,7 @@ int aws_mqtt_topic_tree_transaction_insert(
 
         /* If the topic filter was already here, this is already a subscription.
            Free the new topic_filter so all existing byte_cursors remain valid. */
-        aws_string_destroy((void *)topic_filter);
+        aws_string_destroy(topic_filter);
     } else {
         /* Node already existed (or was created) but wasn't subscription. */
         action->topic = last_part;
