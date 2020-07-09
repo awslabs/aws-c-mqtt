@@ -31,6 +31,8 @@
 #    include <unistd.h>
 #endif
 
+/* Note: to successfully run this test, a broker on localhost:1883 is required, eg: mosquitto */
+
 static struct aws_byte_cursor s_client_id = {
     .ptr = (uint8_t *)"MyClientId1",
     .len = 11,
@@ -299,7 +301,7 @@ int main(int argc, char **argv) {
 
     printf("3 done\n");
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_reconnect(args.connection, s_mqtt_on_connection_complete, &args));
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &conn_options));
 
     /* Wait for connack */
     aws_mutex_lock(&mutex);
@@ -360,6 +362,7 @@ int main(int argc, char **argv) {
     aws_client_bootstrap_release(bootstrap);
     aws_host_resolver_clean_up(&resolver);
     aws_event_loop_group_clean_up(&el_group);
+    aws_mqtt_library_clean_up();
 
     ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));
     allocator = aws_mem_tracer_destroy(allocator);
