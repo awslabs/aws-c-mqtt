@@ -6,6 +6,48 @@
 #include <aws/mqtt/private/packets.h>
 
 static const int MOCK_LOG_SUBJECT = 60000;
+
+struct mqtt_decoded_packet {
+    enum aws_mqtt_packet_type type;
+
+    /* CONNECT */
+    bool clean_session;
+    bool has_will;
+    bool will_retain;
+    bool has_password;
+    bool has_username;
+    uint16_t keep_alive_timeout;
+    enum aws_mqtt_qos will_qos;
+    struct aws_byte_cursor client_identifier;
+    struct aws_byte_cursor will_topic;
+    struct aws_byte_cursor will_message;
+    struct aws_byte_cursor username;
+    struct aws_byte_cursor password;
+
+    /* PUBLISH SUBSCRIBE UNSUBSCRIBE */
+    uint16_t packet_identifier;
+    struct aws_byte_cursor topic_name;
+    struct aws_byte_cursor publish_payload;
+    /* list of aws_mqtt_subscription for SUBSCRIBE & list of aws_byte_cursor for UNSUBSCRIBE */
+    struct aws_array_list topic_filters; 
+
+    struct aws_byte_buf buffer;
+};
+
+static int s_mqtt_decode_packet_init(struct mqtt_decoded_packet *packet, struct aws_allocator *alloc) {
+    AWS_ZERO_STRUCT(*packet);
+    ASSERT_SUCCESS(aws_byte_buf_init(&packet->buffer, alloc, 128));
+    if (aws_array_list_init_dynamic(&packet->topic_filters, alloc, 1, sizeof(struct aws_mqtt_subscription))) {
+        return AWS_OP_ERR;
+    }
+    return AWS_OP_SUCCESS;
+}
+
+static void s_mqtt_decode_packet_clean_up(struct mqtt_decoded_packet *packet) {
+    aws_array_list_clean_up(&packet->topic_filters);
+    aws_byte_buf_clean_up(&packet->buffer);
+}
+
 struct mqtt_mock_server_handler {
     struct aws_channel_handler handler;
     struct aws_channel_slot *slot;
@@ -18,6 +60,8 @@ struct mqtt_mock_server_handler {
     struct aws_mutex lock;
     struct aws_condition_variable cvar;
     struct aws_byte_buf pending_packet;
+
+    struct aws_array_list packets; /* contains mqtt_decoded_packet */
 };
 
 static int s_mqtt_mock_server_handler_process_packet(
@@ -320,6 +364,7 @@ static struct aws_channel_handler *s_new_mqtt_mock_server(struct aws_allocator *
 
     struct mqtt_mock_server_handler *testing_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct mqtt_mock_server_handler));
+    aws_array_list_init_dynamic(&testing_handler->packets, allocator, 4, sizeof(struct mqtt_decoded_packet));
     aws_array_list_init_dynamic(&testing_handler->received_messages, allocator, 4, sizeof(struct aws_byte_buf));
     aws_array_list_init_dynamic(&testing_handler->response_messages, allocator, 4, sizeof(struct aws_byte_buf));
 
@@ -336,6 +381,13 @@ static struct aws_channel_handler *s_new_mqtt_mock_server(struct aws_allocator *
 
 static void s_destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    for (size_t i = 0; i < aws_array_list_length(&testing_handler->packets); ++i) {
+        struct mqtt_decoded_packet *packet = NULL;
+        aws_array_list_get_at_ptr(&testing_handler->packets, (void **)&packet, i);
+        s_mqtt_decode_packet_clean_up(packet);
+    }
+    aws_array_list_clean_up(&testing_handler->packets);
 
     for (size_t i = 0; i < aws_array_list_length(&testing_handler->received_messages); ++i) {
         struct aws_byte_buf *byte_buf_ptr = NULL;
@@ -355,13 +407,6 @@ static void s_destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, testing_handler);
 }
 
-/*
-static int s_mqtt_mock_server_push_reply_message(struct aws_channel_handler *handler, struct aws_byte_buf *buf) {
-    struct mqtt_mock_server_handler *testing_handler = handler->impl;
-
-    return aws_array_list_push_back(&testing_handler->response_messages, buf);
-}*/
-
 static void s_mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, size_t max_ping) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 
@@ -378,12 +423,6 @@ static void s_mqtt_mock_server_set_max_connack(struct aws_channel_handler *handl
     aws_mutex_unlock(&testing_handler->lock);
 }
 
-/* this is only safe to call when not attached to a channel. */
-static struct aws_array_list *s_mqtt_mock_server_get_received_messages(struct aws_channel_handler *handler) {
-    struct mqtt_mock_server_handler *testing_handler = handler->impl;
-
-    return &testing_handler->received_messages;
-}
 
 struct puback_waiter {
     struct mqtt_mock_server_handler *testing_handler;
@@ -406,4 +445,147 @@ static void s_mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *hand
     aws_mutex_lock(&testing_handler->lock);
     aws_condition_variable_wait_pred(&testing_handler->cvar, &testing_handler->lock, s_is_pubacks_complete, &waiter);
     aws_mutex_unlock(&testing_handler->lock);
+}
+
+/* this is only safe to call when not attached to a channel. */
+struct aws_array_list *mqtt_mock_server_get_received_messages(struct aws_channel_handler *handler) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    return &testing_handler->received_messages;
+}
+
+/* dynamic append from to to, the cursor of the buffer we just appended stored in result */
+static int s_move_cursor_to_buf_dynamic(
+    struct aws_byte_buf *to,
+    struct aws_byte_cursor *from,
+    struct aws_byte_cursor *result) {
+
+    size_t pre_len = to->len;
+    (void) pre_len;
+    /* move the cursor to buffer */
+    ASSERT_SUCCESS(aws_byte_buf_append_dynamic(to, from));
+    *result = aws_byte_cursor_from_buf(to);
+    /* move the result cursor to point at the place we just moved to */
+    aws_byte_cursor_advance(result, pre_len);
+
+    return AWS_OP_SUCCESS;
+}
+
+size_t mqtt_decoded_packets_count(struct aws_channel_handler *handler) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+    return aws_array_list_length(&testing_handler->packets);
+}
+
+struct mqtt_decoded_packet *mqtt_get_decoded_packet(struct aws_channel_handler *handler, size_t i) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+    AWS_FATAL_ASSERT(mqtt_decoded_packets_count(handler) > i);
+    struct mqtt_decoded_packet *packet = NULL;
+    aws_array_list_get_at_ptr(&testing_handler->packets, (void **)&packet, i);
+    return packet;
+}
+
+int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    struct aws_array_list received_messages = testing_handler->received_messages;
+    size_t length = aws_array_list_length(&received_messages);
+    for (size_t i = 0; i < length; i++) {
+        struct aws_byte_buf received_message = {0};
+        ASSERT_SUCCESS(aws_array_list_get_at(&received_messages, &received_message, i));
+        struct aws_byte_cursor message_cur = aws_byte_cursor_from_buf(&received_message);
+
+        struct mqtt_decoded_packet packet;
+        ASSERT_SUCCESS(s_mqtt_decode_packet_init(&packet, testing_handler->handler.alloc));
+        packet.type = aws_mqtt_get_packet_type(message_cur.ptr);
+
+        struct aws_mqtt_packet_connect connect_packet;
+        struct aws_mqtt_packet_subscribe subscribe_packet;
+        struct aws_mqtt_packet_unsubscribe unsubscribe_packet;
+        struct aws_mqtt_packet_publish publish_packet;
+        struct aws_mqtt_packet_ack puback;
+
+        switch (packet.type) {
+            case AWS_MQTT_PACKET_CONNECT:
+                ASSERT_SUCCESS(aws_mqtt_packet_connect_decode(&message_cur, &connect_packet));
+                packet.clean_session = connect_packet.clean_session;
+                packet.has_will = connect_packet.has_will;
+                packet.will_retain = connect_packet.will_retain;
+                packet.has_password = connect_packet.has_password;
+                packet.has_username = connect_packet.has_username;
+                packet.keep_alive_timeout = connect_packet.keep_alive_timeout;
+                packet.will_qos = connect_packet.will_qos;
+
+                ASSERT_SUCCESS(s_move_cursor_to_buf_dynamic(
+                    &packet.buffer, &connect_packet.client_identifier, &packet.client_identifier));
+                if (packet.has_will) {
+                    ASSERT_SUCCESS(
+                        s_move_cursor_to_buf_dynamic(&packet.buffer, &connect_packet.will_topic, &packet.will_topic));
+                    ASSERT_SUCCESS(s_move_cursor_to_buf_dynamic(
+                        &packet.buffer, &connect_packet.will_message, &packet.will_message));
+                }
+                if (packet.has_username) {
+                    ASSERT_SUCCESS(
+                        s_move_cursor_to_buf_dynamic(&packet.buffer, &connect_packet.username, &packet.username));
+                }
+                if (packet.has_password) {
+                    ASSERT_SUCCESS(
+                        s_move_cursor_to_buf_dynamic(&packet.buffer, &connect_packet.password, &packet.password));
+                }
+                break;
+
+            case AWS_MQTT_PACKET_SUBSCRIBE:
+                ASSERT_SUCCESS(aws_mqtt_packet_subscribe_init(&subscribe_packet, testing_handler->handler.alloc, 0));
+                ASSERT_SUCCESS(aws_mqtt_packet_subscribe_decode(&message_cur, &subscribe_packet));
+                packet.packet_identifier = subscribe_packet.packet_identifier;
+                /* copy the array one by one for simplicity */
+                while (aws_array_list_length(&subscribe_packet.topic_filters)) {
+                    struct aws_mqtt_subscription val;
+                    ASSERT_SUCCESS(aws_array_list_front(&subscribe_packet.topic_filters, &val));
+                    ASSERT_SUCCESS(aws_array_list_push_back(&packet.topic_filters, &val));
+                    ASSERT_SUCCESS(aws_array_list_pop_front(&subscribe_packet.topic_filters));
+                }
+                aws_mqtt_packet_subscribe_clean_up(&subscribe_packet);
+                break;
+
+            case AWS_MQTT_PACKET_UNSUBSCRIBE:
+                ASSERT_SUCCESS(
+                    aws_mqtt_packet_unsubscribe_init(&unsubscribe_packet, testing_handler->handler.alloc, 0));
+                ASSERT_SUCCESS(aws_mqtt_packet_unsubscribe_decode(&message_cur, &unsubscribe_packet));
+                packet.packet_identifier = unsubscribe_packet.packet_identifier;
+                /* copy the array one by one for simplicity */
+                while (aws_array_list_length(&unsubscribe_packet.topic_filters)) {
+                    struct aws_byte_cursor val;
+                    ASSERT_SUCCESS(aws_array_list_front(&unsubscribe_packet.topic_filters, &val));
+                    ASSERT_SUCCESS(aws_array_list_push_back(&packet.topic_filters, &val));
+                    ASSERT_SUCCESS(aws_array_list_pop_front(&unsubscribe_packet.topic_filters));
+                }
+                aws_mqtt_packet_unsubscribe_clean_up(&unsubscribe_packet);
+                break;
+
+            case AWS_MQTT_PACKET_PUBLISH:
+                aws_mqtt_packet_publish_decode(&message_cur, &publish_packet);
+                packet.packet_identifier = publish_packet.packet_identifier;
+                ASSERT_SUCCESS(
+                    s_move_cursor_to_buf_dynamic(&packet.buffer, &publish_packet.topic_name, &packet.topic_name));
+                ASSERT_SUCCESS(
+                    s_move_cursor_to_buf_dynamic(&packet.buffer, &publish_packet.payload, &packet.publish_payload));
+                break;
+            case AWS_MQTT_PACKET_PUBACK:
+                ASSERT_SUCCESS(aws_mqtt_packet_ack_decode(&message_cur, &puback));
+                packet.packet_identifier = puback.packet_identifier;
+                break;
+
+            case AWS_MQTT_PACKET_DISCONNECT:
+            case AWS_MQTT_PACKET_PINGREQ:
+                /* Nothing to decode, just record that type of packet has received */
+                break;
+            default:
+                /* Unsupported packet received */
+                return AWS_OP_ERR;
+        }
+
+        ASSERT_SUCCESS(aws_array_list_push_back(&testing_handler->packets, &packet));
+    }
+
+    return AWS_OP_SUCCESS;
 }
