@@ -29,7 +29,7 @@ struct mqtt_decoded_packet {
     struct aws_byte_cursor topic_name;
     struct aws_byte_cursor publish_payload;
     /* list of aws_mqtt_subscription for SUBSCRIBE & list of aws_byte_cursor for UNSUBSCRIBE */
-    struct aws_array_list topic_filters; 
+    struct aws_array_list topic_filters;
 
     struct aws_byte_buf buffer;
 };
@@ -423,7 +423,6 @@ static void s_mqtt_mock_server_set_max_connack(struct aws_channel_handler *handl
     aws_mutex_unlock(&testing_handler->lock);
 }
 
-
 struct puback_waiter {
     struct mqtt_mock_server_handler *testing_handler;
     size_t wait_for_count;
@@ -461,7 +460,7 @@ static int s_move_cursor_to_buf_dynamic(
     struct aws_byte_cursor *result) {
 
     size_t pre_len = to->len;
-    (void) pre_len;
+    (void)pre_len;
     /* move the cursor to buffer */
     ASSERT_SUCCESS(aws_byte_buf_append_dynamic(to, from));
     *result = aws_byte_cursor_from_buf(to);
