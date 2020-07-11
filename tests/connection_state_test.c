@@ -617,6 +617,7 @@ AWS_TEST_CASE_FIXTURE(
 /* Subscribe to a topic prior to connection, make a CONNECT, have the server send PUBLISH messages,
  * make sure they're received, then send a DISCONNECT. */
 static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
