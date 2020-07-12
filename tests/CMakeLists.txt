@@ -32,6 +32,9 @@ add_test_case(mqtt_connection_interrupted)
 add_test_case(mqtt_connection_timeout)
 add_test_case(mqtt_connection_connack_timeout)
 add_test_case(mqtt_connect_subscribe)
+# TODO
+# add_test_case(mqtt_connect_subscribe_multi)
+# add_test_case(mqtt_connect_unsubscribe)
 add_test_case(mqtt_connect_publish)
 add_test_case(mqtt_connection_offline_publish)
 
