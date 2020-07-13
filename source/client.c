@@ -1187,6 +1187,15 @@ int aws_mqtt_client_connection_disconnect(
  * Subscribe
  ******************************************************************************/
 
+/* The lifetime of this struct is the same as the lifetime of the subscription */
+struct subscribe_task_topic {
+    struct aws_mqtt_client_connection *connection;
+
+    struct aws_mqtt_topic_subscription request;
+    struct aws_string *filter;
+    bool is_local;
+};
+
 /* The lifetime of this struct is from subscribe -> suback */
 struct subscribe_task_arg {
 
@@ -1348,7 +1357,19 @@ static void s_subscribe_complete(
         error_code);
 
     if (task_arg->on_suback.multi) {
-        task_arg->on_suback.multi(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
+        /* create a list of aws_mqtt_topic_subscription pointers from topics for the callback */
+        size_t list_len = aws_array_list_length(&task_arg->topics);
+        AWS_VARIABLE_LENGTH_ARRAY(uint8_t, cb_list_buf, list_len * sizeof(void *));
+        struct aws_array_list cb_list;
+        aws_array_list_init_static(&cb_list, cb_list_buf, list_len, sizeof(void *));
+        int err = 0;
+        for (size_t i = 0; i < list_len; i++) {
+            err |= aws_array_list_get_at(&task_arg->topics, &topic, i);
+            err |= aws_array_list_push_back(&cb_list, &topic->request);
+        }
+        AWS_ASSUME(!err);
+        task_arg->on_suback.multi(connection, packet_id, &cb_list, error_code, task_arg->on_suback_ud);
+        aws_array_list_clean_up(&cb_list);
     } else if (task_arg->on_suback.single) {
         task_arg->on_suback.single(
             connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
