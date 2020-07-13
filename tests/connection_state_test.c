@@ -337,6 +337,15 @@ static void s_wait_for_disconnect_to_complete(struct mqtt_connection_state_test 
     aws_mutex_unlock(&state_test_data->lock);
 }
 
+static void s_cleanup_connected_state(struct mqtt_connection_state_test *state_test_data) {
+    state_test_data->connection_completed = false;
+}
+
+static void s_cleanup_disconnected_state(struct mqtt_connection_state_test *state_test_data) {
+    state_test_data->client_disconnect_completed = false;
+    state_test_data->server_disconnect_completed = false;
+}
+
 static void s_on_publish_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
@@ -448,6 +457,142 @@ AWS_TEST_CASE_FIXTURE(
     mqtt_connect_disconnect,
     s_setup_mqtt_server_fn,
     s_test_mqtt_connect_disconnect_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/*
+ * Makes an Mqtt connect call, and set will and login information for the connection. Validate the those information are
+ * correctly included in the CONNECT package.
+ */
+static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_byte_cursor will_payload = aws_byte_cursor_from_c_str("I am dead");
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("test_topic");
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("write more test");
+    struct aws_byte_cursor password = aws_byte_cursor_from_c_str("yes sir!");
+    enum aws_mqtt_qos will_qos = AWS_MQTT_QOS_AT_LEAST_ONCE;
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_will(
+        state_test_data->mqtt_connection, &topic, will_qos, true /*retain*/, &will_payload));
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &username, &password));
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    /* Decode all received packets */
+    ASSERT_SUCCESS(mqtt_mock_server_decoder_packets(state_test_data->test_channel_handler));
+
+    ASSERT_UINT_EQUALS(2, mqtt_decoded_packets_count(state_test_data->test_channel_handler));
+
+    /* CONNECT packet */
+    struct mqtt_decoded_packet *received_packet = mqtt_get_decoded_packet(state_test_data->test_channel_handler, 0);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
+    ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
+    ASSERT_TRUE(aws_byte_cursor_eq(&connection_options.client_id, &received_packet->client_identifier));
+    /* validate the received will */
+    ASSERT_TRUE(aws_byte_cursor_eq(&will_payload, &received_packet->will_message));
+    ASSERT_TRUE(aws_byte_cursor_eq(&topic, &received_packet->will_topic));
+    ASSERT_UINT_EQUALS(will_qos, received_packet->will_qos);
+    ASSERT_TRUE(true == received_packet->will_retain);
+    /* validate the received login information */
+    ASSERT_TRUE(aws_byte_cursor_eq(&username, &received_packet->username));
+    ASSERT_TRUE(aws_byte_cursor_eq(&password, &received_packet->password));
+
+    /* DISCONNECT packet */
+    received_packet = mqtt_get_decoded_packet(state_test_data->test_channel_handler, 1);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_DISCONNECT, received_packet->type);
+
+    /* cleanup the connected&disconnected state for next connect&disconnect */
+    s_cleanup_connected_state(state_test_data);
+    s_cleanup_disconnected_state(state_test_data);
+
+    /* Connect to the mock server again. If set will&loggin message is not called before the next connect, the
+     * will&loggin message will still be there and be sent to the server again */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+    ASSERT_SUCCESS(mqtt_mock_server_decoder_packets(state_test_data->test_channel_handler));
+
+    /* The second CONNECT packet */
+    received_packet = mqtt_get_latest_decoded_packet(state_test_data->test_channel_handler);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
+    ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
+    ASSERT_TRUE(aws_byte_cursor_eq(&connection_options.client_id, &received_packet->client_identifier));
+    /* validate the received will */
+    ASSERT_TRUE(aws_byte_cursor_eq(&will_payload, &received_packet->will_message));
+    ASSERT_TRUE(aws_byte_cursor_eq(&topic, &received_packet->will_topic));
+    ASSERT_UINT_EQUALS(will_qos, received_packet->will_qos);
+    ASSERT_TRUE(true == received_packet->will_retain);
+    /* validate the received login information */
+    ASSERT_TRUE(aws_byte_cursor_eq(&username, &received_packet->username));
+    ASSERT_TRUE(aws_byte_cursor_eq(&password, &received_packet->password));
+
+    /* disconnect */
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    /* cleanup the connected&disconnected state for next connect&disconnect */
+    s_cleanup_connected_state(state_test_data);
+    s_cleanup_disconnected_state(state_test_data);
+
+    /* set new will & loggin message, before next connect, the next CONNECT packet will contain the new information */
+    struct aws_byte_cursor new_will_payload = aws_byte_cursor_from_c_str("I am dead. New");
+    struct aws_byte_cursor new_topic = aws_byte_cursor_from_c_str("test_topic_New");
+    struct aws_byte_cursor new_username = aws_byte_cursor_from_c_str("write more test. New");
+    struct aws_byte_cursor new_password = aws_byte_cursor_from_c_str("yes sir!. New");
+    enum aws_mqtt_qos new_will_qos = AWS_MQTT_QOS_AT_MOST_ONCE;
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_will(
+        state_test_data->mqtt_connection, &new_topic, new_will_qos, true /*retain*/, &new_will_payload));
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &new_username, &new_password));
+
+    /* connect again */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+    ASSERT_SUCCESS(mqtt_mock_server_decoder_packets(state_test_data->test_channel_handler));
+
+    /* The third CONNECT packet */
+    received_packet = mqtt_get_latest_decoded_packet(state_test_data->test_channel_handler);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
+    ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
+    ASSERT_TRUE(aws_byte_cursor_eq(&connection_options.client_id, &received_packet->client_identifier));
+    /* validate the received will */
+    ASSERT_TRUE(aws_byte_cursor_eq(&new_will_payload, &received_packet->will_message));
+    ASSERT_TRUE(aws_byte_cursor_eq(&new_topic, &received_packet->will_topic));
+    ASSERT_UINT_EQUALS(new_will_qos, received_packet->will_qos);
+    ASSERT_TRUE(true == received_packet->will_retain);
+    /* validate the received login information */
+    ASSERT_TRUE(aws_byte_cursor_eq(&new_username, &received_packet->username));
+    ASSERT_TRUE(aws_byte_cursor_eq(&new_password, &received_packet->password));
+
+    /* disconnect. FINISHED */
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connect_set_will_login,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connect_set_will_login_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
 

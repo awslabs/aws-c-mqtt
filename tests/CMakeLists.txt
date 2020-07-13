@@ -28,6 +28,8 @@ add_test_case(mqtt_topic_tree_transactions)
 add_test_case(mqtt_topic_validation)
 
 add_test_case(mqtt_connect_disconnect)
+add_test_case(mqtt_connect_set_will_login)
+# add_test_case(mqtt_connect_set_handlers)
 add_test_case(mqtt_connection_interrupted)
 add_test_case(mqtt_connection_timeout)
 add_test_case(mqtt_connection_connack_timeout)

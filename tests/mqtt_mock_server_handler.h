@@ -62,6 +62,7 @@ struct mqtt_mock_server_handler {
     struct aws_byte_buf pending_packet;
 
     struct aws_array_list packets; /* contains mqtt_decoded_packet */
+    size_t decoded_index;
 };
 
 static int s_mqtt_mock_server_handler_process_packet(
@@ -483,12 +484,18 @@ struct mqtt_decoded_packet *mqtt_get_decoded_packet(struct aws_channel_handler *
     return packet;
 }
 
+struct mqtt_decoded_packet *mqtt_get_latest_decoded_packet(struct aws_channel_handler *handler) {
+    size_t packet_count = mqtt_decoded_packets_count(handler);
+    AWS_FATAL_ASSERT(packet_count > 0);
+    return mqtt_get_decoded_packet(handler, packet_count - 1);
+}
+
 int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 
     struct aws_array_list received_messages = testing_handler->received_messages;
     size_t length = aws_array_list_length(&received_messages);
-    for (size_t i = 0; i < length; i++) {
+    for (size_t i = testing_handler->decoded_index; i < length; i++) {
         struct aws_byte_buf received_message = {0};
         ASSERT_SUCCESS(aws_array_list_get_at(&received_messages, &received_message, i));
         struct aws_byte_cursor message_cur = aws_byte_cursor_from_buf(&received_message);
@@ -585,6 +592,6 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
 
         ASSERT_SUCCESS(aws_array_list_push_back(&testing_handler->packets, &packet));
     }
-
+    testing_handler->decoded_index = length - 1;
     return AWS_OP_SUCCESS;
 }

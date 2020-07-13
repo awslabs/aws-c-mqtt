@@ -579,6 +579,8 @@ int aws_mqtt_client_connection_set_will(
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
     }
 
+    struct aws_byte_buf pre_topic_buf = connection->will.topic;
+    struct aws_byte_buf pre_payload_buf = connection->will.payload;
     struct aws_byte_buf topic_buf = aws_byte_buf_from_array(topic->ptr, topic->len);
     if (aws_byte_buf_init_copy(&connection->will.topic, connection->allocator, &topic_buf)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy will topic", (void *)connection);
@@ -593,6 +595,14 @@ int aws_mqtt_client_connection_set_will(
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy will body", (void *)connection);
         goto cleanup;
     }
+
+    if(pre_topic_buf.len) {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Will has been set before, reset it.", (void *)connection);
+    }
+    
+    /* cleanup the previous buffer, it's safe to clean a zeroed out buf */
+    aws_byte_buf_clean_up(&pre_topic_buf);
+    aws_byte_buf_clean_up(&pre_payload_buf);
 
     return AWS_OP_SUCCESS;
 
@@ -613,6 +623,9 @@ int aws_mqtt_client_connection_set_login(
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting username and password", (void *)connection);
 
+    struct aws_string *pre_username = connection->username;
+    struct aws_string *pre_password = connection->password;
+
     connection->username = aws_string_new_from_array(connection->allocator, username->ptr, username->len);
     if (!connection->username) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy username", (void *)connection);
@@ -626,6 +639,15 @@ int aws_mqtt_client_connection_set_login(
             aws_string_destroy(connection->username);
             return AWS_OP_ERR;
         }
+    }
+
+    /* if login information has set before, cleanup the previous ones. */
+    if (pre_username) {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Login information has been set before, reset it.", (void *)connection);
+        aws_string_destroy_secure(pre_username);
+    }
+    if (pre_password) {
+        aws_string_destroy_secure(pre_password);
     }
 
     return AWS_OP_SUCCESS;
