@@ -596,10 +596,10 @@ int aws_mqtt_client_connection_set_will(
         goto cleanup;
     }
 
-    if(pre_topic_buf.len) {
+    if (pre_topic_buf.len) {
         AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Will has been set before, reset it.", (void *)connection);
     }
-    
+
     /* cleanup the previous buffer, it's safe to clean a zeroed out buf */
     aws_byte_buf_clean_up(&pre_topic_buf);
     aws_byte_buf_clean_up(&pre_payload_buf);
@@ -643,7 +643,8 @@ int aws_mqtt_client_connection_set_login(
 
     /* if login information has set before, cleanup the previous ones. */
     if (pre_username) {
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Login information has been set before, reset it.", (void *)connection);
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT, "id=%p: Login information has been set before, reset it.", (void *)connection);
         aws_string_destroy_secure(pre_username);
     }
     if (pre_password) {

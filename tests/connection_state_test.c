@@ -560,7 +560,8 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_will(
         state_test_data->mqtt_connection, &new_topic, new_will_qos, true /*retain*/, &new_will_payload));
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &new_username, &new_password));
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &new_username, &new_password));
 
     /* connect again */
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
