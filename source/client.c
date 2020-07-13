@@ -1365,7 +1365,8 @@ static void s_subscribe_complete(
         int err = 0;
         for (size_t i = 0; i < list_len; i++) {
             err |= aws_array_list_get_at(&task_arg->topics, &topic, i);
-            err |= aws_array_list_push_back(&cb_list, &topic->request);
+            struct aws_mqtt_topic_subscription *subscription = &topic->request;
+            err |= aws_array_list_push_back(&cb_list, &subscription);
         }
         AWS_ASSUME(!err);
         task_arg->on_suback.multi(connection, packet_id, &cb_list, error_code, task_arg->on_suback_ud);
