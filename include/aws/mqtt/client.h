@@ -151,15 +151,6 @@ struct aws_mqtt_topic_subscription {
     void *on_publish_ud;
 };
 
-/* The lifetime of this struct is the same as the lifetime of the subscription */
-struct subscribe_task_topic {
-    struct aws_mqtt_client_connection *connection;
-
-    struct aws_mqtt_topic_subscription request;
-    struct aws_string *filter;
-    bool is_local;
-};
-
 /**
  * host_name                 The server name to connect to. This resource may be freed immediately on return.
  * port                      The port on the server to connect to
