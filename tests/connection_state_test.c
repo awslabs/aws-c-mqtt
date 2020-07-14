@@ -677,9 +677,9 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
 
     received_packet = mqtt_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_SUBSCRIBE, received_packet->type);
-    ASSERT_UINT_EQUALS(1, aws_array_list_length(&received_packet->topic_filters));
+    ASSERT_UINT_EQUALS(1, aws_array_list_length(&received_packet->sub_topic_filters));
     struct aws_mqtt_subscription val;
-    ASSERT_SUCCESS(aws_array_list_front(&received_packet->topic_filters, &val));
+    ASSERT_SUCCESS(aws_array_list_front(&received_packet->sub_topic_filters, &val));
     ASSERT_TRUE(aws_byte_cursor_eq(&val.topic_filter, &sub_topic));
     ASSERT_UINT_EQUALS(AWS_MQTT_QOS_AT_LEAST_ONCE, val.qos);
 
