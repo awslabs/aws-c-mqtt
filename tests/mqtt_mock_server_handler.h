@@ -4,10 +4,10 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 #include <aws/io/channel.h>
 #include <aws/mqtt/private/packets.h>
-#include <aws/common/mutex.h>
-#include <aws/common/condition_variable.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -32,8 +32,8 @@ struct mqtt_decoded_packet {
 
     /* PUBLISH SUBSCRIBE UNSUBSCRIBE */
     uint16_t packet_identifier;
-    struct aws_string *topic_name;                 /* PUBLISH topic */
-    struct aws_string *publish_payload;            /* PUBLISH payload */
+    struct aws_string *topic_name;             /* PUBLISH topic */
+    struct aws_string *publish_payload;        /* PUBLISH payload */
     struct aws_array_list sub_topic_filters;   /* list of aws_mqtt_subscription for SUBSCRIBE */
     struct aws_array_list unsub_topic_filters; /* list of aws_byte_cursor for UNSUBSCRIBE */
 };
