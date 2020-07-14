@@ -1194,7 +1194,8 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
     s_mqtt_mock_server_wait_for_pubacks(state_test_data->test_channel_handler, 2);
 
     /* unsubscribe to the first topic */
-    aws_mqtt_client_connection_unsubscribe(state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data);
+    aws_mqtt_client_connection_unsubscribe(
+        state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data);
     /* Even when the UNSUBACK has not received, the client will not invoke the on_pub callback for that topic */
     ASSERT_SUCCESS(s_mqtt_mock_server_send_publish(
         state_test_data->test_channel_handler, &sub_topic_1, &payload_1, AWS_MQTT_QOS_AT_LEAST_ONCE));
