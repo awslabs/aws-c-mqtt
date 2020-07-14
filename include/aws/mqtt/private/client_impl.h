@@ -91,11 +91,32 @@ struct aws_mqtt_client_connection {
     struct aws_tls_connection_options tls_options;
     struct aws_socket_options socket_options;
 
+    /* User connection callbacks */
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
+    void *on_connection_complete_ud;
+    aws_mqtt_client_on_disconnect_fn *on_disconnect;
+    void *on_disconnect_ud;
+
+    /* Connection tasks. */
+    struct aws_mqtt_reconnect_task *reconnect_task;
+    struct aws_channel_task ping_task;
+
     /* Only the event-loop thread may touch this data */
     struct {
         /* Channel handler information */
         struct aws_channel_handler handler;
         struct aws_channel_slot *slot;
+
+        /* If an incomplete packet arrives, store the data here. */
+        struct aws_byte_buf pending_packet;
+        
+        /* number of times this connection has successfully CONNACK-ed, used
+        * to ensure on_connection_completed is sent on the first completed
+        * CONNECT/CONNACK cycle */
+        size_t connection_count;
+
+        bool waiting_on_ping_response;
+        bool use_tls;
 
         /* Keeps track of all open subscriptions */
         struct aws_mqtt_topic_tree subscriptions;
@@ -131,23 +152,6 @@ struct aws_mqtt_client_connection {
         } reconnect_timeouts;
     }synced_data;
 
-    /* User connection callbacks */
-    /* TODO: it's set by aws_mqtt_client_connection_connect, but it'll overwrite by XXX_reconnect??? */
-    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
-    void *on_connection_complete_ud;
-
-    aws_mqtt_client_on_disconnect_fn *on_disconnect;
-    void *on_disconnect_ud;
-
-    /* Connection tasks. */
-    struct aws_mqtt_reconnect_task *reconnect_task;
-    struct aws_channel_task ping_task;
-
-
-
-    /* If an incomplete packet arrives, store the data here. */
-    struct aws_byte_buf pending_packet;
-
     /* Connect parameters */
     struct aws_byte_buf client_id;
     bool clean_session;
@@ -180,13 +184,7 @@ struct aws_mqtt_client_connection {
         struct aws_http_message *handshake_request;
     } websocket;
 
-    /* number of times this connection has successfully CONNACK-ed, used
-     * to ensure on_connection_completed is sent on the first completed
-     * CONNECT/CONNACK cycle */
-    size_t connection_count;
 
-    bool waiting_on_ping_response;
-    bool use_tls;
 };
 
 struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
