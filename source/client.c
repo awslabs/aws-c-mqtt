@@ -1357,7 +1357,20 @@ static void s_subscribe_complete(
         error_code);
 
     if (task_arg->on_suback.multi) {
-        task_arg->on_suback.multi(connection, packet_id, &task_arg->topics, error_code, task_arg->on_suback_ud);
+        /* create a list of aws_mqtt_topic_subscription pointers from topics for the callback */
+        size_t list_len = aws_array_list_length(&task_arg->topics);
+        AWS_VARIABLE_LENGTH_ARRAY(uint8_t, cb_list_buf, list_len * sizeof(void *));
+        struct aws_array_list cb_list;
+        aws_array_list_init_static(&cb_list, cb_list_buf, list_len, sizeof(void *));
+        int err = 0;
+        for (size_t i = 0; i < list_len; i++) {
+            err |= aws_array_list_get_at(&task_arg->topics, &topic, i);
+            struct aws_mqtt_topic_subscription *subscription = &topic->request;
+            err |= aws_array_list_push_back(&cb_list, &subscription);
+        }
+        AWS_ASSUME(!err);
+        task_arg->on_suback.multi(connection, packet_id, &cb_list, error_code, task_arg->on_suback_ud);
+        aws_array_list_clean_up(&cb_list);
     } else if (task_arg->on_suback.single) {
         task_arg->on_suback.single(
             connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
@@ -1429,7 +1442,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
             AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
 
         /* Push into the list */
-        aws_array_list_push_back(&task_arg->topics, &request);
+        aws_array_list_push_back(&task_arg->topics, &task_topic);
     }
 
     uint16_t packet_id =
