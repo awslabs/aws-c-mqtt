@@ -1031,18 +1031,16 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
     struct aws_byte_cursor sub_topic_2 = aws_byte_cursor_from_c_str("/test/topic2");
 
     /* clang-format off */
-    struct aws_mqtt_topic_subscription sub1 = {
-        .topic = sub_topic_1,
-        .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
-        .on_publish = s_on_publish_received,
-        .on_cleanup = NULL,
-        .on_publish_ud = state_test_data};
-    struct aws_mqtt_topic_subscription sub2 = {
-        .topic = sub_topic_2,
-        .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
-        .on_publish = s_on_publish_received,
-        .on_cleanup = NULL,
-        .on_publish_ud = state_test_data};
+    struct aws_mqtt_topic_subscription sub1 = {.topic = sub_topic_1,
+                                               .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+                                               .on_publish = s_on_publish_received,
+                                               .on_cleanup = NULL,
+                                               .on_publish_ud = state_test_data};
+    struct aws_mqtt_topic_subscription sub2 = {.topic = sub_topic_2,
+                                               .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+                                               .on_publish = s_on_publish_received,
+                                               .on_cleanup = NULL,
+                                               .on_publish_ud = state_test_data};
     /* clang-format on */
 
     struct aws_array_list topic_filters;
