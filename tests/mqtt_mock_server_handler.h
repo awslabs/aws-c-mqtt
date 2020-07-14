@@ -142,6 +142,23 @@ static int s_mqtt_mock_server_handler_process_packet(
         return AWS_OP_SUCCESS;
     }
 
+    if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_UNSUBSCRIBE) {
+        AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "server, UNSUBSCRIBE received");
+
+        struct aws_mqtt_packet_subscribe subscribe_packet;
+        aws_mqtt_packet_subscribe_init(&subscribe_packet, testing_handler->handler.alloc, 0);
+        aws_mqtt_packet_subscribe_decode(message_cur, &subscribe_packet);
+
+        struct aws_io_message *suback_msg =
+            aws_channel_acquire_message_from_pool(testing_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
+        struct aws_mqtt_packet_ack suback;
+        aws_mqtt_packet_suback_init(&suback, subscribe_packet.packet_identifier);
+        aws_mqtt_packet_subscribe_clean_up(&subscribe_packet);
+        aws_mqtt_packet_ack_encode(&suback_msg->message_data, &suback);
+        aws_channel_slot_send_message(testing_handler->slot, suback_msg, AWS_CHANNEL_DIR_WRITE);
+        return AWS_OP_SUCCESS;
+    }
+
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_PUBLISH) {
         AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "server, PUBLISH received");
 
