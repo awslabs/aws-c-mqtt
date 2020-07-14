@@ -469,9 +469,9 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
 
     struct aws_array_list received_messages = testing_handler->received_messages;
     size_t length = aws_array_list_length(&received_messages);
-    for (size_t i = testing_handler->decoded_index; i < length; i++) {
+    for (size_t index = testing_handler->decoded_index; index < length; index++) {
         struct aws_byte_buf received_message = {0};
-        ASSERT_SUCCESS(aws_array_list_get_at(&received_messages, &received_message, i));
+        ASSERT_SUCCESS(aws_array_list_get_at(&received_messages, &received_message, index));
         struct aws_byte_cursor message_cur = aws_byte_cursor_from_buf(&received_message);
 
         struct mqtt_decoded_packet packet;
@@ -517,7 +517,7 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 ASSERT_SUCCESS(aws_mqtt_packet_subscribe_decode(&message_cur, &subscribe_packet));
                 packet.packet_identifier = subscribe_packet.packet_identifier;
                 /* copy the array one by one for simplicity */
-                for (int i = 0; i < aws_array_list_length(&subscribe_packet.topic_filters); i++) {
+                for (size_t i = 0; i < aws_array_list_length(&subscribe_packet.topic_filters); i++) {
                     struct aws_mqtt_subscription val;
                     ASSERT_SUCCESS(aws_array_list_get_at(&subscribe_packet.topic_filters, &val, i));
                     ASSERT_SUCCESS(aws_array_list_push_back(&packet.sub_topic_filters, &val));
@@ -533,7 +533,7 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 ASSERT_SUCCESS(aws_mqtt_packet_unsubscribe_decode(&message_cur, &unsubscribe_packet));
                 packet.packet_identifier = unsubscribe_packet.packet_identifier;
                 /* copy the array one by one for simplicity */
-                for (int i = 0; i < aws_array_list_length(&unsubscribe_packet.topic_filters); i++) {
+                for (size_t i = 0; i < aws_array_list_length(&unsubscribe_packet.topic_filters); i++) {
                     struct aws_mqtt_subscription val;
                     ASSERT_SUCCESS(aws_array_list_get_at(&unsubscribe_packet.topic_filters, &val, i));
                     ASSERT_SUCCESS(aws_array_list_push_back(&packet.unsub_topic_filters, &val));
