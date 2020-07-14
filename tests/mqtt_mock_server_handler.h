@@ -26,10 +26,10 @@ struct mqtt_decoded_packet {
 
     /* PUBLISH SUBSCRIBE UNSUBSCRIBE */
     uint16_t packet_identifier;
-    struct aws_byte_cursor topic_name;
-    struct aws_byte_cursor publish_payload;
-    /* list of aws_mqtt_subscription for SUBSCRIBE & list of aws_byte_cursor for UNSUBSCRIBE */
-    struct aws_array_list topic_filters;
+    struct aws_byte_cursor topic_name;         /* PUBLISH topic */
+    struct aws_byte_cursor publish_payload;    /* PUBLISH payload */
+    struct aws_array_list sub_topic_filters;   /* list of aws_mqtt_subscription for SUBSCRIBE */
+    struct aws_array_list unsub_topic_filters; /* list of aws_byte_cursor for UNSUBSCRIBE */
 
     struct aws_byte_buf buffer;
 };
@@ -37,14 +37,18 @@ struct mqtt_decoded_packet {
 static int s_mqtt_decode_packet_init(struct mqtt_decoded_packet *packet, struct aws_allocator *alloc) {
     AWS_ZERO_STRUCT(*packet);
     ASSERT_SUCCESS(aws_byte_buf_init(&packet->buffer, alloc, 128));
-    if (aws_array_list_init_dynamic(&packet->topic_filters, alloc, 1, sizeof(struct aws_mqtt_subscription))) {
+    if (aws_array_list_init_dynamic(&packet->sub_topic_filters, alloc, 1, sizeof(struct aws_mqtt_subscription))) {
+        return AWS_OP_ERR;
+    }
+    if (aws_array_list_init_dynamic(&packet->unsub_topic_filters, alloc, 1, sizeof(struct aws_byte_cursor))) {
         return AWS_OP_ERR;
     }
     return AWS_OP_SUCCESS;
 }
 
 static void s_mqtt_decode_packet_clean_up(struct mqtt_decoded_packet *packet) {
-    aws_array_list_clean_up(&packet->topic_filters);
+    aws_array_list_clean_up(&packet->sub_topic_filters);
+    aws_array_list_clean_up(&packet->unsub_topic_filters);
     aws_byte_buf_clean_up(&packet->buffer);
 }
 
@@ -145,17 +149,17 @@ static int s_mqtt_mock_server_handler_process_packet(
     if (packet.fixed_header.packet_type == AWS_MQTT_PACKET_UNSUBSCRIBE) {
         AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "server, UNSUBSCRIBE received");
 
-        struct aws_mqtt_packet_subscribe subscribe_packet;
-        aws_mqtt_packet_subscribe_init(&subscribe_packet, testing_handler->handler.alloc, 0);
-        aws_mqtt_packet_subscribe_decode(message_cur, &subscribe_packet);
+        struct aws_mqtt_packet_unsubscribe unsubscribe_packet;
+        aws_mqtt_packet_unsubscribe_init(&unsubscribe_packet, testing_handler->handler.alloc, 0);
+        aws_mqtt_packet_unsubscribe_decode(message_cur, &unsubscribe_packet);
 
-        struct aws_io_message *suback_msg =
+        struct aws_io_message *unsuback_msg =
             aws_channel_acquire_message_from_pool(testing_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
-        struct aws_mqtt_packet_ack suback;
-        aws_mqtt_packet_suback_init(&suback, subscribe_packet.packet_identifier);
-        aws_mqtt_packet_subscribe_clean_up(&subscribe_packet);
-        aws_mqtt_packet_ack_encode(&suback_msg->message_data, &suback);
-        aws_channel_slot_send_message(testing_handler->slot, suback_msg, AWS_CHANNEL_DIR_WRITE);
+        struct aws_mqtt_packet_ack unsuback;
+        aws_mqtt_packet_unsuback_init(&unsuback, unsubscribe_packet.packet_identifier);
+        aws_mqtt_packet_unsubscribe_clean_up(&unsubscribe_packet);
+        aws_mqtt_packet_ack_encode(&unsuback_msg->message_data, &unsuback);
+        aws_channel_slot_send_message(testing_handler->slot, unsuback_msg, AWS_CHANNEL_DIR_WRITE);
         return AWS_OP_SUCCESS;
     }
 
@@ -564,7 +568,7 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 while (aws_array_list_length(&subscribe_packet.topic_filters)) {
                     struct aws_mqtt_subscription val;
                     ASSERT_SUCCESS(aws_array_list_front(&subscribe_packet.topic_filters, &val));
-                    ASSERT_SUCCESS(aws_array_list_push_back(&packet.topic_filters, &val));
+                    ASSERT_SUCCESS(aws_array_list_push_back(&packet.sub_topic_filters, &val));
                     ASSERT_SUCCESS(aws_array_list_pop_front(&subscribe_packet.topic_filters));
                 }
                 aws_mqtt_packet_subscribe_clean_up(&subscribe_packet);
@@ -579,7 +583,7 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 while (aws_array_list_length(&unsubscribe_packet.topic_filters)) {
                     struct aws_byte_cursor val;
                     ASSERT_SUCCESS(aws_array_list_front(&unsubscribe_packet.topic_filters, &val));
-                    ASSERT_SUCCESS(aws_array_list_push_back(&packet.topic_filters, &val));
+                    ASSERT_SUCCESS(aws_array_list_push_back(&packet.unsub_topic_filters, &val));
                     ASSERT_SUCCESS(aws_array_list_pop_front(&unsubscribe_packet.topic_filters));
                 }
                 aws_mqtt_packet_unsubscribe_clean_up(&unsubscribe_packet);
