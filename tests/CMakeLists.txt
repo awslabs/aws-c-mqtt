@@ -3,8 +3,9 @@ include(AwsTestHarness)
 include(AwsLibFuzzer)
 enable_testing()
 
-set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c)
-file(GLOB TESTS ${TEST_SRC})
+file(GLOB TEST_HDRS "*.h")
+set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c)
+file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
 add_test_case(mqtt_packet_pubrec)
