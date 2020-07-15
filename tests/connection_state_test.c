@@ -433,7 +433,7 @@ static int s_test_mqtt_connect_disconnect_fn(struct aws_allocator *allocator, vo
         mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 0);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_DISCONNECT, received_packet->type);
@@ -483,12 +483,12 @@ static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator
         mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 0);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 2);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_DISCONNECT, received_packet->type);
@@ -542,7 +542,7 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
         mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 0);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PINGREQ, received_packet->type);
@@ -550,7 +550,7 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 2);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 3);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_DISCONNECT, received_packet->type);
@@ -653,7 +653,7 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
         mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 0);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_SUBSCRIBE, received_packet->type);
@@ -776,13 +776,13 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBLISH, received_packet->type);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->topic_name, &pub_topic));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->publish_payload, &payload_1));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->topic_name, &pub_topic));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->publish_payload, &payload_1));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 2);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBLISH, received_packet->type);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->topic_name, &pub_topic));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->publish_payload, &payload_2));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->topic_name, &pub_topic));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->publish_payload, &payload_2));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 3);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_DISCONNECT, received_packet->type);
@@ -877,12 +877,12 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 0);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     /* if message count is 6 there was an extra connect message due to the automatic reconnect behavior and timing. */
     size_t index = 2;
@@ -890,18 +890,18 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, index++);
         ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
         ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-        ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+        ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
     }
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, index++);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBLISH, received_packet->type);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->topic_name, &pub_topic));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->publish_payload, &payload_1));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->topic_name, &pub_topic));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->publish_payload, &payload_1));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, index++);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBLISH, received_packet->type);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->topic_name, &pub_topic));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->publish_payload, &payload_2));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->topic_name, &pub_topic));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->publish_payload, &payload_2));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, index++);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_DISCONNECT, received_packet->type);

@@ -24,16 +24,16 @@ struct mqtt_decoded_packet {
     bool has_username;
     uint16_t keep_alive_timeout;
     enum aws_mqtt_qos will_qos;
-    struct aws_string *client_identifier;
-    struct aws_string *will_topic;
-    struct aws_string *will_message;
-    struct aws_string *username;
-    struct aws_string *password;
+    struct aws_byte_cursor client_identifier; /* These cursors live with the received_message */
+    struct aws_byte_cursor will_topic;
+    struct aws_byte_cursor will_message;
+    struct aws_byte_cursor username;
+    struct aws_byte_cursor password;
 
     /* PUBLISH SUBSCRIBE UNSUBSCRIBE */
     uint16_t packet_identifier;
-    struct aws_string *topic_name;             /* PUBLISH topic */
-    struct aws_string *publish_payload;        /* PUBLISH payload */
+    struct aws_byte_cursor topic_name;         /* PUBLISH topic */
+    struct aws_byte_cursor publish_payload;    /* PUBLISH payload */
     struct aws_array_list sub_topic_filters;   /* list of aws_mqtt_subscription for SUBSCRIBE */
     struct aws_array_list unsub_topic_filters; /* list of aws_byte_cursor for UNSUBSCRIBE */
 };

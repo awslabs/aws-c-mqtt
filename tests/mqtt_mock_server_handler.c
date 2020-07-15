@@ -19,27 +19,6 @@ static int s_mqtt_decode_packet_init(struct mqtt_decoded_packet *packet, struct 
 static void s_mqtt_decode_packet_clean_up(struct mqtt_decoded_packet *packet) {
     aws_array_list_clean_up(&packet->sub_topic_filters);
     aws_array_list_clean_up(&packet->unsub_topic_filters);
-    if (packet->client_identifier) {
-        aws_string_destroy_secure(packet->client_identifier);
-    }
-    if (packet->will_topic) {
-        aws_string_destroy_secure(packet->will_topic);
-    }
-    if (packet->will_message) {
-        aws_string_destroy_secure(packet->will_message);
-    }
-    if (packet->username) {
-        aws_string_destroy_secure(packet->username);
-    }
-    if (packet->password) {
-        aws_string_destroy_secure(packet->password);
-    }
-    if (packet->topic_name) {
-        aws_string_destroy_secure(packet->topic_name);
-    }
-    if (packet->publish_payload) {
-        aws_string_destroy_secure(packet->publish_payload);
-    }
 }
 
 static int s_mqtt_mock_server_handler_process_packet(
@@ -313,7 +292,6 @@ static int s_mqtt_mock_server_handler_increment_read_window(
 }
 
 void mqtt_mock_server_handler_update_slot(struct aws_channel_handler *handler, struct aws_channel_slot *slot) {
-    (void)handler;
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
     testing_handler->slot = slot;
 }
@@ -465,7 +443,6 @@ struct mqtt_decoded_packet *mqtt_mock_server_get_latest_decoded_packet(struct aw
 
 int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
-    struct aws_allocator *alloc = handler->alloc;
 
     struct aws_array_list received_messages = testing_handler->received_messages;
     size_t length = aws_array_list_length(&received_messages);
@@ -490,26 +467,16 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 packet.has_username = connect_packet.has_username;
                 packet.keep_alive_timeout = connect_packet.keep_alive_timeout;
                 packet.will_qos = connect_packet.will_qos;
-                packet.client_identifier = aws_string_new_from_array(
-                    alloc, connect_packet.client_identifier.ptr, connect_packet.client_identifier.len);
-                ASSERT_NOT_NULL(packet.client_identifier);
+                packet.client_identifier = connect_packet.client_identifier;
                 if (packet.has_will) {
-                    packet.will_topic =
-                        aws_string_new_from_array(alloc, connect_packet.will_topic.ptr, connect_packet.will_topic.len);
-                    ASSERT_NOT_NULL(packet.will_topic);
-                    packet.will_message = aws_string_new_from_array(
-                        alloc, connect_packet.will_message.ptr, connect_packet.will_message.len);
-                    ASSERT_NOT_NULL(packet.will_message);
+                    packet.will_topic = connect_packet.will_topic;
+                    packet.will_message = connect_packet.will_message;
                 }
                 if (packet.has_username) {
-                    packet.username =
-                        aws_string_new_from_array(alloc, connect_packet.username.ptr, connect_packet.username.len);
-                    ASSERT_NOT_NULL(packet.username);
+                    packet.username =connect_packet.username;
                 }
                 if (packet.has_password) {
-                    packet.password =
-                        aws_string_new_from_array(alloc, connect_packet.password.ptr, connect_packet.password.len);
-                    ASSERT_NOT_NULL(packet.password);
+                    packet.password = connect_packet.password;
                 }
                 break;
             }
@@ -537,7 +504,7 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 packet.packet_identifier = unsubscribe_packet.packet_identifier;
                 /* copy the array one by one for simplicity */
                 for (size_t i = 0; i < aws_array_list_length(&unsubscribe_packet.topic_filters); i++) {
-                    struct aws_mqtt_subscription val;
+                    struct aws_byte_cursor val;
                     ASSERT_SUCCESS(aws_array_list_get_at(&unsubscribe_packet.topic_filters, &val, i));
                     ASSERT_SUCCESS(aws_array_list_push_back(&packet.unsub_topic_filters, &val));
                 }
@@ -548,12 +515,8 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 struct aws_mqtt_packet_publish publish_packet;
                 aws_mqtt_packet_publish_decode(&message_cur, &publish_packet);
                 packet.packet_identifier = publish_packet.packet_identifier;
-                packet.topic_name =
-                    aws_string_new_from_array(alloc, publish_packet.topic_name.ptr, publish_packet.topic_name.len);
-                ASSERT_NOT_NULL(packet.topic_name);
-                packet.publish_payload =
-                    aws_string_new_from_array(alloc, publish_packet.payload.ptr, publish_packet.payload.len);
-                ASSERT_NOT_NULL(packet.publish_payload);
+                packet.topic_name = publish_packet.topic_name;
+                packet.publish_payload = publish_packet.payload;
                 break;
             }
             case AWS_MQTT_PACKET_PUBACK: {
