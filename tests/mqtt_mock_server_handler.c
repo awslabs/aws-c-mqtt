@@ -496,7 +496,10 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 if (packet.has_will) {
                     packet.will_topic =
                         aws_string_new_from_array(alloc, connect_packet.will_topic.ptr, connect_packet.will_topic.len);
-                    ASSERT_NOT_NULL(packet.client_identifier);
+                    ASSERT_NOT_NULL(packet.will_topic);
+                    packet.will_message = aws_string_new_from_array(
+                        alloc, connect_packet.will_message.ptr, connect_packet.will_message.len);
+                    ASSERT_NOT_NULL(packet.will_message);
                 }
                 if (packet.has_username) {
                     packet.username =
