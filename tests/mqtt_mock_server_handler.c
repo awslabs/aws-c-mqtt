@@ -452,7 +452,7 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
         struct aws_byte_cursor message_cur = aws_byte_cursor_from_buf(&received_message);
 
         struct mqtt_decoded_packet packet;
-        ASSERT_SUCCESS(s_mqtt_decoded_packet_init(&packet, testing_handler->handler.alloc));
+        ASSERT_SUCCESS(s_mqtt_decoded_packet_init(&packet, handler->alloc));
         packet.type = aws_mqtt_get_packet_type(message_cur.ptr);
 
         switch (packet.type) {
