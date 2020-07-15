@@ -5,7 +5,7 @@
 
 #include "mqtt_mock_server_handler.h"
 
-static int s_mqtt_decode_packet_init(struct mqtt_decoded_packet *packet, struct aws_allocator *alloc) {
+static int s_mqtt_decoded_packet_init(struct mqtt_decoded_packet *packet, struct aws_allocator *alloc) {
     AWS_ZERO_STRUCT(*packet);
     if (aws_array_list_init_dynamic(&packet->sub_topic_filters, alloc, 1, sizeof(struct aws_mqtt_subscription))) {
         return AWS_OP_ERR;
@@ -16,7 +16,7 @@ static int s_mqtt_decode_packet_init(struct mqtt_decoded_packet *packet, struct 
     return AWS_OP_SUCCESS;
 }
 
-static void s_mqtt_decode_packet_clean_up(struct mqtt_decoded_packet *packet) {
+static void s_mqtt_decoded_packet_clean_up(struct mqtt_decoded_packet *packet) {
     aws_array_list_clean_up(&packet->sub_topic_filters);
     aws_array_list_clean_up(&packet->unsub_topic_filters);
 }
@@ -355,7 +355,7 @@ void destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
     for (size_t i = 0; i < aws_array_list_length(&testing_handler->packets); ++i) {
         struct mqtt_decoded_packet *packet = NULL;
         aws_array_list_get_at_ptr(&testing_handler->packets, (void **)&packet, i);
-        s_mqtt_decode_packet_clean_up(packet);
+        s_mqtt_decoded_packet_clean_up(packet);
     }
     aws_array_list_clean_up(&testing_handler->packets);
 
@@ -452,7 +452,7 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
         struct aws_byte_cursor message_cur = aws_byte_cursor_from_buf(&received_message);
 
         struct mqtt_decoded_packet packet;
-        ASSERT_SUCCESS(s_mqtt_decode_packet_init(&packet, testing_handler->handler.alloc));
+        ASSERT_SUCCESS(s_mqtt_decoded_packet_init(&packet, testing_handler->handler.alloc));
         packet.type = aws_mqtt_get_packet_type(message_cur.ptr);
 
         switch (packet.type) {
@@ -473,7 +473,7 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                     packet.will_message = connect_packet.will_message;
                 }
                 if (packet.has_username) {
-                    packet.username =connect_packet.username;
+                    packet.username = connect_packet.username;
                 }
                 if (packet.has_password) {
                     packet.password = connect_packet.password;
@@ -530,7 +530,8 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
                 /* Nothing to decode, just record that type of packet has received */
                 break;
             default:
-                /* Unsupported packet received */
+                AWS_LOGF_ERROR(
+                    MOCK_LOG_SUBJECT, "server, unsupported packet decoded, the package type is %d", packet.type);
                 return AWS_OP_ERR;
         }
 
