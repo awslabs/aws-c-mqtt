@@ -571,10 +571,10 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
-    struct aws_byte_cursor will_payload = aws_byte_cursor_from_c_str("I am dead");
+    struct aws_byte_cursor will_payload = aws_byte_cursor_from_c_str("this is a will.");
     struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("test_topic");
-    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("write more test");
-    struct aws_byte_cursor password = aws_byte_cursor_from_c_str("yes sir!");
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("user name");
+    struct aws_byte_cursor password = aws_byte_cursor_from_c_str("password");
     enum aws_mqtt_qos will_qos = AWS_MQTT_QOS_AT_LEAST_ONCE;
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_will(
@@ -647,10 +647,10 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
     s_wait_for_disconnect_to_complete(state_test_data);
 
     /* set new will & loggin message, before next connect, the next CONNECT packet will contain the new information */
-    struct aws_byte_cursor new_will_payload = aws_byte_cursor_from_c_str("I am dead. New");
+    struct aws_byte_cursor new_will_payload = aws_byte_cursor_from_c_str("this is a new will.");
     struct aws_byte_cursor new_topic = aws_byte_cursor_from_c_str("test_topic_New");
-    struct aws_byte_cursor new_username = aws_byte_cursor_from_c_str("write more test. New");
-    struct aws_byte_cursor new_password = aws_byte_cursor_from_c_str("yes sir!. New");
+    struct aws_byte_cursor new_username = aws_byte_cursor_from_c_str("new user name");
+    struct aws_byte_cursor new_password = aws_byte_cursor_from_c_str("new password");
     enum aws_mqtt_qos new_will_qos = AWS_MQTT_QOS_AT_MOST_ONCE;
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_will(
