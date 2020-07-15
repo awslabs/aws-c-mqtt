@@ -607,15 +607,15 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
         mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 0);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
     /* validate the received will */
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->will_message, &will_payload));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->will_topic, &topic));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->will_message, &will_payload));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->will_topic, &topic));
     ASSERT_UINT_EQUALS(will_qos, received_packet->will_qos);
     ASSERT_TRUE(true == received_packet->will_retain);
     /* validate the received login information */
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->username, &username));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->password, &password));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->username, &username));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->password, &password));
 
     /* DISCONNECT packet */
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
@@ -631,15 +631,15 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
     received_packet = mqtt_mock_server_get_latest_decoded_packet(state_test_data->test_channel_handler);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
     /* validate the received will */
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->will_message, &will_payload));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->will_topic, &topic));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->will_message, &will_payload));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->will_topic, &topic));
     ASSERT_UINT_EQUALS(will_qos, received_packet->will_qos);
     ASSERT_TRUE(true == received_packet->will_retain);
     /* validate the received login information */
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->username, &username));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->password, &password));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->username, &username));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->password, &password));
 
     /* disconnect */
     ASSERT_SUCCESS(
@@ -668,15 +668,15 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
     received_packet = mqtt_mock_server_get_latest_decoded_packet(state_test_data->test_channel_handler);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
     /* validate the received will */
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->will_message, &new_will_payload));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->will_topic, &new_topic));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->will_message, &new_will_payload));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->will_topic, &new_topic));
     ASSERT_UINT_EQUALS(new_will_qos, received_packet->will_qos);
     ASSERT_TRUE(true == received_packet->will_retain);
     /* validate the received login information */
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->username, &new_username));
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->password, &new_password));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->username, &new_username));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->password, &new_password));
 
     /* disconnect. FINISHED */
     ASSERT_SUCCESS(
@@ -856,7 +856,7 @@ static int s_test_mqtt_connection_any_publish_fn(struct aws_allocator *allocator
         mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 0);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
     ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBACK, received_packet->type);
@@ -1335,7 +1335,7 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
     struct mqtt_decoded_packet *received_packet =
         mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 0);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(received_packet->client_identifier, &connection_options.client_id));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
 
     received_packet = mqtt_mock_server_get_decoded_packet(state_test_data->test_channel_handler, 1);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBLISH, received_packet->type);
