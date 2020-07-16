@@ -4,6 +4,7 @@
  */
 
 #include "mqtt_mock_server_handler.h"
+#include <aws/testing/aws_test_harness.h>
 
 static int s_mqtt_decoded_packet_init(struct mqtt_decoded_packet *packet, struct aws_allocator *alloc) {
     AWS_ZERO_STRUCT(*packet);
