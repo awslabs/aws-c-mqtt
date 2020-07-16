@@ -9,8 +9,6 @@
 #include <aws/io/channel.h>
 #include <aws/mqtt/private/packets.h>
 
-#include <aws/testing/aws_test_harness.h>
-
 static const int MOCK_LOG_SUBJECT = 60000;
 
 struct mqtt_decoded_packet {
