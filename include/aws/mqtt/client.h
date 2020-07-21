@@ -353,6 +353,7 @@ int aws_mqtt_client_connection_connect(
     const struct aws_mqtt_connection_options *connection_options);
 
 /**
+ * DEPRECATED
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
  * Once the connection is opened, on_connack will be called.
  *
@@ -366,14 +367,13 @@ int aws_mqtt_client_connection_connect(
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
-AWS_MQTT_API
 int aws_mqtt_client_connection_reconnect(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
     void *userdata);
 
 /**
- * Closes the connection asynchronously, calls the on_disconnect callback, and destroys the connection object.
+ * Closes the connection asynchronously, calls the on_disconnect callback.
  *
  * \param[in] connection    The connection to close
  *

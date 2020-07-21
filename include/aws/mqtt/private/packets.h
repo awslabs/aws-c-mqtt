@@ -98,7 +98,7 @@ struct aws_mqtt_packet_subscribe {
     uint16_t packet_identifier;
 
     /* Payload */
-    /* List of aws_mqtt_subscription_t */
+    /* List of aws_mqtt_subscription */
     struct aws_array_list topic_filters;
 };
 
