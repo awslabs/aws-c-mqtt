@@ -260,7 +260,7 @@ AWS_MQTT_API
 int aws_mqtt_packet_suback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
 
 /*****************************************************************************/
-/* Unubscribe                                                                */
+/* Unsubscribe                                                               */
 
 AWS_MQTT_API
 int aws_mqtt_packet_unsubscribe_init(

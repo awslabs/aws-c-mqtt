@@ -48,10 +48,13 @@ enum aws_mqtt_client_request_state {
     AWS_MQTT_CLIENT_REQUEST_ERROR,
 };
 
-/* Called after the timeout if a matching ack packet hasn't arrived.
-   Return AWS_MQTT_CLIENT_REQUEST_ONGOING to check on the task later.
-   Return AWS_MQTT_CLIENT_REQUEST_COMPLETE to consider request complete.
-   Return AWS_MQTT_CLIENT_REQUEST_ERROR cancel the task and report an error to the caller. */
+/**
+ * Called after the timeout if a matching ack packet hasn't arrived, with is_first_attempt set as false.
+ * Or called when the request packet attempt to send firstly, with is_first_attempt set as true.
+ * Return AWS_MQTT_CLIENT_REQUEST_ONGOING to check on the task later.
+ * Return AWS_MQTT_CLIENT_REQUEST_COMPLETE to consider request complete.
+ * Return AWS_MQTT_CLIENT_REQUEST_ERROR cancel the task and report an error to the caller.
+ */
 typedef enum aws_mqtt_client_request_state(
     aws_mqtt_send_request_fn)(uint16_t packet_id, bool is_first_attempt, void *userdata);
 
@@ -114,14 +117,14 @@ struct aws_mqtt_client_connection {
     /* Connection tasks. */
     struct aws_mqtt_reconnect_task *reconnect_task;
     struct aws_channel_task ping_task;
-        
+
     /**
      * Number of times this connection has successfully CONNACK-ed, used
      * to ensure on_connection_completed is sent on the first completed
-     * CONNECT/CONNACK cycle 
+     * CONNECT/CONNACK cycle
      */
     size_t connection_count;
-    bool use_tls;   /* Only used by main thread */
+    bool use_tls; /* Only used by main thread */
 
     /* Only the event-loop thread may touch this data */
     struct {
@@ -141,7 +144,7 @@ struct aws_mqtt_client_connection {
             uint64_t current;      /* seconds */
             uint64_t next_attempt; /* milliseconds */
         } reconnect_timeouts;
-    }thread_data;
+    } thread_data;
 
     /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
     struct {
@@ -163,23 +166,23 @@ struct aws_mqtt_client_connection {
          */
         struct aws_memory_pool requests_pool;
 
-        /** 
+        /**
          * Store all requests that is not completed including the pending requests.
-         * 
+         *
          * hash table from uint16_t (packet_id) to aws_mqtt_outstanding_request
          */
         struct aws_hash_table outstanding_requests_table;
 
         /**
-         * List of all requests that cannot be scheduled until the connection comes online 
+         * List of all requests that cannot be scheduled until the connection comes online
          */
         struct aws_linked_list pending_requests_list;
 
         struct {
-            uint64_t min;          /* seconds */
-            uint64_t max;          /* seconds */
+            uint64_t min; /* seconds */
+            uint64_t max; /* seconds */
         } reconnect_timeouts;
-    }synced_data;
+    } synced_data;
 
     /* TODO: websocket is thread-safe? */
     struct {
@@ -208,8 +211,11 @@ struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header);
 
-/* This function registers a new outstanding request, calls send_request
- and returns the message identifier to use (or 0 on error). */
+/**
+ * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).
+ * send_request will be called from request_timeout_task if everything succeed. Not called with error.
+ * on_complete will be called once the request completed, either either in success or error.
+ */
 AWS_MQTT_API uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,
