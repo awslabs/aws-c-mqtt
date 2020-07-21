@@ -195,6 +195,7 @@ int aws_mqtt_topic_tree_init(struct aws_mqtt_topic_tree *tree, struct aws_alloca
 
     tree->root = s_topic_node_new(allocator, NULL, NULL);
     if (!tree->root) {
+        /* Error raised by s_topic_node_new */
         return AWS_OP_ERR;
     }
     tree->allocator = allocator;

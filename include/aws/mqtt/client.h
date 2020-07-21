@@ -217,7 +217,7 @@ void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
 /**
  * Spawns a new connection object.
  *
- * \param[in] client            The client to spawn the connection from
+ * \param[in] client    The client to spawn the connection from
  *
  * \returns AWS_OP_SUCCESS on success, otherwise AWS_OP_ERR and aws_last_error() is set.
  */
@@ -225,8 +225,9 @@ AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client);
 
 /**
- * Cleans up and destroys a connection object.
- * 
+ * Cleans up and destroys a connection object. Only safe to call when the connection get disconnected, or never
+ * connected.
+ *
  * \param[in] connection    The connection object
  */
 AWS_MQTT_API

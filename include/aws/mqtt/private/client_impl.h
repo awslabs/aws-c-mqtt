@@ -53,7 +53,7 @@ enum aws_mqtt_client_request_state {
    Return AWS_MQTT_CLIENT_REQUEST_COMPLETE to consider request complete.
    Return AWS_MQTT_CLIENT_REQUEST_ERROR cancel the task and report an error to the caller. */
 typedef enum aws_mqtt_client_request_state(
-    aws_mqtt_send_request_fn)(uint16_t message_id, bool is_first_attempt, void *userdata);
+    aws_mqtt_send_request_fn)(uint16_t packet_id, bool is_first_attempt, void *userdata);
 
 struct aws_mqtt_outstanding_request {
     struct aws_linked_list_node list_node;
@@ -63,7 +63,7 @@ struct aws_mqtt_outstanding_request {
 
     struct aws_channel_task timeout_task;
 
-    uint16_t message_id;
+    uint16_t packet_id;
     bool initiated;
     bool completed;
     bool cancelled;
@@ -85,11 +85,25 @@ struct aws_mqtt_client_connection {
 
     struct aws_mqtt_client *client;
 
-    /* The host information */
+    /* The host information, changed by user when state is AWS_MQTT_CLIENT_STATE_DISCONNECTED */
     struct aws_string *host_name;
     uint16_t port;
     struct aws_tls_connection_options tls_options;
     struct aws_socket_options socket_options;
+
+    /* Connect parameters */
+    struct aws_byte_buf client_id;
+    bool clean_session;
+    uint16_t keep_alive_time_secs;
+    uint64_t request_timeout_ns;
+    struct aws_string *username;
+    struct aws_string *password;
+    struct {
+        struct aws_byte_buf topic;
+        enum aws_mqtt_qos qos;
+        bool retain;
+        struct aws_byte_buf payload;
+    } will;
 
     /* User connection callbacks */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
@@ -100,6 +114,14 @@ struct aws_mqtt_client_connection {
     /* Connection tasks. */
     struct aws_mqtt_reconnect_task *reconnect_task;
     struct aws_channel_task ping_task;
+        
+    /**
+     * Number of times this connection has successfully CONNACK-ed, used
+     * to ensure on_connection_completed is sent on the first completed
+     * CONNECT/CONNACK cycle 
+     */
+    size_t connection_count;
+    bool use_tls;   /* Only used by main thread */
 
     /* Only the event-loop thread may touch this data */
     struct {
@@ -109,17 +131,16 @@ struct aws_mqtt_client_connection {
 
         /* If an incomplete packet arrives, store the data here. */
         struct aws_byte_buf pending_packet;
-        
-        /* number of times this connection has successfully CONNACK-ed, used
-        * to ensure on_connection_completed is sent on the first completed
-        * CONNECT/CONNACK cycle */
-        size_t connection_count;
 
         bool waiting_on_ping_response;
-        bool use_tls;
 
         /* Keeps track of all open subscriptions */
         struct aws_mqtt_topic_tree subscriptions;
+
+        struct {
+            uint64_t current;      /* seconds */
+            uint64_t next_attempt; /* milliseconds */
+        } reconnect_timeouts;
     }thread_data;
 
     /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
@@ -137,35 +158,30 @@ struct aws_mqtt_client_connection {
         /* The state of the connection */
         enum aws_mqtt_client_connection_state state;
 
-        /* aws_mqtt_outstanding_request, TODO: what it is? */
+        /**
+         * Memory pool for all aws_mqtt_outstanding_request.
+         */
         struct aws_memory_pool requests_pool;
-        /* uint16_t (packet id) -> aws_mqtt_outstanding_request */
+
+        /** 
+         * Store all requests that is not completed including the pending requests.
+         * 
+         * hash table from uint16_t (packet_id) to aws_mqtt_outstanding_request
+         */
         struct aws_hash_table outstanding_requests_table;
-        /* List of all requests that cannot be scheduled until the connection comes online */
+
+        /**
+         * List of all requests that cannot be scheduled until the connection comes online 
+         */
         struct aws_linked_list pending_requests_list;
 
         struct {
-            uint64_t current;      /* seconds */
             uint64_t min;          /* seconds */
             uint64_t max;          /* seconds */
-            uint64_t next_attempt; /* milliseconds */
         } reconnect_timeouts;
     }synced_data;
 
-    /* Connect parameters */
-    struct aws_byte_buf client_id;
-    bool clean_session;
-    uint16_t keep_alive_time_secs;
-    uint64_t request_timeout_ns;
-    struct aws_string *username;
-    struct aws_string *password;
-    struct {
-        struct aws_byte_buf topic;
-        enum aws_mqtt_qos qos;
-        bool retain;
-        struct aws_byte_buf payload;
-    } will;
-
+    /* TODO: websocket is thread-safe? */
     struct {
         aws_mqtt_transform_websocket_handshake_fn *handshake_transformer;
         void *handshake_transformer_ud;
@@ -183,8 +199,6 @@ struct aws_mqtt_client_connection {
 
         struct aws_http_message *handshake_request;
     } websocket;
-
-
 };
 
 struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
@@ -207,7 +221,7 @@ AWS_MQTT_API uint16_t mqtt_create_request(
 AWS_MQTT_API void mqtt_request_complete(
     struct aws_mqtt_client_connection *connection,
     int error_code,
-    uint16_t message_id);
+    uint16_t packet_id);
 
 /* Call to close the connection with an error code */
 AWS_MQTT_API void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
