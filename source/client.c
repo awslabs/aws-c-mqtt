@@ -1824,12 +1824,17 @@ handle_error:
 static bool s_reconnect_resub_iterator(const struct aws_byte_cursor *topic, enum aws_mqtt_qos qos, void *user_data) {
     struct subscribe_task_arg *task_arg = user_data;
 
+    struct subscribe_task_topic *task_topic =
+        aws_mem_acquire(task_arg->connection->allocator, sizeof(struct subscribe_task_topic));
     struct aws_mqtt_topic_subscription sub;
+    AWS_ZERO_STRUCT(*task_topic);
     AWS_ZERO_STRUCT(sub);
     sub.topic = *topic;
     sub.qos = qos;
+    task_topic->request = sub;
+    task_topic->filter = aws_string_new_from_array(task_arg->connection->allocator, topic->ptr, topic->len);
 
-    aws_array_list_push_back(&task_arg->topics, &sub);
+    aws_array_list_push_back(&task_arg->topics, &task_topic);
 
     return true;
 }
@@ -1844,7 +1849,7 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
     struct aws_io_message *message = NULL;
 
     size_t sub_count = aws_mqtt_topic_tree_get_sub_count(&task_arg->connection->thread_data.subscriptions);
-    static const size_t sub_size = sizeof(struct aws_mqtt_topic_subscription);
+    static const size_t sub_size = sizeof(void *);
     if (sub_count == 0) {
         aws_raise_error(AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE);
         AWS_LOGF_WARN(
@@ -1889,11 +1894,11 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
 
         for (size_t i = 0; i < num_topics; ++i) {
 
-            struct aws_mqtt_topic_subscription *topic = NULL;
-            aws_array_list_get_at_ptr(&task_arg->topics, (void **)&topic, i);
+            struct subscribe_task_topic *topic = NULL;
+            aws_array_list_get_at(&task_arg->topics, &topic, i);
             AWS_ASSUME(topic); /* We know we're within bounds */
 
-            if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->topic, topic->qos)) {
+            if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->request.topic, topic->request.qos)) {
                 goto handle_error;
             }
         }
@@ -1931,8 +1936,8 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_ud) {
 
-    struct subscribe_task_arg *task_arg = NULL;
-
+    struct subscribe_task_arg *task_arg =
+        aws_mem_acquire(task_arg->connection->allocator, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT, "id=%p: failed to allocate storage for resubscribe arguments", (void *)connection);
