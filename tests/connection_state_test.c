@@ -243,12 +243,12 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     state_test_data->mqtt_connection = aws_mqtt_client_connection_new(&state_test_data->mqtt_client);
     ASSERT_NOT_NULL(state_test_data->mqtt_connection);
 
-    aws_mqtt_client_connection_set_connection_interruption_handlers(
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_connection_interruption_handlers(
         state_test_data->mqtt_connection,
         s_on_connection_interrupted,
         state_test_data,
         s_on_connection_resumed,
-        state_test_data);
+        state_test_data));
 
     aws_array_list_init_dynamic(&state_test_data->published_messages, allocator, 4, sizeof(struct aws_byte_buf));
     return AWS_OP_SUCCESS;

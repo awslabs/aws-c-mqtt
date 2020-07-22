@@ -88,6 +88,10 @@ struct aws_mqtt_client_connection {
 
     struct aws_mqtt_client *client;
 
+    /* Channel handler information */
+    struct aws_channel_handler handler;
+    struct aws_channel_slot *slot;
+
     /* The host information, changed by user when state is AWS_MQTT_CLIENT_STATE_DISCONNECTED */
     struct aws_string *host_name;
     uint16_t port;
@@ -107,10 +111,21 @@ struct aws_mqtt_client_connection {
         bool retain;
         struct aws_byte_buf payload;
     } will;
-
+    struct {
+        uint64_t current;       /* seconds */
+        uint64_t min;           /* seconds */
+        uint64_t max;           /* seconds */
+        uint64_t next_attempt;  /* milliseconds */
+    } reconnect_timeouts;
     /* User connection callbacks */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *on_connection_complete_ud;
+    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
+    void *on_interrupted_ud;
+    aws_mqtt_client_on_connection_resumed_fn *on_resumed;
+    void *on_resumed_ud;
+    aws_mqtt_client_publish_received_fn *on_any_publish;
+    void *on_any_publish_ud;
     aws_mqtt_client_on_disconnect_fn *on_disconnect;
     void *on_disconnect_ud;
 
@@ -128,9 +143,6 @@ struct aws_mqtt_client_connection {
 
     /* Only the event-loop thread may touch this data */
     struct {
-        /* Channel handler information */
-        struct aws_channel_handler handler;
-        struct aws_channel_slot *slot;
 
         /* If an incomplete packet arrives, store the data here. */
         struct aws_byte_buf pending_packet;
@@ -140,24 +152,13 @@ struct aws_mqtt_client_connection {
         /* Keeps track of all open subscriptions */
         struct aws_mqtt_topic_tree subscriptions;
 
-        struct {
-            uint64_t current;      /* seconds */
-            uint64_t next_attempt; /* milliseconds */
-        } reconnect_timeouts;
     } thread_data;
 
     /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
     struct {
         struct aws_mutex lock;
 
-        /* Callbacks set separately by user. */
-        aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
-        void *on_interrupted_ud;
-        aws_mqtt_client_on_connection_resumed_fn *on_resumed;
-        void *on_resumed_ud;
-        aws_mqtt_client_publish_received_fn *on_any_publish;
-        void *on_any_publish_ud;
-
+        /* TODO: some of the states can be thread_data. */
         /* The state of the connection */
         enum aws_mqtt_client_connection_state state;
 
@@ -177,11 +178,6 @@ struct aws_mqtt_client_connection {
          * List of all requests that cannot be scheduled until the connection comes online
          */
         struct aws_linked_list pending_requests_list;
-
-        struct {
-            uint64_t min; /* seconds */
-            uint64_t max; /* seconds */
-        } reconnect_timeouts;
     } synced_data;
 
     /* TODO: websocket is thread-safe? */

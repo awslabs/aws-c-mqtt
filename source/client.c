@@ -36,6 +36,10 @@ static const uint64_t s_default_request_timeout_ns = 3000000000;
 /* 20 minutes - This is the default (and max) for AWS IoT as of 2020.02.18 */
 static const uint16_t s_default_keep_alive_sec = 1200;
 
+static int s_mqtt_client_connect(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
+    void *userdata);
 /*******************************************************************************
  * Helper functions
  ******************************************************************************/
@@ -50,48 +54,6 @@ static void s_mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connecti
     int err = aws_mutex_unlock(&connection->synced_data.lock);
     AWS_ASSERT(!err);
     (void)err;
-}
-
-static int s_mqtt_client_connect(
-    struct aws_mqtt_client_connection *connection,
-    aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
-    void *userdata) {
-    connection->on_connection_complete = on_connection_complete;
-    connection->on_connection_complete_ud = userdata;
-
-    int result = 0;
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
-    if (connection->websocket.enabled) {
-        result = s_websocket_connect(connection);
-    } else
-#endif /* AWS_MQTT_WITH_WEBSOCKETS */
-    {
-        struct aws_socket_channel_bootstrap_options channel_options;
-        AWS_ZERO_STRUCT(channel_options);
-        channel_options.bootstrap = connection->client->bootstrap;
-        channel_options.host_name = aws_string_c_str(connection->host_name);
-        channel_options.port = connection->port;
-        channel_options.socket_options = &connection->socket_options;
-        channel_options.tls_options = connection->use_tls ? &connection->tls_options : NULL;
-        channel_options.setup_callback = &s_mqtt_client_init;
-        channel_options.shutdown_callback = &s_mqtt_client_shutdown;
-        channel_options.user_data = connection;
-
-        result = aws_client_bootstrap_new_socket_channel(&channel_options);
-    }
-
-    if (result) {
-        /* Connection attempt failed */
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Failed to begin connection routine, error %d (%s).",
-            (void *)connection,
-            aws_last_error(),
-            aws_error_name(aws_last_error()));
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
 }
 
 /*******************************************************************************
@@ -139,6 +101,35 @@ static void s_mqtt_client_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
 
+    enum aws_mqtt_client_connection_state ori_state;
+    { /* BEGIN CRITICAL SECTION */
+        s_mqtt_connection_lock_synced_data(connection);
+        ori_state = connection->synced_data.state;
+        switch (connection->synced_data.state) {
+            case AWS_MQTT_CLIENT_STATE_CONNECTED:
+                /* unexpected hangup from broker, try to reconnect */
+                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
+                break;
+            case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
+                /* disconnect requested by user */
+                /* Successfully shutdown, so clear the outstanding requests */
+                aws_hash_table_clear(&connection->synced_data.outstanding_requests_table);
+                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                break;
+            case AWS_MQTT_CLIENT_STATE_CONNECTING:
+                /* failed to connect */
+                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                break;
+            case AWS_MQTT_CLIENT_STATE_DISCONNECTED:
+                /* TODO: probably should not happen? */
+                break;
+            default:
+                /* AWS_MQTT_CLIENT_STATE_RECONNECTING, reconnect failed, retry later. */
+                break;
+        }
+        s_mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
     /* Always clear slot, as that's what's been shutdown */
     if (connection->slot) {
         aws_channel_slot_remove(connection->slot);
@@ -147,87 +138,67 @@ static void s_mqtt_client_shutdown(
 
     /* If there's no error code and this wasn't user-requested, set the error code to something useful */
     if (error_code == AWS_ERROR_SUCCESS) {
-        if (connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTING &&
-            connection->state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
+        if (ori_state != AWS_MQTT_CLIENT_STATE_DISCONNECTING && ori_state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
             error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
         }
     }
+    switch (ori_state) {
+        case AWS_MQTT_CLIENT_STATE_RECONNECTING: {
+            /* If reconnect attempt failed, schedule the next attempt */
+            struct aws_event_loop *el =
+                aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
 
-    if (connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
-        /* If reconnect attempt failed, schedule the next attempt */
-        struct aws_event_loop *el = aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Reconnect failed, retrying", (void *)connection);
 
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Reconnect failed, retrying", (void *)connection);
+            aws_event_loop_schedule_task_future(
+                el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
+            break;
+        }
+        case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Disconnect completed, clearing request queue and calling callback",
+                (void *)connection);
 
-        aws_event_loop_schedule_task_future(
-            el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
-
-    } else if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
-
-        connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
-
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Disconnect completed, clearing request queue and calling callback",
-            (void *)connection);
-
-        aws_mutex_lock(&connection->outstanding_requests.mutex);
-
-        /* Successfully shutdown, so clear the outstanding requests */
-        aws_hash_table_clear(&connection->outstanding_requests.table);
-
-        aws_mutex_unlock(&connection->outstanding_requests.mutex);
-
-        MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
-
-    } else if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING) {
-
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT, "id=%p: Initial connection attempt failed, calling callback", (void *)connection);
-
-        connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
-
-        MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
-
-    } else {
-
-        AWS_ASSERT(
-            connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED ||
-            connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
-            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
-
-        if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
-
+            MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+            break;
+        case AWS_MQTT_CLIENT_STATE_CONNECTING:
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT, "id=%p: Initial connection attempt failed, calling callback", (void *)connection);
+            MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+            break;
+        case AWS_MQTT_CLIENT_STATE_CONNECTED: {
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Connection lost, calling callback and attempting reconnect",
                 (void *)connection);
-
-            connection->state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
             MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
+            /* In case user called disconnect from the on_interrupted callback */
+            bool stop_reconnect;
+            { /* BEGIN CRITICAL SECTION */
+                s_mqtt_connection_lock_synced_data(connection);
+                stop_reconnect = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+                if (stop_reconnect) {
+                    connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                }
+                s_mqtt_connection_unlock_synced_data(connection);
+            } /* END CRITICAL SECTION */
+            if (stop_reconnect) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
+                    (void *)connection);
+                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+            } else {
+                /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
+                connection->reconnect_task->task.fn(
+                    &connection->reconnect_task->task, connection->reconnect_task->task.arg, AWS_TASK_STATUS_RUN_READY);
+            }
+            break;
         }
-
-        AWS_ASSERT(
-            connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING ||
-            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING ||
-            connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTED);
-
-        /* This will only be true if the user called disconnect from the on_interrupted callback */
-        if (connection->state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
-
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
-                (void *)connection);
-
-            connection->state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
-            MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
-
-        } else {
-            /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
-            connection->reconnect_task->task.fn(
-                &connection->reconnect_task->task, connection->reconnect_task->task.arg, AWS_TASK_STATUS_RUN_READY);
-        }
+        default:
+            /* TODO: Probably an error? */
+            break;
     }
 }
 
@@ -242,8 +213,16 @@ static void s_connack_received_timeout(struct aws_channel_task *channel_task, vo
     struct aws_mqtt_client_connection *connection = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        if (connection->state == AWS_MQTT_CLIENT_STATE_CONNECTING ||
-            connection->state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
+        bool waiting_for_connack = false;
+        { /* BEGIN CRITICAL SECTION */
+            s_mqtt_connection_lock_synced_data(connection);
+            if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTING ||
+                connection->synced_data.state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
+                waiting_for_connack = true;
+            }
+            s_mqtt_connection_unlock_synced_data(connection);
+        } /* END CRITICAL SECTION */
+        if (waiting_for_connack) {
             AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt CONNACK response timeout detected", (void *)connection);
             aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
         }
@@ -463,9 +442,8 @@ static void s_outstanding_request_destroy(void *item) {
 
         /* Task ran as cancelled already, clean up the memory */
         struct aws_mqtt_client_connection *connection = request->connection;
-        aws_mutex_lock(&connection->requests_pool.mutex);
-        aws_memory_pool_release(&connection->requests_pool.pool, request);
-        aws_mutex_unlock(&connection->requests_pool.mutex);
+        /* outstanding request will only be destoried with lock hold. We can touch the synced_data here */
+        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
 
     } else {
         /* Signal task to clean up request */
@@ -489,8 +467,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->allocator = client->allocator;
     connection->client = client;
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
-    connection->synced_data.reconnect_timeouts.min = 1;
-    connection->synced_data.reconnect_timeouts.max = 128;
+    connection->reconnect_timeouts.min = 1;
+    connection->reconnect_timeouts.max = 128;
     aws_linked_list_init(&connection->synced_data.pending_requests_list);
 
     if (aws_mutex_init(&connection->synced_data.lock)) {
@@ -548,9 +526,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     }
 
     /* Initialize the handler */
-    connection->thread_data.handler.alloc = connection->allocator;
-    connection->thread_data.handler.vtable = aws_mqtt_get_client_channel_vtable();
-    connection->thread_data.handler.impl = connection;
+    connection->handler.alloc = connection->allocator;
+    connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
+    connection->handler.impl = connection;
 
     return connection;
 
@@ -594,7 +572,7 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     } /* END CRITICAL SECTION */
     /* If the slot is not NULL, the connection is still connected, which should be prevented from calling this function
      */
-    AWS_ASSERT(!connection->thread_data.slot);
+    AWS_ASSERT(!connection->slot);
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
 
     aws_string_destroy(connection->host_name);
@@ -641,6 +619,25 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
  * Connection Configuration
  ******************************************************************************/
 
+/* To configure the connection, ensure the state is DISCONNECTED or CONNECTED */
+static int s_check_connection_state_for_configuration(struct aws_mqtt_client_connection *connection) {
+    int success = 1;
+    { /* BEGIN CRITICAL SECTION */
+        s_mqtt_connection_lock_synced_data(connection);
+
+        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
+            connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+            AWS_LOGF_WARN(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: The connection is not stable now. Not safe to configure the connection. Try again later.",
+                (void *)connection);
+            success = 0;
+        }
+        s_mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+    return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
+}
+
 int aws_mqtt_client_connection_set_will(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
@@ -648,6 +645,10 @@ int aws_mqtt_client_connection_set_will(
     bool retain,
     const struct aws_byte_cursor *payload) {
 
+    AWS_PRECONDITION(connection);
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Setting last will with topic \"" PRInSTR "\"",
@@ -690,7 +691,9 @@ int aws_mqtt_client_connection_set_login(
 
     AWS_PRECONDITION(connection);
     AWS_PRECONDITION(username);
-
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting username and password", (void *)connection);
 
     connection->username = aws_string_new_from_array(connection->allocator, username->ptr, username->len);
@@ -717,21 +720,17 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     uint64_t max_timeout) {
 
     AWS_PRECONDITION(connection);
-    /* TODO: probably better to rule out some calls from user based on the state of connection, and make the reconnect
-     * timeout be thread-safe. */
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Setting reconnect timeouts min: %" PRIu64 " max: %" PRIu64,
         (void *)connection,
         min_timeout,
         max_timeout);
-
-    { /* BEGIN CRITICAL SECTION */
-        s_mqtt_connection_lock_synced_data(connection);
-        connection->synced_data.reconnect_timeouts.min = min_timeout;
-        connection->synced_data.reconnect_timeouts.max = max_timeout;
-        s_mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
+    connection->reconnect_timeouts.min = min_timeout;
+    connection->reconnect_timeouts.max = max_timeout;
 
     return AWS_OP_SUCCESS;
 }
@@ -743,8 +742,10 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     aws_mqtt_client_on_connection_resumed_fn *on_resumed,
     void *on_resumed_ud) {
 
-    /* TODO: same as above, reject some calls from user when it makes no sense to set the interruption handler in that
-     * state */
+    AWS_PRECONDITION(connection);
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Setting connection interrupted and resumed handlers", (void *)connection);
 
@@ -762,8 +763,10 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
     void *on_any_publish_ud) {
 
     AWS_PRECONDITION(connection);
-    /* TODO: same as above, reject some calls from user when it makes no sense to set the interruption handler in that
-     * state */
+    /* It's not nesseccary to check the state here. But to keep the consistence. */
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting on_any_publish handler", (void *)connection);
 
     connection->on_any_publish = on_any_publish;
@@ -772,6 +775,9 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
     return AWS_OP_SUCCESS;
 }
 
+/*******************************************************************************
+ * Websockets
+ ******************************************************************************/
 #ifdef AWS_MQTT_WITH_WEBSOCKETS
 
 int aws_mqtt_client_connection_use_websockets(
@@ -868,7 +874,7 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
 static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {
     struct aws_mqtt_client_connection *connection = user_data;
 
-    struct aws_channel *channel = connection->thread_data.slot ? connection->thread_data.slot->channel : NULL;
+    struct aws_channel *channel = connection->slot ? connection->slot->channel : NULL;
 
     s_mqtt_client_shutdown(connection->client->bootstrap, error_code, channel, connection);
 
@@ -1200,16 +1206,62 @@ error:
     return AWS_OP_ERR;
 }
 
+static int s_mqtt_client_connect(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
+    void *userdata) {
+    connection->on_connection_complete = on_connection_complete;
+    connection->on_connection_complete_ud = userdata;
+
+    int result = 0;
+#ifdef AWS_MQTT_WITH_WEBSOCKETS
+    if (connection->websocket.enabled) {
+        result = s_websocket_connect(connection);
+    } else
+#endif /* AWS_MQTT_WITH_WEBSOCKETS */
+    {
+        struct aws_socket_channel_bootstrap_options channel_options;
+        AWS_ZERO_STRUCT(channel_options);
+        channel_options.bootstrap = connection->client->bootstrap;
+        channel_options.host_name = aws_string_c_str(connection->host_name);
+        channel_options.port = connection->port;
+        channel_options.socket_options = &connection->socket_options;
+        channel_options.tls_options = connection->use_tls ? &connection->tls_options : NULL;
+        channel_options.setup_callback = &s_mqtt_client_init;
+        channel_options.shutdown_callback = &s_mqtt_client_shutdown;
+        channel_options.user_data = connection;
+
+        result = aws_client_bootstrap_new_socket_channel(&channel_options);
+    }
+
+    if (result) {
+        /* Connection attempt failed */
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to begin connection routine, error %d (%s).",
+            (void *)connection,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 /*******************************************************************************
- * Reconnect
+ * Reconnect  DEPRECATED
  ******************************************************************************/
 
 int aws_mqtt_client_connection_reconnect(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
     void *userdata) {
-    /* DEPRECATED, connection will reconnect automatically. */
-    AWS_LOG_ERROR(AWS_LS_MQTT_CLIENT, "aws_mqtt_client_connection_reconnect has been DEPRECATED.");
+    (void) connection;
+    (void) on_connection_complete;
+    (void) userdata;
+    
+    /* DEPRECATED, connection will reconnect automatically now. */
+    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "aws_mqtt_client_connection_reconnect has been DEPRECATED.");
     return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
 }
 
@@ -1377,7 +1429,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
 
     /* This is not necessarily a fatal error; if the subscribe fails, it'll just retry. Still need to clean up though.
      */
-    if (aws_channel_slot_send_message(task_arg->connection->thread_data.slot, message, AWS_CHANNEL_DIR_WRITE)) {
+    if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         aws_mem_release(message->allocator, message);
     }
 
@@ -1413,7 +1465,6 @@ static void s_subscribe_complete(
     struct subscribe_task_topic *topic = NULL;
     aws_array_list_get_at(&task_arg->topics, &topic, 0);
     AWS_ASSUME(topic);
-    AWS_ASSUME(aws_string_is_valid(topic->filter));
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
@@ -1825,14 +1876,12 @@ static bool s_reconnect_resub_iterator(const struct aws_byte_cursor *topic, enum
     struct subscribe_task_arg *task_arg = user_data;
 
     struct subscribe_task_topic *task_topic =
-        aws_mem_acquire(task_arg->connection->allocator, sizeof(struct subscribe_task_topic));
+        aws_mem_calloc(task_arg->connection->allocator, 1, sizeof(struct subscribe_task_topic));
     struct aws_mqtt_topic_subscription sub;
-    AWS_ZERO_STRUCT(*task_topic);
     AWS_ZERO_STRUCT(sub);
     sub.topic = *topic;
     sub.qos = qos;
     task_topic->request = sub;
-    task_topic->filter = aws_string_new_from_array(task_arg->connection->allocator, topic->ptr, topic->len);
 
     aws_array_list_push_back(&task_arg->topics, &task_topic);
 
@@ -1849,7 +1898,6 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
     struct aws_io_message *message = NULL;
 
     size_t sub_count = aws_mqtt_topic_tree_get_sub_count(&task_arg->connection->thread_data.subscriptions);
-    static const size_t sub_size = sizeof(void *);
     if (sub_count == 0) {
         aws_raise_error(AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE);
         AWS_LOGF_WARN(
@@ -1859,18 +1907,9 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
             aws_error_name(aws_last_error()));
         goto handle_error;
     }
-
-    void *buffer = NULL;
-    /* TODO:: will aws_array_list_clean_up clean this up?? Nope! */
-    aws_mem_acquire_many(
-        task_arg->connection->allocator,
-        2,
-        &task_arg,
-        sizeof(struct subscribe_task_arg),
-        &buffer,
-        sub_count * sub_size);
-
-    aws_array_list_init_static(&task_arg->topics, buffer, sub_count, sub_size);
+    if (aws_array_list_init_dynamic(&task_arg->topics, task_arg->connection->allocator, sub_count, sizeof(void *))) {
+        goto handle_error;
+    }
     aws_mqtt_topic_tree_iterate(&task_arg->connection->thread_data.subscriptions, s_reconnect_resub_iterator, task_arg);
 
     AWS_LOGF_TRACE(
@@ -1916,7 +1955,7 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
     }
 
     /* This is not necessarily a fatal error; if the send fails, it'll just retry.  Still need to clean up though. */
-    if (aws_channel_slot_send_message(task_arg->connection->thread_data.slot, message, AWS_CHANNEL_DIR_WRITE)) {
+    if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         aws_mem_release(message->allocator, message);
     }
 
@@ -1931,13 +1970,14 @@ handle_error:
     return AWS_MQTT_CLIENT_REQUEST_ERROR;
 }
 
+/* TODO: Based on the state, we should block some calls from user */
 uint16_t aws_mqtt_resubscribe_existing_topics(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_ud) {
 
     struct subscribe_task_arg *task_arg =
-        aws_mem_acquire(task_arg->connection->allocator, sizeof(struct subscribe_task_arg));
+        aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT, "id=%p: failed to allocate storage for resubscribe arguments", (void *)connection);
@@ -2013,7 +2053,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
         struct subscribe_task_topic *topic;
         if (aws_mqtt_topic_tree_transaction_remove(
-                &task_arg->connection->subscriptions, &transaction, &task_arg->filter, (void **)&topic)) {
+                &task_arg->connection->thread_data.subscriptions, &transaction, &task_arg->filter, (void **)&topic)) {
             goto handle_error;
         }
 
@@ -2046,7 +2086,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     }
 
     if (!task_arg->tree_updated) {
-        aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->subscriptions, &transaction);
+        aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->thread_data.subscriptions, &transaction);
         task_arg->tree_updated = true;
     }
 
@@ -2060,7 +2100,7 @@ handle_error:
         aws_mem_release(message->allocator, message);
     }
     if (!task_arg->tree_updated) {
-        aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->subscriptions, &transaction);
+        aws_mqtt_topic_tree_transaction_roll_back(&task_arg->connection->thread_data.subscriptions, &transaction);
     }
 
     aws_array_list_clean_up(&transaction);
@@ -2317,14 +2357,14 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t packet_id, boo
         }
 
         /* Mark down that now is when the last pingreq was sent */
-        connection->waiting_on_ping_response = true;
+        connection->thread_data.waiting_on_ping_response = true;
 
         return AWS_MQTT_CLIENT_REQUEST_ONGOING;
     }
 
     /* Check that a pingresp has been received since pingreq was sent */
-    if (connection->waiting_on_ping_response) {
-        connection->waiting_on_ping_response = false;
+    if (connection->thread_data.waiting_on_ping_response) {
+        connection->thread_data.waiting_on_ping_response = false;
         /* It's been too long since the last ping, close the connection */
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: ping timeout detected", (void *)connection);
         aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
