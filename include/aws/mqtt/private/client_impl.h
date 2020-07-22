@@ -112,10 +112,10 @@ struct aws_mqtt_client_connection {
         struct aws_byte_buf payload;
     } will;
     struct {
-        uint64_t current;       /* seconds */
-        uint64_t min;           /* seconds */
-        uint64_t max;           /* seconds */
-        uint64_t next_attempt;  /* milliseconds */
+        uint64_t current;      /* seconds */
+        uint64_t min;          /* seconds */
+        uint64_t max;          /* seconds */
+        uint64_t next_attempt; /* milliseconds */
     } reconnect_timeouts;
     /* User connection callbacks */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
