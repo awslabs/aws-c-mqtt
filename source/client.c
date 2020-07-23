@@ -607,6 +607,7 @@ int aws_mqtt_client_connection_set_will(
     }
     /* Succeed, turn the error off. */
     error = false;
+
     /* swap the local buffer with connection */
     struct aws_byte_buf temp = local_topic_buf;
     local_topic_buf = connection->will.topic;
