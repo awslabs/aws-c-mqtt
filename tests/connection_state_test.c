@@ -797,7 +797,7 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-/*
+/**
  * CONNECT, force the server to hang up after a successful connection and block all CONNACKS, send PUBLISH messages
  * let the server send CONNACKS, make sure when the client reconnects automatically, it sends the PUBLISH messages
  * that were sent during offline mode. Then send a DISCONNECT.
@@ -915,3 +915,20 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_connection_offline_publish_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/**
+ * TODO: Another race condition may cause the publish results differently due to our inconsistent retry police.
+ * - If the connection closes before the publish, the publish will retry when the connect restores. It'll complete with
+ * no error.
+ * - If the the task scheduled before the connection closes completely, the task will be cancelled. And the publish will
+ * complete with error.
+ * We probably need a more consistent retry police.
+ *
+ * Regression test: Once upon a time there was a bug caused by race condition on the state of connection.
+ * The scenario is the server/broker closes the connection, while the client is making requests.
+ * The race condition between the eventloop thread closes the connection and the main thread makes request could cause a
+ * bug.
+ * Solution: put a lock for the state of connection, protect it from accessing by multiple threads at the same time.
+ * 
+ * mqtt_connection_closes_while_making_requests
+ */

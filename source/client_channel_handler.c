@@ -784,6 +784,10 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             s_mqtt_connection_lock_synced_data(connection);
             if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
                 connected = false;
+                /* TODO: if the request is publish with QoS 0, it's more reasonable to complete the publish with error
+                 * (or without error, since it's QoS 0). I know it's not against the law to resend them as what we are
+                 * doing now, but the user may just don't want those QoS 0 messages stored in memory, occupying the
+                 * limited resource. */
                 aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &request->list_node);
             }
             s_mqtt_connection_unlock_synced_data(connection);

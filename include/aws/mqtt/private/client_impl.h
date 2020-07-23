@@ -175,7 +175,8 @@ struct aws_mqtt_client_connection {
         struct aws_hash_table outstanding_requests_table;
 
         /**
-         * List of all requests that cannot be scheduled until the connection comes online
+         * List of all requests that cannot be scheduled until the connection comes online.
+         * TODO: make the size of the list configurable. Stop it from from ever-growing
          */
         struct aws_linked_list pending_requests_list;
     } synced_data;
