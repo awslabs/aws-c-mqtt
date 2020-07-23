@@ -156,9 +156,9 @@ struct aws_mqtt_client_connection {
 
     /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
     struct {
+        /* Note: never fire user callback with lock hold. */
         struct aws_mutex lock;
 
-        /* TODO: some of the states can be thread_data. */
         /* The state of the connection */
         enum aws_mqtt_client_connection_state state;
 
@@ -180,7 +180,7 @@ struct aws_mqtt_client_connection {
         struct aws_linked_list pending_requests_list;
     } synced_data;
 
-    /* TODO: websocket is thread-safe? */
+    /* TODO: websocket is thread-safe? If not, make it thread-safe. */
     struct {
         aws_mqtt_transform_websocket_handshake_fn *handshake_transformer;
         void *handshake_transformer_ud;

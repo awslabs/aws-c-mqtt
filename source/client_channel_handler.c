@@ -145,6 +145,10 @@ static int s_packet_handler_connack(
         /* If successfully connected, schedule all pending tasks */
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted processing offline requests.", (void *)connection);
+        /**
+         * TODO: if the clean_session is true, the pending requests should be cleaned up. 
+         * And we probably need the implementation of clean_session to follow the spec.
+         */
         if (!aws_linked_list_empty(&requests)) {
             struct aws_linked_list_node *current = aws_linked_list_front(&requests);
             const struct aws_linked_list_node *end = aws_linked_list_end(&requests);
@@ -181,6 +185,7 @@ static int s_packet_handler_publish(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor message_cursor) {
 
+    /* TODO: need to handle the QoS 2 message to avoid processing the message a second time */
     struct aws_mqtt_packet_publish publish;
     if (aws_mqtt_packet_publish_decode(&message_cursor, &publish)) {
         return AWS_OP_ERR;
@@ -238,7 +243,7 @@ static int s_packet_handler_publish(
 }
 
 static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor) {
-
+    /* TODO: we need more detail from ack packets, eg: return code from suback */
     struct aws_mqtt_packet_ack ack;
     if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
         return AWS_OP_ERR;
@@ -261,7 +266,7 @@ static int s_packet_handler_pubrec(
         return AWS_OP_ERR;
     }
 
-    /* TODO: When sending PUBLISH with QoS 3, we should be storing the data until this packet is received, at which
+    /* TODO: When sending PUBLISH with QoS 2, we should be storing the data until this packet is received, at which
      * point we may discard it. */
 
     /* Send PUBREL */

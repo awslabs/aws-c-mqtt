@@ -87,6 +87,7 @@ void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
     AWS_ZERO_STRUCT(*client);
 }
 
+/* At this point, the channel for the MQTT connection has completed its shutdown */
 static void s_mqtt_client_shutdown(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
@@ -100,7 +101,6 @@ static void s_mqtt_client_shutdown(
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
-
     enum aws_mqtt_client_connection_state ori_state;
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
@@ -120,11 +120,13 @@ static void s_mqtt_client_shutdown(
                 /* failed to connect */
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
                 break;
-            case AWS_MQTT_CLIENT_STATE_DISCONNECTED:
-                /* TODO: probably should not happen? */
+            case AWS_MQTT_CLIENT_STATE_RECONNECTING:
+                /* reconnect failed, schedule the next attempt later, no need to change the state. */
                 break;
             default:
-                /* AWS_MQTT_CLIENT_STATE_RECONNECTING, reconnect failed, retry later. */
+                /* AWS_MQTT_CLIENT_STATE_DISCONNECTED */
+                /* TODO: it should be an error from my understanding, but we just silently do nothing */
+
                 break;
         }
         s_mqtt_connection_unlock_synced_data(connection);
@@ -173,6 +175,7 @@ static void s_mqtt_client_shutdown(
                 "id=%p: Connection lost, calling callback and attempting reconnect",
                 (void *)connection);
             MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
+
             /* In case user called disconnect from the on_interrupted callback */
             bool stop_reconnect;
             { /* BEGIN CRITICAL SECTION */
@@ -197,7 +200,6 @@ static void s_mqtt_client_shutdown(
             break;
         }
         default:
-            /* TODO: Probably an error? */
             break;
     }
 }
@@ -551,7 +553,6 @@ failed_init_mutex:
  * Connection Destroy
  ******************************************************************************/
 
-/* TODO: instead of destroy by user, probably better to use refcount instead. */
 void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection) {
 
     AWS_PRECONDITION(connection);
@@ -1970,7 +1971,6 @@ handle_error:
     return AWS_MQTT_CLIENT_REQUEST_ERROR;
 }
 
-/* TODO: Based on the state, we should block some calls from user */
 uint16_t aws_mqtt_resubscribe_existing_topics(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_suback_multi_fn *on_suback,
