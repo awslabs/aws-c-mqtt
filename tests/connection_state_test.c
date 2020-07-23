@@ -929,6 +929,6 @@ AWS_TEST_CASE_FIXTURE(
  * The race condition between the eventloop thread closes the connection and the main thread makes request could cause a
  * bug.
  * Solution: put a lock for the state of connection, protect it from accessing by multiple threads at the same time.
- * 
+ *
  * mqtt_connection_closes_while_making_requests
  */
