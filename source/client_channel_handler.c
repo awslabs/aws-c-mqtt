@@ -146,7 +146,7 @@ static int s_packet_handler_connack(
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted processing offline requests.", (void *)connection);
         /**
-         * TODO: if the clean_session is true, the pending requests should be cleaned up. 
+         * TODO: if the clean_session is true, the pending requests should be cleaned up.
          * And we probably need the implementation of clean_session to follow the spec.
          */
         if (!aws_linked_list_empty(&requests)) {
