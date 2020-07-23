@@ -585,6 +585,8 @@ int aws_mqtt_client_connection_set_will(
 
     struct aws_byte_buf local_topic_buf;
     struct aws_byte_buf local_payload_buf;
+    AWS_ZERO_STRUCT(local_topic_buf);
+    AWS_ZERO_STRUCT(local_topic_buf);
     struct aws_byte_buf topic_buf = aws_byte_buf_from_array(topic->ptr, topic->len);
     if (aws_byte_buf_init_copy(&local_topic_buf, connection->allocator, &topic_buf)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy will topic", (void *)connection);
