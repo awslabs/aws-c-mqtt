@@ -571,7 +571,7 @@ int aws_mqtt_client_connection_set_will(
     AWS_PRECONDITION(connection);
     AWS_PRECONDITION(topic);
 
-    bool error = true;
+    int result = AWS_OP_ERR;
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Setting last will with topic \"" PRInSTR "\"",
@@ -605,8 +605,8 @@ int aws_mqtt_client_connection_set_will(
     if (connection->will.topic.len) {
         AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Will has been set before, resetting it.", (void *)connection);
     }
-    /* Succeed, turn the error off. */
-    error = false;
+    /* Succeed. */
+    result = AWS_OP_SUCCESS;
 
     /* swap the local buffer with connection */
     struct aws_byte_buf temp = local_topic_buf;
@@ -620,7 +620,7 @@ cleanup:
     aws_byte_buf_clean_up(&local_topic_buf);
     aws_byte_buf_clean_up(&local_payload_buf);
 
-    return error ? AWS_OP_ERR : AWS_OP_SUCCESS;
+    return result;
 }
 
 int aws_mqtt_client_connection_set_login(
@@ -631,7 +631,7 @@ int aws_mqtt_client_connection_set_login(
     AWS_PRECONDITION(connection);
     AWS_PRECONDITION(username);
 
-    bool error = true;
+    int result = AWS_OP_ERR;
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting username and password", (void *)connection);
 
     struct aws_string *username_string = NULL;
@@ -655,8 +655,8 @@ int aws_mqtt_client_connection_set_login(
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: Login information has been set before, resetting it.", (void *)connection);
     }
-    /* Succeed, turn the error off. */
-    error = false;
+    /* Succeed. */
+    result = AWS_OP_SUCCESS;
 
     /* swap the local string with connection */
     struct aws_string *temp = username_string;
@@ -670,7 +670,7 @@ cleanup:
     aws_string_destroy_secure(username_string);
     aws_string_destroy_secure(password_string);
 
-    return error ? AWS_OP_ERR : AWS_OP_SUCCESS;
+    return result;
 }
 
 int aws_mqtt_client_connection_set_reconnect_timeout(
