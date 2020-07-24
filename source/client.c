@@ -622,7 +622,7 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
 
 /* To configure the connection, ensure the state is DISCONNECTED or CONNECTED */
 static int s_check_connection_state_for_configuration(struct aws_mqtt_client_connection *connection) {
-    int success = 1;
+    int result = AWS_OP_SUCCESS;
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
 
@@ -632,11 +632,11 @@ static int s_check_connection_state_for_configuration(struct aws_mqtt_client_con
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: The connection is not stable now. Not safe to configure the connection. Try again later.",
                 (void *)connection);
-            success = 0;
+            result = AWS_OP_ERR;
         }
         s_mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-    return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
+    return result;
 }
 
 int aws_mqtt_client_connection_set_will(
