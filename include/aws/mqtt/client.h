@@ -389,10 +389,10 @@ int aws_mqtt_client_connection_disconnect(
 /**
  * Subscribe to topic filters. on_publish will be called when a PUBLISH matching each topic_filter is received.
  *
- * \param[in] connection    The connection to subscribe on
- * \param[in] topics        An array_list of aws_mqtt_topic_subscriptions (NOT pointers) describing the requests.
- * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
- * \param[in] on_suback_ud  Passed to on_suback
+ * \param[in] connection        The connection to subscribe on
+ * \param[in] topic_filters     An array_list of aws_mqtt_topic_subscription (NOT pointers) describing the requests.
+ * \param[in] on_suback         Called when a SUBACK has been received from the server and the subscription is complete
+ * \param[in] on_suback_ud      Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0.
  */
