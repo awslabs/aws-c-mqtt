@@ -374,6 +374,8 @@ int aws_mqtt_client_connection_reconnect(
 
 /**
  * Closes the connection asynchronously, calls the on_disconnect callback.
+ * All uncompleted requests (publish/subscribe/unsubscribe) will be cancelled, regardless to the status of
+ * clean_session.
  *
  * \param[in] connection    The connection to close
  *

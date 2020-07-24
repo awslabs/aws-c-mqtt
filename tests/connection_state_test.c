@@ -917,6 +917,78 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
+ * CONNECT, force the server to hang up after a successful connection and block all CONNACKS, DISCONNECT while client is
+ * reconnecting. Resource and pending requests are cleaned up correctly
+ */
+static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .ping_timeout_ms = 10,
+        .keep_alive_time_secs = 1,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, 0);
+
+    /* shut it down and the client automatically reconnects.*/
+    aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
+    s_wait_for_interrupt_to_complete(state_test_data);
+
+    state_test_data->server_disconnect_completed = false;
+
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
+    struct aws_byte_cursor payload_2 = aws_byte_cursor_from_c_str("Test Message 2");
+
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 2;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    ASSERT_TRUE(
+        aws_mqtt_client_connection_publish(
+            state_test_data->mqtt_connection,
+            &pub_topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            false,
+            &payload_1,
+            s_on_op_complete,
+            state_test_data) > 0);
+    ASSERT_TRUE(
+        aws_mqtt_client_connection_publish(
+            state_test_data->mqtt_connection,
+            &pub_topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            false,
+            &payload_2,
+            s_on_op_complete,
+            state_test_data) > 0);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+    s_wait_for_ops_completed(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_disconnect_while_reconnecting,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_disconnect_while_reconnecting,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/**
  * TODO: Another race condition may cause the publish results differently due to our inconsistent retry police.
  * - If the connection closes before the publish, the publish will retry when the connect restores. It'll complete with
  * no error.

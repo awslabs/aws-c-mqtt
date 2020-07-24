@@ -52,6 +52,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                 err |= aws_mqtt_packet_connack_init(&conn_ack, false, AWS_MQTT_CONNECT_ACCEPTED);
                 err |= aws_mqtt_packet_connack_encode(&connack_msg->message_data, &conn_ack);
                 if (aws_channel_slot_send_message(testing_handler->slot, connack_msg, AWS_CHANNEL_DIR_WRITE)) {
+                    err |= 1;
                     AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "Failed to send connack with error %d", aws_last_error());
                 }
             }

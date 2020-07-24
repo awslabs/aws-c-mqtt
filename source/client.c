@@ -102,6 +102,8 @@ static void s_mqtt_client_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
     enum aws_mqtt_client_connection_state ori_state;
+    struct aws_linked_list pending_requests_to_clear;
+    aws_linked_list_init(&pending_requests_to_clear);
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
         ori_state = connection->synced_data.state;
@@ -114,6 +116,9 @@ static void s_mqtt_client_shutdown(
                 /* disconnect requested by user */
                 /* Successfully shutdown, so clear the outstanding requests */
                 aws_hash_table_clear(&connection->synced_data.outstanding_requests_table);
+                /* Pending requests are canceled as well, clean them up. No new requests will be added */
+                aws_linked_list_swap_contents(
+                    &connection->synced_data.pending_requests_list, &pending_requests_to_clear);
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
                 break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
@@ -161,7 +166,21 @@ static void s_mqtt_client_shutdown(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Disconnect completed, clearing request queue and calling callback",
                 (void *)connection);
-
+            /* clean up the pending_requests if it's not empty */
+            while (!aws_linked_list_empty(&pending_requests_to_clear)) {
+                struct aws_linked_list_node *node = aws_linked_list_pop_front(&pending_requests_to_clear);
+                struct aws_mqtt_outstanding_request *request =
+                    AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
+                /* Ensure the request is canceled, which should be done when outstanding_requests_table get cleared */
+                AWS_ASSERT(request->cancelled);
+                /* Fire the callback and clean up the memory, as the task for those requests will never be scheduled */
+                request->on_complete(
+                    request->connection,
+                    request->packet_id,
+                    AWS_ERROR_MQTT_DISCONNECTED_CONNECTION,
+                    request->on_complete_ud);
+                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+            }
             MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
             break;
         case AWS_MQTT_CLIENT_STATE_CONNECTING:
@@ -254,6 +273,21 @@ static void s_mqtt_client_init(
     if (error_code != AWS_OP_SUCCESS) {
         /* client shutdown already handles this case, so just call that. */
         s_mqtt_client_shutdown(bootstrap, error_code, channel, user_data);
+        return;
+    }
+
+    /* user request disconnect before the channel setted up, stop installing the slot and sending CONNECT. */
+    bool is_closing = false;
+
+    { /* BEGIN CRITICAL SECTION */
+        s_mqtt_connection_lock_synced_data(connection);
+        is_closing = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+        s_mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+    if (is_closing) {
+        /* It only happens when the user request disconnect during reconnecting, we don't need to fire any callback.
+         * The on_disconnect will be invoked as channel finish shutting down. */
+        aws_channel_shutdown(channel, AWS_ERROR_SUCCESS);
         return;
     }
 
@@ -574,8 +608,14 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     /* If the slot is not NULL, the connection is still connected, which should be prevented from calling this function
      */
     AWS_ASSERT(!connection->slot);
+    AWS_ASSERT(aws_linked_list_empty(&connection->synced_data.pending_requests_list));
+
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
 
+    /* If the reconnect_task isn't freed, free it */
+    if (connection->reconnect_task) {
+        aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+    }
     aws_string_destroy(connection->host_name);
 
     /* Clear the credentials */
