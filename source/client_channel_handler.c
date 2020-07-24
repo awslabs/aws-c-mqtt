@@ -172,11 +172,9 @@ static int s_packet_handler_publish(
         return AWS_OP_ERR;
     }
 
-    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_any_publish, &publish.topic_name, &publish.payload);
+    aws_mqtt_topic_tree_publish(&connection->subscriptions, &publish);
 
-    if (aws_mqtt_topic_tree_publish(&connection->subscriptions, &publish)) {
-        return AWS_OP_ERR;
-    }
+    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_any_publish, &publish.topic_name, &publish.payload);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,

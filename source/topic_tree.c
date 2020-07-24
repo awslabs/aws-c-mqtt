@@ -905,7 +905,7 @@ static void s_topic_tree_publish_do_recurse(
     }
 }
 
-int aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub) {
+void aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub) {
 
     AWS_PRECONDITION(tree);
     AWS_PRECONDITION(pub);
@@ -919,6 +919,4 @@ int aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct a
     struct aws_byte_cursor sub_part;
     AWS_ZERO_STRUCT(sub_part);
     s_topic_tree_publish_do_recurse(&sub_part, tree->root, pub);
-
-    return AWS_OP_SUCCESS;
 }
