@@ -662,7 +662,7 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
 
 /* To configure the connection, ensure the state is DISCONNECTED or CONNECTED */
 static int s_check_connection_state_for_configuration(struct aws_mqtt_client_connection *connection) {
-    int success = 1;
+    int result = AWS_OP_SUCCESS;
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
 
@@ -672,11 +672,11 @@ static int s_check_connection_state_for_configuration(struct aws_mqtt_client_con
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: The connection is not stable now. Not safe to configure the connection. Try again later.",
                 (void *)connection);
-            success = 0;
+            result = AWS_OP_ERR;
         }
         s_mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-    return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
+    return result;
 }
 
 int aws_mqtt_client_connection_set_will(
@@ -687,9 +687,12 @@ int aws_mqtt_client_connection_set_will(
     const struct aws_byte_cursor *payload) {
 
     AWS_PRECONDITION(connection);
+    AWS_PRECONDITION(topic);
     if (s_check_connection_state_for_configuration(connection)) {
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
+
+    int result = AWS_OP_ERR;
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Setting last will with topic \"" PRInSTR "\"",
@@ -701,8 +704,12 @@ int aws_mqtt_client_connection_set_will(
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
     }
 
+    struct aws_byte_buf local_topic_buf;
+    struct aws_byte_buf local_payload_buf;
+    AWS_ZERO_STRUCT(local_topic_buf);
+    AWS_ZERO_STRUCT(local_payload_buf);
     struct aws_byte_buf topic_buf = aws_byte_buf_from_array(topic->ptr, topic->len);
-    if (aws_byte_buf_init_copy(&connection->will.topic, connection->allocator, &topic_buf)) {
+    if (aws_byte_buf_init_copy(&local_topic_buf, connection->allocator, &topic_buf)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy will topic", (void *)connection);
         goto cleanup;
     }
@@ -711,18 +718,30 @@ int aws_mqtt_client_connection_set_will(
     connection->will.retain = retain;
 
     struct aws_byte_buf payload_buf = aws_byte_buf_from_array(payload->ptr, payload->len);
-    if (aws_byte_buf_init_copy(&connection->will.payload, connection->allocator, &payload_buf)) {
+    if (aws_byte_buf_init_copy(&local_payload_buf, connection->allocator, &payload_buf)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy will body", (void *)connection);
         goto cleanup;
     }
 
-    return AWS_OP_SUCCESS;
+    if (connection->will.topic.len) {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Will has been set before, resetting it.", (void *)connection);
+    }
+    /* Succeed. */
+    result = AWS_OP_SUCCESS;
+
+    /* swap the local buffer with connection */
+    struct aws_byte_buf temp = local_topic_buf;
+    local_topic_buf = connection->will.topic;
+    connection->will.topic = temp;
+    temp = local_payload_buf;
+    local_payload_buf = connection->will.payload;
+    connection->will.payload = temp;
 
 cleanup:
-    aws_byte_buf_clean_up(&connection->will.topic);
-    aws_byte_buf_clean_up(&connection->will.payload);
+    aws_byte_buf_clean_up(&local_topic_buf);
+    aws_byte_buf_clean_up(&local_payload_buf);
 
-    return AWS_OP_ERR;
+    return result;
 }
 
 int aws_mqtt_client_connection_set_login(
@@ -735,24 +754,47 @@ int aws_mqtt_client_connection_set_login(
     if (s_check_connection_state_for_configuration(connection)) {
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
+
+    int result = AWS_OP_ERR;
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting username and password", (void *)connection);
 
-    connection->username = aws_string_new_from_array(connection->allocator, username->ptr, username->len);
-    if (!connection->username) {
+    struct aws_string *username_string = NULL;
+    struct aws_string *password_string = NULL;
+
+    username_string = aws_string_new_from_array(connection->allocator, username->ptr, username->len);
+    if (!username_string) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy username", (void *)connection);
-        return AWS_OP_ERR;
+        goto cleanup;
     }
 
     if (password) {
-        connection->password = aws_string_new_from_array(connection->allocator, password->ptr, password->len);
-        if (!connection->password) {
+        password_string = aws_string_new_from_array(connection->allocator, password->ptr, password->len);
+        if (!password_string) {
             AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy password", (void *)connection);
-            aws_string_destroy(connection->username);
-            return AWS_OP_ERR;
+            goto cleanup;
         }
     }
 
-    return AWS_OP_SUCCESS;
+    if (connection->username) {
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT, "id=%p: Login information has been set before, resetting it.", (void *)connection);
+    }
+    /* Succeed. */
+    result = AWS_OP_SUCCESS;
+
+    /* swap the local string with connection */
+    struct aws_string *temp = username_string;
+    username_string = connection->username;
+    connection->username = temp;
+    temp = password_string;
+    password_string = connection->password;
+    connection->password = temp;
+
+cleanup:
+    aws_string_destroy_secure(username_string);
+    aws_string_destroy_secure(password_string);
+
+    return result;
 }
 
 int aws_mqtt_client_connection_set_reconnect_timeout(

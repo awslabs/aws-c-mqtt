@@ -164,10 +164,8 @@ int aws_mqtt_topic_tree_remove(struct aws_mqtt_topic_tree *tree, const struct aw
  *
  * \param[in] tree  The tree to publish on.
  * \param[in] pub   The publish packet to dispatch. The topic MUST NOT contain wildcards.
- *
- * \returns AWS_OP_SUCCESS on successful publish, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-int AWS_MQTT_API
+void AWS_MQTT_API
     aws_mqtt_topic_tree_publish(const struct aws_mqtt_topic_tree *tree, struct aws_mqtt_packet_publish *pub);
 
 #endif /* AWS_MQTT_PRIVATE_TOPIC_TREE_H */

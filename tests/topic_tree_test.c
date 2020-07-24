@@ -160,13 +160,13 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
     aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a_a, 1, s_topic_a_a_a);
 
     times_called = 0;
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    aws_mqtt_topic_tree_publish(&tree, &publish);
     ASSERT_INT_EQUALS(times_called, 0);
 
     publish.topic_name = s_topic_a_a_b;
 
     times_called = 0;
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    aws_mqtt_topic_tree_publish(&tree, &publish);
     ASSERT_INT_EQUALS(times_called, 1);
 
     const struct aws_byte_cursor not_in_tree = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("not/in/tree");
@@ -244,7 +244,7 @@ static int s_mqtt_topic_tree_duplicate_transactions_fn(struct aws_allocator *all
     aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a, 1, s_topic_a_a);
 
     times_called = 0;
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    aws_mqtt_topic_tree_publish(&tree, &publish);
     ASSERT_INT_EQUALS(times_called, 1);
 
     aws_mqtt_topic_tree_clean_up(&tree);
@@ -284,7 +284,7 @@ static int s_mqtt_topic_tree_transactions_fn(struct aws_allocator *allocator, vo
     aws_mqtt_packet_publish_init(&publish, false, AWS_MQTT_QOS_AT_MOST_ONCE, false, s_topic_a_a, 1, s_topic_a_a);
 
     times_called = 0;
-    ASSERT_SUCCESS(aws_mqtt_topic_tree_publish(&tree, &publish));
+    aws_mqtt_topic_tree_publish(&tree, &publish);
     ASSERT_INT_EQUALS(times_called, 1);
 
     aws_mqtt_topic_tree_clean_up(&tree);
