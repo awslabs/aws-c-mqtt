@@ -1540,6 +1540,7 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
     aws_mqtt_client_connection_destroy(state_test_data->mqtt_connection);
+    state_test_data->mqtt_connection = NULL;
     s_wait_for_ops_completed(state_test_data);
 
     return AWS_OP_SUCCESS;
