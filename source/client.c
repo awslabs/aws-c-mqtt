@@ -116,9 +116,6 @@ static void s_mqtt_client_shutdown(
                 /* disconnect requested by user */
                 /* Successfully shutdown, so clear the outstanding requests */
                 aws_hash_table_clear(&connection->synced_data.outstanding_requests_table);
-                /* Pending requests are canceled as well, clean them up. No new requests will be added */
-                aws_linked_list_swap_contents(
-                    &connection->synced_data.pending_requests_list, &pending_requests_to_clear);
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
                 break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
@@ -166,21 +163,6 @@ static void s_mqtt_client_shutdown(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Disconnect completed, clearing request queue and calling callback",
                 (void *)connection);
-            /* clean up the pending_requests if it's not empty */
-            while (!aws_linked_list_empty(&pending_requests_to_clear)) {
-                struct aws_linked_list_node *node = aws_linked_list_pop_front(&pending_requests_to_clear);
-                struct aws_mqtt_outstanding_request *request =
-                    AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
-                /* Ensure the request is canceled, which should be done when outstanding_requests_table get cleared */
-                AWS_ASSERT(request->cancelled);
-                /* Fire the callback and clean up the memory, as the task for those requests will never be scheduled */
-                request->on_complete(
-                    request->connection,
-                    request->packet_id,
-                    AWS_ERROR_MQTT_DISCONNECTED_CONNECTION,
-                    request->on_complete_ud);
-                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
-            }
             MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
             break;
         case AWS_MQTT_CLIENT_STATE_CONNECTING:
@@ -588,8 +570,10 @@ failed_init_mutex:
  ******************************************************************************/
 
 void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection) {
-
-    AWS_PRECONDITION(connection);
+    AWS_PRECONDITION(!connection || connection->allocator);
+    if (!connection) {
+        return;
+    }
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
 
@@ -608,7 +592,16 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     /* If the slot is not NULL, the connection is still connected, which should be prevented from calling this function
      */
     AWS_ASSERT(!connection->slot);
-    AWS_ASSERT(aws_linked_list_empty(&connection->synced_data.pending_requests_list));
+    /* clean up the pending_requests if it's not empty */
+    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list);
+        struct aws_mqtt_outstanding_request *request =
+            AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
+        /* Fire the callback and clean up the memory, as the connection get destoried. */
+        request->on_complete(
+            request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTORIED, request->on_complete_ud);
+        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+    }
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
 

@@ -145,8 +145,8 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
                 "Mqtt operation interrupted by connection shutdown."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_DISCONNECTED_CONNECTION,
-                "Connection has been requested to disconnect."),
+                AWS_ERROR_MQTT_CONNECTION_DESTORIED,
+                "Destory connection has been called, all uncompleted requests will fail."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

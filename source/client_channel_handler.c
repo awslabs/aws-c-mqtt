@@ -829,14 +829,6 @@ uint16_t mqtt_create_request(
     bool connected = true;
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
-        if (connection->synced_data.state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
-            s_mqtt_connection_unlock_synced_data(connection);
-            /* User requested disconnecting, ensure no new requests are made */
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT, "id=%p: Disconnect requested, stop creating any new request.", (void *)connection);
-            aws_raise_error(AWS_ERROR_MQTT_DISCONNECTED_CONNECTION);
-            return 0;
-        }
 
         next_request = aws_memory_pool_acquire(&connection->synced_data.requests_pool);
         if (!next_request) {
