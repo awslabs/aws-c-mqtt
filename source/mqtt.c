@@ -147,6 +147,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONNECTION_DESTORIED,
                 "Destory connection has been called, all uncompleted requests will fail."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECTION_DISCONNECTING,
+                "Connection is disconnecting, it's not safe to do this operation until the connection finishes shutdown."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
