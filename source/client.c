@@ -256,7 +256,7 @@ static void s_mqtt_client_init(
         return;
     }
 
-    /* user request disconnect before the channel has been set up, stop installing the slot and sending CONNECT. */
+    /* user requested disconnect before the channel has been set up. Stop installing the slot and sending CONNECT. */
     bool failed_create_slot = false;
 
     { /* BEGIN CRITICAL SECTION */
@@ -268,7 +268,7 @@ static void s_mqtt_client_init(
             aws_channel_shutdown(channel, AWS_ERROR_SUCCESS);
             return;
         }
-        /* Create the slot and handler */
+        /* Create the slot */
         connection->slot = aws_channel_slot_new(channel);
         if (!connection->slot) {
             failed_create_slot = true;
@@ -276,6 +276,7 @@ static void s_mqtt_client_init(
         s_mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
+    /* intall the slot and handler */
     if (failed_create_slot) {
 
         AWS_LOGF_ERROR(

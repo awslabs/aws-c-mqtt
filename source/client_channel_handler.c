@@ -96,12 +96,11 @@ static int s_packet_handler_connack(
     aws_linked_list_init(&requests);
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
-        /* User requested disconnect, don't do anything */
+        /* User requested disconnect, don't do anything. The channel has been scheduled to shutdown. */
         if (connection->synced_data.state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            s_mqtt_connection_unlock_synced_data(connection);
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT, "id=%p: User has requested disconnect, dropping connection", (void *)connection);
-            /* TODO: should we shutdown the channel as well? */
-            s_mqtt_connection_unlock_synced_data(connection);
             return AWS_OP_SUCCESS;
         }
 
