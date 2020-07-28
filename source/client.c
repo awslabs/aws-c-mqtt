@@ -102,8 +102,6 @@ static void s_mqtt_client_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
     enum aws_mqtt_client_connection_state ori_state;
-    struct aws_linked_list pending_requests_to_clear;
-    aws_linked_list_init(&pending_requests_to_clear);
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
         ori_state = connection->synced_data.state;
@@ -258,38 +256,62 @@ static void s_mqtt_client_init(
         return;
     }
 
-    /* user request disconnect before the channel setted up, stop installing the slot and sending CONNECT. */
-    bool is_closing = false;
+    /* user request disconnect before the channel has been set up, stop installing the slot and sending CONNECT. */
+    bool failed_create_slot = false;
 
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
-        is_closing = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            /* It only happens when the user request disconnect during reconnecting, we don't need to fire any callback.
+             * The on_disconnect will be invoked as channel finish shutting down. */
+            s_mqtt_connection_unlock_synced_data(connection);
+            aws_channel_shutdown(channel, AWS_ERROR_SUCCESS);
+            return;
+        }
+        /* Create the slot and handler */
+        connection->slot = aws_channel_slot_new(channel);
+        if (!connection->slot) {
+            failed_create_slot = true;
+        }
         s_mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-    if (is_closing) {
-        /* It only happens when the user request disconnect during reconnecting, we don't need to fire any callback.
-         * The on_disconnect will be invoked as channel finish shutting down. */
-        aws_channel_shutdown(channel, AWS_ERROR_SUCCESS);
-        return;
+
+    if (failed_create_slot) {
+
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to create new slot, something has gone horribly wrong, error %d (%s).",
+            (void *)connection,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        goto handle_error;
+    }
+
+    if (aws_channel_slot_insert_end(channel, connection->slot)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to insert slot into channel %p, error %d (%s).",
+            (void *)connection,
+            (void *)channel,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        goto handle_error;
+    }
+
+    if (aws_channel_slot_set_handler(connection->slot, &connection->handler)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to set MQTT handler into slot on channel %p, error %d (%s).",
+            (void *)connection,
+            (void *)channel,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+
+        goto handle_error;
     }
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: Connection successfully opened, sending CONNECT packet", (void *)connection);
-
-    /* Create the slot and handler */
-    connection->slot = aws_channel_slot_new(channel);
-
-    if (!connection->slot) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Failed to create new slot, something has gone horribly wrong",
-            (void *)connection);
-        aws_channel_shutdown(channel, aws_last_error());
-        return;
-    }
-
-    aws_channel_slot_insert_end(channel, connection->slot);
-    aws_channel_slot_set_handler(connection->slot, &connection->handler);
 
     struct aws_channel_task *connack_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_channel_task));
     if (!connack_task) {
@@ -300,7 +322,16 @@ static void s_mqtt_client_init(
     aws_channel_task_init(connack_task, s_connack_received_timeout, connection, "mqtt_connack_timeout");
 
     uint64_t now = 0;
-    aws_channel_current_clock_time(channel, &now);
+    if (aws_channel_current_clock_time(channel, &now)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "static: Failed to setting MQTT handler into slot on channel %p, error %d (%s).",
+            (void *)channel,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+
+        goto handle_error;
+    }
     now += connection->request_timeout_ns;
     aws_channel_schedule_task_future(channel, connack_task, now);
 
@@ -599,7 +630,7 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
             AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
         /* Fire the callback and clean up the memory, as the connection get destoried. */
         request->on_complete(
-            request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTORIED, request->on_complete_ud);
+            request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
         aws_memory_pool_release(&connection->synced_data.requests_pool, request);
     }
 
@@ -1173,6 +1204,16 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_connection_options *connection_options) {
+
+    /* TODO: Do we need to support resuming the connection if user connect to the same connection & endpoint and the
+     * clean_session is false?
+     * If not, the broker will resume the connection in this case, and we pretend we are making a new connection, which
+     * may cause some confusing behavior. This is basically what we have now. NOTE: The topic_tree is living with the
+     * connection right now, which is really confusing (probably a bug).
+     * If yes, an edge case will be: User disconnected from the connection with clean_session
+     * being false, then connect to another endpoint with the same connection object, we probably need to clear all
+     * those states from last connection and create a new "connection". Problem is what if user finish the second
+     * connection and reconnect to the first endpoint. There is no way for us to resume the connection in this case. */
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Opening connection", (void *)connection);
     { /* BEGIN CRITICAL SECTION */

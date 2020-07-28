@@ -169,9 +169,10 @@ struct aws_mqtt_topic_subscription {
  *                           within this amount of time (milliseconds). If you specify 0, a default value of 3 seconds
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
- *                           and OS version. This duration must be shorter than keep_alive_time_secs.
- * on_connection_complete    The callback to fire when the connection attempt completes user_data
- *                           Passed to the userdata param of on_connection_complete
+ *                           and OS version. This duration must be shorter than keep_alive_time_secs. It's also for
+ *                           reattempt other requests. 
+ * on_connection_complete    The callback to fire when the connection attempt completes
+ * user_data Passed to the userdata param of on_connection_complete
  */
 struct aws_mqtt_connection_options {
     struct aws_byte_cursor host_name;

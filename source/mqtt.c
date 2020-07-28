@@ -143,10 +143,10 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 "Resubscribe not necessary, client is not subscribed to any topics."),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
-                "Mqtt operation interrupted by connection shutdown."),
+                "MQTT operation interrupted by connection shutdown."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONNECTION_DESTORIED,
-                "Destory connection has been called, all uncompleted requests will fail."),
+                AWS_ERROR_MQTT_CONNECTION_DESTROYED,
+                "Connection has started destroying process, all uncompleted requests will fail."),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONNECTION_DISCONNECTING,
                 "Connection is disconnecting, it's not safe to do this operation until the connection finishes shutdown."),
