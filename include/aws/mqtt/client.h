@@ -171,7 +171,7 @@ struct aws_mqtt_topic_subscription {
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
  *                           and OS version. This duration must be shorter than keep_alive_time_secs. It's also for
  *                           reattempt other requests.
- * on_connection_complete    The callback to fire when the connection attempt completes user_data 
+ * on_connection_complete    The callback to fire when the connection attempt completes user_data
  *                           Passed to the userdata param of on_connection_complete
  */
 struct aws_mqtt_connection_options {
