@@ -641,6 +641,16 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
             "%" PRIu16 ".",
             (void *)task,
             request->packet_id);
+        /**
+         * TODO:
+         * 1. If the request doesn't need to retry, we should cancel the request and complete it with error, since we
+         * never really send it, in this case.
+         * 2. If the request need to retry, it should not be just cancelled and completed. Probably needs to be pushed
+         * into pending list, not sure it will break relues like "When it re-sends any PUBLISH packets, it MUST re-send
+         * them in the order in which the original PUBLISH packets were sent (this applies to QoS 1 and QoS 2 messages)
+         * [MQTT-4.6.0-1]" or not.
+         */
+
         /*
          * If the task is cancelled, assume safe shutdown is in progress.
          * There are two distinct situations where requests end up with a cancelled task:
@@ -834,6 +844,8 @@ uint16_t mqtt_create_request(
             return 0;
         }
         memset(next_request, 0, sizeof(struct aws_mqtt_outstanding_request));
+        /* TODO: don't put publish QoS 0 into the table or find the unused packet id for it. It's just a waste of
+         * resource */
         struct aws_hash_element *elem = NULL;
         uint16_t next_id = 0;
         do {

@@ -172,7 +172,12 @@ struct aws_mqtt_topic_subscription {
  *                           within this amount of time (milliseconds). If you specify 0, a default value of 3 seconds
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
- *                           and OS version. This duration must be shorter than keep_alive_time_secs.
+ *                           and OS version. This duration must be shorter than keep_alive_time_secs. It's also for
+ *                           reattempt other requests.
+ * TODO: what do you mean "re-established". The implementation we did is we are going to retry the requests
+ * (includes SUBSCRIBE/PUBLISH/PINGREQ/UNSUBSCRIBE) after the response is not received within this amount of time.
+ * Besides of that, if the CONACK is not received within this time, we will shutdown the connection.
+ *
  * on_connection_complete    The callback to fire when the connection attempt completes user_data
  *                           Passed to the userdata param of on_connection_complete
  */
@@ -377,6 +382,8 @@ int aws_mqtt_client_connection_reconnect(
 
 /**
  * Closes the connection asynchronously, calls the on_disconnect callback.
+ * All uncompleted requests (publish/subscribe/unsubscribe) will be cancelled, regardless to the status of
+ * clean_session. DISCONNECT packet will be sent, which will delete the will message from server.
  *
  * \param[in] connection    The connection to close
  *
