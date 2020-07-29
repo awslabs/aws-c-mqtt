@@ -150,6 +150,8 @@ struct aws_mqtt_client_connection {
         bool waiting_on_ping_response;
 
         /* Keeps track of all open subscriptions */
+        /* TODO: The subscriptions are liveing with the connection object. So if the connection disconnect from one
+         * endpoint and connect with another endpoint, the subscription tree will still be the same as before. */
         struct aws_mqtt_topic_tree subscriptions;
 
     } thread_data;

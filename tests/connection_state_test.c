@@ -1480,13 +1480,6 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * TODO: Another race condition may cause the publish results differently due to our inconsistent retry police.
- * - If the connection closes before the publish, the publish will retry when the connect restores. It'll complete with
- * no error.
- * - If the the task scheduled before the connection closes completely, the task will be cancelled. And the publish will
- * complete with error.
- * We probably need a more consistent retry police.
- *
  * Regression test: Once upon a time there was a bug caused by race condition on the state of connection.
  * The scenario is the server/broker closes the connection, while the client is making requests.
  * The race condition between the eventloop thread closes the connection and the main thread makes request could cause a
@@ -1495,3 +1488,60 @@ AWS_TEST_CASE_FIXTURE(
  *
  * mqtt_connection_closes_while_making_requests
  */
+
+static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .ping_timeout_ms = 10,
+        .keep_alive_time_secs = 1,
+    };
+
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    state_test_data->expected_ops_completed = 1;
+
+    /* shutdown the channel for some error */
+    aws_channel_shutdown(state_test_data->server_channel, AWS_ERROR_INVALID_STATE);
+
+    /* While the shutdown is still in process, making a publish request */
+    /* It may not 100% trigger the crash, the crash only happens when the s_mqtt_client_shutdown and mqtt_create_request
+     * happen at the same time. Like the slot is removed by shutdown, and the create request still think the slot is
+     * there and try to access it. Crash happens. It's not possible to trigger the crash 100% without changing the
+     * implementation. */
+    uint16_t packet_id_1 = aws_mqtt_client_connection_publish(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload_1,
+        s_on_op_complete,
+        state_test_data);
+    ASSERT_TRUE(packet_id_1 > 0);
+
+    s_wait_for_ops_completed(state_test_data);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_closes_while_making_requests,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_closes_while_making_requests_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)

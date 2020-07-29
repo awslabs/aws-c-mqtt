@@ -129,14 +129,14 @@ static void s_mqtt_client_shutdown(
 
                 break;
         }
+        /* Always clear slot, as that's what's been shutdown */
+        if (connection->slot) {
+            aws_channel_slot_remove(connection->slot);
+            connection->slot = NULL;
+        }
+
         s_mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-
-    /* Always clear slot, as that's what's been shutdown */
-    if (connection->slot) {
-        aws_channel_slot_remove(connection->slot);
-        connection->slot = NULL;
-    }
 
     /* If there's no error code and this wasn't user-requested, set the error code to something useful */
     if (error_code == AWS_ERROR_SUCCESS) {
@@ -576,6 +576,10 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     AWS_ASSERT(!connection->slot);
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
 
+    /* If the reconnect_task isn't freed, free it */
+    if (connection->reconnect_task) {
+        aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+    }
     aws_string_destroy(connection->host_name);
 
     /* Clear the credentials */
@@ -1140,6 +1144,16 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_connection_options *connection_options) {
+
+    /* TODO: Do we need to support resuming the connection if user connect to the same connection & endpoint and the
+     * clean_session is false?
+     * If not, the broker will resume the connection in this case, and we pretend we are making a new connection, which
+     * may cause some confusing behavior. This is basically what we have now. NOTE: The topic_tree is living with the
+     * connection right now, which is really confusing.
+     * If yes, an edge case will be: User disconnected from the connection with clean_session
+     * being false, then connect to another endpoint with the same connection object, we probably need to clear all
+     * those states from last connection and create a new "connection". Problem is what if user finish the second
+     * connection and reconnect to the first endpoint. There is no way for us to resume the connection in this case. */
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Opening connection", (void *)connection);
     { /* BEGIN CRITICAL SECTION */

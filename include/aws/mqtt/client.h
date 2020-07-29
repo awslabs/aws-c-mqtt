@@ -174,9 +174,11 @@ struct aws_mqtt_topic_subscription {
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
  *                           and OS version. This duration must be shorter than keep_alive_time_secs. It's also for
  *                           reattempt other requests.
- * TODO: what do you mean "re-established". The implementation we did is we are going to retry the requests
- * (includes SUBSCRIBE/PUBLISH/PINGREQ/UNSUBSCRIBE) after the response is not received within this amount of time.
- * Besides of that, if the CONACK is not received within this time, we will shutdown the connection.
+ * TODO: The documentation is not clear. it's probably more clear to be named as request_timeout_ms, since we are using
+ * this for all the requests that need a response.
+ * Note: For CONNECT, if the response is not received within this amount of time, the connection will shutdown, and
+ * reconnect will not happen automatically. For PINGREQ, the connection will shutdown and try to reconnect
+ * automactically. For other requests, they will be resent in this case.
  *
  * on_connection_complete    The callback to fire when the connection attempt completes user_data
  *                           Passed to the userdata param of on_connection_complete
