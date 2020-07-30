@@ -1530,6 +1530,7 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
         state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
+    s_wait_for_reconnect_to_complete(state_test_data);
     s_wait_for_ops_completed(state_test_data);
 
     ASSERT_SUCCESS(
