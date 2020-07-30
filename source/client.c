@@ -450,6 +450,11 @@ static void s_outstanding_request_destroy(void *item) {
     } else {
         /* Signal task to clean up request */
         request->cancelled = true;
+        if (!request->completed) {
+            request->on_complete(
+                request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_SHUTDOWN, request->on_complete_ud);
+            request->completed = true;
+        }
     }
 }
 
