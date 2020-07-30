@@ -576,6 +576,17 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     AWS_ASSERT(!connection->slot);
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
 
+    /* clean up the pending_requests if it's not empty */
+    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list);
+        struct aws_mqtt_outstanding_request *request =
+            AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
+        /* Fire the callback and clean up the memory, as the connection get destoried. */
+        request->on_complete(
+            request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
+        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+    }
+
     /* If the reconnect_task isn't freed, free it */
     if (connection->reconnect_task) {
         aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
