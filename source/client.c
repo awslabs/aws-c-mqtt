@@ -215,19 +215,15 @@ static void s_connack_received_timeout(struct aws_channel_task *channel_task, vo
     struct aws_mqtt_client_connection *connection = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        bool waiting_for_connack = false;
         { /* BEGIN CRITICAL SECTION */
             s_mqtt_connection_lock_synced_data(connection);
             if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTING ||
                 connection->synced_data.state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
-                waiting_for_connack = true;
+                AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt CONNACK response timeout detected", (void *)connection);
+                aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
             }
             s_mqtt_connection_unlock_synced_data(connection);
         } /* END CRITICAL SECTION */
-        if (waiting_for_connack) {
-            AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt CONNACK response timeout detected", (void *)connection);
-            aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
-        }
     }
 
     aws_mem_release(connection->allocator, channel_task);
@@ -1339,10 +1335,10 @@ int aws_mqtt_client_connection_disconnect(
 
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED &&
             connection->synced_data.state != AWS_MQTT_CLIENT_STATE_RECONNECTING) {
+            s_mqtt_connection_unlock_synced_data(connection);
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT_CLIENT, "id=%p: Connection is not open, and may not be closed", (void *)connection);
             aws_raise_error(AWS_ERROR_MQTT_NOT_CONNECTED);
-            s_mqtt_connection_unlock_synced_data(connection);
             return AWS_OP_ERR;
         }
         connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;

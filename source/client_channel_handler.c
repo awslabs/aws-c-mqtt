@@ -98,9 +98,9 @@ static int s_packet_handler_connack(
         s_mqtt_connection_lock_synced_data(connection);
         /* User requested disconnect, don't do anything */
         if (connection->synced_data.state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            s_mqtt_connection_unlock_synced_data(connection);
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT, "id=%p: User has requested disconnect, dropping connection", (void *)connection);
-            s_mqtt_connection_unlock_synced_data(connection);
             return AWS_OP_SUCCESS;
         }
 
@@ -366,21 +366,21 @@ static int s_process_mqtt_packet(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_packet_type packet_type,
     struct aws_byte_cursor packet) {
-    bool connecting;
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
-        connecting = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTING;
+        /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTING &&
+            packet_type != AWS_MQTT_PACKET_CONNACK) {
+            s_mqtt_connection_unlock_synced_data(connection);
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: First message received from the server was not a CONNACK. Terminating connection.",
+                (void *)connection);
+            aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
+            return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+        }
         s_mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-    /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
-    if (connecting && packet_type != AWS_MQTT_PACKET_CONNACK) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: First message received from the server was not a CONNACK. Terminating connection.",
-            (void *)connection);
-        aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
-        return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
-    }
 
     if (AWS_UNLIKELY(packet_type > AWS_MQTT_PACKET_DISCONNECT || packet_type < AWS_MQTT_PACKET_CONNECT)) {
         AWS_LOGF_ERROR(
@@ -948,23 +948,19 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     struct aws_mqtt_client_connection *connection = arg;
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Doing disconnect", (void *)connection);
-    bool disconnecting;
     { /* BEGIN CRITICAL SECTION */
         s_mqtt_connection_lock_synced_data(connection);
-        disconnecting = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+        /* If there is an outstanding reconnect task, cancel it */
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
+            aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
+            /* If the reconnect_task isn't scheduled, free it */
+            if (connection->reconnect_task && !connection->reconnect_task->task.timestamp) {
+                aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+            }
+            connection->reconnect_task = NULL;
+        }
         s_mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-    /* If there is an outstanding reconnect task, cancel it */
-    if (disconnecting && connection->reconnect_task) {
-        aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
-
-        /* If the reconnect_task isn't scheduled, free it */
-        if (connection->reconnect_task && !connection->reconnect_task->task.timestamp) {
-            aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
-        }
-
-        connection->reconnect_task = NULL;
-    }
 
     if (connection->slot && connection->slot->channel) {
         aws_channel_shutdown(connection->slot->channel, task->error_code);
