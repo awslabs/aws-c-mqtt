@@ -337,7 +337,7 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     void *on_resumed_ud);
 
 /**
- * Sets the callback to call whenever ANY publish packet is received.
+ * Sets the callback to call whenever ANY publish packet is received. Only safe to set when connection is not connected.
  *
  * \param[in] connection        The connection object
  * \param[in] on_any_publish    The function to call when a publish is received (pass NULL to unset)

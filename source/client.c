@@ -630,7 +630,7 @@ static int s_check_connection_state_for_configuration(struct aws_mqtt_client_con
 
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
             connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
-            AWS_LOGF_WARN(
+            AWS_LOGF_ERROR(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
                 "pending operation completes.",
@@ -809,10 +809,21 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
     void *on_any_publish_ud) {
 
     AWS_PRECONDITION(connection);
-    /* It's not nesseccary to check the state here. But to keep the consistence. */
-    if (s_check_connection_state_for_configuration(connection)) {
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
+            mqtt_connection_unlock_synced_data(connection);
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Connection is connected, publishes may arrive anytime. Unable to set publish handler until "
+                "offline.",
+                (void *)connection);
+            return aws_raise_error(AWS_ERROR_INVALID_STATE);
+        }
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting on_any_publish handler", (void *)connection);
 
     connection->on_any_publish = on_any_publish;
