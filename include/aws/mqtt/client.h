@@ -249,7 +249,7 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
  * \param[in] connection    The connection object
  * \param[in] topic         The topic to publish the will on
  * \param[in] qos           The QoS to publish the will with
- * \param[in] retain        The retain flag the will with
+ * \param[in] retain        The retain flag to publish the will with
  * \param[in] payload       The data if the will message
  */
 AWS_MQTT_API
@@ -473,7 +473,6 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
  * \param[in] on_suback_ud  Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0 (and aws_last_error() will be set).
- * Error AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE is set if there were no topics to resubscribe to.
  */
 AWS_MQTT_API
 uint16_t aws_mqtt_resubscribe_existing_topics(
