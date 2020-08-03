@@ -447,7 +447,7 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
 
     struct aws_array_list received_messages = testing_handler->received_messages;
     size_t length = aws_array_list_length(&received_messages);
-    if(testing_handler->decoded_index >= length) {
+    if (testing_handler->decoded_index >= length) {
         AWS_LOGF_ERROR(MOCK_LOG_SUBJECT, "server, no new packet received. Stop decoding.");
         return AWS_OP_ERR;
     }
