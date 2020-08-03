@@ -79,13 +79,13 @@ void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_
 /* Wait for puback_count PUBACK packages from client */
 void mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *handler, size_t puback_count);
 
-/* Getters for decoded packets, call mqtt_mock_server_decoder_packets first. */
+/* Getters for decoded packets, call mqtt_mock_server_decode_packets first. */
 size_t mqtt_mock_server_decoded_packets_count(struct aws_channel_handler *handler);
 struct mqtt_decoded_packet *mqtt_mock_server_get_decoded_packet(struct aws_channel_handler *handler, size_t i);
 struct mqtt_decoded_packet *mqtt_mock_server_get_latest_decoded_packet(struct aws_channel_handler *handler);
 
 /* Run all received messages through, and decode the messages. */
-int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler);
+int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler);
 
 /* this is only safe to call when not attached to a channel. */
 struct aws_array_list *mqtt_mock_server_get_received_messages(struct aws_channel_handler *handler);

@@ -442,11 +442,15 @@ struct mqtt_decoded_packet *mqtt_mock_server_get_latest_decoded_packet(struct aw
     return mqtt_mock_server_get_decoded_packet(handler, packet_count - 1);
 }
 
-int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
+int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 
     struct aws_array_list received_messages = testing_handler->received_messages;
     size_t length = aws_array_list_length(&received_messages);
+    if(testing_handler->decoded_index >= length) {
+        AWS_LOGF_ERROR(MOCK_LOG_SUBJECT, "server, no new packet received. Stop decoding.");
+        return AWS_OP_ERR;
+    }
     for (size_t index = testing_handler->decoded_index; index < length; index++) {
         struct aws_byte_buf received_message = {0};
         ASSERT_SUCCESS(aws_array_list_get_at(&received_messages, &received_message, index));
@@ -538,6 +542,6 @@ int mqtt_mock_server_decoder_packets(struct aws_channel_handler *handler) {
 
         ASSERT_SUCCESS(aws_array_list_push_back(&testing_handler->packets, &packet));
     }
-    testing_handler->decoded_index = length - 1;
+    testing_handler->decoded_index = length;
     return AWS_OP_SUCCESS;
 }

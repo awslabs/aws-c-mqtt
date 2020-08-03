@@ -1413,7 +1413,7 @@ static void s_on_publish_client_wrapper(
     task_topic->request.on_publish(task_topic->connection, topic, payload, task_topic->request.on_publish_ud);
 }
 
-static void s_on_topic_clean_up(void *userdata) {
+static void s_task_topic_clean_up(void *userdata) {
 
     struct subscribe_task_topic *task_topic = userdata;
 
@@ -1475,7 +1475,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
                     topic->filter,
                     topic->request.qos,
                     s_on_publish_client_wrapper,
-                    s_on_topic_clean_up,
+                    s_task_topic_clean_up,
                     topic)) {
 
                 goto handle_error;
@@ -1824,7 +1824,7 @@ static enum aws_mqtt_client_request_state s_subscribe_local_send(
             topic->filter,
             topic->request.qos,
             s_on_publish_client_wrapper,
-            s_on_topic_clean_up,
+            s_task_topic_clean_up,
             topic)) {
 
         return AWS_MQTT_CLIENT_REQUEST_ERROR;
@@ -1949,6 +1949,7 @@ static bool s_reconnect_resub_iterator(const struct aws_byte_cursor *topic, enum
     sub.topic = *topic;
     sub.qos = qos;
     task_topic->request = sub;
+    task_topic->connection = task_arg->connection;
 
     aws_array_list_push_back(&task_arg->topics, &task_topic);
 
@@ -2005,6 +2006,9 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
             if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->request.topic, topic->request.qos)) {
                 goto handle_error;
             }
+            /* We need to cleanup the subscribe_task_topic, since they will not be inserted into the topic tree. We take
+             * the ownership to clean it up */
+            s_task_topic_clean_up(topic);
         }
     }
 
