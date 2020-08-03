@@ -172,8 +172,9 @@ struct aws_mqtt_topic_subscription {
  *                           within this amount of time (milliseconds). If you specify 0, a default value of 3 seconds
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
- *                           and OS version. This duration must be shorter than keep_alive_time_secs. It's also for
- *                           reattempt other requests.
+ *                           and OS version. This duration must be shorter than keep_alive_time_secs. It is also used to
+ *                           re-attempt requests with qos > 0 if they are not ACKed in time.
+ *
  * TODO: The documentation is not clear. it's probably more clear to be named as request_timeout_ms, since we are using
  * this for all the requests that need a response.
  * Note: For CONNECT, if the response is not received within this amount of time, the connection will shutdown, and
