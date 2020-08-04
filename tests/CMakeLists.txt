@@ -40,6 +40,7 @@ add_test_case(mqtt_connect_unsubscribe)
 add_test_case(mqtt_connect_resubscribe)
 add_test_case(mqtt_connect_publish)
 add_test_case(mqtt_connection_offline_publish)
+add_test_case(mqtt_connection_disconnect_while_reconnecting)
 add_test_case(mqtt_connection_closes_while_making_requests)
 
 generate_test_driver(${PROJECT_NAME}-tests)

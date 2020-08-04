@@ -161,7 +161,6 @@ static void s_mqtt_client_shutdown(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Disconnect completed, clearing request queue and calling callback",
                 (void *)connection);
-
             MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
             break;
         case AWS_MQTT_CLIENT_STATE_CONNECTING:
@@ -253,23 +252,63 @@ static void s_mqtt_client_init(
         return;
     }
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT, "id=%p: Connection successfully opened, sending CONNECT packet", (void *)connection);
+    /* user requested disconnect before the channel has been set up. Stop installing the slot and sending CONNECT. */
+    bool failed_create_slot = false;
 
-    /* Create the slot and handler */
-    connection->slot = aws_channel_slot_new(channel);
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            /* It only happens when the user request disconnect during reconnecting, we don't need to fire any callback.
+             * The on_disconnect will be invoked as channel finish shutting down. */
+            mqtt_connection_unlock_synced_data(connection);
+            aws_channel_shutdown(channel, AWS_ERROR_SUCCESS);
+            return;
+        }
+        /* Create the slot */
+        connection->slot = aws_channel_slot_new(channel);
+        if (!connection->slot) {
+            failed_create_slot = true;
+        }
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
 
-    if (!connection->slot) {
+    /* intall the slot and handler */
+    if (failed_create_slot) {
+
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
-            "id=%p: Failed to create new slot, something has gone horribly wrong",
-            (void *)connection);
-        aws_channel_shutdown(channel, aws_last_error());
-        return;
+            "id=%p: Failed to create new slot, something has gone horribly wrong, error %d (%s).",
+            (void *)connection,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        goto handle_error;
     }
 
-    aws_channel_slot_insert_end(channel, connection->slot);
-    aws_channel_slot_set_handler(connection->slot, &connection->handler);
+    if (aws_channel_slot_insert_end(channel, connection->slot)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to insert slot into channel %p, error %d (%s).",
+            (void *)connection,
+            (void *)channel,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        goto handle_error;
+    }
+
+    if (aws_channel_slot_set_handler(connection->slot, &connection->handler)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to set MQTT handler into slot on channel %p, error %d (%s).",
+            (void *)connection,
+            (void *)channel,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+
+        goto handle_error;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT, "id=%p: Connection successfully opened, sending CONNECT packet", (void *)connection);
 
     struct aws_channel_task *connack_task = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_channel_task));
     if (!connack_task) {
@@ -280,7 +319,16 @@ static void s_mqtt_client_init(
     aws_channel_task_init(connack_task, s_connack_received_timeout, connection, "mqtt_connack_timeout");
 
     uint64_t now = 0;
-    aws_channel_current_clock_time(channel, &now);
+    if (aws_channel_current_clock_time(channel, &now)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "static: Failed to setting MQTT handler into slot on channel %p, error %d (%s).",
+            (void *)channel,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+
+        goto handle_error;
+    }
     now += connection->request_timeout_ns;
     aws_channel_schedule_task_future(channel, connack_task, now);
 
@@ -437,7 +485,6 @@ static void s_outstanding_request_destroy(void *item) {
             "id=%p: (table element remove) Releasing request %" PRIu16 " to connection memory pool",
             (void *)(request->connection),
             request->packet_id);
-
         /* Task ran as cancelled already, clean up the memory */
         struct aws_mqtt_client_connection *connection = request->connection;
         /* outstanding request will only be destoried with lock hold. We can touch the synced_data here */
@@ -556,8 +603,10 @@ failed_init_mutex:
  ******************************************************************************/
 
 void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection) {
-
-    AWS_PRECONDITION(connection);
+    AWS_PRECONDITION(!connection || connection->allocator);
+    if (!connection) {
+        return;
+    }
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
 
@@ -576,8 +625,25 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
     /* If the slot is not NULL, the connection is still connected, which should be prevented from calling this function
      */
     AWS_ASSERT(!connection->slot);
+    /* clean up the pending_requests if it's not empty */
+    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list);
+        struct aws_mqtt_outstanding_request *request =
+            AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
+        /* Fire the callback and clean up the memory, as the connection get destoried. */
+        if (!request->completed) {
+            request->on_complete(
+                request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
+        }
+        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+    }
+
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
 
+    /* If the reconnect_task isn't freed, free it */
+    if (connection->reconnect_task) {
+        aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+    }
     aws_string_destroy(connection->host_name);
 
     /* Clear the credentials */
@@ -2370,18 +2436,24 @@ uint16_t aws_mqtt_client_connection_publish(
 
     uint16_t packet_id = mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Starting publish %" PRIu16 " to topic " PRInSTR,
-        (void *)connection,
-        packet_id,
-        AWS_BYTE_CURSOR_PRI(*topic));
-
     if (packet_id) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Starting publish %" PRIu16 " to topic " PRInSTR,
+            (void *)connection,
+            packet_id,
+            AWS_BYTE_CURSOR_PRI(*topic));
         return packet_id;
     }
 
     /* bummer, we failed to make a new request */
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Failed starting publish to topic " PRInSTR ",error %d (%s)",
+        (void *)connection,
+        AWS_BYTE_CURSOR_PRI(*topic),
+        aws_last_error(),
+        aws_error_name(aws_last_error()));
 
     /* we know arg is valid, topic_string may or may not be valid */
     if (arg->topic_string) {
