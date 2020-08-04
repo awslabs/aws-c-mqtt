@@ -125,7 +125,7 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 "Time limit between request and response has been exceeded."),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_PROTOCOL_ERROR,
-                "Protocol error occured."),
+                "Protocol error occurred."),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_NOT_CONNECTED,
                 "The requested operation is invalid as the connection is not open."),
@@ -139,11 +139,14 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_UNEXPECTED_HANGUP,
                 "The connection was closed unexpectedly."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE,
-                "Resubscribe not necessary, client is not subscribed to any topics."),
-            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
-            "Mqtt operation interrupted by connection shutdown"),
+                "MQTT operation interrupted by connection shutdown."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECTION_DESTROYED,
+                "Connection has started destroying process, all uncompleted requests will fail."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECTION_DISCONNECTING,
+                "Connection is disconnecting, it's not safe to do this operation until the connection finishes shutdown."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
