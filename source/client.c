@@ -2072,9 +2072,6 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
             if (aws_mqtt_packet_subscribe_add_topic(&task_arg->subscribe, topic->request.topic, topic->request.qos)) {
                 goto handle_error;
             }
-            /* We need to cleanup the subscribe_task_topic, since they will not be inserted into the topic tree. We take
-             * the ownership to clean it up */
-            s_task_topic_clean_up(topic);
         }
     }
 
@@ -2105,6 +2102,56 @@ handle_error:
     return AWS_MQTT_CLIENT_REQUEST_ERROR;
 }
 
+static void s_resubscribe_complete(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    int error_code,
+    void *userdata) {
+
+    struct subscribe_task_arg *task_arg = userdata;
+
+    struct subscribe_task_topic *topic = NULL;
+    aws_array_list_get_at(&task_arg->topics, &topic, 0);
+    AWS_ASSUME(topic);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Subscribe %" PRIu16 " completed with error_code %d",
+        (void *)connection,
+        packet_id,
+        error_code);
+
+    size_t list_len = aws_array_list_length(&task_arg->topics);
+    if (task_arg->on_suback.multi) {
+        /* create a list of aws_mqtt_topic_subscription pointers from topics for the callback */
+        AWS_VARIABLE_LENGTH_ARRAY(uint8_t, cb_list_buf, list_len * sizeof(void *));
+        struct aws_array_list cb_list;
+        aws_array_list_init_static(&cb_list, cb_list_buf, list_len, sizeof(void *));
+        int err = 0;
+        for (size_t i = 0; i < list_len; i++) {
+            err |= aws_array_list_get_at(&task_arg->topics, &topic, i);
+            struct aws_mqtt_topic_subscription *subscription = &topic->request;
+            err |= aws_array_list_push_back(&cb_list, &subscription);
+        }
+        AWS_ASSUME(!err);
+        task_arg->on_suback.multi(connection, packet_id, &cb_list, error_code, task_arg->on_suback_ud);
+        aws_array_list_clean_up(&cb_list);
+    } else if (task_arg->on_suback.single) {
+        task_arg->on_suback.single(
+            connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
+    }
+
+    /* We need to cleanup the subscribe_task_topics, since they are not inserted into the topic tree by resubscribe. We
+     * take the ownership to clean it up */
+    for (size_t i = 0; i < list_len; i++) {
+        aws_array_list_get_at(&task_arg->topics, &topic, i);
+        s_task_topic_clean_up(topic);
+    }
+    aws_array_list_clean_up(&task_arg->topics);
+    aws_mqtt_packet_subscribe_clean_up(&task_arg->subscribe);
+    aws_mem_release(task_arg->connection->allocator, task_arg);
+}
+
 uint16_t aws_mqtt_resubscribe_existing_topics(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_suback_multi_fn *on_suback,
@@ -2123,7 +2170,7 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     task_arg->on_suback_ud = on_suback_ud;
 
     uint16_t packet_id =
-        mqtt_create_request(task_arg->connection, &s_resubscribe_send, task_arg, &s_subscribe_complete, task_arg);
+        mqtt_create_request(task_arg->connection, &s_resubscribe_send, task_arg, &s_resubscribe_complete, task_arg);
 
     if (packet_id == 0) {
         AWS_LOGF_ERROR(
