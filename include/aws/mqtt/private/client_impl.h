@@ -150,6 +150,8 @@ struct aws_mqtt_client_connection {
         bool waiting_on_ping_response;
 
         /* Keeps track of all open subscriptions */
+        /* TODO: The subscriptions are liveing with the connection object. So if the connection disconnect from one
+         * endpoint and connect with another endpoint, the subscription tree will still be the same as before. */
         struct aws_mqtt_topic_tree subscriptions;
 
     } thread_data;
@@ -181,7 +183,6 @@ struct aws_mqtt_client_connection {
         struct aws_linked_list pending_requests_list;
     } synced_data;
 
-    /* TODO: websocket is thread-safe? If not, make it thread-safe. */
     struct {
         aws_mqtt_transform_websocket_handshake_fn *handshake_transformer;
         void *handshake_transformer_ud;
@@ -207,6 +208,9 @@ struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
 struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header);
+
+void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
+void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
 
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).

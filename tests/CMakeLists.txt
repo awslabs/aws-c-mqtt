@@ -35,14 +35,13 @@ add_test_case(mqtt_connection_any_publish)
 add_test_case(mqtt_connection_timeout)
 add_test_case(mqtt_connection_connack_timeout)
 add_test_case(mqtt_connect_subscribe)
-# TODO
-# add_test_case(mqtt_connect_resubscribe)
-# add_test_case(mqtt_connection_closes_while_making_requests)
 add_test_case(mqtt_connect_subscribe_multi)
 add_test_case(mqtt_connect_unsubscribe)
+add_test_case(mqtt_connect_resubscribe)
 add_test_case(mqtt_connect_publish)
 add_test_case(mqtt_connection_offline_publish)
 add_test_case(mqtt_connection_disconnect_while_reconnecting)
+add_test_case(mqtt_connection_closes_while_making_requests)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

@@ -192,10 +192,7 @@ static void s_on_connection_resumed(
     if (!session_present) {
         printf("RESUBSCRIBING...");
         uint16_t packet_id = aws_mqtt_resubscribe_existing_topics(connection, s_on_resubscribed, NULL);
-        if (!packet_id) {
-            AWS_FATAL_ASSERT(aws_last_error() == AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE);
-            printf("No topics to resubscribe to.");
-        }
+        AWS_FATAL_ASSERT(packet_id);
     }
 }
 
