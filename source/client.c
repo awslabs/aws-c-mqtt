@@ -71,7 +71,7 @@ int aws_mqtt_client_init(
 
     AWS_ZERO_STRUCT(*client);
     client->allocator = allocator;
-    client->bootstrap = bootstrap;
+    client->bootstrap = aws_client_bootstrap_acquire(bootstrap);
 
     return AWS_OP_SUCCESS;
 }
@@ -83,6 +83,7 @@ int aws_mqtt_client_init(
 void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p: Cleaning up MQTT client", (void *)client);
+    aws_client_bootstrap_release(client->bootstrap);
 
     AWS_ZERO_STRUCT(*client);
 }
