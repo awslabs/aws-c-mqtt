@@ -229,15 +229,12 @@ int main(int argc, char **argv) {
     args.mutex = &mutex;
     args.condition_variable = &condition_variable;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 1));
-
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, args.allocator, 8, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(args.allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(args.allocator, 8, el_group);
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &el_group,
-        .host_resolver = &resolver,
+        .event_loop_group = el_group,
+        .host_resolver = resolver,
     };
     struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &bootstrap_options);
 
@@ -354,8 +351,8 @@ int main(int argc, char **argv) {
     args.connection = NULL;
 
     aws_client_bootstrap_release(bootstrap);
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(el_group);
     aws_mqtt_library_clean_up();
 
     ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));

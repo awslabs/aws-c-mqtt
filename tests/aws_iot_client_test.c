@@ -253,15 +253,12 @@ int main(int argc, char **argv) {
 
     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
 
-    struct aws_event_loop_group elg;
-    aws_event_loop_group_default_init(&elg, args.allocator, 1);
-
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, args.allocator, 8, &elg));
+    struct aws_event_loop_group *elg = aws_event_loop_group_new_default(args.allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(args.allocator, 8, elg);
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &elg,
-        .host_resolver = &resolver,
+        .event_loop_group = elg,
+        .host_resolver = resolver,
     };
     struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &bootstrap_options);
 
@@ -376,8 +373,8 @@ int main(int argc, char **argv) {
 
     aws_client_bootstrap_release(bootstrap);
 
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&elg);
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(elg);
 
     aws_tls_ctx_destroy(tls_ctx);
 
