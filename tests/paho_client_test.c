@@ -244,11 +244,10 @@ int main(int argc, char **argv) {
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_mqtt_client client;
-    ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, bootstrap));
+    struct aws_mqtt_client *client = aws_mqtt_client_new(args.allocator, bootstrap);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
-    args.connection = aws_mqtt_client_connection_new(&client);
+    args.connection = aws_mqtt_client_connection_new(client);
     ASSERT_NOT_NULL(args.connection);
 
     aws_mqtt_client_connection_set_connection_interruption_handlers(
@@ -347,8 +346,9 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    aws_mqtt_client_connection_destroy(args.connection);
+    aws_mqtt_client_connection_release(args.connection);
     args.connection = NULL;
+    aws_mqtt_client_release(client);
 
     aws_client_bootstrap_release(bootstrap);
     aws_host_resolver_release(resolver);

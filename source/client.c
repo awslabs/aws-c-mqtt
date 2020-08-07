@@ -56,36 +56,47 @@ void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *conne
     (void)err;
 }
 
-/*******************************************************************************
- * Client Init
- ******************************************************************************/
-
-int aws_mqtt_client_init(
-    struct aws_mqtt_client *client,
-    struct aws_allocator *allocator,
-    struct aws_client_bootstrap *bootstrap) {
-
-    aws_mqtt_fatal_assert_library_initialized();
-
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p: Initalizing MQTT client", (void *)client);
-
-    AWS_ZERO_STRUCT(*client);
-    client->allocator = allocator;
-    client->bootstrap = aws_client_bootstrap_acquire(bootstrap);
-
-    return AWS_OP_SUCCESS;
-}
-
-/*******************************************************************************
- * Client Clean Up
- ******************************************************************************/
-
-void aws_mqtt_client_clean_up(struct aws_mqtt_client *client) {
+static void s_aws_mqtt_client_destroy(struct aws_mqtt_client *client) {
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p: Cleaning up MQTT client", (void *)client);
     aws_client_bootstrap_release(client->bootstrap);
 
-    AWS_ZERO_STRUCT(*client);
+    aws_mem_release(client->allocator, client);
+}
+
+/*******************************************************************************
+ * Client Init
+ ******************************************************************************/
+struct aws_mqtt_client *aws_mqtt_client_new(struct aws_allocator *allocator, struct aws_client_bootstrap *bootstrap) {
+
+    aws_mqtt_fatal_assert_library_initialized();
+
+    struct aws_mqtt_client *client = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_client));
+    if (client == NULL) {
+        return NULL;
+    }
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p: Initalizing MQTT client", (void *)client);
+
+    client->allocator = allocator;
+    client->bootstrap = aws_client_bootstrap_acquire(bootstrap);
+    aws_ref_count_init(&client->ref_count, client, (aws_on_zero_ref_count_callback *)s_aws_mqtt_client_destroy);
+
+    return client;
+}
+
+struct aws_mqtt_client *aws_mqtt_client_acquire(struct aws_mqtt_client *client) {
+    if (client != NULL) {
+        aws_ref_count_acquire(&client->ref_count);
+    }
+
+    return client;
+}
+
+void aws_mqtt_client_release(struct aws_mqtt_client *client) {
+    if (client != NULL) {
+        aws_ref_count_release(&client->ref_count);
+    }
 }
 
 /* At this point, the channel for the MQTT connection has completed its shutdown */
@@ -502,8 +513,112 @@ static void s_outstanding_request_destroy(void *item) {
     }
 }
 
-struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client) {
+static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connection *connection) {
+    AWS_PRECONDITION(!connection || connection->allocator);
+    if (!connection) {
+        return;
+    }
 
+    /* If the slot is not NULL, the connection is still connected, which should be prevented from calling this function
+     */
+    AWS_ASSERT(!connection->slot);
+    /* clean up the pending_requests if it's not empty */
+    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list);
+        struct aws_mqtt_outstanding_request *request =
+            AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
+        /* Fire the callback and clean up the memory, as the connection get destoried. */
+        if (!request->completed) {
+            request->on_complete(
+                request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
+        }
+        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+    }
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
+
+    /* If the reconnect_task isn't freed, free it */
+    if (connection->reconnect_task) {
+        aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+    }
+    aws_string_destroy(connection->host_name);
+
+    /* Clear the credentials */
+    if (connection->username) {
+        aws_string_destroy_secure(connection->username);
+    }
+    if (connection->password) {
+        aws_string_destroy_secure(connection->password);
+    }
+
+    /* Clean up the will */
+    aws_byte_buf_clean_up(&connection->will.topic);
+    aws_byte_buf_clean_up(&connection->will.payload);
+
+    /* Clear the client_id */
+    aws_byte_buf_clean_up(&connection->client_id);
+
+    /* Free all of the active subscriptions */
+    aws_mqtt_topic_tree_clean_up(&connection->thread_data.subscriptions);
+
+    aws_hash_table_clean_up(&connection->synced_data.outstanding_requests_table);
+    aws_memory_pool_clean_up(&connection->synced_data.requests_pool);
+
+    aws_mutex_clean_up(&connection->synced_data.lock);
+
+    aws_tls_connection_options_clean_up(&connection->tls_options);
+
+    /* Clean up the websocket proxy options */
+    if (connection->websocket.proxy) {
+        aws_tls_connection_options_clean_up(&connection->websocket.proxy->tls_options);
+
+        aws_mem_release(connection->allocator, connection->websocket.proxy);
+        connection->websocket.proxy = NULL;
+        connection->websocket.proxy_options = NULL;
+    }
+
+    aws_mqtt_client_release(connection->client);
+
+    /* Frees all allocated memory */
+    aws_mem_release(connection->allocator, connection);
+}
+
+static void s_on_final_disconnect(struct aws_mqtt_client_connection *connection, void *userdata) {
+    (void)userdata;
+
+    s_mqtt_client_connection_destroy_final(connection);
+}
+
+static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connection *connection) {
+    bool call_destroy_final = false;
+
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
+
+            /*
+             * We don't call the on_disconnect callback until we've transitioned to the DISCONNECTED state.  So it's
+             * safe to change it now while we hold the lock since we know we're not DISCONNECTED yet.
+             */
+            connection->on_disconnect = s_on_final_disconnect;
+
+            if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+                mqtt_disconnect_impl(connection, AWS_ERROR_SUCCESS);
+                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+            }
+        } else {
+            call_destroy_final = true;
+        }
+
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
+    if (call_destroy_final) {
+        s_mqtt_client_connection_destroy_final(connection);
+    }
+}
+
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client) {
     AWS_PRECONDITION(client);
 
     struct aws_mqtt_client_connection *connection =
@@ -516,7 +631,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
 
     /* Initialize the client */
     connection->allocator = client->allocator;
-    connection->client = client;
+    aws_ref_count_init(
+        &connection->ref_count, connection, (aws_on_zero_ref_count_callback *)s_mqtt_client_connection_start_destroy);
+    connection->client = aws_mqtt_client_acquire(client);
     AWS_ZERO_STRUCT(connection->synced_data);
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min = 1;
@@ -599,90 +716,18 @@ failed_init_mutex:
     return NULL;
 }
 
-/*******************************************************************************
- * Connection Destroy
- ******************************************************************************/
-
-void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection) {
-    AWS_PRECONDITION(!connection || connection->allocator);
-    if (!connection) {
-        return;
-    }
-    { /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
-
-        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
-            AWS_LOGF_WARN(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Connection has not disconnected, it's invalid to destroy the connection now. Wait until the "
-                "connection get disconnected to call aws_mqtt_client_connection_destroy again",
-                (void *)connection);
-            mqtt_connection_unlock_synced_data(connection);
-            return;
-        }
-
-        mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
-    /* If the slot is not NULL, the connection is still connected, which should be prevented from calling this function
-     */
-    AWS_ASSERT(!connection->slot);
-    /* clean up the pending_requests if it's not empty */
-    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list);
-        struct aws_mqtt_outstanding_request *request =
-            AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
-        /* Fire the callback and clean up the memory, as the connection get destoried. */
-        if (!request->completed) {
-            request->on_complete(
-                request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
-        }
-        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_acquire(struct aws_mqtt_client_connection *connection) {
+    if (connection != NULL) {
+        aws_ref_count_acquire(&connection->ref_count);
     }
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
+    return connection;
+}
 
-    /* If the reconnect_task isn't freed, free it */
-    if (connection->reconnect_task) {
-        aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+void aws_mqtt_client_connection_release(struct aws_mqtt_client_connection *connection) {
+    if (connection != NULL) {
+        aws_ref_count_release(&connection->ref_count);
     }
-    aws_string_destroy(connection->host_name);
-
-    /* Clear the credentials */
-    if (connection->username) {
-        aws_string_destroy_secure(connection->username);
-    }
-    if (connection->password) {
-        aws_string_destroy_secure(connection->password);
-    }
-
-    /* Clean up the will */
-    aws_byte_buf_clean_up(&connection->will.topic);
-    aws_byte_buf_clean_up(&connection->will.payload);
-
-    /* Clear the client_id */
-    aws_byte_buf_clean_up(&connection->client_id);
-
-    /* Free all of the active subscriptions */
-    aws_mqtt_topic_tree_clean_up(&connection->thread_data.subscriptions);
-
-    aws_hash_table_clean_up(&connection->synced_data.outstanding_requests_table);
-    aws_memory_pool_clean_up(&connection->synced_data.requests_pool);
-
-    aws_mutex_clean_up(&connection->synced_data.lock);
-
-    aws_tls_connection_options_clean_up(&connection->tls_options);
-
-    /* Clean up the websocket proxy options */
-    if (connection->websocket.proxy) {
-        aws_tls_connection_options_clean_up(&connection->websocket.proxy->tls_options);
-
-        aws_mem_release(connection->allocator, connection->websocket.proxy);
-        connection->websocket.proxy = NULL;
-        connection->websocket.proxy_options = NULL;
-    }
-
-    /* Frees all allocated memory */
-    aws_mem_release(connection->allocator, connection);
 }
 
 /*******************************************************************************

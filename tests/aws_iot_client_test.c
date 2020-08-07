@@ -202,7 +202,7 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
 
     struct connection_args *args = userdata;
 
-    aws_mqtt_client_connection_destroy(args->connection);
+    aws_mqtt_client_connection_release(args->connection);
     args->connection = NULL;
 
     aws_mutex_lock(args->mutex);
@@ -281,11 +281,10 @@ int main(int argc, char **argv) {
     socket_options.type = AWS_SOCKET_STREAM;
     socket_options.domain = AWS_SOCKET_IPV6;
 
-    struct aws_mqtt_client client;
-    aws_mqtt_client_init(&client, args.allocator, bootstrap);
+    struct aws_mqtt_client *client = aws_mqtt_client_new(args.allocator, bootstrap);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_c_str(endpoint);
-    args.connection = aws_mqtt_client_connection_new(&client);
+    args.connection = aws_mqtt_client_connection_new(client);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_connection_interruption_handlers(
         args.connection, s_on_connection_interrupted, NULL, s_on_connection_resumed, NULL));
@@ -369,7 +368,7 @@ int main(int argc, char **argv) {
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     aws_mutex_unlock(&mutex);
 
-    aws_mqtt_client_clean_up(&client);
+    aws_mqtt_client_release(client);
 
     aws_client_bootstrap_release(bootstrap);
 
