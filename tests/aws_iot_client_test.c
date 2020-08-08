@@ -375,7 +375,7 @@ int main(int argc, char **argv) {
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(elg);
 
-    aws_tls_ctx_destroy(tls_ctx);
+    aws_tls_ctx_release(tls_ctx);
 
     aws_logger_clean_up(&logger);
 
