@@ -194,27 +194,6 @@ static void s_wait_for_reconnect_to_complete(struct mqtt_connection_state_test *
     aws_mutex_unlock(&state_test_data->lock);
 }
 
-static void s_on_elg_shutdown_complete(void *user_data) {
-    struct mqtt_connection_state_test *state_test_data = user_data;
-
-    aws_mutex_lock(&state_test_data->lock);
-    state_test_data->elg_shutdown_complete = true;
-    aws_mutex_unlock(&state_test_data->lock);
-    aws_condition_variable_notify_one(&state_test_data->cvar);
-}
-
-static bool s_is_elg_shutdown_pred(void *arg) {
-    struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->elg_shutdown_complete;
-}
-
-static void s_wait_on_elg_shutdown(struct mqtt_connection_state_test *state_test_data) {
-    aws_mutex_lock(&state_test_data->lock);
-    aws_condition_variable_wait_pred(
-        &state_test_data->cvar, &state_test_data->lock, s_is_elg_shutdown_pred, state_test_data);
-    aws_mutex_unlock(&state_test_data->lock);
-}
-
 /** sets up a unix domain socket server and socket options. Creates an mqtt connection configured to use
  * the domain socket.
  */
@@ -226,11 +205,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     AWS_ZERO_STRUCT(*state_test_data);
 
     state_test_data->allocator = allocator;
-
-    struct aws_event_loop_group_shutdown_options shutdown_options = {.asynchronous_shutdown = true,
-                                                                     .shutdown_complete = s_on_elg_shutdown_complete,
-                                                                     .shutdown_complete_user_data = state_test_data};
-    state_test_data->el_group = aws_event_loop_group_new_default(allocator, 1, &shutdown_options);
+    state_test_data->el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
 
     state_test_data->test_channel_handler = new_mqtt_mock_server(allocator);
     ASSERT_NOT_NULL(state_test_data->test_channel_handler);
@@ -270,7 +245,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
 
     ASSERT_NOT_NULL(state_test_data->listener);
 
-    state_test_data->host_resolver = aws_host_resolver_new_default(allocator, 1, state_test_data->el_group);
+    state_test_data->host_resolver = aws_host_resolver_new_default(allocator, 1, state_test_data->el_group, NULL);
 
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = state_test_data->el_group,
@@ -328,7 +303,7 @@ static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_
         aws_server_bootstrap_release(state_test_data->server_bootstrap);
         aws_event_loop_group_release(state_test_data->el_group);
         destroy_mqtt_mock_server(state_test_data->test_channel_handler);
-        s_wait_on_elg_shutdown(state_test_data);
+        aws_global_thread_shutdown_wait();
     }
 
     aws_mqtt_library_clean_up();

@@ -53,7 +53,6 @@ struct test_context {
     struct aws_client_bootstrap *bootstrap;
     struct aws_mqtt_client *client;
     struct aws_mqtt_client_connection *connection;
-    bool elg_shutdown_complete;
     bool retained_packet_received;
     bool on_any_publish_fired;
     bool connection_complete;
@@ -221,20 +220,6 @@ static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, 
     aws_condition_variable_notify_one(&tester->signal);
 }
 
-static void s_on_elg_shutdown_complete(void *user_data) {
-    struct test_context *tester = user_data;
-
-    aws_mutex_lock(&tester->lock);
-    tester->elg_shutdown_complete = true;
-    aws_mutex_unlock(&tester->lock);
-    aws_condition_variable_notify_one(&tester->signal);
-}
-
-static bool s_is_elg_shutdown_complete_pred(void *user_data) {
-    struct test_context *tester = user_data;
-    return tester->elg_shutdown_complete;
-}
-
 static bool s_is_connection_complete_pred(void *user_data) {
     struct test_context *tester = user_data;
     return tester->connection_complete;
@@ -274,12 +259,8 @@ static int s_initialize_test(
     aws_mutex_init(&tester->lock);
     aws_condition_variable_init(&tester->signal);
 
-    struct aws_event_loop_group_shutdown_options shutdown_options = {.asynchronous_shutdown = true,
-                                                                     .shutdown_complete = s_on_elg_shutdown_complete,
-                                                                     .shutdown_complete_user_data = tester};
-
-    tester->el_group = aws_event_loop_group_new_default(allocator, 1, &shutdown_options);
-    tester->resolver = aws_host_resolver_new_default(allocator, 8, tester->el_group);
+    tester->el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    tester->resolver = aws_host_resolver_new_default(allocator, 8, tester->el_group, NULL);
 
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = tester->el_group,
@@ -309,7 +290,7 @@ static void s_cleanup_test(struct test_context *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
 
-    s_wait_on_tester_predicate(tester, s_is_elg_shutdown_complete_pred);
+    aws_global_thread_shutdown_wait();
 
     aws_mutex_clean_up(&tester->lock);
     aws_condition_variable_clean_up(&tester->signal);

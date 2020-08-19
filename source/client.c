@@ -80,7 +80,7 @@ struct aws_mqtt_client *aws_mqtt_client_new(struct aws_allocator *allocator, str
 
     client->allocator = allocator;
     client->bootstrap = aws_client_bootstrap_acquire(bootstrap);
-    aws_ref_count_init(&client->ref_count, client, (aws_on_zero_ref_count_callback *)s_aws_mqtt_client_destroy);
+    aws_ref_count_init(&client->ref_count, client, (aws_simple_completion_callback *)s_aws_mqtt_client_destroy);
 
     return client;
 }
@@ -632,7 +632,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     /* Initialize the client */
     connection->allocator = client->allocator;
     aws_ref_count_init(
-        &connection->ref_count, connection, (aws_on_zero_ref_count_callback *)s_mqtt_client_connection_start_destroy);
+        &connection->ref_count, connection, (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
     connection->client = aws_mqtt_client_acquire(client);
     AWS_ZERO_STRUCT(connection->synced_data);
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
