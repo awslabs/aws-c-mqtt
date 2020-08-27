@@ -661,11 +661,13 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
                     "%" PRIu16 ".",
                     (void *)task,
                     request->packet_id);
-                request->on_complete(
-                    request->connection,
-                    request->packet_id,
-                    AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
-                    request->on_complete_ud);
+                if (request->on_complete != NULL) {
+                    request->on_complete(
+                        request->connection,
+                        request->packet_id,
+                        AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
+                        request->on_complete_ud);
+                }
             }
         }
         return;
