@@ -50,7 +50,6 @@ struct mqtt_connection_state_test {
     bool connection_resumed;
     bool subscribe_completed;
     bool listener_destroyed;
-    bool elg_shutdown_complete;
     int interruption_error;
     enum aws_mqtt_connect_return_code mqtt_return_code;
     int error;
@@ -303,7 +302,7 @@ static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_
         aws_server_bootstrap_release(state_test_data->server_bootstrap);
         aws_event_loop_group_release(state_test_data->el_group);
         destroy_mqtt_mock_server(state_test_data->test_channel_handler);
-        aws_global_thread_shutdown_wait();
+        aws_global_thread_creator_shutdown_wait_for(10);
     }
 
     aws_mqtt_library_clean_up();
