@@ -341,7 +341,7 @@ int s_initialize_test(
     return AWS_OP_SUCCESS;
 }
 
-void s_cleanup_test(struct test_context *tester) {
+int s_cleanup_test(struct test_context *tester) {
     aws_tls_connection_options_clean_up(&tester->tls_connection_options);
 
     aws_mqtt_client_connection_release(tester->connection);
@@ -354,7 +354,7 @@ void s_cleanup_test(struct test_context *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
 
-    aws_global_thread_creator_shutdown_wait_for(10);
+    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_logger_clean_up(&tester->logger);
 
@@ -362,6 +362,8 @@ void s_cleanup_test(struct test_context *tester) {
     aws_condition_variable_clean_up(&tester->signal);
 
     aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
 }
 
 int main(int argc, char **argv) {
@@ -431,7 +433,7 @@ int main(int argc, char **argv) {
 
     s_wait_on_tester_predicate(&tester, s_received_on_disconnect_pred);
 
-    s_cleanup_test(&tester);
+    ASSERT_SUCCESS(s_cleanup_test(&tester));
 
     ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));
     allocator = aws_mem_tracer_destroy(allocator);
