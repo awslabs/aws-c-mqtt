@@ -85,7 +85,7 @@ struct aws_mqtt_reconnect_task {
 struct aws_mqtt_client_connection {
 
     struct aws_allocator *allocator;
-
+    struct aws_ref_count ref_count;
     struct aws_mqtt_client *client;
 
     /* Channel handler information */

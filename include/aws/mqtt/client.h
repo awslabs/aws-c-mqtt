@@ -9,6 +9,7 @@
 #include <aws/common/hash_table.h>
 
 #include <aws/common/byte_buf.h>
+#include <aws/common/ref_count.h>
 #include <aws/common/string.h>
 
 #include <aws/io/event_loop.h>
@@ -27,6 +28,7 @@ struct aws_tls_connection_options;
 struct aws_mqtt_client {
     struct aws_allocator *allocator;
     struct aws_client_bootstrap *bootstrap;
+    struct aws_ref_count ref_count;
 };
 
 struct aws_mqtt_client_connection;
@@ -200,49 +202,61 @@ struct aws_mqtt_connection_options {
 AWS_EXTERN_C_BEGIN
 
 /**
- * Initializes an instance of aws_mqtt_client.
- * It is expected that the user will manage the client's object lifetime, this function will not allocate one.
+ * Creates an instance of aws_mqtt_client.
  *
- * \param[in] client    The client to initialize
  * \param[in] allocator The allocator the client will use for all future allocations
  * \param[in] bootstrap The client bootstrap to use to initiate new socket connections
  *
- * \returns AWS_OP_SUCCESS if successfully initialized, otherwise AWS_OP_ERR and aws_last_error() will be set.
+ * \returns a new instance of an aws_mqtt_client if successful, NULL otherwise
  */
 AWS_MQTT_API
-int aws_mqtt_client_init(
-    struct aws_mqtt_client *client,
-    struct aws_allocator *allocator,
-    struct aws_client_bootstrap *bootstrap);
+struct aws_mqtt_client *aws_mqtt_client_new(struct aws_allocator *allocator, struct aws_client_bootstrap *bootstrap);
 
 /**
- * Cleans up and frees all memory allocated by the client.
+ * Increments the ref count to an mqtt client, allowing the caller to take a reference to it
  *
- * Note that calling this function before all connections are closed is undefined behavior.
+ * \param[in] client    The client to increment the ref count on
  *
- * \param[in] client    The client to shut down
+ * \returns the mqtt client
  */
 AWS_MQTT_API
-void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
+struct aws_mqtt_client *aws_mqtt_client_acquire(struct aws_mqtt_client *client);
+
+/**
+ * Decrements the ref count on an mqtt client.  If the ref count drops to zero, the client is cleaned up.
+ *
+ * \param[in] client    The client to release a ref count on
+ */
+AWS_MQTT_API
+void aws_mqtt_client_release(struct aws_mqtt_client *client);
 
 /**
  * Spawns a new connection object.
  *
  * \param[in] client    The client to spawn the connection from
  *
- * \returns AWS_OP_SUCCESS on success, otherwise AWS_OP_ERR and aws_last_error() is set.
+ * \returns a new mqtt connection on success, NULL otherwise
  */
 AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client);
 
 /**
- * Cleans up and destroys a connection object. Only safe to call when the connection get disconnected, or never
- * connected.
+ * Increments the ref count to an mqtt client connection, allowing the caller to take a reference to it
+ *
+ * \param[in] connection    The connection object
+ *
+ * \returns the mqtt connection
+ */
+AWS_MQTT_API
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_acquire(struct aws_mqtt_client_connection *connection);
+
+/**
+ * Decrements the ref count on an mqtt connection.  If the ref count drops to zero, the connection is cleaned up.
  *
  * \param[in] connection    The connection object
  */
 AWS_MQTT_API
-void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection);
+void aws_mqtt_client_connection_release(struct aws_mqtt_client_connection *connection);
 
 /**
  * Sets the will message to send with the CONNECT packet.

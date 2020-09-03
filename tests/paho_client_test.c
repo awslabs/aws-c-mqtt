@@ -43,16 +43,22 @@ AWS_STATIC_STRING_FROM_LITERAL(s_hostname, "localhost");
 enum { PAYLOAD_LEN = 20000 };
 static uint8_t s_payload[PAYLOAD_LEN];
 
-struct connection_args {
+struct test_context {
     struct aws_allocator *allocator;
 
-    struct aws_mutex *mutex;
-    struct aws_condition_variable *condition_variable;
-
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+    struct aws_event_loop_group *el_group;
+    struct aws_host_resolver *resolver;
+    struct aws_client_bootstrap *bootstrap;
+    struct aws_mqtt_client *client;
     struct aws_mqtt_client_connection *connection;
-
     bool retained_packet_received;
     bool on_any_publish_fired;
+    bool connection_complete;
+    bool received_pub_ack;
+    bool received_unsub_ack;
+    bool on_disconnect_received;
 };
 
 static void s_on_packet_received(
@@ -72,14 +78,14 @@ static void s_on_packet_received(
     (void)expected_payload;
     AWS_FATAL_ASSERT(aws_byte_cursor_eq(payload, &expected_payload));
 
-    struct connection_args *args = user_data;
-    args->retained_packet_received = true;
-
     printf("2 started\n");
 
-    aws_mutex_lock(args->mutex);
-    aws_condition_variable_notify_one(args->condition_variable);
-    aws_mutex_unlock(args->mutex);
+    struct test_context *tester = user_data;
+
+    aws_mutex_lock(&tester->lock);
+    tester->retained_packet_received = true;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
 }
 
 static void s_on_any_packet_received(
@@ -99,8 +105,12 @@ static void s_on_any_packet_received(
     (void)expected_payload;
     AWS_FATAL_ASSERT(aws_byte_cursor_eq(payload, &expected_payload));
 
-    struct connection_args *args = user_data;
-    args->on_any_publish_fired = true;
+    struct test_context *tester = user_data;
+
+    aws_mutex_lock(&tester->lock);
+    tester->on_any_publish_fired = true;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
 }
 
 static void s_mqtt_on_puback(
@@ -115,13 +125,14 @@ static void s_mqtt_on_puback(
 
     AWS_FATAL_ASSERT(error_code == AWS_OP_SUCCESS);
 
-    struct connection_args *args = userdata;
+    struct test_context *tester = userdata;
 
     printf("2 started\n");
 
-    aws_mutex_lock(args->mutex);
-    aws_condition_variable_notify_one(args->condition_variable);
-    aws_mutex_unlock(args->mutex);
+    aws_mutex_lock(&tester->lock);
+    tester->received_pub_ack = true;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
 }
 
 static void s_mqtt_on_connection_complete(
@@ -140,13 +151,14 @@ static void s_mqtt_on_connection_complete(
     AWS_FATAL_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
     AWS_FATAL_ASSERT(session_present == false);
 
-    struct connection_args *args = user_data;
+    struct test_context *tester = user_data;
 
     printf("1 started\n");
 
-    aws_mutex_lock(args->mutex);
-    aws_condition_variable_notify_one(args->condition_variable);
-    aws_mutex_unlock(args->mutex);
+    aws_mutex_lock(&tester->lock);
+    tester->connection_complete = true;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
 }
 
 static void s_mqtt_on_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
@@ -184,26 +196,108 @@ static void s_mqtt_on_unsuback(
 
     AWS_FATAL_ASSERT(error_code == AWS_OP_SUCCESS);
 
-    struct connection_args *args = userdata;
+    struct test_context *tester = userdata;
 
     printf("2 started\n");
 
-    aws_mutex_lock(args->mutex);
-    aws_condition_variable_notify_one(args->condition_variable);
-    aws_mutex_unlock(args->mutex);
+    aws_mutex_lock(&tester->lock);
+    tester->received_unsub_ack = true;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
 }
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, void *user_data) {
 
     (void)connection;
 
-    struct connection_args *args = user_data;
+    struct test_context *tester = user_data;
 
     printf("3 started\n");
 
-    aws_mutex_lock(args->mutex);
-    aws_condition_variable_notify_one(args->condition_variable);
-    aws_mutex_unlock(args->mutex);
+    aws_mutex_lock(&tester->lock);
+    tester->on_disconnect_received = true;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
+}
+
+static bool s_is_connection_complete_pred(void *user_data) {
+    struct test_context *tester = user_data;
+    return tester->connection_complete;
+}
+
+static bool s_received_pub_ack_pred(void *user_data) {
+    struct test_context *tester = user_data;
+    return tester->received_pub_ack;
+}
+
+static bool s_on_disconnect_received(void *user_data) {
+    struct test_context *tester = user_data;
+    return tester->on_disconnect_received;
+}
+
+static bool s_retained_and_any_publish_pred(void *user_data) {
+    struct test_context *tester = user_data;
+    return tester->retained_packet_received && tester->on_any_publish_fired;
+}
+static bool s_received_unsub_ack_pred(void *user_data) {
+    struct test_context *tester = user_data;
+    return tester->received_unsub_ack;
+}
+
+static void s_wait_on_tester_predicate(struct test_context *tester, bool (*predicate)(void *)) {
+    aws_mutex_lock(&tester->lock);
+    aws_condition_variable_wait_pred(&tester->signal, &tester->lock, predicate, tester);
+    aws_mutex_unlock(&tester->lock);
+}
+
+static int s_initialize_test(
+    struct test_context *tester,
+    struct aws_allocator *allocator,
+    struct aws_mqtt_connection_options *conn_options) {
+    aws_mqtt_library_init(allocator);
+
+    aws_mutex_init(&tester->lock);
+    aws_condition_variable_init(&tester->signal);
+
+    tester->el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    tester->resolver = aws_host_resolver_new_default(allocator, 8, tester->el_group, NULL);
+
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = tester->el_group,
+        .host_resolver = tester->resolver,
+    };
+    tester->bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+
+    tester->client = aws_mqtt_client_new(allocator, tester->bootstrap);
+    tester->connection = aws_mqtt_client_connection_new(tester->client);
+
+    aws_mqtt_client_connection_set_connection_interruption_handlers(
+        tester->connection, s_mqtt_on_interrupted, NULL, s_mqtt_on_resumed, NULL);
+
+    aws_mqtt_client_connection_set_on_any_publish_handler(tester->connection, s_on_any_packet_received, tester);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(tester->connection, conn_options));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_cleanup_test(struct test_context *tester) {
+
+    aws_mqtt_client_connection_release(tester->connection);
+    aws_mqtt_client_release(tester->client);
+
+    aws_client_bootstrap_release(tester->bootstrap);
+    aws_host_resolver_release(tester->resolver);
+    aws_event_loop_group_release(tester->el_group);
+
+    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+
+    aws_mutex_clean_up(&tester->lock);
+    aws_condition_variable_clean_up(&tester->signal);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
 }
 
 int main(int argc, char **argv) {
@@ -212,52 +306,16 @@ int main(int argc, char **argv) {
 
     struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), NULL, AWS_MEMTRACE_BYTES, 0);
 
-    aws_mqtt_library_init(allocator);
+    struct test_context tester;
+    AWS_ZERO_STRUCT(tester);
 
-    struct aws_mutex mutex = AWS_MUTEX_INIT;
-    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
-
-    /* Populate the payload */
-    struct aws_byte_buf payload_buf = aws_byte_buf_from_empty_array(s_payload, PAYLOAD_LEN);
-    aws_device_random_buffer(&payload_buf);
-
-    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
-
-    struct connection_args args;
-    AWS_ZERO_STRUCT(args);
-    args.allocator = allocator;
-    args.mutex = &mutex;
-    args.condition_variable = &condition_variable;
-
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, args.allocator, 1));
-
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, args.allocator, 8, &el_group));
-
-    struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &el_group,
-        .host_resolver = &resolver,
-    };
-    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(args.allocator, &bootstrap_options);
+    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
-
-    struct aws_mqtt_client client;
-    ASSERT_SUCCESS(aws_mqtt_client_init(&client, args.allocator, bootstrap));
-
-    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(s_hostname);
-    args.connection = aws_mqtt_client_connection_new(&client);
-    ASSERT_NOT_NULL(args.connection);
-
-    aws_mqtt_client_connection_set_connection_interruption_handlers(
-        args.connection, s_mqtt_on_interrupted, NULL, s_mqtt_on_resumed, NULL);
-
-    aws_mqtt_client_connection_set_on_any_publish_handler(args.connection, s_on_any_packet_received, &args);
 
     struct aws_mqtt_connection_options conn_options = {
         .host_name = host_name_cur,
@@ -268,99 +326,90 @@ int main(int argc, char **argv) {
         .keep_alive_time_secs = 0,
         .ping_timeout_ms = 0,
         .on_connection_complete = s_mqtt_on_connection_complete,
-        .user_data = &args,
+        .user_data = &tester,
         .clean_session = true,
     };
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &conn_options));
+    AWS_FATAL_ASSERT(AWS_OP_SUCCESS == s_initialize_test(&tester, allocator, &conn_options));
 
     /* Wait for connack */
-    aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    aws_mutex_unlock(&mutex);
+    s_wait_on_tester_predicate(&tester, s_is_connection_complete_pred);
 
     printf("1 done\n");
 
+    struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
+
+    /* Populate the payload */
     struct aws_byte_cursor payload_cur = aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN);
+
     aws_mqtt_client_connection_publish(
-        args.connection, &subscribe_topic_cur, AWS_MQTT_QOS_EXACTLY_ONCE, true, &payload_cur, &s_mqtt_on_puback, &args);
+        tester.connection,
+        &subscribe_topic_cur,
+        AWS_MQTT_QOS_EXACTLY_ONCE,
+        true,
+        &payload_cur,
+        &s_mqtt_on_puback,
+        &tester);
 
     /* Wait for puback */
-    aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    aws_mutex_unlock(&mutex);
+    s_wait_on_tester_predicate(&tester, s_received_pub_ack_pred);
 
     printf("2 done\n");
 
-    aws_mqtt_client_connection_disconnect(args.connection, s_mqtt_on_disconnect, &args);
+    aws_mqtt_client_connection_disconnect(tester.connection, s_mqtt_on_disconnect, &tester);
 
     /* Wait for disconnack */
-    aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    aws_mutex_unlock(&mutex);
+    s_wait_on_tester_predicate(&tester, s_on_disconnect_received);
 
     printf("3 done\n");
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(args.connection, &conn_options));
+    aws_mutex_lock(&tester.lock);
+    tester.connection_complete = false;
+    tester.on_disconnect_received = false;
+    aws_mutex_unlock(&tester.lock);
+
+    AWS_FATAL_ASSERT(AWS_OP_SUCCESS == aws_mqtt_client_connection_connect(tester.connection, &conn_options));
 
     /* Wait for connack */
-    aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    aws_mutex_unlock(&mutex);
+    s_wait_on_tester_predicate(&tester, s_is_connection_complete_pred);
 
     printf("1 done\n");
 
     /* Subscribe (no on_suback, the on_message received will trigger the cv) */
     aws_mqtt_client_connection_subscribe(
-        args.connection,
+        tester.connection,
         &subscribe_topic_cur,
         AWS_MQTT_QOS_EXACTLY_ONCE,
         &s_on_packet_received,
-        &args,
+        &tester,
         NULL,
         NULL,
         NULL);
 
     /* Wait for PUBLISH */
-    aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    aws_mutex_unlock(&mutex);
+    s_wait_on_tester_predicate(&tester, s_retained_and_any_publish_pred);
 
     printf("2 done\n");
 
-    ASSERT_TRUE(args.retained_packet_received);
-    ASSERT_TRUE(args.on_any_publish_fired);
-
     struct aws_byte_cursor topic_filter =
         aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    aws_mqtt_client_connection_unsubscribe(args.connection, &topic_filter, &s_mqtt_on_unsuback, &args);
+    aws_mqtt_client_connection_unsubscribe(tester.connection, &topic_filter, &s_mqtt_on_unsuback, &tester);
 
     /* Wait for UNSUBACK */
-    aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    aws_mutex_unlock(&mutex);
+    s_wait_on_tester_predicate(&tester, s_received_unsub_ack_pred);
 
     printf("3 done\n");
 
     sleep(4);
 
-    aws_mqtt_client_connection_disconnect(args.connection, s_mqtt_on_disconnect, &args);
+    aws_mqtt_client_connection_disconnect(tester.connection, s_mqtt_on_disconnect, &tester);
 
-    aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    aws_mutex_unlock(&mutex);
+    s_wait_on_tester_predicate(&tester, s_on_disconnect_received);
 
-    aws_mqtt_client_connection_destroy(args.connection);
-    args.connection = NULL;
+    ASSERT_SUCCESS(s_cleanup_test(&tester));
 
-    aws_client_bootstrap_release(bootstrap);
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&el_group);
-    aws_mqtt_library_clean_up();
-
-    ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));
+    AWS_FATAL_ASSERT(0 == aws_mem_tracer_count(allocator));
     allocator = aws_mem_tracer_destroy(allocator);
-    ASSERT_NOT_NULL(allocator);
 
     return AWS_OP_SUCCESS;
 }

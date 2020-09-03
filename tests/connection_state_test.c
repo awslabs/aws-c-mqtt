@@ -35,11 +35,11 @@ struct mqtt_connection_state_test {
     struct aws_channel_handler *test_channel_handler;
     struct aws_client_bootstrap *client_bootstrap;
     struct aws_server_bootstrap *server_bootstrap;
-    struct aws_event_loop_group el_group;
-    struct aws_host_resolver host_resolver;
+    struct aws_event_loop_group *el_group;
+    struct aws_host_resolver *host_resolver;
     struct aws_socket_endpoint endpoint;
     struct aws_socket *listener;
-    struct aws_mqtt_client mqtt_client;
+    struct aws_mqtt_client *mqtt_client;
     struct aws_mqtt_client_connection *mqtt_connection;
     struct aws_socket_options socket_options;
     bool session_present;
@@ -204,13 +204,12 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     AWS_ZERO_STRUCT(*state_test_data);
 
     state_test_data->allocator = allocator;
-
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&state_test_data->el_group, allocator, 1));
+    state_test_data->el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
 
     state_test_data->test_channel_handler = new_mqtt_mock_server(allocator);
     ASSERT_NOT_NULL(state_test_data->test_channel_handler);
 
-    state_test_data->server_bootstrap = aws_server_bootstrap_new(allocator, &state_test_data->el_group);
+    state_test_data->server_bootstrap = aws_server_bootstrap_new(allocator, state_test_data->el_group);
     ASSERT_NOT_NULL(state_test_data->server_bootstrap);
 
     struct aws_socket_options socket_options = {
@@ -245,19 +244,18 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
 
     ASSERT_NOT_NULL(state_test_data->listener);
 
-    ASSERT_SUCCESS(
-        aws_host_resolver_init_default(&state_test_data->host_resolver, allocator, 1, &state_test_data->el_group));
+    state_test_data->host_resolver = aws_host_resolver_new_default(allocator, 1, state_test_data->el_group, NULL);
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &state_test_data->el_group,
+        .event_loop_group = state_test_data->el_group,
         .user_data = state_test_data,
-        .host_resolver = &state_test_data->host_resolver,
+        .host_resolver = state_test_data->host_resolver,
     };
 
     state_test_data->client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
-    ASSERT_SUCCESS(aws_mqtt_client_init(&state_test_data->mqtt_client, allocator, state_test_data->client_bootstrap));
-    state_test_data->mqtt_connection = aws_mqtt_client_connection_new(&state_test_data->mqtt_client);
+    state_test_data->mqtt_client = aws_mqtt_client_new(allocator, state_test_data->client_bootstrap);
+    state_test_data->mqtt_connection = aws_mqtt_client_connection_new(state_test_data->mqtt_client);
     ASSERT_NOT_NULL(state_test_data->mqtt_connection);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_connection_interruption_handlers(
@@ -295,15 +293,16 @@ static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_
 
         s_received_publish_packet_list_clean_up(&state_test_data->published_messages);
         s_received_publish_packet_list_clean_up(&state_test_data->any_published_messages);
-        aws_mqtt_client_connection_destroy(state_test_data->mqtt_connection);
-        aws_mqtt_client_clean_up(&state_test_data->mqtt_client);
+        aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
+        aws_mqtt_client_release(state_test_data->mqtt_client);
         aws_client_bootstrap_release(state_test_data->client_bootstrap);
-        aws_host_resolver_clean_up(&state_test_data->host_resolver);
+        aws_host_resolver_release(state_test_data->host_resolver);
         aws_server_bootstrap_destroy_socket_listener(state_test_data->server_bootstrap, state_test_data->listener);
         s_wait_on_listener_cleanup(state_test_data);
         aws_server_bootstrap_release(state_test_data->server_bootstrap);
-        aws_event_loop_group_clean_up(&state_test_data->el_group);
+        aws_event_loop_group_release(state_test_data->el_group);
         destroy_mqtt_mock_server(state_test_data->test_channel_handler);
+        ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
     }
 
     aws_mqtt_library_clean_up();
@@ -1655,7 +1654,7 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
-    aws_mqtt_client_connection_destroy(state_test_data->mqtt_connection);
+    aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
     state_test_data->mqtt_connection = NULL;
     s_wait_for_ops_completed(state_test_data);
 
