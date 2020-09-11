@@ -9,6 +9,7 @@
 #include <aws/common/hash_table.h>
 
 #include <aws/common/byte_buf.h>
+#include <aws/common/ref_count.h>
 #include <aws/common/string.h>
 
 #include <aws/io/event_loop.h>
@@ -27,11 +28,15 @@ struct aws_tls_connection_options;
 struct aws_mqtt_client {
     struct aws_allocator *allocator;
     struct aws_client_bootstrap *bootstrap;
+    struct aws_ref_count ref_count;
 };
 
 struct aws_mqtt_client_connection;
 
-/** Callback called when a request roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). */
+/**
+ * Callback called when a request roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). Either
+ * succeed or not
+ */
 typedef void(aws_mqtt_op_complete_fn)(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
@@ -169,7 +174,15 @@ struct aws_mqtt_topic_subscription {
  *                           within this amount of time (milliseconds). If you specify 0, a default value of 3 seconds
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
- *                           and OS version. This duration must be shorter than keep_alive_time_secs.
+ *                           and OS version. This duration must be shorter than keep_alive_time_secs. It is also used to
+ *                           re-attempt requests with qos > 0 if they are not ACKed in time.
+ *
+ * TODO: The documentation is not clear. it's probably more clear to be named as request_timeout_ms, since we are using
+ * this for all the requests that need a response.
+ * Note: For CONNECT, if the response is not received within this amount of time, the connection will shutdown, and
+ * reconnect will not happen automatically. For PINGREQ, the connection will shutdown and try to reconnect
+ * automactically. For other requests, they will be resent in this case.
+ *
  * on_connection_complete    The callback to fire when the connection attempt completes user_data
  *                           Passed to the userdata param of on_connection_complete
  */
@@ -189,46 +202,61 @@ struct aws_mqtt_connection_options {
 AWS_EXTERN_C_BEGIN
 
 /**
- * Initializes an instance of aws_mqtt_client.
- * It is expected that the user will manage the client's object lifetime, this function will not allocate one.
+ * Creates an instance of aws_mqtt_client.
  *
- * \param[in] client    The client to initialize
  * \param[in] allocator The allocator the client will use for all future allocations
  * \param[in] bootstrap The client bootstrap to use to initiate new socket connections
  *
- * \returns AWS_OP_SUCCESS if successfully initialized, otherwise AWS_OP_ERR and aws_last_error() will be set.
+ * \returns a new instance of an aws_mqtt_client if successful, NULL otherwise
  */
 AWS_MQTT_API
-int aws_mqtt_client_init(
-    struct aws_mqtt_client *client,
-    struct aws_allocator *allocator,
-    struct aws_client_bootstrap *bootstrap);
+struct aws_mqtt_client *aws_mqtt_client_new(struct aws_allocator *allocator, struct aws_client_bootstrap *bootstrap);
 
 /**
- * Cleans up and frees all memory allocated by the client.
+ * Increments the ref count to an mqtt client, allowing the caller to take a reference to it
  *
- * Note that calling this function before all connections are closed is undefined behavior.
+ * \param[in] client    The client to increment the ref count on
  *
- * \param[in] client    The client to shut down
+ * \returns the mqtt client
  */
 AWS_MQTT_API
-void aws_mqtt_client_clean_up(struct aws_mqtt_client *client);
+struct aws_mqtt_client *aws_mqtt_client_acquire(struct aws_mqtt_client *client);
+
+/**
+ * Decrements the ref count on an mqtt client.  If the ref count drops to zero, the client is cleaned up.
+ *
+ * \param[in] client    The client to release a ref count on
+ */
+AWS_MQTT_API
+void aws_mqtt_client_release(struct aws_mqtt_client *client);
 
 /**
  * Spawns a new connection object.
  *
- * \param[in] client            The client to spawn the connection from
+ * \param[in] client    The client to spawn the connection from
  *
- * \returns AWS_OP_SUCCESS on success, otherwise AWS_OP_ERR and aws_last_error() is set.
+ * \returns a new mqtt connection on success, NULL otherwise
  */
 AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client);
 
 /**
- * Cleans up and destroys a connection object.
+ * Increments the ref count to an mqtt client connection, allowing the caller to take a reference to it
+ *
+ * \param[in] connection    The connection object
+ *
+ * \returns the mqtt connection
  */
 AWS_MQTT_API
-void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *connection);
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_acquire(struct aws_mqtt_client_connection *connection);
+
+/**
+ * Decrements the ref count on an mqtt connection.  If the ref count drops to zero, the connection is cleaned up.
+ *
+ * \param[in] connection    The connection object
+ */
+AWS_MQTT_API
+void aws_mqtt_client_connection_release(struct aws_mqtt_client_connection *connection);
 
 /**
  * Sets the will message to send with the CONNECT packet.
@@ -236,6 +264,8 @@ void aws_mqtt_client_connection_destroy(struct aws_mqtt_client_connection *conne
  * \param[in] connection    The connection object
  * \param[in] topic         The topic to publish the will on
  * \param[in] qos           The QoS to publish the will with
+ * \param[in] retain        The retain flag to publish the will with
+ * \param[in] payload       The data if the will message
  */
 AWS_MQTT_API
 int aws_mqtt_client_connection_set_will(
@@ -322,7 +352,7 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     void *on_resumed_ud);
 
 /**
- * Sets the callback to call whenever ANY publish packet is received.
+ * Sets the callback to call whenever ANY publish packet is received. Only safe to set when connection is not connected.
  *
  * \param[in] connection        The connection object
  * \param[in] on_any_publish    The function to call when a publish is received (pass NULL to unset)
@@ -336,7 +366,7 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
- * Once the connection is opened, on_connack will be called.
+ * Once the connection is opened, on_connack will be called. Only called when connection is disconnected.
  *
  * \param[in] connection                The connection object
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
@@ -369,6 +399,8 @@ int aws_mqtt_client_connection_reconnect(
 
 /**
  * Closes the connection asynchronously, calls the on_disconnect callback.
+ * All uncompleted requests (publish/subscribe/unsubscribe) will be cancelled, regardless to the status of
+ * clean_session. DISCONNECT packet will be sent, which deletes the will message from server.
  *
  * \param[in] connection    The connection to close
  *
@@ -384,10 +416,10 @@ int aws_mqtt_client_connection_disconnect(
 /**
  * Subscribe to topic filters. on_publish will be called when a PUBLISH matching each topic_filter is received.
  *
- * \param[in] connection    The connection to subscribe on
- * \param[in] topics        An array_list of aws_mqtt_topic_subscriptions (NOT pointers) describing the requests.
- * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
- * \param[in] on_suback_ud  Passed to on_suback
+ * \param[in] connection        The connection to subscribe on
+ * \param[in] topic_filters     An array_list of aws_mqtt_topic_subscription (NOT pointers) describing the requests.
+ * \param[in] on_suback         Called when a SUBACK has been received from the server and the subscription is complete
+ * \param[in] on_suback_ud      Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0.
  */
@@ -456,7 +488,6 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
  * \param[in] on_suback_ud  Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0 (and aws_last_error() will be set).
- * Error AWS_ERROR_MQTT_NO_TOPICS_FOR_RESUBSCRIBE is set if there were no topics to resubscribe to.
  */
 AWS_MQTT_API
 uint16_t aws_mqtt_resubscribe_existing_topics(
