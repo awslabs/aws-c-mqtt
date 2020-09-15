@@ -223,7 +223,7 @@ AWS_MQTT_API
 struct aws_mqtt_client *aws_mqtt_client_acquire(struct aws_mqtt_client *client);
 
 /**
- * Decrements the ref count on an mqtt client.  If the ref count drops to zero, the client is cleaned up.
+ * Decrements the ref count on an mqtt client. If the ref count drops to zero, the client is cleaned up.
  *
  * \param[in] client    The client to release a ref count on
  */
@@ -251,7 +251,7 @@ AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_acquire(struct aws_mqtt_client_connection *connection);
 
 /**
- * Decrements the ref count on an mqtt connection.  If the ref count drops to zero, the connection is cleaned up.
+ * Decrements the ref count on an mqtt connection. If the ref count drops to zero, the connection is cleaned up.
  *
  * \param[in] connection    The connection object
  */
@@ -259,7 +259,7 @@ AWS_MQTT_API
 void aws_mqtt_client_connection_release(struct aws_mqtt_client_connection *connection);
 
 /**
- * Sets the will message to send with the CONNECT packet.
+ * Sets the will message to send with the CONNECT packet. Only called on a stable (Connected/Disconnected) connection.
  *
  * \param[in] connection    The connection object
  * \param[in] topic         The topic to publish the will on
@@ -276,7 +276,7 @@ int aws_mqtt_client_connection_set_will(
     const struct aws_byte_cursor *payload);
 
 /**
- * Sets the username and/or password to send with the CONNECT packet.
+ * Sets the username and/or password to send with the CONNECT packet. Only called on a stable (Connected/Disconnected) connection.
  *
  * \param[in] connection    The connection object
  * \param[in] username      The username to connect with
@@ -319,7 +319,7 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
     struct aws_http_proxy_options *proxy_options);
 
 /**
- * Sets the minimum and maximum reconnect timeouts.
+ * Sets the minimum and maximum reconnect timeouts. Only called on a stable (Connected/Disconnected) connection.
  *
  * The time between reconnect attempts will start at min and multiply by 2 until max is reached.
  *
@@ -334,7 +334,7 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     uint64_t max_timeout);
 
 /**
- * Sets the callbacks to call when a connection is interrupted and resumed.
+ * Sets the callbacks to call when a connection is interrupted and resumed. Only called on a stable (Connected/Disconnected) connection.
  *
  * \param[in] connection        The connection object
  * \param[in] on_interrupted    The function to call when a connection is lost
@@ -352,7 +352,7 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     void *on_resumed_ud);
 
 /**
- * Sets the callback to call whenever ANY publish packet is received. Only safe to set when connection is not connected.
+ * Sets the callback to call whenever ANY publish packet is received. Only safe to set when connection is not connected. Only called on a not connected connection.
  *
  * \param[in] connection        The connection object
  * \param[in] on_any_publish    The function to call when a publish is received (pass NULL to unset)
