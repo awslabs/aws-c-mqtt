@@ -168,7 +168,8 @@ static void s_mqtt_client_shutdown(
 
                 AWS_LOGF_TRACE(
                     AWS_LS_MQTT_CLIENT, "id=%p: Connect attempt failed, automatically retrying", (void *)connection);
-
+                /* Make sure the reconnect task is created */
+                aws_create_reconnect_task(connection);
                 aws_event_loop_schedule_task_future(
                     el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
             } else {

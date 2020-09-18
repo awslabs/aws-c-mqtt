@@ -887,8 +887,43 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-/* Makes a CONNECT, channel is successfully setup, but the server never sends a connack, make sure we timeout. */
-static int s_test_mqtt_connection_connack_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+/* Makes a CONNECT, channel is successfully setup, but the server never sends a connack, not auto reconnect. Make sure
+ * we timeout, with completed error. */
+static int s_test_mqtt_connection_connack_timeout_not_auto_reconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .keep_alive_time_secs = 1,
+        .request_timeout_ms = 100,
+        .stop_auto_reconnect = true,
+    };
+
+    mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, 0);
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->error);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_connack_timeout_not_auto_reconnect,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_connack_timeout_not_auto_reconnect_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/* Makes a CONNECT, channel is successfully setup, but the server never sends a connack, make sure we timeout, with
+ * interrupted. */
+static int s_test_mqtt_connection_connack_timeout_auto_reconnect_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
@@ -905,17 +940,25 @@ static int s_test_mqtt_connection_connack_timeout_fn(struct aws_allocator *alloc
 
     mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, 0);
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+
+    /* The eventloop thread is keep trying to reconnect, until a connack received. Let's send a CONNACK after three
+     * CONNECT received */
+    mqtt_mock_server_wait_for_connects(state_test_data->test_channel_handler, 3);
+    mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, 1);
+    /* wait for connection to complete successfully */
     s_wait_for_connection_to_complete(state_test_data);
-
-    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->error);
-
+    ASSERT_INT_EQUALS(AWS_ERROR_SUCCESS, state_test_data->error);
+    /* disconnect */
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE_FIXTURE(
-    mqtt_connection_connack_timeout,
+    mqtt_connection_connack_timeout_auto_reconnect,
     s_setup_mqtt_server_fn,
-    s_test_mqtt_connection_connack_timeout_fn,
+    s_test_mqtt_connection_connack_timeout_auto_reconnect_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
 
