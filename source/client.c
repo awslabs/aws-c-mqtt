@@ -118,10 +118,6 @@ static void s_mqtt_client_shutdown(
         mqtt_connection_lock_synced_data(connection);
         prev_state = connection->synced_data.state;
         switch (connection->synced_data.state) {
-            case AWS_MQTT_CLIENT_STATE_CONNECTED:
-                /* unexpected hangup from broker, try to reconnect */
-                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
-                break;
             case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
                 /* disconnect requested by user */
                 /* Successfully shutdown, so clear the outstanding requests */
@@ -129,11 +125,17 @@ static void s_mqtt_client_shutdown(
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
                 break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
-                /* failed to connect */
-                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
-                break;
+            case AWS_MQTT_CLIENT_STATE_CONNECTED:
+                /* fall down */
             case AWS_MQTT_CLIENT_STATE_RECONNECTING:
-                /* reconnect failed, schedule the next attempt later, no need to change the state. */
+                /* connect attempt failed. */
+                if (connection->auto_reconnect) {
+                    /* schedule the next attempt later and switch to RECONNECTING */
+                    connection->synced_data.state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
+                } else {
+                    /* not automatically reconnect, switch to DISCONNECTED */
+                    connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                }
                 break;
             default:
                 /* AWS_MQTT_CLIENT_STATE_DISCONNECTED */
@@ -157,15 +159,26 @@ static void s_mqtt_client_shutdown(
         }
     }
     switch (prev_state) {
+        case AWS_MQTT_CLIENT_STATE_CONNECTING:
         case AWS_MQTT_CLIENT_STATE_RECONNECTING: {
-            /* If reconnect attempt failed, schedule the next attempt */
-            struct aws_event_loop *el =
-                aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+            if (connection->auto_reconnect) {
+                /* If connect attempt failed and reconnect automatically, schedule the next attempt */
+                struct aws_event_loop *el =
+                    aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
 
-            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Reconnect failed, retrying", (void *)connection);
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT, "id=%p: Connect attempt failed, automatically retrying", (void *)connection);
 
-            aws_event_loop_schedule_task_future(
-                el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
+                aws_event_loop_schedule_task_future(
+                    el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
+            } else {
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Connect attempt failed not automatically reconnect, calling callback",
+                    (void *)connection);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+                break;
+            }
             break;
         }
         case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
@@ -175,38 +188,45 @@ static void s_mqtt_client_shutdown(
                 (void *)connection);
             MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
             break;
-        case AWS_MQTT_CLIENT_STATE_CONNECTING:
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT, "id=%p: Initial connection attempt failed, calling callback", (void *)connection);
-            MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
-            break;
-        case AWS_MQTT_CLIENT_STATE_CONNECTED: {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Connection interrupted, calling callback and attempting reconnect",
-                (void *)connection);
-            MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
 
-            /* In case user called disconnect from the on_interrupted callback */
-            bool stop_reconnect;
-            { /* BEGIN CRITICAL SECTION */
-                mqtt_connection_lock_synced_data(connection);
-                stop_reconnect = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+        case AWS_MQTT_CLIENT_STATE_CONNECTED: {
+            if (connection->auto_reconnect) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Connection interrupted, calling callback and attempting reconnect",
+                    (void *)connection);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
+
+                /* In case user called disconnect from the on_interrupted callback */
+                bool stop_reconnect;
+                { /* BEGIN CRITICAL SECTION */
+                    mqtt_connection_lock_synced_data(connection);
+                    stop_reconnect = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+                    if (stop_reconnect) {
+                        connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                    }
+                    mqtt_connection_unlock_synced_data(connection);
+                } /* END CRITICAL SECTION */
                 if (stop_reconnect) {
-                    connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                    AWS_LOGF_TRACE(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
+                        (void *)connection);
+                    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                } else {
+                    /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
+                    connection->reconnect_task->task.fn(
+                        &connection->reconnect_task->task,
+                        connection->reconnect_task->task.arg,
+                        AWS_TASK_STATUS_RUN_READY);
                 }
-                mqtt_connection_unlock_synced_data(connection);
-            } /* END CRITICAL SECTION */
-            if (stop_reconnect) {
+            } else {
                 AWS_LOGF_TRACE(
                     AWS_LS_MQTT_CLIENT,
-                    "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
+                    "id=%p: Connection lost and not automatically reconnect, calling callback",
                     (void *)connection);
-                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
-            } else {
-                /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
-                connection->reconnect_task->task.fn(
-                    &connection->reconnect_task->task, connection->reconnect_task->task.arg, AWS_TASK_STATUS_RUN_READY);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+                break;
             }
             break;
         }
@@ -1299,6 +1319,7 @@ int aws_mqtt_client_connection_connect(
     connection->port = connection_options->port;
     connection->socket_options = *connection_options->socket_options;
     connection->clean_session = connection_options->clean_session;
+    connection->auto_reconnect = !connection_options->stop_auto_reconnect;
     connection->keep_alive_time_secs = connection_options->keep_alive_time_secs;
     connection->connection_count = 0;
 
@@ -1306,11 +1327,11 @@ int aws_mqtt_client_connection_connect(
         connection->keep_alive_time_secs = s_default_keep_alive_sec;
     }
 
-    if (!connection_options->ping_timeout_ms) {
+    if (!connection_options->request_timeout_ms) {
         connection->request_timeout_ns = s_default_request_timeout_ns;
     } else {
         connection->request_timeout_ns = aws_timestamp_convert(
-            (uint64_t)connection_options->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+            (uint64_t)connection_options->request_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
     /* Keep alive time should always be greater than the timeouts. */

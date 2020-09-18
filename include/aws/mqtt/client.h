@@ -166,23 +166,19 @@ struct aws_mqtt_topic_subscription {
  *                           This is copied into the connection
  *                           Pass NULL to connect without TLS (NOT RECOMMENDED)
  * clean_session             True to discard all server session data and start fresh
+ * stop_auto_reconnect       True to stop reconnecting automatically everytime the connection lost. In this case, once
+ *                           the connection lost, the on_connection_complete callback will be invoked, user will need 
+ *                           to call connect again to reconnect. 
  * keep_alive_time_secs      The keep alive value to place in the CONNECT PACKET, a PING will automatically
  *                           be sent at this interval as well. If you specify 0, defaults will be used
  *                           and a ping will be sent once per 20 minutes.
- *                           This duration must be longer than ping_timeout_ms.
- * ping_timeout_ms           Network connection is re-established if a ping response is not received
+ *                           This duration must be longer than request_timeout_ms.
+ * request_timeout_ms        Network connection is re-established if a PING/CONNECT response is not received
  *                           within this amount of time (milliseconds). If you specify 0, a default value of 3 seconds
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
  *                           and OS version. This duration must be shorter than keep_alive_time_secs. It is also used to
  *                           re-attempt requests with qos > 0 if they are not ACKed in time.
- *
- * TODO: The documentation is not clear. it's probably more clear to be named as request_timeout_ms, since we are using
- * this for all the requests that need a response.
- * Note: For CONNECT, if the response is not received within this amount of time, the connection will shutdown, and
- * reconnect will not happen automatically. For PINGREQ, the connection will shutdown and try to reconnect
- * automactically. For other requests, they will be resent in this case.
- *
  * on_connection_complete    The callback to fire when the connection attempt completes user_data
  *                           Passed to the userdata param of on_connection_complete
  */
@@ -193,10 +189,11 @@ struct aws_mqtt_connection_options {
     struct aws_tls_connection_options *tls_options;
     struct aws_byte_cursor client_id;
     uint16_t keep_alive_time_secs;
-    uint32_t ping_timeout_ms;
+    uint32_t request_timeout_ms;
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *user_data;
     bool clean_session;
+    bool stop_auto_reconnect;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -276,7 +273,8 @@ int aws_mqtt_client_connection_set_will(
     const struct aws_byte_cursor *payload);
 
 /**
- * Sets the username and/or password to send with the CONNECT packet. Only called on a stable (Connected/Disconnected) connection.
+ * Sets the username and/or password to send with the CONNECT packet. Only called on a stable (Connected/Disconnected)
+ * connection.
  *
  * \param[in] connection    The connection object
  * \param[in] username      The username to connect with
@@ -334,7 +332,8 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     uint64_t max_timeout);
 
 /**
- * Sets the callbacks to call when a connection is interrupted and resumed. Only called on a stable (Connected/Disconnected) connection.
+ * Sets the callbacks to call when a connection is interrupted and resumed. Only called on a stable
+ (Connected/Disconnected) connection.
  *
  * \param[in] connection        The connection object
  * \param[in] on_interrupted    The function to call when a connection is lost
@@ -352,7 +351,8 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     void *on_resumed_ud);
 
 /**
- * Sets the callback to call whenever ANY publish packet is received. Only safe to set when connection is not connected. Only called on a not connected connection.
+ * Sets the callback to call whenever ANY publish packet is received. Only safe to set when connection is not connected.
+ * Only called on a not connected connection.
  *
  * \param[in] connection        The connection object
  * \param[in] on_any_publish    The function to call when a publish is received (pass NULL to unset)

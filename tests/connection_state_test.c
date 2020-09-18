@@ -763,7 +763,7 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
-        .ping_timeout_ms = 100,
+        .request_timeout_ms = 100,
     };
 
     mqtt_mock_server_set_max_ping_resp(state_test_data->test_channel_handler, 0);
@@ -900,7 +900,7 @@ static int s_test_mqtt_connection_connack_timeout_fn(struct aws_allocator *alloc
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
-        .ping_timeout_ms = 100,
+        .request_timeout_ms = 100,
     };
 
     mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, 0);
@@ -1491,7 +1491,7 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .request_timeout_ms = 10,
         .keep_alive_time_secs = 1,
     };
 
@@ -1609,7 +1609,7 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .request_timeout_ms = 10,
         .keep_alive_time_secs = 1,
     };
 
@@ -1689,7 +1689,7 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .request_timeout_ms = 10,
         .keep_alive_time_secs = 1,
     };
 

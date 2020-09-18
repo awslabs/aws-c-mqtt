@@ -141,7 +141,6 @@ static int s_packet_handler_connack(
             const struct aws_linked_list_node *end = aws_linked_list_end(&requests);
 
             do {
-
                 struct aws_mqtt_outstanding_request *request =
                     AWS_CONTAINER_OF(current, struct aws_mqtt_outstanding_request, list_node);
                 AWS_LOGF_TRACE(
