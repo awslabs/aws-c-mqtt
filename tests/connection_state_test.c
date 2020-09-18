@@ -748,6 +748,45 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
+/*
+ * Makes a CONNECT, without auto reconnect, then the server hangs up, tests that the client interrupted and no reconnect will be made.
+ */
+static int s_test_mqtt_connection_interrupted_not_auto_reconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .stop_auto_reconnect = true,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    /* shut it down and make sure the client is disconnected now.*/
+    aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
+    s_wait_for_interrupt_to_complete(state_test_data);
+
+    /* Already disconnected, disconnect call will fail */
+    ASSERT_FAILS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    ASSERT_INT_EQUALS(aws_last_error(), AWS_ERROR_MQTT_NOT_CONNECTED);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_interrupted_not_auto_reconnect,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_interrupted_not_auto_reconnect_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
 /* Makes a CONNECT, with a 1 second keep alive ping interval, the mock is configured to not reply to the PING,
  * this should cause a timeout, then the PING responses are turned back on, and the client should automatically
  * reconnect. Then send a DISCONNECT. */

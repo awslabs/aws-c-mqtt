@@ -124,16 +124,17 @@ static void s_mqtt_client_shutdown(
                 aws_hash_table_clear(&connection->synced_data.outstanding_requests_table);
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
                 break;
-            case AWS_MQTT_CLIENT_STATE_CONNECTING:
             case AWS_MQTT_CLIENT_STATE_CONNECTED:
-                /* fall down */
-            case AWS_MQTT_CLIENT_STATE_RECONNECTING:
-                /* connect attempt failed. */
                 if (connection->auto_reconnect) {
                     /* schedule the next attempt later and switch to RECONNECTING */
                     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
                 } else {
                     /* not automatically reconnect, switch to DISCONNECTED */
+                    connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                }
+            case AWS_MQTT_CLIENT_STATE_CONNECTING:
+            case AWS_MQTT_CLIENT_STATE_RECONNECTING:
+                if (!connection->auto_reconnect) {
                     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
                 }
                 break;
@@ -173,6 +174,8 @@ static void s_mqtt_client_shutdown(
                 aws_event_loop_schedule_task_future(
                     el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
             } else {
+                /* If not auto reconnect, it should never be reconnecting */
+                AWS_ASSERT(prev_state != AWS_MQTT_CLIENT_STATE_RECONNECTING);
                 AWS_LOGF_TRACE(
                     AWS_LS_MQTT_CLIENT,
                     "id=%p: Connect attempt failed not automatically reconnect, calling callback",
@@ -226,7 +229,7 @@ static void s_mqtt_client_shutdown(
                     AWS_LS_MQTT_CLIENT,
                     "id=%p: Connection lost and not automatically reconnect, calling callback",
                     (void *)connection);
-                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
                 break;
             }
             break;
@@ -1484,7 +1487,7 @@ int aws_mqtt_client_connection_disconnect(
             connection->synced_data.state != AWS_MQTT_CLIENT_STATE_RECONNECTING) {
             mqtt_connection_unlock_synced_data(connection);
             AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT, "id=%p: Connection is not open, and may not be closed", (void *)connection);
+                AWS_LS_MQTT_CLIENT, "id=%p: Connection is not open, and can not be closed", (void *)connection);
             aws_raise_error(AWS_ERROR_MQTT_NOT_CONNECTED);
             return AWS_OP_ERR;
         }
