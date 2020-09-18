@@ -749,7 +749,8 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /*
- * Makes a CONNECT, without auto reconnect, then the server hangs up, tests that the client interrupted and no reconnect will be made.
+ * Makes a CONNECT, without auto reconnect, then the server hangs up, tests that the client interrupted and no reconnect
+ * will be made.
  */
 static int s_test_mqtt_connection_interrupted_not_auto_reconnect_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;

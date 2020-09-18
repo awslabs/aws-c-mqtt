@@ -132,6 +132,7 @@ static void s_mqtt_client_shutdown(
                     /* not automatically reconnect, switch to DISCONNECTED */
                     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
                 }
+                break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
             case AWS_MQTT_CLIENT_STATE_RECONNECTING:
                 if (!connection->auto_reconnect) {
