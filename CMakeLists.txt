@@ -62,7 +62,6 @@ aws_check_headers(${PROJECT_NAME} ${MQTT_HEADERS})
 
 aws_add_sanitizers(${PROJECT_NAME})
 
-# We are not ABI stable yet
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 set_target_properties(${PROJECT_NAME} PROPERTIES SOVERSION 1)
 
