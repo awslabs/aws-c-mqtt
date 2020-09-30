@@ -711,7 +711,6 @@ static void s_request_send_task(struct aws_channel_task *task, void *arg, enum a
             (void *)(request->connection),
             request->packet_id);
 
-        struct aws_mqtt_client_connection *connection = request->connection;
         { /* BEGIN CRITICAL SECTION */
             mqtt_connection_lock_synced_data(connection);
             aws_memory_pool_release(&connection->synced_data.requests_pool, request);
