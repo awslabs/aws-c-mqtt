@@ -116,6 +116,14 @@ static void s_mqtt_client_shutdown(
     enum aws_mqtt_client_connection_state prev_state;
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
+        /* Move all the ongoing requests to the pending requests list, because the response they are waiting for will
+         * never arrives. Sad. But, we will retry. */
+        while (!aws_linked_list_empty(&connection->thread_data.ongoing_requests_list)) {
+            struct aws_linked_list_node *node =
+                aws_linked_list_pop_front(&connection->thread_data.ongoing_requests_list);
+            struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+            aws_mqtt_offline_queueing(request);
+        }
         prev_state = connection->synced_data.state;
         switch (connection->synced_data.state) {
             case AWS_MQTT_CLIENT_STATE_CONNECTED:
@@ -506,8 +514,13 @@ static void s_outstanding_request_destroy(void *item) {
         /* Signal task to clean up request */
         request->cancelled = true;
         if (!request->completed) {
-            request->on_complete(
-                request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_SHUTDOWN, request->on_complete_ud);
+            if (request->on_complete) {
+                request->on_complete(
+                    request->connection,
+                    request->packet_id,
+                    AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
+                    request->on_complete_ud);
+            }
             request->completed = true;
         }
     }
@@ -524,13 +537,15 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
     AWS_ASSERT(!connection->slot);
     /* clean up the pending_requests if it's not empty */
     while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list.list)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
-        struct aws_mqtt_request *request =
-            AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+        struct aws_linked_list_node *node =
+            aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
+        struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
         /* Fire the callback and clean up the memory, as the connection get destoried. */
         if (!request->completed) {
-            request->on_complete(
-                request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
+            if (request->on_complete) {
+                request->on_complete(
+                    connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
+            }
         }
         aws_memory_pool_release(&connection->synced_data.requests_pool, request);
     }
@@ -638,7 +653,11 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
+    connection->synced_data.pending_requests_list.len = 0;
+    /* TODO: configurable list len */
+    connection->synced_data.pending_list_len = SIZE_MAX;
     aws_linked_list_init(&connection->synced_data.pending_requests_list.list);
+    aws_linked_list_init(&connection->thread_data.ongoing_requests_list);
 
     if (aws_mutex_init(&connection->synced_data.lock)) {
         AWS_LOGF_ERROR(
@@ -662,10 +681,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     }
 
     if (aws_memory_pool_init(
-            &connection->synced_data.requests_pool,
-            connection->allocator,
-            32,
-            sizeof(struct aws_mqtt_request))) {
+            &connection->synced_data.requests_pool, connection->allocator, 32, sizeof(struct aws_mqtt_request))) {
 
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
@@ -2568,47 +2584,73 @@ uint16_t aws_mqtt_client_connection_publish(
  * Ping
  ******************************************************************************/
 
+static void s_pingresp_received_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    struct aws_mqtt_client_connection *connection = arg;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        /* Check that a pingresp has been received since pingreq was sent */
+        if (connection->thread_data.waiting_on_ping_response) {
+            connection->thread_data.waiting_on_ping_response = false;
+            /* It's been too long since the last ping, close the connection */
+            AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: ping timeout detected", (void *)connection);
+            aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
+        }
+    }
+
+    aws_mem_release(connection->allocator, channel_task);
+}
+
 static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t packet_id, bool is_first_attempt, void *userdata) {
     (void)packet_id;
+    AWS_PRECONDITION(is_first_attempt);
 
     struct aws_mqtt_client_connection *connection = userdata;
 
-    if (is_first_attempt) {
-        /* First attempt, actually send the packet */
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: pingreq send", (void *)connection);
+    struct aws_mqtt_packet_connection pingreq;
+    aws_mqtt_packet_pingreq_init(&pingreq);
 
-        struct aws_mqtt_packet_connection pingreq;
-        aws_mqtt_packet_pingreq_init(&pingreq);
-
-        struct aws_io_message *message = mqtt_get_message_for_packet(connection, &pingreq.fixed_header);
-        if (!message) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-
-        if (aws_mqtt_packet_connection_encode(&message->message_data, &pingreq)) {
-            aws_mem_release(message->allocator, message);
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-
-        if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-            aws_mem_release(message->allocator, message);
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-
-        /* Mark down that now is when the last pingreq was sent */
-        connection->thread_data.waiting_on_ping_response = true;
-
-        return AWS_MQTT_CLIENT_REQUEST_ONGOING;
+    struct aws_io_message *message = mqtt_get_message_for_packet(connection, &pingreq.fixed_header);
+    if (!message) {
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
-    /* Check that a pingresp has been received since pingreq was sent */
-    if (connection->thread_data.waiting_on_ping_response) {
-        connection->thread_data.waiting_on_ping_response = false;
-        /* It's been too long since the last ping, close the connection */
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: ping timeout detected", (void *)connection);
-        aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
+    if (aws_mqtt_packet_connection_encode(&message->message_data, &pingreq)) {
+        aws_mem_release(message->allocator, message);
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
-    return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
+    if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+    }
+
+    /* Mark down that now is when the last pingreq was sent */
+    connection->thread_data.waiting_on_ping_response = true;
+
+    struct aws_channel_task *ping_timeout_task =
+        aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_channel_task));
+    if (!ping_timeout_task) {
+        /* allocation failed, no log, just return error. */
+        goto error;
+    }
+    aws_channel_task_init(ping_timeout_task, s_pingresp_received_timeout, connection, "mqtt_pingresp_timeout");
+    uint64_t now = 0;
+    if (aws_channel_current_clock_time(connection->slot->channel, &now)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "static: Failed to setting MQTT handler into slot on channel %p, error %d (%s).",
+            (void *)connection->slot->channel,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        goto error;
+    }
+    now += connection->request_timeout_ns;
+    aws_channel_schedule_task_future(connection->slot->channel, ping_timeout_task, now);
+    return AWS_MQTT_CLIENT_REQUEST_ONGOING;
+
+error:
+    return AWS_MQTT_CLIENT_REQUEST_ERROR;
 }
 
 int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection) {

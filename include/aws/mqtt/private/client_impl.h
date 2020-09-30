@@ -59,7 +59,7 @@ typedef enum aws_mqtt_client_request_state(
     aws_mqtt_send_request_fn)(uint16_t packet_id, bool is_first_attempt, void *userdata);
 
 /* linked list with the size. Not using aws_cache here, since the hash map is not needed. */
-struct aws_mqtt_offline_queue{
+struct aws_mqtt_offline_queue {
     size_t len;
     struct aws_linked_list list;
 };
@@ -150,7 +150,6 @@ struct aws_mqtt_client_connection {
 
     /* Only the event-loop thread may touch this data */
     struct {
-
         /* If an incomplete packet arrives, store the data here. */
         struct aws_byte_buf pending_packet;
 
@@ -164,7 +163,7 @@ struct aws_mqtt_client_connection {
         /**
          * List of all requests waiting for response.
          */
-        struct aws_linked_list outstanding_requests_list;
+        struct aws_linked_list ongoing_requests_list;
     } thread_data;
 
     /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
@@ -228,10 +227,13 @@ struct aws_io_message *mqtt_get_message_for_packet(
 void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
 
+/* Note: This has to be called with a lock hold. Enqueue a request to be retried once the connection is back */
+void aws_mqtt_offline_queueing(struct aws_mqtt_request *request);
+
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).
  * send_request will be called from request_timeout_task if everything succeed. Not called with error.
- * on_complete will be called once the request completed, either either in success or error. 
+ * on_complete will be called once the request completed, either either in success or error.
  * noRetry is true for the packets will never be retried or offline queued.
  */
 AWS_MQTT_API uint16_t mqtt_create_request(
