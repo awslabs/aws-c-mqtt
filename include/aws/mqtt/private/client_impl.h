@@ -58,7 +58,13 @@ enum aws_mqtt_client_request_state {
 typedef enum aws_mqtt_client_request_state(
     aws_mqtt_send_request_fn)(uint16_t packet_id, bool is_first_attempt, void *userdata);
 
-struct aws_mqtt_outstanding_request {
+/* linked list with the size. Not using aws_cache here, since the hash map is not needed. */
+struct aws_mqtt_offline_queue{
+    size_t len;
+    struct aws_linked_list list;
+};
+
+struct aws_mqtt_request {
     struct aws_linked_list_node list_node;
 
     struct aws_allocator *allocator;
@@ -67,6 +73,7 @@ struct aws_mqtt_outstanding_request {
     struct aws_channel_task timeout_task;
 
     uint16_t packet_id;
+    bool retryable;
     bool initiated;
     bool completed;
     bool cancelled;
@@ -154,6 +161,10 @@ struct aws_mqtt_client_connection {
          * endpoint and connect with another endpoint, the subscription tree will still be the same as before. */
         struct aws_mqtt_topic_tree subscriptions;
 
+        /**
+         * List of all requests waiting for response.
+         */
+        struct aws_linked_list outstanding_requests_list;
     } thread_data;
 
     /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
@@ -165,11 +176,6 @@ struct aws_mqtt_client_connection {
         enum aws_mqtt_client_connection_state state;
 
         /**
-         * Memory pool for all aws_mqtt_outstanding_request.
-         */
-        struct aws_memory_pool requests_pool;
-
-        /**
          * Store all requests that is not completed including the pending requests.
          *
          * hash table from uint16_t (packet_id) to aws_mqtt_outstanding_request
@@ -177,10 +183,20 @@ struct aws_mqtt_client_connection {
         struct aws_hash_table outstanding_requests_table;
 
         /**
-         * List of all requests that cannot be scheduled until the connection comes online.
-         * TODO: make the size of the list configurable. Stop it from from ever-growing
+         * Memory pool for all aws_mqtt_request.
          */
-        struct aws_linked_list pending_requests_list;
+        struct aws_memory_pool requests_pool;
+
+        /**
+         * List of all requests that cannot be scheduled until the connection comes online.
+         */
+        struct aws_mqtt_offline_queue pending_requests_list;
+
+        /**
+         * Length of the pending list. When the number of pending request reach this number, the oldest request will be
+         * ejected from the list, and completed with failure. Set it to zero to disable offline queueing.
+         */
+        size_t pending_list_len;
     } synced_data;
 
     struct {
@@ -215,14 +231,16 @@ void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *conne
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).
  * send_request will be called from request_timeout_task if everything succeed. Not called with error.
- * on_complete will be called once the request completed, either either in success or error.
+ * on_complete will be called once the request completed, either either in success or error. 
+ * noRetry is true for the packets will never be retried or offline queued.
  */
 AWS_MQTT_API uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
     aws_mqtt_op_complete_fn *on_complete,
-    void *on_complete_ud);
+    void *on_complete_ud,
+    bool noRetry);
 
 /* Call when an ack packet comes back from the server. */
 AWS_MQTT_API void mqtt_request_complete(

@@ -489,7 +489,7 @@ static bool s_uint16_t_eq(const void *a, const void *b) {
 }
 
 static void s_outstanding_request_destroy(void *item) {
-    struct aws_mqtt_outstanding_request *request = item;
+    struct aws_mqtt_request *request = item;
 
     if (request->cancelled) {
         AWS_LOGF_TRACE(
@@ -523,10 +523,10 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
      */
     AWS_ASSERT(!connection->slot);
     /* clean up the pending_requests if it's not empty */
-    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list);
-        struct aws_mqtt_outstanding_request *request =
-            AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
+    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list.list)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
+        struct aws_mqtt_request *request =
+            AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
         /* Fire the callback and clean up the memory, as the connection get destoried. */
         if (!request->completed) {
             request->on_complete(
@@ -638,7 +638,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
-    aws_linked_list_init(&connection->synced_data.pending_requests_list);
+    aws_linked_list_init(&connection->synced_data.pending_requests_list.list);
 
     if (aws_mutex_init(&connection->synced_data.lock)) {
         AWS_LOGF_ERROR(
@@ -665,7 +665,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
             &connection->synced_data.requests_pool,
             connection->allocator,
             32,
-            sizeof(struct aws_mqtt_outstanding_request))) {
+            sizeof(struct aws_mqtt_request))) {
 
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
@@ -679,7 +679,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     if (aws_hash_table_init(
             &connection->synced_data.outstanding_requests_table,
             connection->allocator,
-            sizeof(struct aws_mqtt_outstanding_request *),
+            sizeof(struct aws_mqtt_request *),
             s_hash_uint16_t,
             s_uint16_t_eq,
             NULL,
@@ -1741,8 +1741,8 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
         aws_array_list_push_back(&task_arg->topics, &task_topic);
     }
 
-    uint16_t packet_id =
-        mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg);
+    uint16_t packet_id = mqtt_create_request(
+        task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg, false /* noRetry */);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic subscribe %" PRIu16, (void *)connection, packet_id);
 
@@ -1869,8 +1869,8 @@ uint16_t aws_mqtt_client_connection_subscribe(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    uint16_t packet_id =
-        mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg);
+    uint16_t packet_id = mqtt_create_request(
+        task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg, false /* noRetry */);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
@@ -2018,7 +2018,12 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
     task_topic->request.on_publish_ud = on_publish_ud;
 
     uint16_t packet_id = mqtt_create_request(
-        task_arg->connection, s_subscribe_local_send, task_arg, &s_subscribe_local_complete, task_arg);
+        task_arg->connection,
+        s_subscribe_local_send,
+        task_arg,
+        &s_subscribe_local_complete,
+        task_arg,
+        false /* noRetry */);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
@@ -2215,8 +2220,8 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     task_arg->on_suback.multi = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
-    uint16_t packet_id =
-        mqtt_create_request(task_arg->connection, &s_resubscribe_send, task_arg, &s_resubscribe_complete, task_arg);
+    uint16_t packet_id = mqtt_create_request(
+        task_arg->connection, &s_resubscribe_send, task_arg, &s_resubscribe_complete, task_arg, false /* noRetry */);
 
     if (packet_id == 0) {
         AWS_LOGF_ERROR(
@@ -2377,8 +2382,8 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
 
-    uint16_t packet_id =
-        mqtt_create_request(connection, &s_unsubscribe_send, task_arg, s_unsubscribe_complete, task_arg);
+    uint16_t packet_id = mqtt_create_request(
+        connection, &s_unsubscribe_send, task_arg, s_unsubscribe_complete, task_arg, false /* noRetry */);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting unsubscribe %" PRIu16, (void *)connection, packet_id);
 
@@ -2527,7 +2532,8 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->on_complete = on_complete;
     arg->userdata = userdata;
 
-    uint16_t packet_id = mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
+    uint16_t packet_id = mqtt_create_request(
+        connection, &s_publish_send, arg, &s_publish_complete, arg, qos == AWS_MQTT_QOS_AT_MOST_ONCE);
 
     if (packet_id) {
         AWS_LOGF_DEBUG(
@@ -2609,7 +2615,7 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    uint16_t packet_id = mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
+    uint16_t packet_id = mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL, true /* noRetry */);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
 
