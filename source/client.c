@@ -2602,6 +2602,7 @@ static void s_pingresp_received_timeout(struct aws_channel_task *channel_task, v
 
 static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t packet_id, bool is_first_attempt, void *userdata) {
     (void)packet_id;
+    (void)is_first_attempt;
     AWS_PRECONDITION(is_first_attempt);
 
     struct aws_mqtt_client_connection *connection = userdata;
