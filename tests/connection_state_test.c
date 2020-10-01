@@ -589,6 +589,7 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
+        .pending_list_len = SIZE_MAX,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -707,6 +708,7 @@ static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
+        .pending_list_len = SIZE_MAX,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -764,6 +766,7 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
         .on_connection_complete = s_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
         .ping_timeout_ms = 100,
+        .pending_list_len = SIZE_MAX,
     };
 
     mqtt_mock_server_set_max_ping_resp(state_test_data->test_channel_handler, 0);
@@ -802,6 +805,7 @@ static int s_test_mqtt_connection_any_publish_fn(struct aws_allocator *allocator
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
+        .pending_list_len = SIZE_MAX,
     };
 
     struct aws_byte_cursor topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
@@ -880,6 +884,7 @@ static int s_test_mqtt_connection_connack_timeout_fn(struct aws_allocator *alloc
         .on_connection_complete = s_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
         .ping_timeout_ms = 100,
+        .pending_list_len = SIZE_MAX,
     };
 
     mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, 0);
@@ -911,6 +916,7 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
+        .pending_list_len = SIZE_MAX,
     };
 
     struct aws_byte_cursor sub_topic = aws_byte_cursor_from_c_str("/test/topic");
@@ -1007,6 +1013,7 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
+        .pending_list_len = SIZE_MAX,
     };
 
     struct aws_byte_cursor sub_topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
@@ -1132,6 +1139,7 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
+        .pending_list_len = SIZE_MAX,
     };
 
     struct aws_byte_cursor sub_topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
@@ -1276,6 +1284,7 @@ static int s_test_mqtt_resubscribe_fn(struct aws_allocator *allocator, void *ctx
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
+        .pending_list_len = SIZE_MAX,
     };
 
     struct aws_byte_cursor sub_topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
@@ -1387,6 +1396,7 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
+        .pending_list_len = SIZE_MAX,
     };
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
@@ -1472,6 +1482,7 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 1,
+        .pending_list_len = SIZE_MAX,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1590,6 +1601,7 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 1,
+        .pending_list_len = SIZE_MAX,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1670,6 +1682,7 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 1,
+        .pending_list_len = SIZE_MAX,
     };
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
