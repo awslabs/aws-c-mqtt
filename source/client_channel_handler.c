@@ -633,7 +633,8 @@ static void s_internal_complete_request(struct aws_mqtt_request *request, int er
     request->cancelled = true;
     /* when the request is removed from the table, it will be cleaned up. */
     /* Remove call only failed as the hash table has been screwed, which means the program can be dead now. */
-    AWS_ASSERT(!aws_hash_table_remove(&connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL));
+    AWS_ASSERT(
+        !aws_hash_table_remove(&connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL));
 }
 
 /* Note: Called with a lock hold. */
@@ -646,7 +647,7 @@ void aws_mqtt_offline_queueing(struct aws_mqtt_request *request) {
         "id=%p: not currently connected, add message id %" PRIu16 " to the pending requests list.",
         (void *)connection,
         request->packet_id);
-    if (connection->synced_data.pending_requests_list.len == connection->synced_data.pending_list_len) {
+    if (connection->synced_data.pending_requests_list.len == connection->pending_list_len) {
         struct aws_linked_list_node *node =
             aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
         struct aws_mqtt_request *oldrequest = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);

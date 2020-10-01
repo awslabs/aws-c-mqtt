@@ -652,8 +652,6 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
     connection->synced_data.pending_requests_list.len = 0;
-    /* TODO: configurable list len */
-    connection->synced_data.pending_list_len = SIZE_MAX;
     aws_linked_list_init(&connection->synced_data.pending_requests_list.list);
     aws_linked_list_init(&connection->thread_data.ongoing_requests_list);
 
@@ -1314,6 +1312,7 @@ int aws_mqtt_client_connection_connect(
     connection->socket_options = *connection_options->socket_options;
     connection->clean_session = connection_options->clean_session;
     connection->keep_alive_time_secs = connection_options->keep_alive_time_secs;
+    connection->pending_list_len = connection_options->pending_list_len;
     connection->connection_count = 0;
 
     if (!connection->keep_alive_time_secs) {
