@@ -124,6 +124,12 @@ struct aws_mqtt_client_connection {
         uint64_t max;          /* seconds */
         uint64_t next_attempt; /* milliseconds */
     } reconnect_timeouts;
+    /**
+     * Length of the pending list. When the number of pending request reach this number, the oldest request will be
+     * ejected from the list, and completed with failure. Set it to zero to disable offline queueing.
+     */
+    size_t pending_list_len;
+
     /* User connection callbacks */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *on_connection_complete_ud;
@@ -191,11 +197,6 @@ struct aws_mqtt_client_connection {
          */
         struct aws_mqtt_offline_queue pending_requests_list;
 
-        /**
-         * Length of the pending list. When the number of pending request reach this number, the oldest request will be
-         * ejected from the list, and completed with failure. Set it to zero to disable offline queueing.
-         */
-        size_t pending_list_len;
     } synced_data;
 
     struct {

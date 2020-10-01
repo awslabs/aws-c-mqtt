@@ -233,12 +233,13 @@ void aws_mqtt_client_release(struct aws_mqtt_client *client);
 /**
  * Spawns a new connection object.
  *
- * \param[in] client    The client to spawn the connection from
+ * \param[in] client                The client to spawn the connection from
+ * \param[in] pending_list_len      The length of the offfline queue, set it to 0 to disable offline queue.
  *
  * \returns a new mqtt connection on success, NULL otherwise
  */
 AWS_MQTT_API
-struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client);
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client, size_t pending_list_len);
 
 /**
  * Increments the ref count to an mqtt client connection, allowing the caller to take a reference to it

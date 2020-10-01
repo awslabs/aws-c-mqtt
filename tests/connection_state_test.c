@@ -255,7 +255,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     state_test_data->client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
     state_test_data->mqtt_client = aws_mqtt_client_new(allocator, state_test_data->client_bootstrap);
-    state_test_data->mqtt_connection = aws_mqtt_client_connection_new(state_test_data->mqtt_client);
+    state_test_data->mqtt_connection = aws_mqtt_client_connection_new(state_test_data->mqtt_client, SIZE_MAX);
     ASSERT_NOT_NULL(state_test_data->mqtt_connection);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_connection_interruption_handlers(
