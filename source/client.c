@@ -145,8 +145,6 @@ static void s_mqtt_client_shutdown(
                 break;
             default:
                 /* AWS_MQTT_CLIENT_STATE_DISCONNECTED */
-                /* TODO: it should be an error from my understanding, but we just silently do nothing */
-
                 break;
         }
         /* Always clear slot, as that's what's been shutdown */

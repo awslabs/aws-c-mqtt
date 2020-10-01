@@ -632,9 +632,8 @@ static void s_internal_complete_request(struct aws_mqtt_request *request, int er
     }
     request->cancelled = true;
     /* when the request is removed from the table, it will be cleaned up. */
-    if (aws_hash_table_remove(&connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL)) {
-        /* TODO: Error check */
-    };
+    /* Remove call only failed as the hash table has been screwed, which means the program can be dead now. */
+    AWS_ASSERT(!aws_hash_table_remove(&connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL));
 }
 
 /* Note: Called with a lock hold. */
@@ -847,7 +846,8 @@ uint16_t mqtt_create_request(
         next_request->send_request_ud = send_request_ud;
         next_request->on_complete = on_complete;
         next_request->on_complete_ud = on_complete_ud;
-        aws_channel_task_init(&next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_request_timeout");
+        aws_channel_task_init(
+            &next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_request_timeout");
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
             aws_mqtt_offline_queueing(next_request);
         } else {
