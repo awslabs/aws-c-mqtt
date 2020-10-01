@@ -799,17 +799,9 @@ uint16_t mqtt_create_request(
         if (noRetry && connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
             mqtt_connection_unlock_synced_data(connection);
             /* Not offline queueing QoS 0 publish or PINGREQ. Fail the call. Early stop, but not an error. */
-            /**
-             * *Will remove* Options:
-             * 1. invoke complete callback & clean it up during the task. Problem is the channel may not exist,
-             *    it will still be a synced call.
-             * 2. Fail the call. Exception with no offline queueing for QoS 0.
-             * 3. For ping, it's not an error and no complete callback, it's fine to do this. But, for publish,
-             *    this will not invoke the on_complete callback, it should be consider as error?
-             */
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_CLIENT,
-                "id=%p: Not currently connected. No offline queueing for QoS 0 publish.",
+                "id=%p: Not currently connected. No offline queueing for QoS 0 publish or pingreq.",
                 (void *)connection);
             return 0;
         }
@@ -823,9 +815,8 @@ uint16_t mqtt_create_request(
         struct aws_hash_element *elem = NULL;
         uint16_t next_id = 0;
         /**
-         * *Will remove*
          * QoS 0 publish and PINGREQ don't need a packet ID, but, we may still need a ID for publish QoS 0,
-         * For user to keep all data alive, an ID will help.(Probably?)
+         * For user to keep all data alive, an ID will help.
          */
         do {
             /* find the next unused packet id for the new request */

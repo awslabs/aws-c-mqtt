@@ -42,6 +42,10 @@ add_test_case(mqtt_connect_publish)
 add_test_case(mqtt_connection_offline_publish)
 add_test_case(mqtt_connection_disconnect_while_reconnecting)
 add_test_case(mqtt_connection_closes_while_making_requests)
+#TODO
+#add_test_case(mqtt_connection_not_retry_publish_QoS_0) That's hard to test...
+#add_test_case(mqtt_connection_not_queue_publish_QoS_0_pingreq)
+#add_test_case(mqtt_connection_offline_queue_length_limit)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
