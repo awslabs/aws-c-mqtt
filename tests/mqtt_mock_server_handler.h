@@ -34,6 +34,9 @@ struct mqtt_decoded_packet {
     struct aws_byte_cursor publish_payload;    /* PUBLISH payload */
     struct aws_array_list sub_topic_filters;   /* list of aws_mqtt_subscription for SUBSCRIBE */
     struct aws_array_list unsub_topic_filters; /* list of aws_byte_cursor for UNSUBSCRIBE */
+
+    /* index of the received packet, indicating when it's received by the server */
+    size_t index;
 };
 
 struct mqtt_mock_server_handler {
@@ -66,38 +69,75 @@ struct aws_channel_handler *new_mqtt_mock_server(struct aws_allocator *allocator
 void destroy_mqtt_mock_server(struct aws_channel_handler *handler);
 void mqtt_mock_server_handler_update_slot(struct aws_channel_handler *handler, struct aws_channel_slot *slot);
 
-/* Mock server sends a publish packet back to client */
+/**
+ * Mock server sends a publish packet back to client
+ */
 int mqtt_mock_server_send_publish(
     struct aws_channel_handler *handler,
     struct aws_byte_cursor *topic,
     struct aws_byte_cursor *payload,
     enum aws_mqtt_qos qos);
-/* Set max number of PINGRESP that mock server will send back to client */
+/**
+ * Set max number of PINGRESP that mock server will send back to client
+ */
 void mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, size_t max_ping);
-/* Set max number of CONACK that mock server will send back to client */
+/**
+ * Set max number of CONACK that mock server will send back to client
+ */
 void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_t connack_avail);
 
-/* Disable the automatically response (suback/unsuback/puback) to the client */
+/**
+ * Disable the automatically response (suback/unsuback/puback) to the client
+ */
 void mqtt_mock_server_disable_auto_ack(struct aws_channel_handler *handler);
-/* enable the automatically response (suback/unsuback/puback) to the client */
+/**
+ * Enable the automatically response (suback/unsuback/puback) to the client
+ */
 void mqtt_mock_server_enable_auto_ack(struct aws_channel_handler *handler);
-/* Send response back the client given the packet ID */
+/**
+ * Send response back the client given the packet ID
+ */
 int mqtt_mock_server_send_suback(struct aws_channel_handler *handler, uint16_t packetID);
 int mqtt_mock_server_send_unsuback(struct aws_channel_handler *handler, uint16_t packetID);
 int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t packetID);
 
-/* Wait for puback_count PUBACK packages from client */
+/**
+ * Wait for puback_count PUBACK packages from client
+ */
 void mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *handler, size_t puback_count);
 
-/* Getters for decoded packets, call mqtt_mock_server_decode_packets first. */
+/**
+ * Getters for decoded packets, call mqtt_mock_server_decode_packets first.
+ */
 size_t mqtt_mock_server_decoded_packets_count(struct aws_channel_handler *handler);
-struct mqtt_decoded_packet *mqtt_mock_server_get_decoded_packet(struct aws_channel_handler *handler, size_t i);
+/**
+ * Get the decoded packet by index
+ */
+struct mqtt_decoded_packet *mqtt_mock_server_get_decoded_packet_by_index(struct aws_channel_handler *handler, size_t i);
+/**
+ * Get the latest received packet by index
+ */
 struct mqtt_decoded_packet *mqtt_mock_server_get_latest_decoded_packet(struct aws_channel_handler *handler);
+/**
+ * Get the decoded packet by packetID started from search_start_idx (included), Note: it may have multiple packets with
+ * the same ID, this will return the earliest received on with the packetID. If out_idx is not NULL, the index of found
+ * packet will be stored at there, and if failed to find the packet, it will be set to -1, and the return value will be
+ * NULL.
+ */
+struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
+    struct aws_channel_handler *handler,
+    size_t search_start_idx,
+    uint16_t packetID,
+    size_t *out_idx);
 
-/* Run all received messages through, and decode the messages. */
+/**
+ * Run all received messages through, and decode the messages.
+ */
 int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler);
 
-/* this is only safe to call when not attached to a channel. */
+/**
+ * This is only safe to call when not attached to a channel.
+ */
 struct aws_array_list *mqtt_mock_server_get_received_messages(struct aws_channel_handler *handler);
 
 #endif /* MQTT_MOCK_SERVER_HANDLER_H */

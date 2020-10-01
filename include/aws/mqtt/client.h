@@ -199,7 +199,6 @@ struct aws_mqtt_connection_options {
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *user_data;
     bool clean_session;
-    size_t pending_list_len;
 };
 
 AWS_EXTERN_C_BEGIN

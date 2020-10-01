@@ -485,7 +485,9 @@ size_t mqtt_mock_server_decoded_packets_count(struct aws_channel_handler *handle
     return aws_array_list_length(&testing_handler->packets);
 }
 
-struct mqtt_decoded_packet *mqtt_mock_server_get_decoded_packet(struct aws_channel_handler *handler, size_t i) {
+struct mqtt_decoded_packet *mqtt_mock_server_get_decoded_packet_by_index(
+    struct aws_channel_handler *handler,
+    size_t i) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
     AWS_FATAL_ASSERT(mqtt_mock_server_decoded_packets_count(handler) > i);
     struct mqtt_decoded_packet *packet = NULL;
@@ -496,7 +498,31 @@ struct mqtt_decoded_packet *mqtt_mock_server_get_decoded_packet(struct aws_chann
 struct mqtt_decoded_packet *mqtt_mock_server_get_latest_decoded_packet(struct aws_channel_handler *handler) {
     size_t packet_count = mqtt_mock_server_decoded_packets_count(handler);
     AWS_FATAL_ASSERT(packet_count > 0);
-    return mqtt_mock_server_get_decoded_packet(handler, packet_count - 1);
+    return mqtt_mock_server_get_decoded_packet_by_index(handler, packet_count - 1);
+}
+
+struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
+    struct aws_channel_handler *handler,
+    size_t search_start_idx,
+    uint16_t packetID,
+    size_t *out_idx) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+    int len = aws_array_list_length(&testing_handler->packets);
+    AWS_FATAL_ASSERT(search_start_idx < len);
+    for (int i = search_start_idx; i < len; i++) {
+        struct mqtt_decoded_packet *packet = NULL;
+        aws_array_list_get_at_ptr(&testing_handler->packets, (void **)&packet, i);
+        if (packet->packet_identifier == packetID) {
+            if (out_idx) {
+                *out_idx = i;
+            }
+            return packet;
+        }
+    }
+    if (out_idx) {
+        *out_idx = -1;
+    }
+    return NULL;
 }
 
 int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
@@ -514,6 +540,7 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
         struct aws_byte_cursor message_cur = aws_byte_cursor_from_buf(&received_message);
 
         struct mqtt_decoded_packet packet;
+        packet.index = index;
         ASSERT_SUCCESS(s_mqtt_decoded_packet_init(&packet, handler->alloc));
         packet.type = aws_mqtt_get_packet_type(message_cur.ptr);
 
