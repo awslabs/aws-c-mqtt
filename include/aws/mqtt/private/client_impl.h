@@ -70,7 +70,7 @@ struct aws_mqtt_request {
     struct aws_allocator *allocator;
     struct aws_mqtt_client_connection *connection;
 
-    struct aws_channel_task timeout_task;
+    struct aws_channel_task outgoing_task;
 
     uint16_t packet_id;
     bool retryable;

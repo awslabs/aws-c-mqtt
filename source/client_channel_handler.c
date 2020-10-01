@@ -125,7 +125,7 @@ static int s_packet_handler_connack(
                     "id=%p: processing offline request %" PRIu16,
                     (void *)connection,
                     request->packet_id);
-                aws_channel_schedule_task_now(connection->slot->channel, &request->timeout_task);
+                aws_channel_schedule_task_now(connection->slot->channel, &request->outgoing_task);
 
                 current = current->next;
             } while (current != end);
@@ -660,7 +660,7 @@ void aws_mqtt_offline_queueing(struct aws_mqtt_request *request) {
 }
 
 /* Send the request */
-static void s_request_send_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
+static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
     struct aws_mqtt_request *request = arg;
     struct aws_mqtt_client_connection *connection = request->connection;
@@ -847,7 +847,7 @@ uint16_t mqtt_create_request(
         next_request->send_request_ud = send_request_ud;
         next_request->on_complete = on_complete;
         next_request->on_complete_ud = on_complete_ud;
-        aws_channel_task_init(&next_request->timeout_task, s_request_send_task, next_request, "mqtt_request_timeout");
+        aws_channel_task_init(&next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_request_timeout");
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
             aws_mqtt_offline_queueing(next_request);
         } else {
@@ -856,7 +856,7 @@ uint16_t mqtt_create_request(
                 "id=%p: Currently not in the event-loop thread, scheduling a task to send message id %" PRIu16 ".",
                 (void *)connection,
                 next_request->packet_id);
-            aws_channel_schedule_task_now(connection->slot->channel, &next_request->timeout_task);
+            aws_channel_schedule_task_now(connection->slot->channel, &next_request->outgoing_task);
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
