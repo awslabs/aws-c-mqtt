@@ -631,7 +631,9 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
     }
 }
 
-struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client, size_t pending_list_len) {
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
+    struct aws_mqtt_client *client,
+    size_t pending_list_len) {
     AWS_PRECONDITION(client);
 
     struct aws_mqtt_client_connection *connection =
@@ -652,6 +654,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
     connection->synced_data.pending_requests_list.len = 0;
+    connection->pending_list_len = pending_list_len;
     aws_linked_list_init(&connection->synced_data.pending_requests_list.list);
     aws_linked_list_init(&connection->thread_data.ongoing_requests_list);
 
