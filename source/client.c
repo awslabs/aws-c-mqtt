@@ -1315,7 +1315,6 @@ int aws_mqtt_client_connection_connect(
     connection->socket_options = *connection_options->socket_options;
     connection->clean_session = connection_options->clean_session;
     connection->keep_alive_time_secs = connection_options->keep_alive_time_secs;
-    connection->pending_list_len = connection_options->pending_list_len;
     connection->connection_count = 0;
 
     if (!connection->keep_alive_time_secs) {

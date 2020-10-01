@@ -1715,9 +1715,9 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-
-// /* Test that when the response is not back from the server, and the connection lost, the sent packets will be retried in the same order as they are sent before. */
-// static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *allocator, void *ctx) {
+// /* Test that when the response is not back from the server, and the connection lost, the sent packets will be retried
+// in the same order as they are sent before. */ static int s_test_mqtt_connection_resend_packets_fn(struct
+// aws_allocator *allocator, void *ctx) {
 //     (void)allocator;
 //     struct mqtt_connection_state_test *state_test_data = ctx;
 
@@ -1744,7 +1744,8 @@ AWS_TEST_CASE_FIXTURE(
 //     aws_channel_shutdown(state_test_data->server_channel, AWS_ERROR_INVALID_STATE);
 
 //     /* While the shutdown is still in process, making a publish request */
-//     /* It may not 100% trigger the crash, the crash only happens when the s_mqtt_client_shutdown and mqtt_create_request
+//     /* It may not 100% trigger the crash, the crash only happens when the s_mqtt_client_shutdown and
+//     mqtt_create_request
 //      * happen at the same time. Like the slot is removed by shutdown, and the create request still think the slot is
 //      * there and try to access it. Crash happens. It's not possible to trigger the crash 100% without changing the
 //      * implementation. */
@@ -1762,7 +1763,8 @@ AWS_TEST_CASE_FIXTURE(
 //     s_wait_for_ops_completed(state_test_data);
 
 //     ASSERT_SUCCESS(
-//         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+//         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn,
+//         state_test_data));
 //     s_wait_for_disconnect_to_complete(state_test_data);
 
 //     return AWS_OP_SUCCESS;
