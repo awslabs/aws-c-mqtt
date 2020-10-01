@@ -48,6 +48,7 @@ struct mqtt_mock_server_handler {
     struct aws_mutex lock;
     struct aws_condition_variable cvar;
     struct aws_byte_buf pending_packet;
+    bool auto_ack;
 
     struct aws_array_list packets; /* contains mqtt_decoded_packet */
     size_t decoded_index;
@@ -75,6 +76,15 @@ int mqtt_mock_server_send_publish(
 void mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, size_t max_ping);
 /* Set max number of CONACK that mock server will send back to client */
 void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_t connack_avail);
+
+/* Disable the automatically response (suback/unsuback/puback) to the client */
+void mqtt_mock_server_disable_auto_ack(struct aws_channel_handler *handler);
+/* enable the automatically response (suback/unsuback/puback) to the client */
+void mqtt_mock_server_enable_auto_ack(struct aws_channel_handler *handler);
+/* Send response back the client given the packet ID */
+int mqtt_mock_server_send_suback(struct aws_channel_handler *handler, uint16_t packetID);
+int mqtt_mock_server_send_unsuback(struct aws_channel_handler *handler, uint16_t packetID);
+int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t packetID);
 
 /* Wait for puback_count PUBACK packages from client */
 void mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *handler, size_t puback_count);

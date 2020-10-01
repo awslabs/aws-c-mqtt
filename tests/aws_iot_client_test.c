@@ -326,7 +326,6 @@ int s_initialize_test(
         .on_connection_complete = s_mqtt_on_connection_complete,
         .user_data = tester,
         .clean_session = true,
-        .pending_list_len = SIZE_MAX,
     };
 
     AWS_FATAL_ASSERT(

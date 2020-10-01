@@ -202,12 +202,6 @@ struct aws_mqtt_connection_options {
     size_t pending_list_len;
 };
 
-/**
- * Initializes aws_mqtt_connection_options with default values.
- */
-#define AWS_MQTT_CONNECTION_OPTIONS_INIT                                                                               \
-    { .pending_list_len = SIZE_MAX }
-
 AWS_EXTERN_C_BEGIN
 
 /**
