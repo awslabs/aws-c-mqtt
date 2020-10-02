@@ -1803,7 +1803,7 @@ static void s_block_task(struct aws_task *task, void *arg, enum aws_task_status 
     (void)status;
     /* sleep for 2 sec */
     struct mqtt_connection_state_test *tester = arg;
-    aws_thread_current_sleep(ONE_SEC * 2);
+    aws_thread_current_sleep(ONE_SEC * 3);
     aws_mem_release(tester->allocator, task);
 }
 
@@ -1822,7 +1822,7 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
-        .keep_alive_time_secs = 1,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
