@@ -235,7 +235,7 @@ void aws_mqtt_client_release(struct aws_mqtt_client *client);
 /**
  * Spawns a new connection object.
  *
- * \param[in] client                The client to spawn the connection from
+ * \param[in] client    The client to spawn the connection from
  *
  * \returns a new mqtt connection on success, NULL otherwise
  */
