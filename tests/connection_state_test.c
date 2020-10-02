@@ -1803,7 +1803,7 @@ static void s_block_task(struct aws_task *task, void *arg, enum aws_task_status 
     (void)status;
     /* sleep for 2 sec */
     struct mqtt_connection_state_test *tester = arg;
-    aws_thread_current_sleep(ONE_SEC * 3);
+    aws_thread_current_sleep((uint64_t)ONE_SEC * 3);
     aws_mem_release(tester->allocator, task);
 }
 
