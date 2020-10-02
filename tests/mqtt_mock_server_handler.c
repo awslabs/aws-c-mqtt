@@ -507,14 +507,14 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
     uint16_t packetID,
     int *out_idx) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
-    int len = aws_array_list_length(&testing_handler->packets);
+    size_t len = aws_array_list_length(&testing_handler->packets);
     AWS_FATAL_ASSERT(search_start_idx < len);
-    for (int i = search_start_idx; i < len; i++) {
+    for (size_t i = search_start_idx; i < len; i++) {
         struct mqtt_decoded_packet *packet = NULL;
         aws_array_list_get_at_ptr(&testing_handler->packets, (void **)&packet, i);
         if (packet->packet_identifier == packetID) {
             if (out_idx) {
-                *out_idx = i;
+                *out_idx = (int)i;
             }
             return packet;
         }
