@@ -845,7 +845,7 @@ uint16_t mqtt_create_request(
         next_request->on_complete = on_complete;
         next_request->on_complete_ud = on_complete_ud;
         aws_channel_task_init(
-            &next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_request_timeout");
+            &next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_outgoing_request_task");
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
             aws_mqtt_offline_queueing(next_request);
         } else {
