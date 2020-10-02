@@ -1723,9 +1723,9 @@ static int s_check_packets_received_order(
     uint16_t packet_id_2,
     uint16_t packet_id_3) {
     ASSERT_SUCCESS(mqtt_mock_server_decode_packets(handler));
-    size_t packet_idx_1 = 0;
-    size_t packet_idx_2 = 0;
-    size_t packet_idx_3 = 0;
+    int packet_idx_1 = 0;
+    int packet_idx_2 = 0;
+    int packet_idx_3 = 0;
     ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_ID(handler, search_start_idx, packet_id_1, &packet_idx_1));
     ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_ID(handler, search_start_idx, packet_id_2, &packet_idx_2));
     ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_ID(handler, search_start_idx, packet_id_3, &packet_idx_3));
@@ -1772,7 +1772,7 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
         state_test_data->mqtt_connection, &pub_topic, AWS_MQTT_QOS_AT_LEAST_ONCE, false, &payload_3, NULL, NULL);
     ASSERT_TRUE(packet_id_3 > 0);
     /* Wait for 1 sec. ensure all the publishes have been received by the server */
-    aws_thread_current_sleep(1000000000);
+    aws_thread_current_sleep(1000000000 /*1 sec*/);
     ASSERT_SUCCESS(s_check_packets_received_order(
         state_test_data->test_channel_handler, 0, packet_id_1, packet_id_2, packet_id_3));
     size_t packet_count = mqtt_mock_server_decoded_packets_count(state_test_data->test_channel_handler);
@@ -1780,7 +1780,7 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
     /* shutdown the channel for some error */
     aws_channel_shutdown(state_test_data->server_channel, AWS_ERROR_INVALID_STATE);
     /* Wait again, and ensure the publishes have been resent */
-    aws_thread_current_sleep(1000000000);
+    aws_thread_current_sleep(1000000000 /*1 sec*/);
     ASSERT_SUCCESS(s_check_packets_received_order(
         state_test_data->test_channel_handler, packet_count, packet_id_1, packet_id_2, packet_id_3));
 

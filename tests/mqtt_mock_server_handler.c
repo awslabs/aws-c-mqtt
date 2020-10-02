@@ -505,7 +505,7 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
     struct aws_channel_handler *handler,
     size_t search_start_idx,
     uint16_t packetID,
-    size_t *out_idx) {
+    int *out_idx) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
     int len = aws_array_list_length(&testing_handler->packets);
     AWS_FATAL_ASSERT(search_start_idx < len);
@@ -514,7 +514,7 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
         aws_array_list_get_at_ptr(&testing_handler->packets, (void **)&packet, i);
         if (packet->packet_identifier == packetID) {
             if (out_idx) {
-                *out_idx = (size_t)i;
+                *out_idx = i;
             }
             return packet;
         }

@@ -128,7 +128,7 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
     struct aws_channel_handler *handler,
     size_t search_start_idx,
     uint16_t packetID,
-    size_t *out_idx);
+    int *out_idx);
 
 /**
  * Run all received messages through, and decode the messages.
