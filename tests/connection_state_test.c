@@ -1799,7 +1799,7 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-static void s_block_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_block_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
     (void)status;
     /* sleep for 2 sec */
     struct mqtt_connection_state_test *tester = arg;
@@ -1833,10 +1833,10 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
 
     /* Add a block task, which will block the publish to be sent. So that we can kill the connection before publish is
      * sent */
-    struct aws_task *block_task = aws_mem_acquire(allocator, sizeof(struct aws_task));
-    aws_task_init(block_task, s_block_task, state_test_data, "wait_a_bit");
-    struct aws_event_loop *current_eventloop = aws_event_loop_group_get_loop_at(state_test_data->el_group, 0);
-    aws_event_loop_schedule_task_now(current_eventloop, block_task);
+    struct aws_channel_task *block_task = aws_mem_acquire(allocator, sizeof(struct aws_channel_task));
+    aws_channel_task_init(block_task, s_block_task, state_test_data, "wait_a_bit");
+    // struct aws_event_loop *current_eventloop = aws_event_loop_group_get_loop_at(state_test_data->el_group, 0);
+    aws_channel_schedule_task_now(state_test_data->mqtt_connection->slot->channel, block_task);
 
     /* make a publish with QoS 0 */
     state_test_data->expected_ops_completed = 1;
@@ -1905,10 +1905,10 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
 
     /* Add a block task, which will block the publish to be sent. So that we can kill the connection before publish is
      * sent */
-    struct aws_task *block_task = aws_mem_acquire(allocator, sizeof(struct aws_task));
-    aws_task_init(block_task, s_block_task, state_test_data, "wait_a_bit");
-    struct aws_event_loop *current_eventloop = aws_event_loop_group_get_loop_at(state_test_data->el_group, 0);
-    aws_event_loop_schedule_task_now(current_eventloop, block_task);
+    struct aws_channel_task *block_task = aws_mem_acquire(allocator, sizeof(struct aws_channel_task));
+    aws_channel_task_init(block_task, s_block_task, state_test_data, "wait_a_bit");
+    // struct aws_event_loop *current_eventloop = aws_event_loop_group_get_loop_at(state_test_data->el_group, 0);
+    aws_channel_schedule_task_now(state_test_data->mqtt_connection->slot->channel, block_task);
 
     /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
     mqtt_mock_server_disable_auto_ack(handler);
@@ -1987,5 +1987,90 @@ AWS_TEST_CASE_FIXTURE(
     mqtt_connection_consistent_retry_policy,
     s_setup_mqtt_server_fn,
     s_test_mqtt_connection_consistent_retry_policy_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/**
+ * Test that the request will not be retried even the response has not received for a while.
+ */
+static int s_test_mqtt_connection_not_resend_packets_on_health_connection_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .ping_timeout_ms = 10,
+        .keep_alive_time_secs = 1, /* basically stop automatically sending PINGREQ */
+    };
+
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
+    struct aws_byte_cursor sub_topic = aws_byte_cursor_from_c_str("/test/topic");
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+    struct aws_channel_handler *handler = state_test_data->test_channel_handler;
+
+    /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
+    mqtt_mock_server_disable_auto_ack(handler);
+
+    /* make a publish with QoS 1 */
+    state_test_data->expected_ops_completed = 1;
+    uint16_t packet_id_1 = aws_mqtt_client_connection_publish(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload_1,
+        s_on_op_complete,
+        state_test_data);
+    ASSERT_TRUE(packet_id_1 > 0);
+    /* make another subscribe */
+    uint16_t packet_id_2 = aws_mqtt_client_connection_subscribe(
+        state_test_data->mqtt_connection,
+        &sub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        NULL,
+        NULL,
+        NULL,
+        s_on_suback,
+        state_test_data);
+    ASSERT_TRUE(packet_id_2 > 0);
+
+    /* Wait for 3 sec. ensure no duplicate requests will be sent */
+    aws_thread_current_sleep((uint64_t)ONE_SEC * 3);
+    /* Check all received packets, only one publish and subscribe received */
+    ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->test_channel_handler));
+    int pre_index = -1;
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_type(handler, 0, AWS_MQTT_PACKET_PUBLISH, &pre_index));
+    if (pre_index + 1 < mqtt_mock_server_decoded_packets_count(handler)) {
+        /* If it's not the last packet, search again, and result should be NULL. */
+        ASSERT_NULL(
+            mqtt_mock_server_find_decoded_packet_by_type(handler, pre_index + 1, AWS_MQTT_PACKET_PUBLISH, NULL));
+    }
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_type(handler, 0, AWS_MQTT_PACKET_SUBSCRIBE, &pre_index));
+    if (pre_index + 1 < mqtt_mock_server_decoded_packets_count(handler)) {
+        ASSERT_NULL(
+            mqtt_mock_server_find_decoded_packet_by_type(handler, pre_index + 1, AWS_MQTT_PACKET_SUBSCRIBE, NULL));
+    }
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_not_resend_packets_on_health_connection,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_not_resend_packets_on_health_connection_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
