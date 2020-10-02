@@ -631,9 +631,7 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
     }
 }
 
-struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
-    struct aws_mqtt_client *client,
-    size_t pending_list_len) {
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client) {
     AWS_PRECONDITION(client);
 
     struct aws_mqtt_client_connection *connection =
@@ -654,7 +652,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
     connection->synced_data.pending_requests_list.len = 0;
-    connection->pending_list_len = pending_list_len;
+    connection->synced_data.pending_list_len = SIZE_MAX;
     aws_linked_list_init(&connection->synced_data.pending_requests_list.list);
     aws_linked_list_init(&connection->thread_data.ongoing_requests_list);
 
@@ -767,6 +765,25 @@ static int s_check_connection_state_for_configuration(struct aws_mqtt_client_con
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
     return result;
+}
+
+void aws_mqtt_client_connection_set_pending_queue_length(
+    struct aws_mqtt_client_connection *connection,
+    size_t pending_list_len) {
+
+    AWS_PRECONDITION(connection);
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        connection->synced_data.pending_list_len = pending_list_len;
+        while (connection->synced_data.pending_requests_list.len > connection->synced_data.pending_list_len) {
+            struct aws_linked_list_node *node =
+                aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
+            struct aws_mqtt_request *oldrequest = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+            aws_mqtt_internal_complete_request(oldrequest, AWS_ERROR_MQTT_OFFLINE_QUEUE_FULL);
+            connection->synced_data.pending_requests_list.len--;
+        }
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
 }
 
 int aws_mqtt_client_connection_set_will(

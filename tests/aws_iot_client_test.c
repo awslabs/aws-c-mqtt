@@ -293,7 +293,7 @@ int s_initialize_test(
     aws_tls_connection_options_init_from_ctx(&tester->tls_connection_options, tester->tls_ctx);
 
     tester->client = aws_mqtt_client_new(allocator, tester->bootstrap);
-    tester->connection = aws_mqtt_client_connection_new(tester->client, SIZE_MAX);
+    tester->connection = aws_mqtt_client_connection_new(tester->client);
 
     struct aws_socket_options socket_options;
     AWS_ZERO_STRUCT(socket_options);

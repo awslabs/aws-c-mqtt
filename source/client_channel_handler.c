@@ -621,7 +621,7 @@ struct aws_io_message *mqtt_get_message_for_packet(
  ******************************************************************************/
 
 /* Note: Called with a lock hold. Clean up a request and invoked the completed callback with error code */
-static void s_internal_complete_request(struct aws_mqtt_request *request, int error_code) {
+void aws_mqtt_internal_complete_request(struct aws_mqtt_request *request, int error_code) {
     struct aws_mqtt_client_connection *connection = request->connection;
     /* Fire the callback and clean up the memory, as the connection get destoried. */
     if (!request->completed) {
@@ -642,7 +642,7 @@ void aws_mqtt_offline_queueing(struct aws_mqtt_request *request) {
     AWS_PRECONDITION(request);
 
     struct aws_mqtt_client_connection *connection = request->connection;
-    if (!connection->pending_list_len) {
+    if (!connection->synced_data.pending_list_len) {
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: not currently connected, offline queueing is disabled.", (void *)connection);
         return;
@@ -653,11 +653,11 @@ void aws_mqtt_offline_queueing(struct aws_mqtt_request *request) {
         "id=%p: not currently connected, add message id %" PRIu16 " to the pending requests list.",
         (void *)connection,
         request->packet_id);
-    if (connection->synced_data.pending_requests_list.len == connection->pending_list_len) {
+    if (connection->synced_data.pending_requests_list.len == connection->synced_data.pending_list_len) {
         struct aws_linked_list_node *node =
             aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
         struct aws_mqtt_request *oldrequest = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-        s_internal_complete_request(oldrequest, AWS_ERROR_MQTT_OFFLINE_QUEUE_FULL);
+        aws_mqtt_internal_complete_request(oldrequest, AWS_ERROR_MQTT_OFFLINE_QUEUE_FULL);
         connection->synced_data.pending_requests_list.len--;
     }
     aws_linked_list_push_back(&connection->synced_data.pending_requests_list.list, &request->list_node);
@@ -695,7 +695,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 request->packet_id);
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
-                s_internal_complete_request(request, AWS_ERROR_MQTT_NOT_CONNECTED);
+                aws_mqtt_internal_complete_request(request, AWS_ERROR_MQTT_NOT_CONNECTED);
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
         }
@@ -751,7 +751,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
              * remove from the hash table and call the callback. */
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
-                s_internal_complete_request(request, error_code);
+                aws_mqtt_internal_complete_request(request, error_code);
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: on_complete callback completed.", (void *)request->connection);
@@ -901,7 +901,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     }
     /* remove the request from the list, which is the outgoing request list */
     aws_linked_list_remove(&request->list_node);
-    s_internal_complete_request(request, error_code);
+    aws_mqtt_internal_complete_request(request, error_code);
 }
 
 struct mqtt_shutdown_task {

@@ -124,11 +124,6 @@ struct aws_mqtt_client_connection {
         uint64_t max;          /* seconds */
         uint64_t next_attempt; /* milliseconds */
     } reconnect_timeouts;
-    /**
-     * Length of the pending list. When the number of pending request reach this number, the oldest request will be
-     * ejected from the list, and completed with failure. Set it to zero to disable offline queueing.
-     */
-    size_t pending_list_len;
 
     /* User connection callbacks */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
@@ -193,6 +188,12 @@ struct aws_mqtt_client_connection {
         struct aws_memory_pool requests_pool;
 
         /**
+         * Length of the pending list. When the number of pending request reach this number, the oldest request will be
+         * ejected from the list, and completed with failure. Set it to zero to disable offline queueing.
+         */
+        size_t pending_list_len;
+
+        /**
          * List of all requests that cannot be scheduled until the connection comes online.
          */
         struct aws_mqtt_offline_queue pending_requests_list;
@@ -230,6 +231,8 @@ void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *conne
 
 /* Note: This has to be called with a lock hold. Enqueue a request to be retried once the connection is back */
 void aws_mqtt_offline_queueing(struct aws_mqtt_request *request);
+/* Note: Called with a lock hold. Clean up a request and invoked the completed callback with error code */
+void aws_mqtt_internal_complete_request(struct aws_mqtt_request *request, int error_code);
 
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).

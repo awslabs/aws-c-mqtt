@@ -269,7 +269,7 @@ static int s_initialize_test(
     tester->bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
     tester->client = aws_mqtt_client_new(allocator, tester->bootstrap);
-    tester->connection = aws_mqtt_client_connection_new(tester->client, SIZE_MAX);
+    tester->connection = aws_mqtt_client_connection_new(tester->client);
 
     aws_mqtt_client_connection_set_connection_interruption_handlers(
         tester->connection, s_mqtt_on_interrupted, NULL, s_mqtt_on_resumed, NULL);
