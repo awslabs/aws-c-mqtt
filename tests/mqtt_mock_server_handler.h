@@ -129,6 +129,17 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
     size_t search_start_idx,
     uint16_t packetID,
     int *out_idx);
+/**
+ * Get the decoded packet by type started from search_start_idx (included), Note: it may have multiple packets with
+ * the same type, this will return the earliest received on with the packetID. If out_idx is not NULL, the index of
+ * found packet will be stored at there, and if failed to find the packet, it will be set to -1, and the return value
+ * will be NULL.
+ */
+struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_type(
+    struct aws_channel_handler *handler,
+    size_t search_start_idx,
+    enum aws_mqtt_packet_type type,
+    int *out_idx);
 
 /**
  * Run all received messages through, and decode the messages.
