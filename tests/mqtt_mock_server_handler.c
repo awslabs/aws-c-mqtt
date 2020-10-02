@@ -514,7 +514,7 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
         aws_array_list_get_at_ptr(&testing_handler->packets, (void **)&packet, i);
         if (packet->packet_identifier == packetID) {
             if (out_idx) {
-                *out_idx = i;
+                *out_idx = (size_t)i;
             }
             return packet;
         }
