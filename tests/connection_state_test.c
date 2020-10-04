@@ -1735,3 +1735,42 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_connection_closes_while_making_requests_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/* Make requests during offline, and destory the connection before ever online, the resource should be cleaned up
+ * properly */
+static int s_test_mqtt_connection_destory_pending_requests_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("Test Message 1");
+
+    ASSERT_TRUE(
+        aws_mqtt_client_connection_publish(
+            state_test_data->mqtt_connection,
+            &topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            false,
+            &payload,
+            s_on_op_complete,
+            state_test_data) > 0);
+    ASSERT_TRUE(
+        aws_mqtt_client_connection_subscribe(
+            state_test_data->mqtt_connection,
+            &topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            s_on_publish_received,
+            state_test_data,
+            NULL,
+            s_on_suback,
+            state_test_data) > 0);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_destory_pending_requests,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_destory_pending_requests_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
