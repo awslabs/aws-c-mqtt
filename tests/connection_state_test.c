@@ -2190,7 +2190,6 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-
 /* Make requests during offline, and destory the connection before ever online, the resource should be cleaned up
  * properly */
 static int s_test_mqtt_connection_destory_pending_requests_fn(struct aws_allocator *allocator, void *ctx) {
