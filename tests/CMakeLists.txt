@@ -47,7 +47,8 @@ add_test_case(mqtt_connection_resend_packets)
 # add_test_case(mqtt_connection_not_retry_publish_QoS_0)
 add_test_case(mqtt_connection_consistent_retry_policy)
 add_test_case(mqtt_connection_not_resend_packets_on_health_connection)
-# add_test_case(mqtt_connection_offline_queue_length_limit) Disable this test until the fix get merged
+add_test_case(mqtt_connection_offline_queue_length_limit)
+add_test_case(mqtt_connection_destory_pending_requests)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
