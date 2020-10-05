@@ -1527,7 +1527,8 @@ static void s_on_publish_client_wrapper(
     task_topic->request.on_publish(task_topic->connection, topic, payload, task_topic->request.on_publish_ud);
 }
 
-static void s_task_topic_release(struct subscribe_task_topic *task_topic) {
+static void s_task_topic_release(void *userdata) {
+    struct subscribe_task_topic *task_topic = userdata;
     if (task_topic != NULL) {
         aws_ref_count_release(&task_topic->ref_count);
     }
