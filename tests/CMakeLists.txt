@@ -43,11 +43,11 @@ add_test_case(mqtt_connection_offline_publish)
 add_test_case(mqtt_connection_disconnect_while_reconnecting)
 add_test_case(mqtt_connection_closes_while_making_requests)
 add_test_case(mqtt_connection_resend_packets)
-# add_test_case(mqtt_connection_not_retry_publish_QoS_0) Not working well, the block task is not doing what we want.
-# add_test_case(mqtt_connection_consistent_retry_policy)
+# It's too complicate to implement... Let's save it for the future.
+# add_test_case(mqtt_connection_not_retry_publish_QoS_0)
+add_test_case(mqtt_connection_consistent_retry_policy)
 add_test_case(mqtt_connection_not_resend_packets_on_health_connection)
-# add_test_case(mqtt_connection_not_queue_publish_QoS_0_pingreq)
-# add_test_case(mqtt_connection_offline_queue_length_limit)
+# add_test_case(mqtt_connection_offline_queue_length_limit) Disable this test until the fix get merged
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
