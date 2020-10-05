@@ -2082,7 +2082,7 @@ static bool s_reconnect_resub_iterator(const struct aws_byte_cursor *topic, enum
     task_topic->connection = task_arg->connection;
 
     aws_array_list_push_back(&task_arg->topics, &task_topic);
-
+    aws_ref_count_init(&task_topic->ref_count, task_topic, (aws_simple_completion_callback *)s_task_topic_clean_up);
     return true;
 }
 
@@ -2209,7 +2209,7 @@ static void s_resubscribe_complete(
      * take the ownership to clean it up */
     for (size_t i = 0; i < list_len; i++) {
         aws_array_list_get_at(&task_arg->topics, &topic, i);
-        s_task_topic_clean_up(topic);
+        s_task_topic_release(topic);
     }
     aws_array_list_clean_up(&task_arg->topics);
     aws_mqtt_packet_subscribe_clean_up(&task_arg->subscribe);
