@@ -1652,11 +1652,9 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
-    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "wait disconnect completed");
     aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
     state_test_data->mqtt_connection = NULL;
     s_wait_for_ops_completed(state_test_data);
-    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "wait publish completed");
 
     return AWS_OP_SUCCESS;
 }
@@ -1721,7 +1719,6 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
 
     s_wait_for_reconnect_to_complete(state_test_data);
     s_wait_for_ops_completed(state_test_data);
-    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "wait publish completed");
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
