@@ -1798,6 +1798,7 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
 
     /* shutdown the channel for some error */
     aws_channel_shutdown(state_test_data->server_channel, AWS_ERROR_INVALID_STATE);
+    s_wait_for_reconnect_to_complete(state_test_data);
     /* Wait again, and ensure the publishes have been resent */
     aws_thread_current_sleep(ONE_SEC);
     ASSERT_SUCCESS(s_check_packets_received_order(
