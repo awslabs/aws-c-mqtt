@@ -626,6 +626,7 @@ void aws_mqtt_internal_complete_request(struct aws_mqtt_request *request, int er
     /* Fire the callback and clean up the memory, as the connection get destoried. */
     if (!request->completed) {
         if (request->on_complete) {
+            /* TODO: I am invoking the callback with lock hold XXXXXX */
             request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
         }
         request->completed = true;
