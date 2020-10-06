@@ -2684,7 +2684,7 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t packet_id, boo
     }
     now += connection->request_timeout_ns;
     aws_channel_schedule_task_future(connection->slot->channel, ping_timeout_task, now);
-    return AWS_MQTT_CLIENT_REQUEST_ONGOING;
+    return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
 
 error:
     return AWS_MQTT_CLIENT_REQUEST_ERROR;
