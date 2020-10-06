@@ -730,7 +730,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
     /* Send the request */
     enum aws_mqtt_client_request_state state =
         request->send_request(request->packet_id, !request->initiated, request->send_request_ud);
-
+    request->initiated = true;
     int error_code = AWS_ERROR_SUCCESS;
     switch (state) {
         case AWS_MQTT_CLIENT_REQUEST_ERROR:
@@ -756,8 +756,6 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_internal_complete_request(request, error_code);
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
-            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: on_complete callback completed.", (void *)request->connection);
-            /* Done */
             break;
 
         case AWS_MQTT_CLIENT_REQUEST_ONGOING:

@@ -505,7 +505,7 @@ static void s_outstanding_request_destroy(void *item) {
             request->packet_id);
         /* Task ran as cancelled already, clean up the memory */
         struct aws_mqtt_client_connection *connection = request->connection;
-        /* outstanding request will only be destoried with lock hold. We can touch the synced_data here */
+        /* outstanding request will only be destroyed with lock hold. We can touch the synced_data here */
         aws_memory_pool_release(&connection->synced_data.requests_pool, request);
 
     } else {
@@ -1651,6 +1651,8 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
 
     /* This is not necessarily a fatal error; if the subscribe fails, it'll just retry. Still need to clean up though.
      */
+    /* TODO: NOT really agree on retry for this failure, it's reasonable to retry if the error is socket_closed or not
+     * connected, otherwiseit's probably a program error. */
     if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         aws_mem_release(message->allocator, message);
     }
@@ -2518,7 +2520,7 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
         }
 
         if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-
+            /* TODO: NOT really agree on retry for this failure */
             aws_mem_release(message->allocator, message);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
