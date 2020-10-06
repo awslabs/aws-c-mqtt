@@ -346,6 +346,7 @@ static void s_wait_for_connection_to_complete(struct mqtt_connection_state_test 
 void s_on_disconnect_fn(struct aws_mqtt_client_connection *connection, void *userdata) {
     (void)connection;
     struct mqtt_connection_state_test *state_test_data = userdata;
+    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "disconnect completed");
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->client_disconnect_completed = true;
     aws_mutex_unlock(&state_test_data->lock);
@@ -1414,7 +1415,9 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     s_wait_for_connection_to_complete(state_test_data);
 
+    aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 2;
+    aws_mutex_unlock(&state_test_data->lock);
     uint16_t packet_id_1 = aws_mqtt_client_connection_publish(
         state_test_data->mqtt_connection,
         &pub_topic,
@@ -1696,7 +1699,9 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     s_wait_for_connection_to_complete(state_test_data);
 
+    aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
 
     /* shutdown the channel for some error */
     aws_channel_shutdown(state_test_data->server_channel, AWS_ERROR_INVALID_STATE);
@@ -1845,7 +1850,9 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
     /* TODO: only one eventloop thread in the el group. Most likely the test will fail, the outgoing task will not be
      * cancelled because of connection lost */
     /* make a publish with QoS 0 immediate. */
+    aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
     uint16_t packet_id_1 = aws_mqtt_client_connection_publish(
         state_test_data->mqtt_connection,
         &pub_topic,
@@ -2020,7 +2027,9 @@ static int s_test_mqtt_connection_not_resend_packets_on_health_connection_fn(
     mqtt_mock_server_disable_auto_ack(handler);
 
     /* make a publish with QoS 1 */
+    aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
     uint16_t packet_id_1 = aws_mqtt_client_connection_publish(
         state_test_data->mqtt_connection,
         &pub_topic,
