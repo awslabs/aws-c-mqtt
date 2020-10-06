@@ -765,7 +765,10 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 (void *)request->connection,
                 request->packet_id);
             /* Put the request into the ongoing list */
-            aws_linked_list_push_back(&connection->thread_data.ongoing_requests_list, &request->list_node);
+            if (request->retryable) {
+                /* No need to enqueue pingreq, waiting_on_ping_response can handle the response correctly. */
+                aws_linked_list_push_back(&connection->thread_data.ongoing_requests_list, &request->list_node);
+            }
             break;
     }
 }
