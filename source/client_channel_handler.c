@@ -644,7 +644,9 @@ void aws_mqtt_offline_queueing(struct aws_mqtt_request *request) {
     struct aws_mqtt_client_connection *connection = request->connection;
     if (!connection->synced_data.pending_list_len) {
         AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT, "id=%p: not currently connected, offline queueing is disabled.", (void *)connection);
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: not currently connected, and offline queueing is disabled by user.",
+            (void *)connection);
         return;
     }
 

@@ -186,7 +186,7 @@ struct aws_mqtt_topic_subscription {
  * on_connection_complete    The callback to fire when the connection attempt completes user_data
  *                           Passed to the userdata param of on_connection_complete
  * pending_list_len          The length of the offfline queue, set it to 0 to disable offline queue. The default value
- *                           is SIZE_MAX set by AWS_MQTT_CONNECTION_OPTIONS_INIT
+ *                           is SIZE_MAX.
  */
 struct aws_mqtt_connection_options {
     struct aws_byte_cursor host_name;
