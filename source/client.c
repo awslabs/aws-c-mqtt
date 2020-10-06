@@ -126,6 +126,8 @@ static void s_mqtt_client_shutdown(
             struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
             aws_mqtt_offline_queueing(request);
         }
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT, "id=%p: all outgoing task has been move to pending list", (void *)connection);
         prev_state = connection->synced_data.state;
         switch (connection->synced_data.state) {
             case AWS_MQTT_CLIENT_STATE_CONNECTED:
@@ -150,9 +152,12 @@ static void s_mqtt_client_shutdown(
                 /* AWS_MQTT_CLIENT_STATE_DISCONNECTED */
                 break;
         }
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT, "id=%p: current state is %d", (void *)connection, (int)connection->synced_data.state);
         /* Always clear slot, as that's what's been shutdown */
         if (connection->slot) {
             aws_channel_slot_remove(connection->slot);
+            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: slot is removed successfully", (void *)connection);
             connection->slot = NULL;
         }
 
