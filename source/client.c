@@ -47,12 +47,16 @@ static int s_mqtt_client_connect(
 void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection) {
     int err = aws_mutex_lock(&connection->synced_data.lock);
     AWS_ASSERT(!err);
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT, "id=%p: Lock hold", (void *)connection);
     (void)err;
 }
 
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection) {
     int err = aws_mutex_unlock(&connection->synced_data.lock);
     AWS_ASSERT(!err);
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT, "id=%p: Lock released", (void *)connection);
     (void)err;
 }
 
@@ -611,7 +615,7 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: Last refcount on connection is released, start destroying the connection.",
+        "id=%p: Last refcount on connection has been released, start destroying the connection.",
         (void *)connection);
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
