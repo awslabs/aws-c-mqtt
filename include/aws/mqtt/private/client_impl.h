@@ -75,7 +75,6 @@ struct aws_mqtt_request {
     uint16_t packet_id;
     bool retryable;
     bool initiated;
-    bool completed;
     bool cancelled;
     aws_mqtt_send_request_fn *send_request;
     void *send_request_ud;

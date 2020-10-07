@@ -1192,6 +1192,9 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
     s_wait_for_any_publish(state_test_data);
     mqtt_mock_server_wait_for_pubacks(state_test_data->test_channel_handler, 2);
 
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
     /* unsubscribe to the first topic */
     uint16_t unsub_packet_id = aws_mqtt_client_connection_unsubscribe(
         state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data);
@@ -1204,6 +1207,7 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
     state_test_data->expected_any_publishes = 2;
     s_wait_for_any_publish(state_test_data);
     mqtt_mock_server_wait_for_pubacks(state_test_data->test_channel_handler, 2);
+    s_wait_for_ops_completed(state_test_data);
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
@@ -1336,12 +1340,15 @@ static int s_test_mqtt_resubscribe_fn(struct aws_allocator *allocator, void *ctx
     s_wait_for_connection_to_complete(state_test_data);
 
     s_wait_for_subscribe_to_complete(state_test_data);
-
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
     /* unsubscribe to the first topic */
     uint16_t unsub_packet_id = aws_mqtt_client_connection_unsubscribe(
         state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data);
     ASSERT_TRUE(unsub_packet_id > 0);
 
+    s_wait_for_ops_completed(state_test_data);
     /* client still subscribes to topic_2 & topic_3 */
 
     ASSERT_SUCCESS(

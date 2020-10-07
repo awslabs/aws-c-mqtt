@@ -624,18 +624,18 @@ struct aws_io_message *mqtt_get_message_for_packet(
 void aws_mqtt_internal_complete_request(struct aws_mqtt_request *request, int error_code) {
     struct aws_mqtt_client_connection *connection = request->connection;
     /* Fire the callback and clean up the memory, as the connection get destoried. */
-    if (!request->completed) {
-        if (request->on_complete) {
-            /* TODO: I am invoking the callback with lock hold XXXXXX */
-            request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
-        }
-        request->completed = true;
+    if (request->on_complete) {
+        mqtt_connection_unlock_synced_data(connection);
+        /* invoking the user callback, release the lock */
+        request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
+        mqtt_connection_lock_synced_data(connection);
     }
-    request->cancelled = true;
+
     /* when the request is removed from the table, it will be cleaned up. */
     /* Remove call only failed as the hash table has been screwed, which means the program can be dead now. */
     AWS_ASSERT(
         !aws_hash_table_remove(&connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL));
+    aws_memory_pool_release(&connection->synced_data.requests_pool, request);
 }
 
 /* Note: Called with a lock hold. */
@@ -839,7 +839,6 @@ uint16_t mqtt_create_request(
         next_request->allocator = connection->allocator;
         next_request->connection = connection;
         next_request->initiated = false;
-        next_request->completed = false;
         next_request->retryable = !noRetry;
         next_request->send_request = send_request;
         next_request->send_request_ud = send_request_ud;
@@ -876,33 +875,35 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, &elem);
+
+        if (elem == NULL) {
+            mqtt_connection_unlock_synced_data(connection);
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: received completion for message id %" PRIu16
+                " but no outstanding request exists.  Assuming this is an ack of a resend when the first request has "
+                "already completed.",
+                (void *)connection,
+                packet_id);
+            return;
+        }
+
+        struct aws_mqtt_request *request = elem->value;
+
+        // if (request->completed) {
+        //     mqtt_connection_unlock_synced_data(connection);
+        //     AWS_LOGF_DEBUG(
+        //         AWS_LS_MQTT_CLIENT,
+        //         "id=%p: received duplicate completion for message id  %" PRIu16,
+        //         (void *)connection,
+        //         packet_id);
+        //     return;
+        // }
+        /* remove the request from the list, which is the outgoing request list */
+        aws_linked_list_remove(&request->list_node);
+        aws_mqtt_internal_complete_request(request, error_code);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-
-    if (elem == NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: received completion for message id %" PRIu16
-            " but no outstanding request exists.  Assuming this is an ack of a resend when the first request has "
-            "already completed.",
-            (void *)connection,
-            packet_id);
-        return;
-    }
-
-    struct aws_mqtt_request *request = elem->value;
-
-    if (request->completed) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: received duplicate completion for message id  %" PRIu16,
-            (void *)connection,
-            packet_id);
-        return;
-    }
-    /* remove the request from the list, which is the outgoing request list */
-    aws_linked_list_remove(&request->list_node);
-    aws_mqtt_internal_complete_request(request, error_code);
 }
 
 struct mqtt_shutdown_task {
