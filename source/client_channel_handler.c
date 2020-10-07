@@ -890,15 +890,6 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
 
         struct aws_mqtt_request *request = elem->value;
 
-        // if (request->completed) {
-        //     mqtt_connection_unlock_synced_data(connection);
-        //     AWS_LOGF_DEBUG(
-        //         AWS_LS_MQTT_CLIENT,
-        //         "id=%p: received duplicate completion for message id  %" PRIu16,
-        //         (void *)connection,
-        //         packet_id);
-        //     return;
-        // }
         /* remove the request from the list, which is the outgoing request list */
         aws_linked_list_remove(&request->list_node);
         aws_mqtt_internal_complete_request(request, error_code);
