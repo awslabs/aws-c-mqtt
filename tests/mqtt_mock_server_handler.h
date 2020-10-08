@@ -55,12 +55,10 @@ struct mqtt_mock_server_handler {
     struct aws_array_list packets; /* contains mqtt_decoded_packet */
     size_t decoded_index;
 
-    struct
-    {
+    struct {
         struct aws_array_list received_messages;
         /* data */
     } synced_data;
-    
 };
 
 struct mqtt_mock_server_publish_args {
