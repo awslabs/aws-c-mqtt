@@ -27,7 +27,9 @@ static int s_mqtt_mock_server_handler_process_packet(
     struct aws_byte_cursor *message_cur) {
     struct aws_byte_buf received_message;
     aws_byte_buf_init_copy_from_cursor(&received_message, testing_handler->handler.alloc, *message_cur);
-    aws_array_list_push_back(&testing_handler->received_messages, &received_message);
+    aws_mutex_lock(&testing_handler->lock);
+    aws_array_list_push_back(&testing_handler->synced_data.received_messages, &received_message);
+    aws_mutex_unlock(&testing_handler->lock);
 
     struct aws_byte_cursor message_cur_cpy = *message_cur;
     int err = 0;
@@ -343,7 +345,8 @@ struct aws_channel_handler *new_mqtt_mock_server(struct aws_allocator *allocator
     struct mqtt_mock_server_handler *testing_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct mqtt_mock_server_handler));
     aws_array_list_init_dynamic(&testing_handler->packets, allocator, 4, sizeof(struct mqtt_decoded_packet));
-    aws_array_list_init_dynamic(&testing_handler->received_messages, allocator, 4, sizeof(struct aws_byte_buf));
+    aws_array_list_init_dynamic(
+        &testing_handler->synced_data.received_messages, allocator, 4, sizeof(struct aws_byte_buf));
     aws_array_list_init_dynamic(&testing_handler->response_messages, allocator, 4, sizeof(struct aws_byte_buf));
 
     testing_handler->handler.impl = testing_handler;
@@ -368,12 +371,12 @@ void destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
     }
     aws_array_list_clean_up(&testing_handler->packets);
 
-    for (size_t i = 0; i < aws_array_list_length(&testing_handler->received_messages); ++i) {
+    for (size_t i = 0; i < aws_array_list_length(&testing_handler->synced_data.received_messages); ++i) {
         struct aws_byte_buf *byte_buf_ptr = NULL;
-        aws_array_list_get_at_ptr(&testing_handler->received_messages, (void **)&byte_buf_ptr, i);
+        aws_array_list_get_at_ptr(&testing_handler->synced_data.received_messages, (void **)&byte_buf_ptr, i);
         aws_byte_buf_clean_up(byte_buf_ptr);
     }
-    aws_array_list_clean_up(&testing_handler->received_messages);
+    aws_array_list_clean_up(&testing_handler->synced_data.received_messages);
 
     for (size_t i = 0; i < aws_array_list_length(&testing_handler->response_messages); ++i) {
         struct aws_byte_buf *byte_buf_ptr = NULL;
@@ -474,12 +477,6 @@ void mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *handler, size
     aws_mutex_unlock(&testing_handler->lock);
 }
 
-struct aws_array_list *mqtt_mock_server_get_received_messages(struct aws_channel_handler *handler) {
-    struct mqtt_mock_server_handler *testing_handler = handler->impl;
-
-    return &testing_handler->received_messages;
-}
-
 size_t mqtt_mock_server_decoded_packets_count(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
     return aws_array_list_length(&testing_handler->packets);
@@ -552,10 +549,13 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_type(
 int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 
-    struct aws_array_list received_messages = testing_handler->received_messages;
+    aws_mutex_lock(&testing_handler->lock);
+    struct aws_array_list received_messages = testing_handler->synced_data.received_messages;
     size_t length = aws_array_list_length(&received_messages);
     if (testing_handler->decoded_index >= length) {
         AWS_LOGF_ERROR(MOCK_LOG_SUBJECT, "server, no new packet received. Stop decoding.");
+
+        aws_mutex_unlock(&testing_handler->lock);
         return AWS_OP_ERR;
     }
     for (size_t index = testing_handler->decoded_index; index < length; index++) {
@@ -645,11 +645,13 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
             default:
                 AWS_LOGF_ERROR(
                     MOCK_LOG_SUBJECT, "server, unsupported packet decoded, the package type is %d", packet.type);
+                aws_mutex_unlock(&testing_handler->lock);
                 return AWS_OP_ERR;
         }
 
         ASSERT_SUCCESS(aws_array_list_push_back(&testing_handler->packets, &packet));
     }
     testing_handler->decoded_index = length;
+    aws_mutex_unlock(&testing_handler->lock);
     return AWS_OP_SUCCESS;
 }
