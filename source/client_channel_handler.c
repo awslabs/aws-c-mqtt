@@ -94,6 +94,17 @@ static int s_packet_handler_connack(
 
         was_reconnecting = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
         if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
+            if (connection->clean_session) {
+                /* discard the previous session */
+                while (connection->synced_data.pending_requests_list.len) {
+                    struct aws_linked_list_node *node =
+                        aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
+                    struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+                    /* For a clean session, discard the previous session */
+                    aws_mqtt_internal_complete_request(request, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
+                    connection->synced_data.pending_requests_list.len--;
+                }
+            }
             /* Don't change the state if it's not ACCEPTED by broker */
             connection->synced_data.state = AWS_MQTT_CLIENT_STATE_CONNECTED;
             aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list.list, &requests);
@@ -706,7 +717,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
     }
 
     if (request->cancelled) {
-        /* It happens when the user called disconnect, and all the pending requests from previous connection need to be
+        /* It happens when the user called disconnect, and all the pending requests from previous connection need to
+         * be
          * cancelled, which will be marked as cancelled when they are removed from the outstanding request table. */
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT,
@@ -881,7 +893,8 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: received completion for message id %" PRIu16
-                " but no outstanding request exists.  Assuming this is an ack of a resend when the first request has "
+                " but no outstanding request exists.  Assuming this is an ack of a resend when the first request "
+                "has "
                 "already completed.",
                 (void *)connection,
                 packet_id);

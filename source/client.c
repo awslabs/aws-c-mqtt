@@ -124,10 +124,14 @@ static void s_mqtt_client_shutdown(
             struct aws_linked_list_node *node =
                 aws_linked_list_pop_front(&connection->thread_data.ongoing_requests_list);
             struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-            aws_mqtt_offline_queueing(request);
+            if (connection->clean_session) {
+                /* For a clean session, the Session lasts as long as the Network Connection. Thus, discard the previous
+                 * session */
+                aws_mqtt_internal_complete_request(request, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
+            } else {
+                aws_mqtt_offline_queueing(request);
+            }
         }
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT, "id=%p: all outgoing task has been move to pending list", (void *)connection);
         prev_state = connection->synced_data.state;
         switch (connection->synced_data.state) {
             case AWS_MQTT_CLIENT_STATE_CONNECTED:
