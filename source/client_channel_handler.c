@@ -121,9 +121,7 @@ static int s_packet_handler_connack(
         /* If successfully connected, schedule all pending tasks */
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted processing offline requests.", (void *)connection);
-        /**
-         * TODO: if the clean_session is true, the pending requests should be cleaned up.
-         */
+
         if (!aws_linked_list_empty(&requests)) {
             struct aws_linked_list_node *current = aws_linked_list_front(&requests);
             const struct aws_linked_list_node *end = aws_linked_list_end(&requests);
