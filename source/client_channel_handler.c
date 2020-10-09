@@ -85,7 +85,13 @@ static int s_packet_handler_connack(
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         /* User requested disconnect, don't do anything */
-        if ((int)connection->synced_data.state >= (int)AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: state of connection before check is %d.",
+            (void *)connection,
+            (int)connection->synced_data.state);
+        if ((int)connection->synced_data.state == (int)AWS_MQTT_CLIENT_STATE_DISCONNECTING ||
+            (int)connection->synced_data.state == (int)AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
             mqtt_connection_unlock_synced_data(connection);
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT, "id=%p: User has requested disconnect, dropping connection", (void *)connection);
