@@ -35,7 +35,7 @@ struct aws_mqtt_client_connection;
 
 /**
  * Callback called when a request roundtrip is complete (QoS0 immediately, QoS1 on PUBACK, QoS2 on PUBCOMP). Either
- * succeed or not
+ * succeed or not. NOTE: it will be invoked with lock hold, be careful of calling other functions from this callback
  */
 typedef void(aws_mqtt_op_complete_fn)(
     struct aws_mqtt_client_connection *connection,
