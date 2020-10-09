@@ -646,10 +646,7 @@ void aws_mqtt_internal_complete_request(struct aws_mqtt_request *request, int er
     struct aws_mqtt_client_connection *connection = request->connection;
     /* Fire the callback and clean up the memory, as the connection get destoried. */
     if (request->on_complete) {
-        mqtt_connection_unlock_synced_data(connection);
-        /* invoking the user callback, release the lock */
         request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
-        mqtt_connection_lock_synced_data(connection);
     }
 
     /* when the request is removed from the table, it will be cleaned up. */
