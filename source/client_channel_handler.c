@@ -104,11 +104,14 @@ static int s_packet_handler_connack(
                     aws_mqtt_internal_complete_request(request, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
                     connection->synced_data.pending_requests_list.len--;
                 }
+            } else {
+                aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list.list, &requests);
+                connection->synced_data.pending_requests_list.len = 0;
             }
             /* Don't change the state if it's not ACCEPTED by broker */
             connection->synced_data.state = AWS_MQTT_CLIENT_STATE_CONNECTED;
-            aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list.list, &requests);
-            connection->synced_data.pending_requests_list.len = 0;
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted, switch state to CONNECTED.", (void *)connection);
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */

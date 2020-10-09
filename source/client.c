@@ -137,6 +137,10 @@ static void s_mqtt_client_shutdown(
             case AWS_MQTT_CLIENT_STATE_CONNECTED:
                 /* unexpected hangup from broker, try to reconnect */
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: connection was unexpected interrupted, switch state to RECONNECTING.",
+                    (void *)connection);
                 break;
             case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
                 /* disconnect requested by user */
@@ -144,6 +148,10 @@ static void s_mqtt_client_shutdown(
                 /* TODO: respect the cleansession, clear the table when needed */
                 aws_hash_table_clear(&connection->synced_data.outstanding_requests_table);
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: disconnect finished, switch state to DISCONNECTED.",
+                    (void *)connection);
                 break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
                 /* failed to connect */
@@ -212,6 +220,10 @@ static void s_mqtt_client_shutdown(
                 stop_reconnect = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
                 if (stop_reconnect) {
                     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: disconnect finished, switch state to DISCONNECTED.",
+                        (void *)connection);
                 }
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
@@ -604,6 +616,10 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
 
             if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
                 mqtt_disconnect_impl(connection, AWS_ERROR_SUCCESS);
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: final refcount has been released, switch state to DISCONNECTING.",
+                    (void *)connection);
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
             }
         } else {
@@ -1305,6 +1321,8 @@ int aws_mqtt_client_connection_connect(
             return aws_raise_error(AWS_ERROR_MQTT_ALREADY_CONNECTED);
         }
         connection->synced_data.state = AWS_MQTT_CLIENT_STATE_CONNECTING;
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Begin connecting process, switch state to CONNECTING.", (void *)connection);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
@@ -1485,6 +1503,10 @@ int aws_mqtt_client_connection_disconnect(
             return AWS_OP_ERR;
         }
         connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: User requests disconnecting, switch state to DISCONNECTING.",
+            (void *)connection);
         connection->on_disconnect = on_disconnect;
         connection->on_disconnect_ud = userdata;
         mqtt_connection_unlock_synced_data(connection);

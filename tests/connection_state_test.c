@@ -2328,7 +2328,7 @@ static int s_test_mqtt_clean_session_discard_previous_fn(struct aws_allocator *a
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
-        .keep_alive_time_secs = 1,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
