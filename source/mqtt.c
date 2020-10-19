@@ -137,7 +137,7 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 "Library built without MQTT_WITH_WEBSOCKETS option."),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_UNEXPECTED_HANGUP,
-                "The connection was closed unexpectedly."),
+                "The connection was closed unexpectedly. Internet lost. Or the server/broker hang up for reasons like permession, check the log from server/broker for the detail"),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
                 "MQTT operation interrupted by connection shutdown."),
