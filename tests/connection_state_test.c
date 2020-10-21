@@ -1705,8 +1705,6 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
     s_wait_for_interrupt_to_complete(state_test_data);
 
-    state_test_data->server_disconnect_completed = false;
-
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
     struct aws_byte_cursor payload_2 = aws_byte_cursor_from_c_str("Test Message 2");
