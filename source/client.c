@@ -68,34 +68,6 @@ static void s_aws_mqtt_client_destroy(struct aws_mqtt_client *client) {
     aws_mem_release(client->allocator, client);
 }
 
-/* helper function to invoke the complete callback of a list of requests and free the resource */
-static void s_clean_up_lists_of_requests(
-    struct aws_mqtt_client_connection *connection,
-    struct aws_linked_list *requests,
-    int error_code) {
-    if (!aws_linked_list_empty(requests)) {
-
-        for (struct aws_linked_list_node *node = aws_linked_list_begin(requests); node != aws_linked_list_end(requests);
-             node = aws_linked_list_next(node)) {
-            struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-            if (request->on_complete) {
-                request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
-            }
-        }
-        { /* BEGIN CRITICAL SECTION */
-            mqtt_connection_lock_synced_data(connection);
-            while (!aws_linked_list_empty(requests)) {
-                struct aws_linked_list_node *node = aws_linked_list_pop_front(requests);
-                struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-                aws_hash_table_remove(
-                    &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
-                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
-            }
-            mqtt_connection_unlock_synced_data(connection);
-        } /* END CRITICAL SECTION */
-    }
-}
-
 /*******************************************************************************
  * Client Init
  ******************************************************************************/
@@ -220,7 +192,32 @@ static void s_mqtt_client_shutdown(
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
-    s_clean_up_lists_of_requests(connection, &requests, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
+    if (!aws_linked_list_empty(&requests)) {
+
+        for (struct aws_linked_list_node *node = aws_linked_list_begin(&requests);
+             node != aws_linked_list_end(&requests);
+             node = aws_linked_list_next(node)) {
+            struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+            if (request->on_complete) {
+                request->on_complete(
+                    connection,
+                    request->packet_id,
+                    AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
+                    request->on_complete_ud);
+            }
+        }
+        { /* BEGIN CRITICAL SECTION */
+            mqtt_connection_lock_synced_data(connection);
+            while (!aws_linked_list_empty(&requests)) {
+                struct aws_linked_list_node *node = aws_linked_list_pop_front(&requests);
+                struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+                aws_hash_table_remove(
+                    &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
+                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+            }
+            mqtt_connection_unlock_synced_data(connection);
+        } /* END CRITICAL SECTION */
+    }
 
     /* If there's no error code and this wasn't user-requested, set the error code to something useful */
     if (error_code == AWS_ERROR_SUCCESS) {
@@ -492,22 +489,6 @@ static void s_mqtt_client_init(
         goto handle_error;
     }
 
-    if (connection->clean_session) {
-
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Establishing a new clean session connection, discard the previous session",
-            (void *)connection);
-
-        struct aws_linked_list requests;
-        aws_linked_list_init(&requests);
-        { /* BEGIN CRITICAL SECTION */
-            mqtt_connection_lock_synced_data(connection);
-            aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
-            mqtt_connection_unlock_synced_data(connection);
-        } /* END CRITICAL SECTION */
-        s_clean_up_lists_of_requests(connection, &requests, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
-    }
     return;
 
 handle_error:

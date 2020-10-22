@@ -1606,7 +1606,7 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
 
     struct aws_mqtt_connection_options connection_options = {
         .user_data = state_test_data,
-        .clean_session = true,
+        .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
