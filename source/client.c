@@ -161,7 +161,7 @@ static void s_mqtt_client_shutdown(
             AWS_LS_MQTT_CLIENT, "id=%p: current state is %d", (void *)connection, (int)connection->synced_data.state);
         /* Always clear slot, as that's what's been shutdown */
         if (connection->slot) {
-            aws_channel_slot_remove(connection->slot); //??will this start the channel shutdown process? Nope
+            aws_channel_slot_remove(connection->slot);
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: slot is removed successfully", (void *)connection);
             connection->slot = NULL;
         }
@@ -304,7 +304,7 @@ static void s_mqtt_client_init(
             return;
         }
         /* Create the slot */
-        connection->slot = aws_channel_slot_new(channel); // TODO: what will this function do?
+        connection->slot = aws_channel_slot_new(channel);
         if (!connection->slot) {
             failed_create_slot = true;
         }

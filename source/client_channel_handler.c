@@ -729,6 +729,7 @@ uint16_t mqtt_create_request(
     AWS_ASSERT(connection);
     AWS_ASSERT(send_request);
     struct aws_mqtt_request *next_request = NULL;
+    bool should_schedule_task = false;
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from mqtt_create_request", (void *)connection);
@@ -797,15 +798,18 @@ uint16_t mqtt_create_request(
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
             aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &next_request->list_node);
         } else {
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Currently not in the event-loop thread, scheduling a task to send message id %" PRIu16 ".",
-                (void *)connection,
-                next_request->packet_id);
-            aws_channel_schedule_task_now(connection->slot->channel, &next_request->outgoing_task);
+            should_schedule_task = true;
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
+    if (should_schedule_task) {
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Currently not in the event-loop thread, scheduling a task to send message id %" PRIu16 ".",
+            (void *)connection,
+            next_request->packet_id);
+        aws_channel_schedule_task_now(connection->slot->channel, &next_request->outgoing_task);
+    }
 
     return next_request->packet_id;
 }
