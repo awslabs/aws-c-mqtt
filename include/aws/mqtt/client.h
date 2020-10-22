@@ -98,7 +98,7 @@ typedef void(aws_mqtt_client_publish_received_fn)(
     void *userdata);
 
 /** Called when a connection is closed, right before any resources are deleted */
-typedef void(aws_mqtt_client_on_disconnect_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+typedef void(aws_mqtt_client_on_disconnect_complete_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
 /**
  * Function to invoke when the websocket handshake request transformation completes.
@@ -194,6 +194,14 @@ struct aws_mqtt_connection_options {
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *user_data;
 };
+
+// /* Callbacks for events of mqtt connection */
+// struct aws_mqtt_connection_event_handlers {
+//     aws_mqtt_client_on_connection_connected_fn *on_interrupted;
+//     void *on_interrupted_ud;
+//     aws_mqtt_client_on_connection_resumed_fn *on_resumed;
+//     void *on_resumed_ud;
+// };
 
 AWS_EXTERN_C_BEGIN
 
@@ -378,8 +386,8 @@ int aws_mqtt_client_connection_connect(
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
- * Once the connection is opened, on_connected will be called. When the connection is lost, on_disconnected will be
- * called and no retry will be applied, user will need to apply and implement their own retry strategy.
+ * Once the connection is opened, on_connected will be called. When the connection is lost, on_disconnect_completeed
+ * will be called and no retry will be applied, user will need to apply and implement their own retry strategy.
  *
  * \param[in] connection                The connection object
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
@@ -411,7 +419,7 @@ int aws_mqtt_client_connection_reconnect(
     void *userdata);
 
 /**
- * Closes the connection asynchronously, calls the on_disconnect callback.
+ * Closes the connection asynchronously, calls the on_disconnect_complete callback.
  * All the previous session will be discard, regardless to the status of clean_session of next connection.
  * DISCONNECT packet will be sent, which deletes the will message from server.
  *
@@ -423,7 +431,7 @@ int aws_mqtt_client_connection_reconnect(
 AWS_MQTT_API
 int aws_mqtt_client_connection_disconnect(
     struct aws_mqtt_client_connection *connection,
-    aws_mqtt_client_on_disconnect_fn *on_disconnect,
+    aws_mqtt_client_on_disconnect_complete_fn *on_disconnect_complete,
     void *userdata);
 
 /**

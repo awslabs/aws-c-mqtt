@@ -256,7 +256,7 @@ static void s_mqtt_client_shutdown(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Disconnect completed, clearing request queue and calling callback",
                 (void *)connection);
-            MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+            MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect_complete);
             break;
 
         case AWS_MQTT_CLIENT_STATE_CONNECTED: {
@@ -282,7 +282,7 @@ static void s_mqtt_client_shutdown(
                         AWS_LS_MQTT_CLIENT,
                         "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
                         (void *)connection);
-                    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect_complete);
                 } else {
                     /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
                     connection->reconnect_task->task.fn(
@@ -367,7 +367,7 @@ static void s_mqtt_client_init(
 
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
             /* It only happens when the user request disconnect during reconnecting, we don't need to fire any callback.
-             * The on_disconnect will be invoked as channel finish shutting down. */
+             * The on_disconnect_complete will be invoked as channel finish shutting down. */
             mqtt_connection_unlock_synced_data(connection);
             aws_channel_shutdown(channel, AWS_ERROR_SUCCESS);
             return;
@@ -673,10 +673,10 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
 
             /*
-             * We don't call the on_disconnect callback until we've transitioned to the DISCONNECTED state.  So it's
-             * safe to change it now while we hold the lock since we know we're not DISCONNECTED yet.
+             * We don't call the on_disconnect_complete callback until we've transitioned to the DISCONNECTED state.  So
+             * it's safe to change it now while we hold the lock since we know we're not DISCONNECTED yet.
              */
-            connection->on_disconnect = s_on_final_disconnect;
+            connection->on_disconnect_complete = s_on_final_disconnect;
 
             if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
                 mqtt_disconnect_impl(connection, AWS_ERROR_SUCCESS);
@@ -1548,7 +1548,7 @@ int aws_mqtt_client_connection_reconnect(
 
 int aws_mqtt_client_connection_disconnect(
     struct aws_mqtt_client_connection *connection,
-    aws_mqtt_client_on_disconnect_fn *on_disconnect,
+    aws_mqtt_client_on_disconnect_complete_fn *on_disconnect_complete,
     void *userdata) {
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: user called disconnect.", (void *)connection);
@@ -1562,7 +1562,7 @@ int aws_mqtt_client_connection_disconnect(
             connection->synced_data.state != AWS_MQTT_CLIENT_STATE_RECONNECTING) {
             mqtt_connection_unlock_synced_data(connection);
             AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT, "id=%p: Connection is not open, and can not be closed", (void *)connection);
+                AWS_LS_MQTT_CLIENT, "id=%p: Connection is not open, and cannot be closed", (void *)connection);
             aws_raise_error(AWS_ERROR_MQTT_NOT_CONNECTED);
             return AWS_OP_ERR;
         }
@@ -1571,8 +1571,8 @@ int aws_mqtt_client_connection_disconnect(
             AWS_LS_MQTT_CLIENT,
             "id=%p: User requests disconnecting, switch state to DISCONNECTING.",
             (void *)connection);
-        connection->on_disconnect = on_disconnect;
-        connection->on_disconnect_ud = userdata;
+        connection->on_disconnect_complete = on_disconnect_complete;
+        connection->on_disconnect_complete_ud = userdata;
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 

@@ -130,8 +130,8 @@ struct aws_mqtt_client_connection {
     void *on_resumed_ud;
     aws_mqtt_client_publish_received_fn *on_any_publish;
     void *on_any_publish_ud;
-    aws_mqtt_client_on_disconnect_fn *on_disconnect;
-    void *on_disconnect_ud;
+    aws_mqtt_client_on_disconnect_complete_fn *on_disconnect_complete;
+    void *on_disconnect_complete_ud;
 
     /* Connection tasks. */
     struct aws_mqtt_reconnect_task *reconnect_task;
