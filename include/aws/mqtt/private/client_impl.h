@@ -34,6 +34,8 @@
         }                                                                                                              \
     } while (false)
 
+#define ASSERT_SYNCED_DATA_LOCK_HELD(object) AWS_ASSERT(aws_mutex_try_lock(&(object)->synced_data.lock) == AWS_OP_ERR)
+
 enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_CONNECTING,
     AWS_MQTT_CLIENT_STATE_CONNECTED,
@@ -168,6 +170,11 @@ struct aws_mqtt_client_connection {
         enum aws_mqtt_client_connection_state state;
 
         /**
+         * Memory pool for all aws_mqtt_request.
+         */
+        struct aws_memory_pool requests_pool;
+
+        /**
          * Store all requests that is not completed including the pending requests.
          *
          * hash table from uint16_t (packet_id) to aws_mqtt_outstanding_request
@@ -175,15 +182,9 @@ struct aws_mqtt_client_connection {
         struct aws_hash_table outstanding_requests_table;
 
         /**
-         * Memory pool for all aws_mqtt_request.
-         */
-        struct aws_memory_pool requests_pool;
-
-        /**
          * List of all requests that cannot be scheduled until the connection comes online.
          */
         struct aws_linked_list pending_requests_list;
-
     } synced_data;
 
     struct {
@@ -214,9 +215,6 @@ struct aws_io_message *mqtt_get_message_for_packet(
 
 void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
-
-/* Note: Called with a lock hold. Clean up a request and invoked the completed callback with error code */
-void aws_mqtt_cleanup_request(struct aws_mqtt_request *request, int error_code);
 
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).
