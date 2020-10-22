@@ -324,7 +324,6 @@ int main(int argc, char **argv) {
         .tls_options = NULL,
         .client_id = s_client_id,
         .keep_alive_time_secs = 0,
-        .request_timeout_ms = 0,
         .on_connection_complete = s_mqtt_on_connection_complete,
         .user_data = &tester,
         .clean_session = true,

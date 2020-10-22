@@ -31,7 +31,7 @@
 #endif
 
 /* 3 seconds */
-static const uint64_t s_default_request_timeout_ns = 3000000000;
+static const uint64_t s_default_timeout_ns = 3000000000;
 
 /* 20 minutes - This is the default (and max) for AWS IoT as of 2020.02.18 */
 static const uint16_t s_default_keep_alive_sec = 1200;
@@ -370,7 +370,7 @@ static void s_mqtt_client_init(
 
         goto handle_error;
     }
-    now += connection->request_timeout_ns;
+    now += connection->connect_timeout_ns;
     aws_channel_schedule_task_future(channel, connack_task, now);
 
     /* Send the connect packet */
@@ -1335,32 +1335,42 @@ int aws_mqtt_client_connection_connect(
         connection->keep_alive_time_secs = s_default_keep_alive_sec;
     }
 
-    if (!connection_options->request_timeout_ms) {
-        connection->request_timeout_ns = s_default_request_timeout_ns;
+    if (!connection_options->ping_timeout_ms) {
+        connection->ping_timeout_ns = s_default_timeout_ns;
     } else {
-        connection->request_timeout_ns = aws_timestamp_convert(
-            (uint64_t)connection_options->request_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+        connection->ping_timeout_ns = aws_timestamp_convert(
+            (uint64_t)connection_options->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
-
+    if (!connection_options->connect_timeout_ms) {
+        connection->connect_timeout_ns = s_default_timeout_ns;
+    } else {
+        connection->connect_timeout_ns = aws_timestamp_convert(
+            (uint64_t)connection_options->connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    }
     /* Keep alive time should always be greater than the timeouts. */
-    if (AWS_UNLIKELY(
-            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->request_timeout_ns)) {
+    if (AWS_UNLIKELY(connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->ping_timeout_ns)) {
         AWS_LOGF_FATAL(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Illegal configuration, Connection keep alive %" PRIu64
             "ns must be greater than the request timeouts %" PRIu64 "ns.",
             (void *)connection,
             (uint64_t)connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS,
-            connection->request_timeout_ns);
+            connection->ping_timeout_ns);
         AWS_FATAL_ASSERT(
-            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS > connection->request_timeout_ns);
+            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS > connection->ping_timeout_ns);
     }
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT_CLIENT,
         "id=%p: using ping timeout of %" PRIu64 " ns",
         (void *)connection,
-        connection->request_timeout_ns);
+        connection->ping_timeout_ns);
+
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: using connect timeout of %" PRIu64 " ns",
+        (void *)connection,
+        connection->connect_timeout_ns);
 
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (connection_options->tls_options) {

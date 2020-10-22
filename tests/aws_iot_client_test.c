@@ -322,7 +322,6 @@ int s_initialize_test(
         .tls_options = &tester->tls_connection_options,
         .client_id = client_id_cur,
         .keep_alive_time_secs = 0,
-        .request_timeout_ms = 0,
         .on_connection_complete = s_mqtt_on_connection_complete,
         .user_data = tester,
         .clean_session = true,

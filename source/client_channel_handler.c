@@ -799,7 +799,7 @@ static void s_request_timeout_task(struct aws_channel_task *task, void *arg, enu
                 /* If not complete and online, schedule retry task */
                 uint64_t ttr = 0;
                 aws_channel_current_clock_time(request->connection->slot->channel, &ttr);
-                ttr += request->connection->request_timeout_ns;
+                ttr += request->connection->ping_timeout_ns;
                 AWS_LOGF_TRACE(
                     AWS_LS_MQTT_CLIENT,
                     "id=%p: scheduling timeout task for message id %" PRIu16 " to run at %" PRIu64,
