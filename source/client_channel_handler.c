@@ -101,20 +101,6 @@ static int s_packet_handler_connack(
 
         was_reconnecting = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
         if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
-            if (connection->clean_session) {
-                /* discard the previous session */
-                while (connection->synced_data.pending_requests_list.len) {
-                    struct aws_linked_list_node *node =
-                        aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
-                    struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-                    /* For a clean session, discard the previous session */
-                    aws_mqtt_internal_complete_request(request, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
-                    connection->synced_data.pending_requests_list.len--;
-                }
-            } else {
-                aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list.list, &requests);
-                connection->synced_data.pending_requests_list.len = 0;
-            }
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: connection was accepted, switch state from %d to CONNECTED.",
