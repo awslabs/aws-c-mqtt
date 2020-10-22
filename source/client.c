@@ -1459,13 +1459,12 @@ int aws_mqtt_client_connection_disconnect(
             return AWS_OP_ERR;
         }
         connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+        connection->on_disconnect = on_disconnect;
+        connection->on_disconnect_ud = userdata;
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Closing connection", (void *)connection);
-
-    connection->on_disconnect = on_disconnect;
-    connection->on_disconnect_ud = userdata;
 
     mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
 

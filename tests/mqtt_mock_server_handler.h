@@ -43,7 +43,6 @@ struct mqtt_mock_server_handler {
     struct aws_channel_handler handler;
     struct aws_channel_slot *slot;
     struct aws_array_list response_messages;
-    struct aws_array_list received_messages;
     size_t ping_resp_avail;
     uint16_t last_packet_id;
     size_t pubacks_received;
@@ -55,6 +54,11 @@ struct mqtt_mock_server_handler {
 
     struct aws_array_list packets; /* contains mqtt_decoded_packet */
     size_t decoded_index;
+
+    struct {
+        struct aws_array_list received_messages;
+        /* data */
+    } synced_data;
 };
 
 struct mqtt_mock_server_publish_args {
@@ -145,10 +149,5 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_type(
  * Run all received messages through, and decode the messages.
  */
 int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler);
-
-/**
- * This is only safe to call when not attached to a channel.
- */
-struct aws_array_list *mqtt_mock_server_get_received_messages(struct aws_channel_handler *handler);
 
 #endif /* MQTT_MOCK_SERVER_HANDLER_H */
