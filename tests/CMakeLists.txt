@@ -48,7 +48,6 @@ add_test_case(mqtt_connection_resend_packets)
 # It's still debatable to retry on a failed sent case (which we considered as an internal error)
 # add_test_case(mqtt_connection_consistent_retry_policy) 
 add_test_case(mqtt_connection_not_resend_packets_on_health_connection)
-add_test_case(mqtt_connection_offline_queue_length_limit)
 add_test_case(mqtt_connection_destory_pending_requests)
 
 generate_test_driver(${PROJECT_NAME}-tests)

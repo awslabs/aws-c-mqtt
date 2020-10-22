@@ -96,8 +96,7 @@ static int s_packet_handler_connack(
         if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
             /* Don't change the state if it's not ACCEPTED by broker */
             connection->synced_data.state = AWS_MQTT_CLIENT_STATE_CONNECTED;
-            aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list.list, &requests);
-            connection->synced_data.pending_requests_list.len = 0;
+            aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
@@ -620,54 +619,6 @@ struct aws_io_message *mqtt_get_message_for_packet(
  * Requests
  ******************************************************************************/
 
-/* Note: Called with a lock hold. Clean up a request and invoked the completed callback with error code */
-void aws_mqtt_internal_complete_request(struct aws_mqtt_request *request, int error_code) {
-    struct aws_mqtt_client_connection *connection = request->connection;
-    /* Fire the callback and clean up the memory, as the connection get destoried. */
-    if (request->on_complete) {
-        mqtt_connection_unlock_synced_data(connection);
-        /* invoking the user callback, release the lock */
-        request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
-        mqtt_connection_lock_synced_data(connection);
-    }
-
-    /* when the request is removed from the table, it will be cleaned up. */
-    /* Remove call only failed as the hash table has been screwed, which means the program can be dead now. */
-    AWS_ASSERT(
-        !aws_hash_table_remove(&connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL));
-    aws_memory_pool_release(&connection->synced_data.requests_pool, request);
-}
-
-/* Note: Called with a lock hold. */
-void aws_mqtt_offline_queueing(struct aws_mqtt_request *request) {
-    AWS_PRECONDITION(request);
-
-    struct aws_mqtt_client_connection *connection = request->connection;
-    if (!connection->synced_data.pending_list_len) {
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: not currently connected, and offline queueing is disabled by user.",
-            (void *)connection);
-        return;
-    }
-
-    AWS_LOGF_TRACE(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: not currently connected, add message id %" PRIu16 " to the pending requests list.",
-        (void *)connection,
-        request->packet_id);
-    if (connection->synced_data.pending_requests_list.len == connection->synced_data.pending_list_len) {
-        struct aws_linked_list_node *node =
-            aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
-        struct aws_mqtt_request *oldrequest = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-        aws_mqtt_internal_complete_request(oldrequest, AWS_ERROR_MQTT_OFFLINE_QUEUE_FULL);
-        connection->synced_data.pending_requests_list.len--;
-    }
-    aws_linked_list_push_back(&connection->synced_data.pending_requests_list.list, &request->list_node);
-
-    connection->synced_data.pending_requests_list.len++;
-}
-
 /* Send the request */
 static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
@@ -686,7 +637,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             /* put it into the offline queue. */
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
-                aws_mqtt_offline_queueing(request);
+                aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &request->list_node);
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
         } else {
@@ -696,35 +647,19 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 "%" PRIu16 ". will NOT be retried, will be cancelled",
                 (void *)task,
                 request->packet_id);
+            /* Fire the callback and clean up the memory, as the connection get destoried. */
+            if (request->on_complete) {
+                request->on_complete(
+                    connection, request->packet_id, AWS_ERROR_MQTT_NOT_CONNECTED, request->on_complete_ud);
+            }
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
-                aws_mqtt_internal_complete_request(request, AWS_ERROR_MQTT_NOT_CONNECTED);
+                aws_hash_table_remove(
+                    &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
+                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
         }
-        return;
-    }
-
-    if (request->cancelled) {
-        /* It happens when the user called disconnect, and all the pending requests from previous connection need to be
-         * cancelled, which will be marked as cancelled when they are removed from the outstanding request table. */
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: request was canceled. Canceling request for packet id %" PRIu16 ".",
-            (void *)request->connection,
-            request->packet_id);
-        /* If the request was cancelled, assume all containers are gone and just free */
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: (timeout task run of cancelled request) Releasing request %" PRIu16 " to connection memory pool",
-            (void *)(request->connection),
-            request->packet_id);
-
-        { /* BEGIN CRITICAL SECTION */
-            mqtt_connection_lock_synced_data(connection);
-            aws_memory_pool_release(&connection->synced_data.requests_pool, request);
-            mqtt_connection_unlock_synced_data(connection);
-        } /* END CRITICAL SECTION */
         return;
     }
 
@@ -752,9 +687,14 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 request->packet_id);
             /* If the send_request function reports the request is complete,
              * remove from the hash table and call the callback. */
+            if (request->on_complete) {
+                request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
+            }
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
-                aws_mqtt_internal_complete_request(request, error_code);
+                aws_hash_table_remove(
+                    &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
+                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
             break;
@@ -847,7 +787,7 @@ uint16_t mqtt_create_request(
         aws_channel_task_init(
             &next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_outgoing_request_task");
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
-            aws_mqtt_offline_queueing(next_request);
+            aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &next_request->list_node);
         } else {
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
@@ -875,24 +815,31 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, &elem);
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
 
-        if (elem == NULL) {
-            mqtt_connection_unlock_synced_data(connection);
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: received completion for message id %" PRIu16
-                " but no outstanding request exists.  Assuming this is an ack of a resend when the first request has "
-                "already completed.",
-                (void *)connection,
-                packet_id);
-            return;
-        }
+    if (elem == NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: received completion for message id %" PRIu16
+            " but no outstanding request exists.  Assuming this is an ack of a resend when the first request has "
+            "already completed.",
+            (void *)connection,
+            packet_id);
+        return;
+    }
 
-        struct aws_mqtt_request *request = elem->value;
-
-        /* remove the request from the list, which is the outgoing request list */
-        aws_linked_list_remove(&request->list_node);
-        aws_mqtt_internal_complete_request(request, error_code);
+    struct aws_mqtt_request *request = elem->value;
+    /* Invoke the complete callback. */
+    if (request->on_complete) {
+        request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
+    }
+    /* remove the request from the list, which is the outgoing request list, and clean up the resource */
+    aws_linked_list_remove(&request->list_node);
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
+        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 }

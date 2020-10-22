@@ -124,7 +124,7 @@ static void s_mqtt_client_shutdown(
             struct aws_linked_list_node *node =
                 aws_linked_list_pop_front(&connection->thread_data.ongoing_requests_list);
             struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-            aws_mqtt_offline_queueing(request);
+            aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &request->list_node);
         }
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: all outgoing task has been move to pending list", (void *)connection);
@@ -543,9 +543,8 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     aws_hash_table_clean_up(&connection->synced_data.outstanding_requests_table);
     /* clean up the pending_requests if it's not empty */
-    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list.list)) {
-        struct aws_linked_list_node *node =
-            aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
+    while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list);
         struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
         /* Fire the callback and clean up the memory, as the connection get destoried. */
         if (request->on_complete) {
@@ -634,9 +633,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
-    connection->synced_data.pending_requests_list.len = 0;
-    connection->synced_data.pending_list_len = SIZE_MAX;
-    aws_linked_list_init(&connection->synced_data.pending_requests_list.list);
+    aws_linked_list_init(&connection->synced_data.pending_requests_list);
     aws_linked_list_init(&connection->thread_data.ongoing_requests_list);
 
     if (aws_mutex_init(&connection->synced_data.lock)) {
@@ -748,25 +745,6 @@ static int s_check_connection_state_for_configuration(struct aws_mqtt_client_con
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
     return result;
-}
-
-void aws_mqtt_client_connection_set_pending_queue_length(
-    struct aws_mqtt_client_connection *connection,
-    size_t pending_list_len) {
-
-    AWS_PRECONDITION(connection);
-    { /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
-        connection->synced_data.pending_list_len = pending_list_len;
-        while (connection->synced_data.pending_requests_list.len > connection->synced_data.pending_list_len) {
-            struct aws_linked_list_node *node =
-                aws_linked_list_pop_front(&connection->synced_data.pending_requests_list.list);
-            struct aws_mqtt_request *oldrequest = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-            aws_mqtt_internal_complete_request(oldrequest, AWS_ERROR_MQTT_OFFLINE_QUEUE_FULL);
-            connection->synced_data.pending_requests_list.len--;
-        }
-        mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
 }
 
 int aws_mqtt_client_connection_set_will(
