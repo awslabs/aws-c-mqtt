@@ -46,6 +46,7 @@ struct mqtt_mock_server_handler {
     size_t ping_resp_avail;
     uint16_t last_packet_id;
     size_t pubacks_received;
+    size_t connects_received;
     size_t connacks_avail;
     struct aws_mutex lock;
     struct aws_condition_variable cvar;
@@ -109,6 +110,7 @@ int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t p
  * Wait for puback_count PUBACK packages from client
  */
 void mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *handler, size_t puback_count);
+void mqtt_mock_server_wait_for_connects(struct aws_channel_handler *handler, size_t connect_count);
 
 /**
  * Getters for decoded packets, call mqtt_mock_server_decode_packets first.

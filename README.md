@@ -213,9 +213,4 @@ Publish a payload to the topic specified. For QoS 0, `on_complete` will be calle
 the wire. For QoS 1, as soon as PUBACK comes back. For QoS 2, PUBCOMP. `topic` and `payload` must persist until
 `on_complete`.
 
-```c
-int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
-```
-Sends a PINGREQ packet to the server.
-
 [aws-c-io]: https://github.com/awslabs/aws-c-io
