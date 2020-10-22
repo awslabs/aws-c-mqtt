@@ -148,8 +148,8 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_CONNECTION_DISCONNECTING,
                 "Connection is disconnecting, it's not safe to do this operation until the connection finishes shutdown."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION,
-                "Started a clean session, discarding old requests from the previous session."),
+                AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
+                "Old requests from the previous session are cancelled, and offline request will not be accept."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

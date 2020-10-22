@@ -2171,8 +2171,8 @@ static int s_test_mqtt_clean_session_not_retry_fn(struct aws_allocator *allocato
     s_wait_for_interrupt_to_complete(state_test_data);
 
     /* Once the connection lost, the requests will fail */
-    ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
-    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
+    ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
+    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
 
     /* Disconnect */
     ASSERT_SUCCESS(
@@ -2205,18 +2205,11 @@ static int s_test_mqtt_clean_session_discard_previous_fn(struct aws_allocator *a
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
-    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
-    s_wait_for_connection_to_complete(state_test_data);
-    struct aws_channel_handler *handler = state_test_data->test_channel_handler;
-    mqtt_mock_server_set_max_connack(handler, 0);
-
-    /* Shutdown the connection */
-    aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
-    s_wait_for_interrupt_to_complete(state_test_data);
-
-    /* The connection will not be connected until the connack sent from server. */
     struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("/test/topic");
     struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("Test Message 1");
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
     /* Requests made now will be considered as the previous session. */
     ASSERT_TRUE(
         aws_mqtt_client_connection_publish(
@@ -2237,15 +2230,15 @@ static int s_test_mqtt_clean_session_discard_previous_fn(struct aws_allocator *a
             NULL,
             s_on_suback,
             state_test_data) > 0);
-    aws_mutex_lock(&state_test_data->lock);
-    state_test_data->expected_ops_completed = 1;
-    aws_mutex_unlock(&state_test_data->lock);
 
-    mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, SIZE_MAX);
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+    struct aws_channel_handler *handler = state_test_data->test_channel_handler;
+
     s_wait_for_ops_completed(state_test_data);
     s_wait_for_subscribe_to_complete(state_test_data);
-    ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
-    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
+    ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
+    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
 
     /* Check no request is received by the server */
     ASSERT_SUCCESS(mqtt_mock_server_decode_packets(handler));

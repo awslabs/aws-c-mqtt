@@ -158,7 +158,7 @@ static void s_mqtt_client_shutdown(
              * session */
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
-                "id=%p: Discard ongoing requests and pending requests when a clean-session connection lost.",
+                "id=%p: Discard ongoing requests and pending requests when a clean session connection lost.",
                 (void *)connection);
             aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
         }
@@ -220,7 +220,7 @@ static void s_mqtt_client_shutdown(
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
-    s_clean_up_lists_of_requests(connection, &requests, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
+    s_clean_up_lists_of_requests(connection, &requests, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
 
     /* If there's no error code and this wasn't user-requested, set the error code to something useful */
     if (error_code == AWS_ERROR_SUCCESS) {
@@ -506,7 +506,7 @@ static void s_mqtt_client_init(
             aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
             mqtt_connection_unlock_synced_data(connection);
         } /* END CRITICAL SECTION */
-        s_clean_up_lists_of_requests(connection, &requests, AWS_ERROR_MQTT_DISCARD_PREVIOUS_SESSION);
+        s_clean_up_lists_of_requests(connection, &requests, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
     }
     return;
 

@@ -805,6 +805,11 @@ uint16_t mqtt_create_request(
         aws_channel_task_init(
             &next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_outgoing_request_task");
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+            if (connection->clean_session && connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
+                /* If the connection is a clean session and not Disconnected, don't offline queue the request */
+                aws_raise_error(AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
+                return 0;
+            }
             aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &next_request->list_node);
         } else {
             should_schedule_task = true;
