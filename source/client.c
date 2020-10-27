@@ -148,7 +148,6 @@ static void s_mqtt_client_shutdown(
             case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
                 /* disconnect requested by user */
                 /* Successfully shutdown, so clear the outstanding requests */
-                /* TODO: respect the cleansession, clear the table when needed */
                 aws_hash_table_clear(&connection->synced_data.outstanding_requests_table);
                 connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
                 AWS_LOGF_DEBUG(
@@ -278,17 +277,9 @@ static void s_mqtt_client_shutdown(
             if (connection->auto_reconnect) {
                 AWS_LOGF_DEBUG(
                     AWS_LS_MQTT_CLIENT, "id=%p: Connection interrupted, attempting reconnect", (void *)connection);
-
-                if (stop_reconnect) {
-
-                    MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect_complete);
-                } else {
-                    /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
-                    connection->reconnect_task->task.fn(
-                        &connection->reconnect_task->task,
-                        connection->reconnect_task->task.arg,
-                        AWS_TASK_STATUS_RUN_READY);
-                }
+                /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
+                connection->reconnect_task->task.fn(
+                    &connection->reconnect_task->task, connection->reconnect_task->task.arg, AWS_TASK_STATUS_RUN_READY);
             } else {
                 AWS_LOGF_TRACE(
                     AWS_LS_MQTT_CLIENT, "id=%p: Connection lost and not automatically reconnect.", (void *)connection);
@@ -1485,13 +1476,13 @@ int aws_mqtt_client_connection_try_connect(
     return aws_mqtt_client_connection_connect(connection, &try_option);
 }
 
-int aws_mqtt_client_persistant_connection(
+int aws_mqtt_client_persistent_connection(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_connection_options *connection_options) {
 
-    struct aws_mqtt_connection_options persistant_option = *connection_options;
+    struct aws_mqtt_connection_options persistent_option = *connection_options;
     connection->auto_reconnect = true;
-    return aws_mqtt_client_connection_connect(connection, &persistant_option);
+    return aws_mqtt_client_connection_connect(connection, &persistent_option);
 }
 
 static int s_mqtt_client_connect(struct aws_mqtt_client_connection *connection) {

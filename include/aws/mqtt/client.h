@@ -94,7 +94,7 @@ typedef void(aws_mqtt_client_publish_received_fn)(
     const struct aws_byte_cursor *payload,
     void *userdata);
 
-/** Called when a connection is closed, right before any resources are deleted */
+/** Called after user requested disconnect, when the disconnection process completed */
 typedef void(aws_mqtt_client_on_disconnect_complete_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
 /**
@@ -391,7 +391,7 @@ int aws_mqtt_client_connection_try_connect(
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
- * Create a persistant connection, which means when the connection lost, SDK will apply automatically reconnect method
+ * Create a persistent connection, which means when the connection lost, SDK will apply automatically reconnect method
  * to try to reconnect with the broker, until aws_mqtt_client_connection_disconnect called.
  * aws_mqtt_connection_event_handlers are optional but recommended for this function in connection_options
  * Note: This is a replacement of original aws_mqtt_client_connection_connect. Same API and behavior as before
@@ -401,7 +401,7 @@ int aws_mqtt_client_connection_try_connect(
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
 AWS_MQTT_API
-int aws_mqtt_client_persistant_connection(
+int aws_mqtt_client_persistent_connection(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_connection_options *connection_options);
 
