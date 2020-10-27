@@ -261,6 +261,8 @@ static void s_mqtt_client_shutdown(
                     AWS_LS_MQTT_CLIENT,
                     "id=%p: Connect attempt failed not automatically reconnect.",
                     (void *)connection);
+                /* Everything is done from the eventloop on the connection, leave the ownsership fully to user. */
+                aws_mqtt_client_connection_release(connection);
                 break;
             }
             break;
@@ -271,6 +273,8 @@ static void s_mqtt_client_shutdown(
                 "id=%p: Disconnect completed, clearing request queue and calling callback",
                 (void *)connection);
             MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect_complete);
+            /* Everything is done from the eventloop on the connection, leave the ownsership fully to user. */
+            aws_mqtt_client_connection_release(connection);
             break;
 
         case AWS_MQTT_CLIENT_STATE_CONNECTED: {
@@ -283,6 +287,8 @@ static void s_mqtt_client_shutdown(
             } else {
                 AWS_LOGF_TRACE(
                     AWS_LS_MQTT_CLIENT, "id=%p: Connection lost and not automatically reconnect.", (void *)connection);
+                /* Everything is done from the eventloop on the connection, leave the ownsership fully to user. */
+                aws_mqtt_client_connection_release(connection);
                 break;
             }
             break;
@@ -1454,7 +1460,8 @@ int aws_mqtt_client_connection_connect(
          * so we don't need to worry about it here*/
         goto error;
     }
-
+    /* Acquire refcount on connection to keep connection alive until disconnected */
+    aws_mqtt_client_connection_acquire(connection);
     return AWS_OP_SUCCESS;
 
 error:

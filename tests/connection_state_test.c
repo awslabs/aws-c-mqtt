@@ -44,7 +44,6 @@ struct mqtt_connection_state_test {
     struct aws_mqtt_client_connection *mqtt_connection;
     struct aws_socket_options socket_options;
     bool session_present;
-    bool connection_completed;
     bool client_disconnect_completed;
     bool server_disconnect_completed;
     bool connection_disconnected;
@@ -181,16 +180,16 @@ static void s_on_connection_connected_fn(
 
     state_test_data->session_present = session_present;
     state_test_data->mqtt_return_code = return_code;
-    state_test_data->connection_completed = true;
     state_test_data->connection_connected = true;
     aws_mutex_unlock(&state_test_data->lock);
+    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "connection connected");
 
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
 
 static bool s_is_connection_completed(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->connection_completed || state_test_data->connection_disconnected;
+    return state_test_data->connection_connected || state_test_data->connection_disconnected;
 }
 
 /* wait for connection to complete either successfully(connected) or unsuccessfully(disconnected) */
@@ -198,14 +197,14 @@ static void s_wait_for_connection_to_complete(struct mqtt_connection_state_test 
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
         &state_test_data->cvar, &state_test_data->lock, s_is_connection_completed, state_test_data);
-    state_test_data->connection_completed = false;
+    state_test_data->connection_connected = false;
     state_test_data->connection_disconnected = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
 
 static bool s_is_connection_connected(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->connection_completed;
+    return state_test_data->connection_connected;
 }
 
 /* wait for connection to be connected */
@@ -213,7 +212,7 @@ static void s_wait_for_connection_to_connect(struct mqtt_connection_state_test *
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
         &state_test_data->cvar, &state_test_data->lock, s_is_connection_connected, state_test_data);
-    state_test_data->connection_completed = false;
+    state_test_data->connection_connected = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
 
@@ -802,7 +801,7 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
     s_wait_for_connection_to_complete(state_test_data);
 
     /* this should take about 1.1 seconds for the timeout and reconnect.*/
-    s_wait_for_connection_to_complete(state_test_data);
+    s_wait_for_connection_to_be_disconnected(state_test_data);
     ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->disconnection_error);
 
     ASSERT_SUCCESS(

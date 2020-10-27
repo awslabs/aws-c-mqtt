@@ -203,7 +203,7 @@ static int s_packet_handler_connack(
     MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connected, connack.connect_return_code, connack.session_present);
     if (!was_reconnecting || connection->connection_count <= 1) {
         aws_create_reconnect_task(connection);
-    };
+    }
 
     s_schedule_ping(connection);
     return AWS_OP_SUCCESS;
