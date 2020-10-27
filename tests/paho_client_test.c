@@ -53,6 +53,7 @@ struct test_context {
     struct aws_client_bootstrap *bootstrap;
     struct aws_mqtt_client *client;
     struct aws_mqtt_client_connection *connection;
+    int error_code;
     bool retained_packet_received;
     bool on_any_publish_fired;
     bool connection_complete;
@@ -135,16 +136,20 @@ static void s_mqtt_on_puback(
     aws_condition_variable_notify_one(&tester->signal);
 }
 
-static void s_mqtt_on_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
+static void s_mqtt_on_disconnected(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
 
     (void)connection;
-    (void)error_code;
-    (void)userdata;
+    struct test_context *tester = userdata;
 
+    aws_mutex_lock(&tester->lock);
+    tester->connection_complete = true;
+    tester->error_code = error_code;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
     printf("Connection offline\n");
 }
 
-static void s_mqtt_on_resumed(
+static void s_mqtt_on_connected(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
@@ -155,6 +160,16 @@ static void s_mqtt_on_resumed(
     (void)session_present;
     (void)userdata;
 
+    AWS_FATAL_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
+    AWS_FATAL_ASSERT(session_present == false);
+
+    struct test_context *tester = userdata;
+    printf("1 started\n");
+
+    aws_mutex_lock(&tester->lock);
+    tester->connection_complete = true;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
     printf("Connection resumed\n");
 }
 
@@ -245,8 +260,10 @@ static int s_initialize_test(
     tester->client = aws_mqtt_client_new(allocator, tester->bootstrap);
     tester->connection = aws_mqtt_client_connection_new(tester->client);
     struct aws_mqtt_connection_event_handlers handlers = {
-        .on_connected = s_mqtt_on_resumed,
-        .on_disconnected = s_mqtt_on_interrupted,
+        .on_connected = s_mqtt_on_connected,
+        .on_connected_ud = tester,
+        .on_disconnected = s_mqtt_on_disconnected,
+        .on_disconnected_ud = tester,
     };
     aws_mqtt_client_connection_set_connection_event_handlers(tester->connection, &handlers);
 
@@ -306,8 +323,8 @@ int main(int argc, char **argv) {
     AWS_FATAL_ASSERT(AWS_OP_SUCCESS == s_initialize_test(&tester, allocator, &conn_options));
 
     /* Wait for connack */
-    /* TODO: no completed will be invoked */
     s_wait_on_tester_predicate(&tester, s_is_connection_complete_pred);
+    AWS_FATAL_ASSERT(!tester.error_code);
 
     printf("1 done\n");
 
