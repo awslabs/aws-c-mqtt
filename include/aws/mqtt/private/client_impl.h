@@ -102,8 +102,10 @@ struct aws_mqtt_client_connection {
     /* Connect parameters */
     struct aws_byte_buf client_id;
     bool clean_session;
+    bool auto_reconnect;
     uint16_t keep_alive_time_secs;
-    uint64_t request_timeout_ns;
+    uint64_t ping_timeout_ns;
+    uint64_t connect_timeout_ns;
     struct aws_string *username;
     struct aws_string *password;
     struct {
@@ -120,16 +122,14 @@ struct aws_mqtt_client_connection {
     } reconnect_timeouts;
 
     /* User connection callbacks */
-    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
-    void *on_connection_complete_ud;
-    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
-    void *on_interrupted_ud;
-    aws_mqtt_client_on_connection_resumed_fn *on_resumed;
-    void *on_resumed_ud;
+    aws_mqtt_client_on_connection_disconnected_fn *on_disconnected;
+    void *on_disconnected_ud;
+    aws_mqtt_client_on_connection_connected_fn *on_connected;
+    void *on_connected_ud;
     aws_mqtt_client_publish_received_fn *on_any_publish;
     void *on_any_publish_ud;
-    aws_mqtt_client_on_disconnect_fn *on_disconnect;
-    void *on_disconnect_ud;
+    aws_mqtt_client_on_disconnect_complete_fn *on_disconnect_complete;
+    void *on_disconnect_complete_ud;
 
     /* Connection tasks. */
     struct aws_mqtt_reconnect_task *reconnect_task;

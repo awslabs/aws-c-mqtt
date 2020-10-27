@@ -38,12 +38,15 @@ static int s_mqtt_mock_server_handler_process_packet(
     switch (packet_type) {
         case AWS_MQTT_PACKET_CONNECT: {
             size_t connacks_available = 0;
+            int connack_return_code;
             err |= aws_mutex_lock(&testing_handler->lock);
+            testing_handler->connects_received++;
             AWS_LOGF_DEBUG(
                 MOCK_LOG_SUBJECT,
                 "server, CONNECT received, %llu available connacks.",
                 (long long unsigned)testing_handler->connacks_avail);
             connacks_available = testing_handler->connacks_avail > 0 ? testing_handler->connacks_avail-- : 0;
+            connack_return_code = testing_handler->connack_returncode;
             err |= aws_mutex_unlock(&testing_handler->lock);
 
             if (connacks_available) {
@@ -51,13 +54,14 @@ static int s_mqtt_mock_server_handler_process_packet(
                     testing_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
 
                 struct aws_mqtt_packet_connack conn_ack;
-                err |= aws_mqtt_packet_connack_init(&conn_ack, false, AWS_MQTT_CONNECT_ACCEPTED);
+                err |= aws_mqtt_packet_connack_init(&conn_ack, false, connack_return_code);
                 err |= aws_mqtt_packet_connack_encode(&connack_msg->message_data, &conn_ack);
                 if (aws_channel_slot_send_message(testing_handler->slot, connack_msg, AWS_CHANNEL_DIR_WRITE)) {
                     err |= 1;
                     AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "Failed to send connack with error %d", aws_last_error());
                 }
             }
+            err |= aws_condition_variable_notify_one(&testing_handler->cvar);
             break;
         }
 
@@ -355,6 +359,7 @@ struct aws_channel_handler *new_mqtt_mock_server(struct aws_allocator *allocator
     testing_handler->ping_resp_avail = SIZE_MAX;
     testing_handler->connacks_avail = SIZE_MAX;
     testing_handler->auto_ack = true;
+    testing_handler->connack_returncode = AWS_MQTT_CONNECT_ACCEPTED;
     aws_mutex_init(&testing_handler->lock);
     aws_condition_variable_init(&testing_handler->cvar);
 
@@ -402,6 +407,16 @@ void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_
 
     aws_mutex_lock(&testing_handler->lock);
     testing_handler->connacks_avail = connack_avail;
+    aws_mutex_unlock(&testing_handler->lock);
+}
+
+void mqtt_mock_server_set_connack_return_code(
+    struct aws_channel_handler *handler,
+    enum aws_mqtt_connect_return_code return_code) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    aws_mutex_lock(&testing_handler->lock);
+    testing_handler->connack_returncode = return_code;
     aws_mutex_unlock(&testing_handler->lock);
 }
 
@@ -454,26 +469,51 @@ int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t p
     return s_send_ack(handler, packetID, AWS_MQTT_PACKET_PUBACK);
 }
 
-struct puback_waiter {
+struct packet_waiter {
     struct mqtt_mock_server_handler *testing_handler;
+    enum aws_mqtt_packet_type type;
     size_t wait_for_count;
 };
 
-static bool s_is_pubacks_complete(void *arg) {
-    struct puback_waiter *waiter = arg;
-
-    return waiter->testing_handler->pubacks_received >= waiter->wait_for_count;
+static bool s_is_packets_complete(void *arg) {
+    struct packet_waiter *waiter = arg;
+    size_t packet_received = 0;
+    switch (waiter->type) {
+        case AWS_MQTT_PACKET_PUBACK:
+            packet_received = waiter->testing_handler->pubacks_received;
+            break;
+        case AWS_MQTT_PACKET_CONNECT:
+            packet_received = waiter->testing_handler->connects_received;
+            break;
+        default:
+            break;
+    }
+    return packet_received >= waiter->wait_for_count;
 }
 
 void mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *handler, size_t puback_count) {
     struct mqtt_mock_server_handler *testing_handler = handler->impl;
 
-    struct puback_waiter waiter;
+    struct packet_waiter waiter;
     waiter.testing_handler = testing_handler;
     waiter.wait_for_count = puback_count;
+    waiter.type = AWS_MQTT_PACKET_PUBACK;
 
     aws_mutex_lock(&testing_handler->lock);
-    aws_condition_variable_wait_pred(&testing_handler->cvar, &testing_handler->lock, s_is_pubacks_complete, &waiter);
+    aws_condition_variable_wait_pred(&testing_handler->cvar, &testing_handler->lock, s_is_packets_complete, &waiter);
+    aws_mutex_unlock(&testing_handler->lock);
+}
+
+void mqtt_mock_server_wait_for_connects(struct aws_channel_handler *handler, size_t connect_count) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    struct packet_waiter waiter;
+    waiter.testing_handler = testing_handler;
+    waiter.wait_for_count = connect_count;
+    waiter.type = AWS_MQTT_PACKET_CONNECT;
+
+    aws_mutex_lock(&testing_handler->lock);
+    aws_condition_variable_wait_pred(&testing_handler->cvar, &testing_handler->lock, s_is_packets_complete, &waiter);
     aws_mutex_unlock(&testing_handler->lock);
 }
 

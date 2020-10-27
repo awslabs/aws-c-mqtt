@@ -63,6 +63,7 @@ struct test_context {
     size_t pubacks_gotten;
     size_t packets_gotten;
 
+    int error_code;
     bool received_on_connection_complete;
     bool received_on_suback;
     bool received_on_disconnect;
@@ -120,30 +121,6 @@ static bool s_all_packets_received_cond(void *userdata) {
     return tester->packets_gotten == PUBLISHES;
 }
 
-static void s_mqtt_on_connection_complete(
-    struct aws_mqtt_client_connection *connection,
-    int error_code,
-    enum aws_mqtt_connect_return_code return_code,
-    bool session_present,
-    void *userdata) {
-
-    (void)connection;
-    (void)error_code;
-    (void)return_code;
-    (void)session_present;
-
-    AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
-    AWS_FATAL_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
-    AWS_FATAL_ASSERT(session_present == false);
-
-    struct test_context *tester = userdata;
-
-    aws_mutex_lock(&tester->lock);
-    tester->received_on_connection_complete = true;
-    aws_mutex_unlock(&tester->lock);
-    aws_condition_variable_notify_one(&tester->signal);
-}
-
 static void s_mqtt_on_suback(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
@@ -169,51 +146,41 @@ static void s_mqtt_on_suback(
     aws_condition_variable_notify_one(&tester->signal);
 }
 
-static void s_on_connection_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
-
-    (void)connection;
-    (void)userdata;
-    printf("CONNECTION INTERRUPTED error_code=%d\n", error_code);
-}
-
-static void s_on_resubscribed(
+static void s_on_connection_disconnected(
     struct aws_mqtt_client_connection *connection,
-    uint16_t packet_id,
-    const struct aws_array_list *topic_subacks, /* contains aws_mqtt_topic_subscription pointers */
     int error_code,
     void *userdata) {
 
     (void)connection;
-    (void)packet_id;
-    (void)userdata;
+    struct test_context *tester = userdata;
 
-    AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
-
-    size_t num_topics = aws_array_list_length(topic_subacks);
-    printf("RESUBSCRIBE_COMPLETE. error_code=%d num_topics=%zu\n", error_code, num_topics);
-    for (size_t i = 0; i < num_topics; ++i) {
-        struct aws_mqtt_topic_subscription sub_i;
-        aws_array_list_get_at(topic_subacks, &sub_i, i);
-        printf("  topic=" PRInSTR " qos=%d\n", AWS_BYTE_CURSOR_PRI(sub_i.topic), sub_i.qos);
-        AWS_FATAL_ASSERT(sub_i.qos != AWS_MQTT_QOS_FAILURE);
-    }
+    aws_mutex_lock(&tester->lock);
+    tester->received_on_connection_complete = true;
+    tester->error_code = error_code;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
+    printf("CONNECTION disconnected error_code=%d\n", error_code);
 }
 
-static void s_on_connection_resumed(
+static void s_on_connection_connected(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *userdata) {
 
     (void)connection;
-    (void)userdata;
 
-    printf("CONNECTION RESUMED return_code=%d session_present=%d\n", return_code, session_present);
-    if (!session_present) {
-        printf("RESUBSCRIBING...");
-        uint16_t packet_id = aws_mqtt_resubscribe_existing_topics(connection, s_on_resubscribed, NULL);
-        AWS_FATAL_ASSERT(packet_id);
-    }
+    AWS_FATAL_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
+    AWS_FATAL_ASSERT(session_present == false);
+
+    struct test_context *tester = userdata;
+
+    aws_mutex_lock(&tester->lock);
+    tester->received_on_connection_complete = true;
+    aws_mutex_unlock(&tester->lock);
+    aws_condition_variable_notify_one(&tester->signal);
+
+    printf("CONNECTION connected return_code=%d session_present=%d\n", return_code, session_present);
 }
 
 static void s_mqtt_on_disconnect(struct aws_mqtt_client_connection *connection, void *userdata) {
@@ -266,6 +233,7 @@ int s_initialize_test(
     aws_logger_set(&tester->logger);
 
     tester->allocator = allocator;
+    tester->error_code = AWS_ERROR_SUCCESS;
     aws_mutex_init(&tester->lock);
     aws_condition_variable_init(&tester->signal);
 
@@ -322,15 +290,16 @@ int s_initialize_test(
         .tls_options = &tester->tls_connection_options,
         .client_id = client_id_cur,
         .keep_alive_time_secs = 0,
-        .ping_timeout_ms = 0,
-        .on_connection_complete = s_mqtt_on_connection_complete,
-        .user_data = tester,
         .clean_session = true,
     };
-
+    struct aws_mqtt_connection_event_handlers handlers = {
+        .on_connected = s_on_connection_connected,
+        .on_connected_ud = tester,
+        .on_disconnected = s_on_connection_disconnected,
+        .on_disconnected_ud = tester,
+    };
     AWS_FATAL_ASSERT(
-        AWS_OP_SUCCESS == aws_mqtt_client_connection_set_connection_interruption_handlers(
-                              tester->connection, s_on_connection_interrupted, NULL, s_on_connection_resumed, NULL));
+        AWS_OP_SUCCESS == aws_mqtt_client_connection_set_connection_event_handlers(tester->connection, &handlers));
 
     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
     struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
@@ -391,6 +360,7 @@ int main(int argc, char **argv) {
     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
 
     s_wait_on_tester_predicate(&tester, s_connection_complete_pred);
+    AWS_FATAL_ASSERT(!tester.error_code);
 
     aws_mqtt_client_connection_subscribe(
         tester.connection,

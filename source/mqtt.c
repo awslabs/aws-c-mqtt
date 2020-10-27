@@ -150,6 +150,21 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
                 "Old requests from the previous session are cancelled, and offline request will not be accept."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECT_UNACCEPTABLE_PROTOCOL_VERSION,
+                "The Server does not support the level of the MQTT protocol requested by the Client."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECT_IDENTIFIER_REJECTED,
+                "The Client identifier is correct UTF-8 but not allowed by the Server."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECT_SERVER_UNAVAILABLE,
+                "The Network Connection has been made but the MQTT service is unavailable."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECT_BAD_USERNAME_OR_PASSWORD,
+                "The data in the user name or password is malformed."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECT_NOT_AUTHORIZED,
+                "The Client is not authorized to connect."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
