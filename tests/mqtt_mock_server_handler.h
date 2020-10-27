@@ -56,6 +56,7 @@ struct mqtt_mock_server_handler {
     struct aws_array_list packets; /* contains mqtt_decoded_packet */
     size_t decoded_index;
 
+    enum aws_mqtt_connect_return_code connack_returncode;
     struct {
         struct aws_array_list received_messages;
         /* data */
@@ -90,6 +91,12 @@ void mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, siz
  * Set max number of CONACK that mock server will send back to client
  */
 void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_t connack_avail);
+/**
+ * Set return code of CONACK that mock server will send back to client for all the following CONNECT
+ */
+void mqtt_mock_server_set_connack_return_code(
+    struct aws_channel_handler *handler,
+    enum aws_mqtt_connect_return_code return_code);
 
 /**
  * Disable the automatically response (suback/unsuback/puback) to the client

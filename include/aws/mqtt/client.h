@@ -163,9 +163,6 @@ struct aws_mqtt_topic_subscription {
  *                           This is copied into the connection
  *                           Pass NULL to connect without TLS (NOT RECOMMENDED)
  * clean_session             True to discard all server session data and start fresh
- * stop_auto_reconnect       True to stop reconnecting automatically everytime the connection lost. In this case, once
- *                           the connected connection lost, the on_disconnected callback will be invoked, if set. And no
- *                           automatically reconnect will happen.
  * keep_alive_time_secs      The keep alive value to place in the CONNECT PACKET, a PING will automatically
  *                           be sent at this interval as well. If you specify 0, defaults will be used
  *                           and a ping will be sent once per 20 minutes.
@@ -184,7 +181,6 @@ struct aws_mqtt_connection_options {
     struct aws_socket_options *socket_options;
     struct aws_tls_connection_options *tls_options;
     bool clean_session;
-    bool stop_auto_reconnect;
     uint16_t keep_alive_time_secs;
     uint32_t ping_timeout_ms;
     uint32_t connect_timeout_ms;

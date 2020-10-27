@@ -1376,7 +1376,6 @@ int aws_mqtt_client_connection_connect(
     connection->port = connection_options->port;
     connection->socket_options = *connection_options->socket_options;
     connection->clean_session = connection_options->clean_session;
-    connection->auto_reconnect = !connection_options->stop_auto_reconnect;
     connection->keep_alive_time_secs = connection_options->keep_alive_time_secs;
     connection->connection_count = 0;
 
@@ -1482,7 +1481,7 @@ int aws_mqtt_client_connection_try_connect(
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
     struct aws_mqtt_connection_options try_option = *connection_options;
-    try_option.stop_auto_reconnect = true;
+    connection->auto_reconnect = false;
     return aws_mqtt_client_connection_connect(connection, &try_option);
 }
 
@@ -1491,7 +1490,7 @@ int aws_mqtt_client_persistant_connection(
     const struct aws_mqtt_connection_options *connection_options) {
 
     struct aws_mqtt_connection_options persistant_option = *connection_options;
-    persistant_option.stop_auto_reconnect = false;
+    connection->auto_reconnect = true;
     return aws_mqtt_client_connection_connect(connection, &persistant_option);
 }
 
@@ -1565,8 +1564,8 @@ int aws_mqtt_client_connection_disconnect(
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from aws_mqtt_client_connection_disconnect", (void *)connection);
 
-        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED &&
-            connection->synced_data.state != AWS_MQTT_CLIENT_STATE_RECONNECTING) {
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTED ||
+            connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
             mqtt_connection_unlock_synced_data(connection);
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT_CLIENT, "id=%p: Connection is not open, and cannot be closed", (void *)connection);

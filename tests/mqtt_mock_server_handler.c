@@ -38,6 +38,7 @@ static int s_mqtt_mock_server_handler_process_packet(
     switch (packet_type) {
         case AWS_MQTT_PACKET_CONNECT: {
             size_t connacks_available = 0;
+            int connack_return_code;
             err |= aws_mutex_lock(&testing_handler->lock);
             testing_handler->connects_received++;
             AWS_LOGF_DEBUG(
@@ -45,6 +46,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                 "server, CONNECT received, %llu available connacks.",
                 (long long unsigned)testing_handler->connacks_avail);
             connacks_available = testing_handler->connacks_avail > 0 ? testing_handler->connacks_avail-- : 0;
+            connack_return_code = testing_handler->connack_returncode;
             err |= aws_mutex_unlock(&testing_handler->lock);
 
             if (connacks_available) {
@@ -52,7 +54,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                     testing_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
 
                 struct aws_mqtt_packet_connack conn_ack;
-                err |= aws_mqtt_packet_connack_init(&conn_ack, false, AWS_MQTT_CONNECT_ACCEPTED);
+                err |= aws_mqtt_packet_connack_init(&conn_ack, false, connack_return_code);
                 err |= aws_mqtt_packet_connack_encode(&connack_msg->message_data, &conn_ack);
                 if (aws_channel_slot_send_message(testing_handler->slot, connack_msg, AWS_CHANNEL_DIR_WRITE)) {
                     err |= 1;
@@ -357,6 +359,7 @@ struct aws_channel_handler *new_mqtt_mock_server(struct aws_allocator *allocator
     testing_handler->ping_resp_avail = SIZE_MAX;
     testing_handler->connacks_avail = SIZE_MAX;
     testing_handler->auto_ack = true;
+    testing_handler->connack_returncode = AWS_MQTT_CONNECT_ACCEPTED;
     aws_mutex_init(&testing_handler->lock);
     aws_condition_variable_init(&testing_handler->cvar);
 
@@ -404,6 +407,16 @@ void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_
 
     aws_mutex_lock(&testing_handler->lock);
     testing_handler->connacks_avail = connack_avail;
+    aws_mutex_unlock(&testing_handler->lock);
+}
+
+void mqtt_mock_server_set_connack_return_code(
+    struct aws_channel_handler *handler,
+    enum aws_mqtt_connect_return_code return_code) {
+    struct mqtt_mock_server_handler *testing_handler = handler->impl;
+
+    aws_mutex_lock(&testing_handler->lock);
+    testing_handler->connack_returncode = return_code;
     aws_mutex_unlock(&testing_handler->lock);
 }
 
