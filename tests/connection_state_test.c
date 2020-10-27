@@ -150,7 +150,6 @@ static void s_on_connection_disconnected(
 
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->connection_disconnected = true;
-    state_test_data->error = error_code;
     state_test_data->disconnection_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
     AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "connection disconnected");
@@ -840,7 +839,7 @@ static int s_test_mqtt_connection_connack_timeout_not_auto_reconnect_fn(struct a
     ASSERT_SUCCESS(aws_mqtt_client_connection_try_connect(state_test_data->mqtt_connection, &connection_options));
     s_wait_for_connection_to_complete(state_test_data);
 
-    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->error);
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->disconnection_error);
 
     return AWS_OP_SUCCESS;
 }
@@ -2355,7 +2354,7 @@ static int s_test_mqtt_connection_nonzero_connack_return_code_fn(struct aws_allo
     ASSERT_SUCCESS(aws_mqtt_client_persistent_connection(state_test_data->mqtt_connection, &connection_options));
     s_wait_for_connection_to_complete(state_test_data);
 
-    ASSERT_UINT_EQUALS(AWS_ERROR_MQTT_CONNECT_BAD_USERNAME_OR_PASSWORD, state_test_data->error);
+    ASSERT_UINT_EQUALS(AWS_ERROR_MQTT_CONNECT_BAD_USERNAME_OR_PASSWORD, state_test_data->disconnection_error);
     /* Disconnect */
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
