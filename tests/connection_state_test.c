@@ -47,11 +47,11 @@ struct mqtt_connection_state_test {
     bool connection_completed;
     bool client_disconnect_completed;
     bool server_disconnect_completed;
-    bool connection_interrupted;
-    bool connection_resumed;
+    bool connection_disconnected;
+    bool connection_connected;
     bool subscribe_completed;
     bool listener_destroyed;
-    int interruption_error;
+    int disconnection_error;
     int subscribe_complete_error;
     int op_complete_error;
     enum aws_mqtt_connect_return_code mqtt_return_code;
@@ -140,181 +140,38 @@ static void s_wait_on_listener_cleanup(struct mqtt_connection_state_test *state_
     aws_mutex_unlock(&state_test_data->lock);
 }
 
-static void s_on_connection_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
+static void s_on_connection_disconnected(
+    struct aws_mqtt_client_connection *connection,
+    int error_code,
+    void *userdata) {
     (void)connection;
     (void)error_code;
     struct mqtt_connection_state_test *state_test_data = userdata;
 
     aws_mutex_lock(&state_test_data->lock);
-    state_test_data->connection_interrupted = true;
-    state_test_data->interruption_error = error_code;
+    state_test_data->connection_disconnected = true;
+    state_test_data->error = error_code;
+    state_test_data->disconnection_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
-    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "connection interrupted");
+    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "connection disconnected");
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
 
-static bool s_is_connection_interrupted(void *arg) {
+static bool s_is_connection_disconnected(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->connection_interrupted;
+    return state_test_data->connection_disconnected;
 }
 
-static void s_wait_for_interrupt_to_complete(struct mqtt_connection_state_test *state_test_data) {
+static void s_wait_for_auto_disconnect_to_complete(struct mqtt_connection_state_test *state_test_data) {
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
-        &state_test_data->cvar, &state_test_data->lock, s_is_connection_interrupted, state_test_data);
-    state_test_data->connection_interrupted = false;
+        &state_test_data->cvar, &state_test_data->lock, s_is_connection_disconnected, state_test_data);
+    state_test_data->connection_disconnected = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
 
-static void s_on_connection_resumed(
+static void s_on_connection_connected_fn(
     struct aws_mqtt_client_connection *connection,
-    enum aws_mqtt_connect_return_code return_code,
-    bool session_present,
-    void *userdata) {
-    (void)connection;
-    (void)return_code;
-    (void)session_present;
-    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "reconnect completed");
-
-    struct mqtt_connection_state_test *state_test_data = userdata;
-
-    aws_mutex_lock(&state_test_data->lock);
-    state_test_data->connection_resumed = true;
-    aws_mutex_unlock(&state_test_data->lock);
-    aws_condition_variable_notify_one(&state_test_data->cvar);
-}
-
-static bool s_is_connection_resumed(void *arg) {
-    struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->connection_resumed;
-}
-
-static void s_wait_for_reconnect_to_complete(struct mqtt_connection_state_test *state_test_data) {
-    aws_mutex_lock(&state_test_data->lock);
-    aws_condition_variable_wait_pred(
-        &state_test_data->cvar, &state_test_data->lock, s_is_connection_resumed, state_test_data);
-    aws_mutex_unlock(&state_test_data->lock);
-}
-
-/** sets up a unix domain socket server and socket options. Creates an mqtt connection configured to use
- * the domain socket.
- */
-static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
-    aws_mqtt_library_init(allocator);
-
-    struct mqtt_connection_state_test *state_test_data = ctx;
-
-    AWS_ZERO_STRUCT(*state_test_data);
-
-    state_test_data->allocator = allocator;
-    state_test_data->el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-
-    state_test_data->test_channel_handler = new_mqtt_mock_server(allocator);
-    ASSERT_NOT_NULL(state_test_data->test_channel_handler);
-
-    state_test_data->server_bootstrap = aws_server_bootstrap_new(allocator, state_test_data->el_group);
-    ASSERT_NOT_NULL(state_test_data->server_bootstrap);
-
-    struct aws_socket_options socket_options = {
-        .connect_timeout_ms = 100,
-        .domain = AWS_SOCKET_LOCAL,
-    };
-
-    state_test_data->socket_options = socket_options;
-    ASSERT_SUCCESS(aws_condition_variable_init(&state_test_data->cvar));
-    ASSERT_SUCCESS(aws_mutex_init(&state_test_data->lock));
-
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
-
-    snprintf(
-        state_test_data->endpoint.address,
-        sizeof(state_test_data->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)timestamp);
-
-    struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
-        .bootstrap = state_test_data->server_bootstrap,
-        .host_name = state_test_data->endpoint.address,
-        .port = state_test_data->endpoint.port,
-        .socket_options = &state_test_data->socket_options,
-        .incoming_callback = s_on_incoming_channel_setup_fn,
-        .shutdown_callback = s_on_incoming_channel_shutdown_fn,
-        .destroy_callback = s_on_listener_destroy,
-        .user_data = state_test_data,
-    };
-    state_test_data->listener = aws_server_bootstrap_new_socket_listener(&server_bootstrap_options);
-
-    ASSERT_NOT_NULL(state_test_data->listener);
-
-    state_test_data->host_resolver = aws_host_resolver_new_default(allocator, 1, state_test_data->el_group, NULL);
-
-    struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = state_test_data->el_group,
-        .user_data = state_test_data,
-        .host_resolver = state_test_data->host_resolver,
-    };
-
-    state_test_data->client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
-
-    state_test_data->mqtt_client = aws_mqtt_client_new(allocator, state_test_data->client_bootstrap);
-    state_test_data->mqtt_connection = aws_mqtt_client_connection_new(state_test_data->mqtt_client);
-    ASSERT_NOT_NULL(state_test_data->mqtt_connection);
-
-    ASSERT_SUCCESS(aws_mqtt_client_connection_set_connection_interruption_handlers(
-        state_test_data->mqtt_connection,
-        s_on_connection_interrupted,
-        state_test_data,
-        s_on_connection_resumed,
-        state_test_data));
-
-    ASSERT_SUCCESS(aws_mqtt_client_connection_set_on_any_publish_handler(
-        state_test_data->mqtt_connection, s_on_any_publish_received, state_test_data));
-
-    ASSERT_SUCCESS(aws_array_list_init_dynamic(
-        &state_test_data->published_messages, allocator, 4, sizeof(struct received_publish_packet)));
-    ASSERT_SUCCESS(aws_array_list_init_dynamic(
-        &state_test_data->any_published_messages, allocator, 4, sizeof(struct received_publish_packet)));
-    return AWS_OP_SUCCESS;
-}
-
-static void s_received_publish_packet_list_clean_up(struct aws_array_list *list) {
-    for (size_t i = 0; i < aws_array_list_length(list); ++i) {
-        struct received_publish_packet *val_ptr = NULL;
-        aws_array_list_get_at_ptr(list, (void **)&val_ptr, i);
-        aws_byte_buf_clean_up(&val_ptr->payload);
-        aws_byte_buf_clean_up(&val_ptr->topic);
-    }
-    aws_array_list_clean_up(list);
-}
-
-static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_result, void *ctx) {
-    (void)allocator;
-
-    if (!setup_result) {
-        struct mqtt_connection_state_test *state_test_data = ctx;
-
-        s_received_publish_packet_list_clean_up(&state_test_data->published_messages);
-        s_received_publish_packet_list_clean_up(&state_test_data->any_published_messages);
-        aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
-        aws_mqtt_client_release(state_test_data->mqtt_client);
-        aws_client_bootstrap_release(state_test_data->client_bootstrap);
-        aws_host_resolver_release(state_test_data->host_resolver);
-        aws_server_bootstrap_destroy_socket_listener(state_test_data->server_bootstrap, state_test_data->listener);
-        s_wait_on_listener_cleanup(state_test_data);
-        aws_server_bootstrap_release(state_test_data->server_bootstrap);
-        aws_event_loop_group_release(state_test_data->el_group);
-        destroy_mqtt_mock_server(state_test_data->test_channel_handler);
-        ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
-    }
-
-    aws_mqtt_library_clean_up();
-    return AWS_OP_SUCCESS;
-}
-
-static void s_on_connection_complete_fn(
-    struct aws_mqtt_client_connection *connection,
-    int error_code,
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *userdata) {
@@ -324,8 +181,8 @@ static void s_on_connection_complete_fn(
 
     state_test_data->session_present = session_present;
     state_test_data->mqtt_return_code = return_code;
-    state_test_data->error = error_code;
     state_test_data->connection_completed = true;
+    state_test_data->connection_connected = true;
     aws_mutex_unlock(&state_test_data->lock);
 
     aws_condition_variable_notify_one(&state_test_data->cvar);
@@ -333,13 +190,27 @@ static void s_on_connection_complete_fn(
 
 static bool s_is_connection_completed(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->connection_completed;
+    return state_test_data->connection_completed || state_test_data->connection_disconnected;
 }
 
 static void s_wait_for_connection_to_complete(struct mqtt_connection_state_test *state_test_data) {
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
         &state_test_data->cvar, &state_test_data->lock, s_is_connection_completed, state_test_data);
+    state_test_data->connection_completed = false;
+    state_test_data->connection_disconnected = false;
+    aws_mutex_unlock(&state_test_data->lock);
+}
+
+static bool s_is_connection_connected(void *arg) {
+    struct mqtt_connection_state_test *state_test_data = arg;
+    return state_test_data->connection_completed;
+}
+
+static void s_wait_for_connection_to_connect(struct mqtt_connection_state_test *state_test_data) {
+    aws_mutex_lock(&state_test_data->lock);
+    aws_condition_variable_wait_pred(
+        &state_test_data->cvar, &state_test_data->lock, s_is_connection_connected, state_test_data);
     state_test_data->connection_completed = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
@@ -366,6 +237,8 @@ static void s_wait_for_disconnect_to_complete(struct mqtt_connection_state_test 
         &state_test_data->cvar, &state_test_data->lock, s_is_disconnect_completed, state_test_data);
     state_test_data->client_disconnect_completed = false;
     state_test_data->server_disconnect_completed = false;
+    /* Since on_disconnected will also be invoked after user requested disconnect */
+    state_test_data->connection_disconnected = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
 
@@ -524,6 +397,125 @@ static void s_wait_for_ops_completed(struct mqtt_connection_state_test *state_te
     aws_mutex_unlock(&state_test_data->lock);
 }
 
+/** sets up a unix domain socket server and socket options. Creates an mqtt connection configured to use
+ * the domain socket.
+ */
+static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    AWS_ZERO_STRUCT(*state_test_data);
+
+    state_test_data->allocator = allocator;
+    state_test_data->el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    state_test_data->test_channel_handler = new_mqtt_mock_server(allocator);
+    ASSERT_NOT_NULL(state_test_data->test_channel_handler);
+
+    state_test_data->server_bootstrap = aws_server_bootstrap_new(allocator, state_test_data->el_group);
+    ASSERT_NOT_NULL(state_test_data->server_bootstrap);
+
+    struct aws_socket_options socket_options = {
+        .connect_timeout_ms = 100,
+        .domain = AWS_SOCKET_LOCAL,
+    };
+
+    state_test_data->socket_options = socket_options;
+    ASSERT_SUCCESS(aws_condition_variable_init(&state_test_data->cvar));
+    ASSERT_SUCCESS(aws_mutex_init(&state_test_data->lock));
+
+    uint64_t timestamp = 0;
+    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
+
+    snprintf(
+        state_test_data->endpoint.address,
+        sizeof(state_test_data->endpoint.address),
+        LOCAL_SOCK_TEST_PATTERN,
+        (long long unsigned)timestamp);
+
+    struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
+        .bootstrap = state_test_data->server_bootstrap,
+        .host_name = state_test_data->endpoint.address,
+        .port = state_test_data->endpoint.port,
+        .socket_options = &state_test_data->socket_options,
+        .incoming_callback = s_on_incoming_channel_setup_fn,
+        .shutdown_callback = s_on_incoming_channel_shutdown_fn,
+        .destroy_callback = s_on_listener_destroy,
+        .user_data = state_test_data,
+    };
+    state_test_data->listener = aws_server_bootstrap_new_socket_listener(&server_bootstrap_options);
+
+    ASSERT_NOT_NULL(state_test_data->listener);
+
+    state_test_data->host_resolver = aws_host_resolver_new_default(allocator, 1, state_test_data->el_group, NULL);
+
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = state_test_data->el_group,
+        .host_resolver = state_test_data->host_resolver,
+    };
+
+    state_test_data->client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+
+    state_test_data->mqtt_client = aws_mqtt_client_new(allocator, state_test_data->client_bootstrap);
+    state_test_data->mqtt_connection = aws_mqtt_client_connection_new(state_test_data->mqtt_client);
+    ASSERT_NOT_NULL(state_test_data->mqtt_connection);
+
+    struct aws_mqtt_connection_event_handlers handlers = {
+        .on_connected = s_on_connection_connected_fn,
+        .on_connected_ud = state_test_data,
+        .on_disconnected = s_on_connection_disconnected,
+        .on_disconnected_ud = state_test_data,
+    };
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_set_connection_event_handlers(state_test_data->mqtt_connection, &handlers));
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_on_any_publish_handler(
+        state_test_data->mqtt_connection, s_on_any_publish_received, state_test_data));
+
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(
+        &state_test_data->published_messages, allocator, 4, sizeof(struct received_publish_packet)));
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(
+        &state_test_data->any_published_messages, allocator, 4, sizeof(struct received_publish_packet)));
+    return AWS_OP_SUCCESS;
+}
+
+static void s_received_publish_packet_list_clean_up(struct aws_array_list *list) {
+    for (size_t i = 0; i < aws_array_list_length(list); ++i) {
+        struct received_publish_packet *val_ptr = NULL;
+        aws_array_list_get_at_ptr(list, (void **)&val_ptr, i);
+        aws_byte_buf_clean_up(&val_ptr->payload);
+        aws_byte_buf_clean_up(&val_ptr->topic);
+    }
+    aws_array_list_clean_up(list);
+}
+
+static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_result, void *ctx) {
+    (void)allocator;
+
+    if (!setup_result) {
+        struct mqtt_connection_state_test *state_test_data = ctx;
+
+        s_received_publish_packet_list_clean_up(&state_test_data->published_messages);
+        s_received_publish_packet_list_clean_up(&state_test_data->any_published_messages);
+        aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
+        aws_mqtt_client_release(state_test_data->mqtt_client);
+        aws_client_bootstrap_release(state_test_data->client_bootstrap);
+        aws_host_resolver_release(state_test_data->host_resolver);
+        aws_server_bootstrap_destroy_socket_listener(state_test_data->server_bootstrap, state_test_data->listener);
+        s_wait_on_listener_cleanup(state_test_data);
+        aws_server_bootstrap_release(state_test_data->server_bootstrap);
+        aws_event_loop_group_release(state_test_data->el_group);
+        destroy_mqtt_mock_server(state_test_data->test_channel_handler);
+        ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+    }
+
+    aws_mqtt_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+
+/*********************************************TESTS***************************************************/
+
 /*
  * Makes an Mqtt connect call, then a disconnect. Then verifies a CONNECT and DISCONNECT were sent.
  */
@@ -532,12 +524,10 @@ static int s_test_mqtt_connect_disconnect_fn(struct aws_allocator *allocator, vo
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -589,12 +579,10 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &username, &password));
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -707,12 +695,10 @@ static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -720,7 +706,7 @@ static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator
 
     /* shut it down and make sure the client automatically reconnects.*/
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
-    s_wait_for_reconnect_to_complete(state_test_data);
+    s_wait_for_connection_to_connect(state_test_data);
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
@@ -763,12 +749,10 @@ static int s_test_mqtt_connection_interrupted_not_auto_reconnect_fn(struct aws_a
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .stop_auto_reconnect = true,
     };
 
@@ -777,7 +761,7 @@ static int s_test_mqtt_connection_interrupted_not_auto_reconnect_fn(struct aws_a
 
     /* shut it down and make sure the client is disconnected now.*/
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
-    s_wait_for_interrupt_to_complete(state_test_data);
+    s_wait_for_auto_disconnect_to_complete(state_test_data);
 
     /* Already disconnected, disconnect call will fail */
     ASSERT_FAILS(
@@ -802,12 +786,10 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
         .ping_timeout_ms = 100,
         .connect_timeout_ms = 100,
@@ -818,13 +800,12 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
     s_wait_for_connection_to_complete(state_test_data);
 
     /* this should take about 1.1 seconds for the timeout and reconnect.*/
-    s_wait_for_reconnect_to_complete(state_test_data);
+    s_wait_for_connection_to_complete(state_test_data);
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->disconnection_error);
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
-
-    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_TIMEOUT, state_test_data->interruption_error);
 
     return AWS_OP_SUCCESS;
 }
@@ -843,12 +824,10 @@ static int s_test_mqtt_connection_any_publish_fn(struct aws_allocator *allocator
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     struct aws_byte_cursor topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
@@ -920,12 +899,10 @@ static int s_test_mqtt_connection_connack_timeout_not_auto_reconnect_fn(struct a
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
         .ping_timeout_ms = 100,
         .connect_timeout_ms = 100,
@@ -955,12 +932,10 @@ static int s_test_mqtt_connection_connack_timeout_auto_reconnect_fn(struct aws_a
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
         .ping_timeout_ms = 100,
         .connect_timeout_ms = 100,
@@ -974,7 +949,7 @@ static int s_test_mqtt_connection_connack_timeout_auto_reconnect_fn(struct aws_a
     mqtt_mock_server_wait_for_connects(state_test_data->test_channel_handler, 3);
     mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, 1);
     /* wait for connection to complete successfully */
-    s_wait_for_connection_to_complete(state_test_data);
+    s_wait_for_connection_to_connect(state_test_data);
     ASSERT_INT_EQUALS(AWS_ERROR_SUCCESS, state_test_data->error);
     /* disconnect */
     ASSERT_SUCCESS(
@@ -997,12 +972,10 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     struct aws_byte_cursor sub_topic = aws_byte_cursor_from_c_str("/test/topic");
@@ -1093,12 +1066,10 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     struct aws_byte_cursor sub_topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
@@ -1220,12 +1191,10 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     struct aws_byte_cursor sub_topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
@@ -1370,12 +1339,10 @@ static int s_test_mqtt_resubscribe_fn(struct aws_allocator *allocator, void *ctx
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     struct aws_byte_cursor sub_topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
@@ -1488,12 +1455,10 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
     };
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
@@ -1573,12 +1538,10 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .connect_timeout_ms = 10,
         .keep_alive_time_secs = 1,
@@ -1591,9 +1554,10 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
 
     /* shut it down and make sure the client automatically reconnects.*/
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
-    s_wait_for_interrupt_to_complete(state_test_data);
+    s_wait_for_auto_disconnect_to_complete(state_test_data);
 
     state_test_data->server_disconnect_completed = false;
+    state_test_data->connection_connected = false;
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
@@ -1623,12 +1587,12 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
             state_test_data) > 0);
 
     aws_mutex_lock(&state_test_data->lock);
-    ASSERT_FALSE(state_test_data->connection_resumed);
+    ASSERT_FALSE(state_test_data->connection_connected);
     aws_mutex_unlock(&state_test_data->lock);
     mqtt_mock_server_set_max_connack(state_test_data->test_channel_handler, SIZE_MAX);
     s_wait_for_ops_completed(state_test_data);
     aws_mutex_lock(&state_test_data->lock);
-    ASSERT_TRUE(state_test_data->connection_resumed);
+    ASSERT_TRUE(state_test_data->connection_connected);
     aws_mutex_unlock(&state_test_data->lock);
 
     ASSERT_SUCCESS(
@@ -1692,12 +1656,10 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .connect_timeout_ms = 10,
         .keep_alive_time_secs = 1,
@@ -1710,7 +1672,7 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
 
     /* shut it down and the client automatically reconnects.*/
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
-    s_wait_for_interrupt_to_complete(state_test_data);
+    s_wait_for_auto_disconnect_to_complete(state_test_data);
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
@@ -1769,12 +1731,10 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .connect_timeout_ms = 10,
         .keep_alive_time_secs = 1,
@@ -1808,7 +1768,7 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
         state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
-    s_wait_for_reconnect_to_complete(state_test_data);
+    s_wait_for_connection_to_complete(state_test_data);
     s_wait_for_ops_completed(state_test_data);
 
     ASSERT_SUCCESS(
@@ -1852,12 +1812,10 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 1,
     };
@@ -1889,7 +1847,7 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
 
     /* shutdown the channel for some error */
     aws_channel_shutdown(state_test_data->server_channel, AWS_ERROR_INVALID_STATE);
-    s_wait_for_reconnect_to_complete(state_test_data);
+    s_wait_for_connection_to_complete(state_test_data);
     /* Wait again, and ensure the publishes have been resent */
     aws_thread_current_sleep(ONE_SEC);
     ASSERT_SUCCESS(s_check_packets_received_order(
@@ -1917,12 +1875,10 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
@@ -1954,7 +1910,7 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
     /* publish should complete after the shutdown */
     s_wait_for_ops_completed(state_test_data);
     /* wait for reconnect */
-    s_wait_for_reconnect_to_complete(state_test_data);
+    s_wait_for_connection_to_complete(state_test_data);
 
     /* Check all received packets, no publish packets ever received by the server. Because the connection lost before it
      * ever get sent. */
@@ -1984,12 +1940,10 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
@@ -2032,7 +1986,7 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
     ASSERT_TRUE(packet_id_2 > 0);
 
     /* wait for reconnect */
-    s_wait_for_reconnect_to_complete(state_test_data);
+    s_wait_for_connection_to_complete(state_test_data);
     /* Wait for 1 sec. ensure all the requests have been received by the server */
     aws_thread_current_sleep(ONE_SEC);
 
@@ -2052,7 +2006,7 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
     mqtt_mock_server_enable_auto_ack(handler);
     /* Kill the connection again, the requests will be retried since the response has not been received yet. */
     aws_channel_shutdown(state_test_data->server_channel, AWS_ERROR_INVALID_STATE);
-    s_wait_for_reconnect_to_complete(state_test_data);
+    s_wait_for_connection_to_complete(state_test_data);
     /* subscribe should be able to completed now */
     s_wait_for_subscribe_to_complete(state_test_data);
 
@@ -2093,12 +2047,10 @@ static int s_test_mqtt_connection_not_resend_packets_on_health_connection_fn(
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 1,
     };
@@ -2215,12 +2167,10 @@ static int s_test_mqtt_clean_session_not_retry_fn(struct aws_allocator *allocato
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true, /* make a clean_session connection */
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 1,
     };
@@ -2257,7 +2207,7 @@ static int s_test_mqtt_clean_session_not_retry_fn(struct aws_allocator *allocato
     aws_mutex_unlock(&state_test_data->lock);
     /* Shutdown the connection */
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
-    s_wait_for_interrupt_to_complete(state_test_data);
+    s_wait_for_auto_disconnect_to_complete(state_test_data);
 
     /* Once the connection lost, the requests will fail */
     ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
@@ -2284,12 +2234,10 @@ static int s_test_mqtt_clean_session_discard_previous_fn(struct aws_allocator *a
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_mqtt_connection_options connection_options = {
-        .user_data = state_test_data,
         .clean_session = true, /* make a clean_session connection */
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
-        .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };

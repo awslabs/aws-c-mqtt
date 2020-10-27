@@ -135,32 +135,6 @@ static void s_mqtt_on_puback(
     aws_condition_variable_notify_one(&tester->signal);
 }
 
-static void s_mqtt_on_connection_complete(
-    struct aws_mqtt_client_connection *connection,
-    int error_code,
-    enum aws_mqtt_connect_return_code return_code,
-    bool session_present,
-    void *user_data) {
-
-    (void)connection;
-    (void)error_code;
-    (void)return_code;
-    (void)session_present;
-
-    AWS_FATAL_ASSERT(error_code == AWS_OP_SUCCESS);
-    AWS_FATAL_ASSERT(return_code == AWS_MQTT_CONNECT_ACCEPTED);
-    AWS_FATAL_ASSERT(session_present == false);
-
-    struct test_context *tester = user_data;
-
-    printf("1 started\n");
-
-    aws_mutex_lock(&tester->lock);
-    tester->connection_complete = true;
-    aws_mutex_unlock(&tester->lock);
-    aws_condition_variable_notify_one(&tester->signal);
-}
-
 static void s_mqtt_on_interrupted(struct aws_mqtt_client_connection *connection, int error_code, void *userdata) {
 
     (void)connection;
@@ -270,9 +244,11 @@ static int s_initialize_test(
 
     tester->client = aws_mqtt_client_new(allocator, tester->bootstrap);
     tester->connection = aws_mqtt_client_connection_new(tester->client);
-
-    aws_mqtt_client_connection_set_connection_interruption_handlers(
-        tester->connection, s_mqtt_on_interrupted, NULL, s_mqtt_on_resumed, NULL);
+    struct aws_mqtt_connection_event_handlers handlers = {
+        .on_connected = s_mqtt_on_resumed,
+        .on_disconnected = s_mqtt_on_interrupted,
+    };
+    aws_mqtt_client_connection_set_connection_event_handlers(tester->connection, &handlers);
 
     aws_mqtt_client_connection_set_on_any_publish_handler(tester->connection, s_on_any_packet_received, tester);
 
@@ -324,14 +300,13 @@ int main(int argc, char **argv) {
         .tls_options = NULL,
         .client_id = s_client_id,
         .keep_alive_time_secs = 0,
-        .on_connection_complete = s_mqtt_on_connection_complete,
-        .user_data = &tester,
         .clean_session = true,
     };
 
     AWS_FATAL_ASSERT(AWS_OP_SUCCESS == s_initialize_test(&tester, allocator, &conn_options));
 
     /* Wait for connack */
+    /* TODO: no completed will be invoked */
     s_wait_on_tester_predicate(&tester, s_is_connection_complete_pred);
 
     printf("1 done\n");

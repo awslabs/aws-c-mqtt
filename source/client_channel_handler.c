@@ -180,31 +180,10 @@ static int s_packet_handler_connack(
 
         return AWS_OP_SUCCESS;
     }
-
-    /* It is possible for a connection to complete, and a hangup to occur before the
-     * CONNECT/CONNACK cycle completes. In that case, we must deliver on_connection_complete
-     * on the first successful CONNACK or user code will never think it's connected */
-    if (was_reconnecting && connection->connection_count > 1) {
-
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: connection is a resumed connection, invoking on_resumed callback",
-            (void *)connection);
-
-        MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
-    } else {
-
+    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connected, connack.connect_return_code, connack.session_present);
+    if (!was_reconnecting || connection->connection_count <= 1) {
         aws_create_reconnect_task(connection);
-
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: connection is a new connection, invoking on_connection_complete callback",
-            (void *)connection);
-        MQTT_CLIENT_CALL_CALLBACK_ARGS(
-            connection, on_connection_complete, AWS_OP_SUCCESS, connack.connect_return_code, connack.session_present);
-    }
-
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection callback completed", (void *)connection);
+    };
 
     s_schedule_ping(connection);
     return AWS_OP_SUCCESS;

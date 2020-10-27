@@ -58,16 +58,13 @@ typedef void(aws_mqtt_client_on_connection_complete_fn)(
     void *userdata);
 
 /* Called if the connection to the server is lost. */
-typedef void(aws_mqtt_client_on_connection_interrupted_fn)(
+typedef void(aws_mqtt_client_on_connection_disconnected_fn)(
     struct aws_mqtt_client_connection *connection,
     int error_code,
     void *userdata);
 
-/**
- * Called when a connection to the server is resumed
- * (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
- */
-typedef void(aws_mqtt_client_on_connection_resumed_fn)(
+/* Called when connected to server */
+typedef void(aws_mqtt_client_on_connection_connected_fn)(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
@@ -167,7 +164,7 @@ struct aws_mqtt_topic_subscription {
  *                           Pass NULL to connect without TLS (NOT RECOMMENDED)
  * clean_session             True to discard all server session data and start fresh
  * stop_auto_reconnect       True to stop reconnecting automatically everytime the connection lost. In this case, once
- *                           the connected connection lost, the on_interrupted callback will be invoked, if set. And no
+ *                           the connected connection lost, the on_disconnected callback will be invoked, if set. And no
  *                           automatically reconnect will happen.
  * keep_alive_time_secs      The keep alive value to place in the CONNECT PACKET, a PING will automatically
  *                           be sent at this interval as well. If you specify 0, defaults will be used
@@ -191,17 +188,20 @@ struct aws_mqtt_connection_options {
     uint16_t keep_alive_time_secs;
     uint32_t ping_timeout_ms;
     uint32_t connect_timeout_ms;
-    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
-    void *user_data;
+    struct aws_mqtt_connection_event_handlers *event_handler;
 };
 
-// /* Callbacks for events of mqtt connection */
-// struct aws_mqtt_connection_event_handlers {
-//     aws_mqtt_client_on_connection_connected_fn *on_interrupted;
-//     void *on_interrupted_ud;
-//     aws_mqtt_client_on_connection_resumed_fn *on_resumed;
-//     void *on_resumed_ud;
-// };
+/**
+ * Callbacks for events of mqtt connection.
+ * on_connected              Invoked when the connection connected to the broker
+ * on_disconnected           Invoked when a connected connection lost from the broker
+ */
+struct aws_mqtt_connection_event_handlers {
+    aws_mqtt_client_on_connection_connected_fn *on_connected;
+    void *on_connected_ud;
+    aws_mqtt_client_on_connection_disconnected_fn *on_disconnected;
+    void *on_disconnected_ud;
+};
 
 AWS_EXTERN_C_BEGIN
 
@@ -339,23 +339,16 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     uint64_t max_timeout);
 
 /**
- * Sets the callbacks to call when a connection is interrupted and resumed. Only called on a stable
- (Connected/Disconnected) connection.
+ * Sets the callbacks to call when a connection event happens (connected/disconnected). Only called on a stable
+ * (Connected/Disconnected) connection.
  *
  * \param[in] connection        The connection object
- * \param[in] on_interrupted    The function to call when a connection is lost
- * \param[in] on_interrupted_ud Userdata for on_interrupted
- * \param[in] on_resumed        The function to call when a connection is resumed
-                                (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
- * \param[in] on_resumed_ud     Userdata for on_resumed
+ * \param[in] handlers          The struct of different handlers
  */
 AWS_MQTT_API
-int aws_mqtt_client_connection_set_connection_interruption_handlers(
+int aws_mqtt_client_connection_set_connection_event_handlers(
     struct aws_mqtt_client_connection *connection,
-    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted,
-    void *on_interrupted_ud,
-    aws_mqtt_client_on_connection_resumed_fn *on_resumed,
-    void *on_resumed_ud);
+    struct aws_mqtt_connection_event_handlers *handlers);
 
 /**
  * Sets the callback to call whenever ANY publish packet is received. Only safe to set when connection is not connected.
@@ -386,15 +379,31 @@ int aws_mqtt_client_connection_connect(
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
- * Once the connection is opened, on_connected will be called. When the connection is lost, on_disconnect_completeed
- * will be called and no retry will be applied, user will need to apply and implement their own retry strategy.
+ * Once the connection is opened, on_connected will be called. When the connection is lost, on_disconnected
+ * will be called and no automatic retry will be applied, user will need to apply and implement their own retry
+ * strategy. aws_mqtt_connection_event_handlers are required for this function in connection_options
  *
  * \param[in] connection                The connection object
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
 AWS_MQTT_API
-void aws_mqtt_client_connection_try_connect(
+int aws_mqtt_client_connection_try_connect(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_mqtt_connection_options *connection_options);
+
+/**
+ * Opens the actual connection defined by aws_mqtt_client_connection_new.
+ * Create a persistant connection, which means when the connection lost, SDK will apply automatically reconnect method
+ * to try to reconnect with the broker, until aws_mqtt_client_connection_disconnect called.
+ * aws_mqtt_connection_event_handlers are optional but recommended for this function in connection_options
+ *
+ * \param[in] connection                The connection object
+ * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
+ *              otherwise AWS_OP_ERR and aws_last_error() will be set.
+ */
+AWS_MQTT_API
+int aws_mqtt_client_persistant_connection(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_connection_options *connection_options);
 
