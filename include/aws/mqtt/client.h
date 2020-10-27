@@ -381,7 +381,8 @@ int aws_mqtt_client_connection_connect(
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
  * Once the connection is opened, on_connected will be called. When the connection is lost, on_disconnected
  * will be called and no automatic retry will be applied, user will need to apply and implement their own retry
- * strategy. aws_mqtt_connection_event_handlers are required for this function in connection_options
+ * strategy. Either aws_mqtt_client_connection_set_connection_event_handlers has set the handlers before this call,
+ * or aws_mqtt_connection_event_handlers are required for this function in connection_options
  *
  * \param[in] connection                The connection object
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
@@ -397,6 +398,7 @@ int aws_mqtt_client_connection_try_connect(
  * Create a persistant connection, which means when the connection lost, SDK will apply automatically reconnect method
  * to try to reconnect with the broker, until aws_mqtt_client_connection_disconnect called.
  * aws_mqtt_connection_event_handlers are optional but recommended for this function in connection_options
+ * Note: This is a replacement of original aws_mqtt_client_connection_connect. Same API and behavior as before
  *
  * \param[in] connection                The connection object
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,

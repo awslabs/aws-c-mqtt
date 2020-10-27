@@ -175,8 +175,28 @@ static int s_packet_handler_connack(
             "id=%p: invalid connect return code %d, disconnecting",
             (void *)connection,
             connack.connect_return_code);
-        /* If error code returned, disconnect, on_completed will be invoked from shutdown process */
-        aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
+        int error_code = AWS_ERROR_UNKNOWN;
+        switch (connack.connect_return_code) {
+            case AWS_MQTT_CONNECT_UNACCEPTABLE_PROTOCOL_VERSION:
+                error_code = AWS_ERROR_MQTT_CONNECT_UNACCEPTABLE_PROTOCOL_VERSION;
+                break;
+            case AWS_MQTT_CONNECT_IDENTIFIER_REJECTED:
+                error_code = AWS_ERROR_MQTT_CONNECT_IDENTIFIER_REJECTED;
+                break;
+            case AWS_MQTT_CONNECT_SERVER_UNAVAILABLE:
+                error_code = AWS_ERROR_MQTT_CONNECT_SERVER_UNAVAILABLE;
+                break;
+            case AWS_MQTT_CONNECT_BAD_USERNAME_OR_PASSWORD:
+                error_code = AWS_ERROR_MQTT_CONNECT_BAD_USERNAME_OR_PASSWORD;
+                break;
+            case AWS_MQTT_CONNECT_NOT_AUTHORIZED:
+                error_code = AWS_ERROR_MQTT_CONNECT_NOT_AUTHORIZED;
+                break;
+            default:
+                break;
+        }
+        /* If error code returned from CONNACK, disconnect and on_completed will be invoked from shutdown process */
+        aws_channel_shutdown(connection->slot->channel, error_code);
 
         return AWS_OP_SUCCESS;
     }

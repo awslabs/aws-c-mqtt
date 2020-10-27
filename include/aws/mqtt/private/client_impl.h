@@ -50,8 +50,6 @@ enum aws_mqtt_client_request_state {
     AWS_MQTT_CLIENT_REQUEST_ERROR,
 };
 
-// int aws_connack_return_code_2_error_code[] = {};
-
 /**
  * Called after the timeout if a matching ack packet hasn't arrived, with is_first_attempt set as false.
  * Or called when the request packet attempt to send firstly, with is_first_attempt set as true.

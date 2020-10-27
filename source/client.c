@@ -1477,7 +1477,7 @@ int aws_mqtt_client_connection_try_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_connection_options *connection_options) {
 
-    if (!connection_options->event_handler) {
+    if (!connection_options->event_handler && !(connection->on_connected && connection->on_disconnected)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Event handlers are required for try connect function");
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
