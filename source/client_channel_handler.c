@@ -84,7 +84,6 @@ static int s_packet_handler_connack(
     aws_linked_list_init(&requests);
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from s_packet_handler_connack", (void *)connection);
         /* User requested disconnect, don't do anything */
         if (connection->synced_data.state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
             mqtt_connection_unlock_synced_data(connection);
@@ -360,7 +359,6 @@ static int s_process_mqtt_packet(
     struct aws_byte_cursor packet) {
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from s_process_mqtt_packet", (void *)connection);
         /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTING &&
             packet_type != AWS_MQTT_PACKET_CONNACK) {
@@ -641,7 +639,6 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             /* put it into the offline queue. */
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
-                AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from s_process_mqtt_packet 1", (void *)connection);
                 aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &request->list_node);
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
@@ -652,14 +649,13 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 "%" PRIu16 ". will NOT be retried, will be cancelled",
                 (void *)task,
                 request->packet_id);
-            /* Fire the callback and clean up the memory, as the connection get destoried. */
+            /* Fire the callback and clean up the memory, as the connection get destroyed. */
             if (request->on_complete) {
                 request->on_complete(
                     connection, request->packet_id, AWS_ERROR_MQTT_NOT_CONNECTED, request->on_complete_ud);
             }
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
-                AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from s_process_mqtt_packet 2", (void *)connection);
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
                 aws_memory_pool_release(&connection->synced_data.requests_pool, request);
@@ -698,7 +694,6 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             }
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
-                AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from s_process_mqtt_packet 3", (void *)connection);
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
                 aws_memory_pool_release(&connection->synced_data.requests_pool, request);
@@ -732,7 +727,6 @@ uint16_t mqtt_create_request(
     bool should_schedule_task = false;
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from mqtt_create_request", (void *)connection);
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
             mqtt_connection_unlock_synced_data(connection);
             /* User requested disconnecting, ensure no new requests are made until the channel finished shutting
@@ -826,7 +820,6 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
         error_code);
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from mqtt_request_complete 1", (void *)connection);
         aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, &elem);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
@@ -851,7 +844,6 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     aws_linked_list_remove(&request->list_node);
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from mqtt_request_complete 2", (void *)connection);
         aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
         aws_memory_pool_release(&connection->synced_data.requests_pool, request);
         mqtt_connection_unlock_synced_data(connection);
@@ -873,7 +865,6 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Doing disconnect", (void *)connection);
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock hold from s_mqtt_disconnect_task", (void *)connection);
         /* If there is an outstanding reconnect task, cancel it */
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
             aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
