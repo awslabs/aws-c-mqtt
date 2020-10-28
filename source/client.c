@@ -235,11 +235,15 @@ static void s_mqtt_client_shutdown(
                 "id=%p: Disconnect completed, clearing request queue and calling callback",
                 (void *)connection);
             MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+            /* Everything is done from the eventloop on the connection, leave the ownsership fully to user. */
+            aws_mqtt_client_connection_release(connection);
             break;
         case AWS_MQTT_CLIENT_STATE_CONNECTING:
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT, "id=%p: Initial connection attempt failed, calling callback", (void *)connection);
             MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+            /* Everything is done from the eventloop on the connection, leave the ownsership fully to user. */
+            aws_mqtt_client_connection_release(connection);
             break;
         case AWS_MQTT_CLIENT_STATE_CONNECTED: {
             AWS_LOGF_DEBUG(
@@ -268,6 +272,8 @@ static void s_mqtt_client_shutdown(
                     "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
                     (void *)connection);
                 MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                /* Everything is done from the eventloop on the connection, leave the ownsership fully to user. */
+                aws_mqtt_client_connection_release(connection);
             } else {
                 /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
                 connection->reconnect_task->task.fn(
@@ -1425,7 +1431,8 @@ int aws_mqtt_client_connection_connect(
          * so we don't need to worry about it here*/
         goto error;
     }
-
+    /* Acquire refcount on connection to keep connection alive until disconnected */
+    aws_mqtt_client_connection_acquire(connection);
     return AWS_OP_SUCCESS;
 
 error:
