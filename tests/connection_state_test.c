@@ -1896,7 +1896,7 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
 
     struct aws_mqtt_connection_options connection_options = {
         .user_data = state_test_data,
-        .clean_session = true,
+        .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
@@ -1947,17 +1947,12 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
     /* Wait for 1 sec. ensure all the requests have been received by the server */
     aws_thread_current_sleep(ONE_SEC);
 
-    /* Check all received packets, the lastest two received packet should be publish and subscribe we made */
+    /* Check all received packets, subscribe and publish has been received */
     ASSERT_SUCCESS(mqtt_mock_server_decode_packets(handler));
-    /* the latest packet should be subscribe */
-    struct mqtt_decoded_packet *received_packet = mqtt_mock_server_get_latest_decoded_packet(handler);
-    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_SUBSCRIBE, received_packet->type);
-    ASSERT_UINT_EQUALS(packet_id_2, received_packet->packet_identifier);
     size_t packet_count = mqtt_mock_server_decoded_packets_count(handler);
-    /* the one before lastest packet should be publish */
-    received_packet = mqtt_mock_server_get_decoded_packet_by_index(handler, packet_count - 2);
-    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBLISH, received_packet->type);
-    ASSERT_UINT_EQUALS(packet_id_1, received_packet->packet_identifier);
+    /* the latest packet should be subscribe */
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_type(handler, 0, AWS_MQTT_PACKET_SUBSCRIBE, NULL));
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_type(handler, 0, AWS_MQTT_PACKET_PUBLISH, NULL));
 
     /* Re-enable the auto ack to finish the requests */
     mqtt_mock_server_enable_auto_ack(handler);
@@ -1967,18 +1962,13 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
     /* subscribe should be able to completed now */
     s_wait_for_subscribe_to_complete(state_test_data);
 
-    /* Check all received packets, the lastest two received packet should be publish and subscribe we made */
+    /* Check all received packets, subscribe and publish has been resent */
     ASSERT_SUCCESS(mqtt_mock_server_decode_packets(handler));
     ASSERT_TRUE(mqtt_mock_server_decoded_packets_count(handler) > packet_count);
     /* the latest packet should be subscribe */
-    received_packet = mqtt_mock_server_get_latest_decoded_packet(handler);
-    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_SUBSCRIBE, received_packet->type);
-    ASSERT_UINT_EQUALS(packet_id_2, received_packet->packet_identifier);
-    packet_count = mqtt_mock_server_decoded_packets_count(handler);
-    /* the one before lastest packet should be publish */
-    received_packet = mqtt_mock_server_get_decoded_packet_by_index(handler, packet_count - 2);
-    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBLISH, received_packet->type);
-    ASSERT_UINT_EQUALS(packet_id_1, received_packet->packet_identifier);
+    ASSERT_NOT_NULL(
+        mqtt_mock_server_find_decoded_packet_by_type(handler, packet_count, AWS_MQTT_PACKET_SUBSCRIBE, NULL));
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_type(handler, packet_count, AWS_MQTT_PACKET_PUBLISH, NULL));
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
