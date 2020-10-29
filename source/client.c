@@ -55,7 +55,6 @@ void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *conne
 
     int err = aws_mutex_unlock(&connection->synced_data.lock);
     AWS_ASSERT(!err);
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock released", (void *)connection);
     (void)err;
 }
 

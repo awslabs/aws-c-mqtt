@@ -109,7 +109,6 @@ static int s_packet_handler_connack(
             connection->synced_data.state = AWS_MQTT_CLIENT_STATE_CONNECTED;
             aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
         }
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock released from s_packet_handler_connack", (void *)connection);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
     connection->connection_count++;
@@ -408,7 +407,6 @@ static int s_process_mqtt_packet(
             aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
             return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
         }
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock released from s_packet_handler_connack", (void *)connection);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
@@ -835,12 +833,25 @@ uint16_t mqtt_create_request(
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
     if (should_schedule_task) {
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Currently not in the event-loop thread, scheduling a task to send message id %" PRIu16 ".",
-            (void *)connection,
-            next_request->packet_id);
-        aws_channel_schedule_task_now(connection->slot->channel, &next_request->outgoing_task);
+        /* It's possible that after we release the lock, the slot is gone. So, let's check the slot. */
+        if (connection->slot && connection->slot->channel) {
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Currently not in the event-loop thread, scheduling a task to send message id %" PRIu16 ".",
+                (void *)connection,
+                next_request->packet_id);
+            aws_channel_schedule_task_now(connection->slot->channel, &next_request->outgoing_task);
+        } else {
+            /* channel has been shutdown after we release the lock, grab the lock again and put the request into the
+             * pending list */
+
+            { /* BEGIN CRITICAL SECTION */
+                mqtt_connection_lock_synced_data(connection);
+                AWS_ASSERT(connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED);
+                aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &next_request->list_node);
+                mqtt_connection_unlock_synced_data(connection);
+            } /* END CRITICAL SECTION */
+        }
     }
 
     return next_request->packet_id;
