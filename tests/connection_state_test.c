@@ -2248,3 +2248,73 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_clean_session_discard_previous_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/* Make a clean session connection, the requests after the connect function will be considered as the next session */
+static int s_test_mqtt_clean_session_keep_next_session_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true, /* make a clean_session connection */
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .ping_timeout_ms = 10,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
+    };
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("Test Message 1");
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    /* Requests made after the connect function will be considered as the next session, and will be sent eventually */
+    ASSERT_TRUE(
+        aws_mqtt_client_connection_publish(
+            state_test_data->mqtt_connection,
+            &topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            false,
+            &payload,
+            s_on_op_complete,
+            state_test_data) > 0);
+    ASSERT_TRUE(
+        aws_mqtt_client_connection_subscribe(
+            state_test_data->mqtt_connection,
+            &topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            s_on_publish_received,
+            state_test_data,
+            NULL,
+            s_on_suback,
+            state_test_data) > 0);
+    s_wait_for_connection_to_complete(state_test_data);
+    struct aws_channel_handler *handler = state_test_data->test_channel_handler;
+
+    s_wait_for_ops_completed(state_test_data);
+    s_wait_for_subscribe_to_complete(state_test_data);
+    ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_SUCCESS);
+    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_SUCCESS);
+
+    /* Check no request is received by the server */
+    ASSERT_SUCCESS(mqtt_mock_server_decode_packets(handler));
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_type(handler, 0, AWS_MQTT_PACKET_PUBLISH, NULL));
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_type(handler, 0, AWS_MQTT_PACKET_SUBSCRIBE, NULL));
+
+    /* Disconnect */
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_clean_session_keep_next_session,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_clean_session_keep_next_session_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)

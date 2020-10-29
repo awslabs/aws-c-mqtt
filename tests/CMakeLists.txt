@@ -50,6 +50,7 @@ add_test_case(mqtt_connection_not_resend_packets_on_health_connection)
 add_test_case(mqtt_connection_destory_pending_requests)
 add_test_case(mqtt_clean_session_not_retry)
 add_test_case(mqtt_clean_session_discard_previous)
+add_test_case(mqtt_clean_session_keep_next_session)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

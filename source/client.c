@@ -1436,6 +1436,10 @@ int aws_mqtt_client_connection_connect(
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         if (connection->clean_session) {
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: a clean session connection requested, all the previous requests will fail",
+                (void *)connection);
             aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
         }
         mqtt_connection_unlock_synced_data(connection);
