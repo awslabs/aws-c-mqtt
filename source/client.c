@@ -184,11 +184,10 @@ static void s_mqtt_client_shutdown(
     } /* END CRITICAL SECTION */
 
     if (!aws_linked_list_empty(&requests)) {
-
-        for (struct aws_linked_list_node *node = aws_linked_list_begin(&requests);
-             node != aws_linked_list_end(&requests);
-             node = aws_linked_list_next(node)) {
-            struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+        struct aws_linked_list_node *current = aws_linked_list_front(&requests);
+        const struct aws_linked_list_node *end = aws_linked_list_end(&requests);
+        while (current != end) {
+            struct aws_mqtt_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_request, list_node);
             if (request->on_complete) {
                 request->on_complete(
                     connection,
@@ -196,6 +195,7 @@ static void s_mqtt_client_shutdown(
                     AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
                     request->on_complete_ud);
             }
+            current = current->next;
         }
         { /* BEGIN CRITICAL SECTION */
             mqtt_connection_lock_synced_data(connection);
