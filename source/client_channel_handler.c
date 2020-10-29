@@ -128,44 +128,14 @@ static int s_packet_handler_connack(
 
             do {
                 struct aws_mqtt_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_request, list_node);
-                if (connection->clean_session) {
-                    /* discard the previous session, invoke the complete callbacks first */
-                    AWS_LOGF_TRACE(
-                        AWS_LS_MQTT_CLIENT,
-                        "id=%p: Establishing a new clean session connection, discard the previous request %" PRIu16,
-                        (void *)connection,
-                        request->packet_id);
-                    if (request->on_complete) {
-                        request->on_complete(
-                            connection,
-                            request->packet_id,
-                            AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
-                            request->on_complete_ud);
-                    }
-                } else {
-                    AWS_LOGF_TRACE(
-                        AWS_LS_MQTT_CLIENT,
-                        "id=%p: processing offline request %" PRIu16,
-                        (void *)connection,
-                        request->packet_id);
-                    aws_channel_schedule_task_now(connection->slot->channel, &request->outgoing_task);
-                }
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: processing offline request %" PRIu16,
+                    (void *)connection,
+                    request->packet_id);
+                aws_channel_schedule_task_now(connection->slot->channel, &request->outgoing_task);
                 current = current->next;
             } while (current != end);
-            if (connection->clean_session) {
-                /* Free the resource */
-                { /* BEGIN CRITICAL SECTION */
-                    mqtt_connection_lock_synced_data(connection);
-                    while (!aws_linked_list_empty(&requests)) {
-                        struct aws_linked_list_node *node = aws_linked_list_pop_front(&requests);
-                        struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
-                        aws_hash_table_remove(
-                            &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
-                        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
-                    }
-                    mqtt_connection_unlock_synced_data(connection);
-                } /* END CRITICAL SECTION */
-            }
         }
     } else {
         AWS_LOGF_ERROR(

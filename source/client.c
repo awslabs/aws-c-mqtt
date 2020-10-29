@@ -1430,6 +1430,51 @@ int aws_mqtt_client_connection_connect(
          * so we don't need to worry about it here*/
         goto error;
     }
+    /* Call will not fail after this. */
+    struct aws_linked_list requests;
+    aws_linked_list_init(&requests);
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        if (connection->clean_session) {
+            aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
+        }
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
+    if (!aws_linked_list_empty(&requests)) {
+
+        struct aws_linked_list_node *current = aws_linked_list_front(&requests);
+        const struct aws_linked_list_node *end = aws_linked_list_end(&requests);
+        /* invoke all the complete callback for requests from previous session */
+        while (current != end) {
+            struct aws_mqtt_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_request, list_node);
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Establishing a new clean session connection, discard the previous request %" PRIu16,
+                (void *)connection,
+                request->packet_id);
+            if (request->on_complete) {
+                request->on_complete(
+                    connection,
+                    request->packet_id,
+                    AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
+                    request->on_complete_ud);
+            }
+            current = current->next;
+        }
+        /* free the resource */
+        {
+            mqtt_connection_lock_synced_data(connection);
+            while (!aws_linked_list_empty(&requests)) {
+                struct aws_linked_list_node *node = aws_linked_list_pop_front(&requests);
+                struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+                aws_hash_table_remove(
+                    &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
+                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+            }
+            mqtt_connection_unlock_synced_data(connection);
+        } /* END CRITICAL SECTION */
+    }
     /* Acquire refcount on connection to keep connection alive until disconnected */
     aws_mqtt_client_connection_acquire(connection);
     return AWS_OP_SUCCESS;

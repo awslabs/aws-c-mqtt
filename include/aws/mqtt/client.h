@@ -183,8 +183,8 @@ struct aws_mqtt_topic_subscription {
  * reconnect will not happen automatically. For PINGREQ, the connection will shutdown and try to reconnect
  * automactically. For other requests, they will be resent in this case.
  *
- * on_connection_complete    The callback to fire when the connection attempt completes user_data
- *                           Passed to the userdata param of on_connection_complete
+ * on_connection_complete    The callback to fire when the connection attempt completes
+ * user_data                 Passed to the userdata param of on_connection_complete
  */
 struct aws_mqtt_connection_options {
     struct aws_byte_cursor host_name;
