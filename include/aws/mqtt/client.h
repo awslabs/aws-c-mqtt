@@ -252,6 +252,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_acquire(struct aws
 
 /**
  * Decrements the ref count on an mqtt connection.  If the ref count drops to zero, the connection is cleaned up.
+ * Note: cannot call this with lock held, since it will start the destroy process and cause a dead lock.
  *
  * \param[in] connection    The connection object
  */

@@ -725,7 +725,7 @@ uint16_t mqtt_create_request(
     AWS_ASSERT(send_request);
     struct aws_mqtt_request *next_request = NULL;
     bool should_schedule_task = false;
-    struct aws_channel *channel;
+    struct aws_channel *channel = NULL;
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
@@ -794,6 +794,7 @@ uint16_t mqtt_create_request(
             aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &next_request->list_node);
         } else {
             AWS_ASSERT(connection->slot);
+            AWS_ASSERT(connection->slot->channel);
             should_schedule_task = true;
             channel = connection->slot->channel;
             /* keep the channel alive until the task is scheduled */

@@ -74,14 +74,6 @@ void mqtt_connection_set_state(
         AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: MQTT connection already in state %d", (void *)connection, state);
         return;
     }
-    if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
-        /* Begin the connecting process, acquire the connection to keep it alive until we disconnected */
-        aws_mqtt_client_connection_acquire(connection);
-    }
-    if (state == AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
-        /* Switch to disconnected, which means the connection can gone. Release the refcount */
-        aws_mqtt_client_connection_release(connection);
-    }
     connection->synced_data.state = state;
 }
 
@@ -303,6 +295,8 @@ static void s_mqtt_client_shutdown(
             mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
             mqtt_connection_unlock_synced_data(connection);
         } /* END CRITICAL SECTION */
+        /* The connection can die now. Release the refcount */
+        aws_mqtt_client_connection_release(connection);
     }
 }
 
@@ -1503,6 +1497,7 @@ int aws_mqtt_client_connection_connect(
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_CONNECTING);
+        aws_mqtt_client_connection_acquire(connection);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
     return AWS_OP_SUCCESS;
