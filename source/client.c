@@ -1492,6 +1492,10 @@ int aws_mqtt_client_connection_connect(
     if (s_mqtt_client_connect(connection, connection_options->on_connection_complete, connection_options->user_data)) {
         /* client_id has been updated with something but it will get cleaned up when the connection gets cleaned up
          * so we don't need to worry about it here*/
+        if (connection->clean_session) {
+            AWS_LOGF_WARN(
+                AWS_LS_MQTT_CLIENT, "id=%p: The previous session has been cleaned up and losted!", (void *)connection);
+        }
         goto error;
     }
     /* Begin the connecting process, acquire the connection to keep it alive until we disconnected */
