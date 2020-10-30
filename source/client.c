@@ -51,6 +51,8 @@ void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connect
 }
 
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection) {
+    ASSERT_SYNCED_DATA_LOCK_HELD(connection);
+
     int err = aws_mutex_unlock(&connection->synced_data.lock);
     AWS_ASSERT(!err);
     (void)err;
@@ -62,6 +64,17 @@ static void s_aws_mqtt_client_destroy(struct aws_mqtt_client *client) {
     aws_client_bootstrap_release(client->bootstrap);
 
     aws_mem_release(client->allocator, client);
+}
+
+void mqtt_connection_set_state(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_client_connection_state state) {
+    ASSERT_SYNCED_DATA_LOCK_HELD(connection);
+    if (connection->synced_data.state == state) {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: MQTT connection already in state %d", (void *)connection, state);
+        return;
+    }
+    connection->synced_data.state = state;
 }
 
 /*******************************************************************************
@@ -114,42 +127,100 @@ static void s_mqtt_client_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
     enum aws_mqtt_client_connection_state prev_state;
+    struct aws_linked_list cancelling_requests;
+    aws_linked_list_init(&cancelling_requests);
+    bool disconnected_state = false;
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
+        /* Move all the ongoing requests to the pending requests list, because the response they are waiting for will
+         * never arrives. Sad. But, we will retry. */
+        if (connection->clean_session) {
+            /* For a clean session, the Session lasts as long as the Network Connection. Thus, discard the previous
+             * session */
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Discard ongoing requests and pending requests when a clean session connection lost.",
+                (void *)connection);
+            aws_linked_list_move_all_back(&cancelling_requests, &connection->thread_data.ongoing_requests_list);
+            aws_linked_list_move_all_back(&cancelling_requests, &connection->synced_data.pending_requests_list);
+        } else {
+            aws_linked_list_move_all_back(
+                &connection->synced_data.pending_requests_list, &connection->thread_data.ongoing_requests_list);
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: All subscribe/unsubscribe and publish QoS>0 have been move to pending list",
+                (void *)connection);
+        }
         prev_state = connection->synced_data.state;
         switch (connection->synced_data.state) {
             case AWS_MQTT_CLIENT_STATE_CONNECTED:
                 /* unexpected hangup from broker, try to reconnect */
-                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_RECONNECTING;
+                mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_RECONNECTING);
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: connection was unexpected interrupted, switch state to RECONNECTING.",
+                    (void *)connection);
                 break;
             case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
                 /* disconnect requested by user */
                 /* Successfully shutdown, so clear the outstanding requests */
-                /* TODO: this also invokes user callback, which is extremely dangerous */
+                /* TODO: respect the cleansession, clear the table when needed */
                 aws_hash_table_clear(&connection->synced_data.outstanding_requests_table);
-                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                disconnected_state = true;
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: disconnect finished, switch state to DISCONNECTED.",
+                    (void *)connection);
                 break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
                 /* failed to connect */
-                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                disconnected_state = true;
                 break;
             case AWS_MQTT_CLIENT_STATE_RECONNECTING:
                 /* reconnect failed, schedule the next attempt later, no need to change the state. */
                 break;
             default:
                 /* AWS_MQTT_CLIENT_STATE_DISCONNECTED */
-                /* TODO: it should be an error from my understanding, but we just silently do nothing */
-
                 break;
         }
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT, "id=%p: current state is %d", (void *)connection, (int)connection->synced_data.state);
         /* Always clear slot, as that's what's been shutdown */
         if (connection->slot) {
             aws_channel_slot_remove(connection->slot);
+            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: slot is removed successfully", (void *)connection);
             connection->slot = NULL;
         }
 
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
+
+    if (!aws_linked_list_empty(&cancelling_requests)) {
+        struct aws_linked_list_node *current = aws_linked_list_front(&cancelling_requests);
+        const struct aws_linked_list_node *end = aws_linked_list_end(&cancelling_requests);
+        while (current != end) {
+            struct aws_mqtt_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_request, list_node);
+            if (request->on_complete) {
+                request->on_complete(
+                    connection,
+                    request->packet_id,
+                    AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
+                    request->on_complete_ud);
+            }
+            current = current->next;
+        }
+        { /* BEGIN CRITICAL SECTION */
+            mqtt_connection_lock_synced_data(connection);
+            while (!aws_linked_list_empty(&cancelling_requests)) {
+                struct aws_linked_list_node *node = aws_linked_list_pop_front(&cancelling_requests);
+                struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+                aws_hash_table_remove(
+                    &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
+                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+            }
+            mqtt_connection_unlock_synced_data(connection);
+        } /* END CRITICAL SECTION */
+    }
 
     /* If there's no error code and this wasn't user-requested, set the error code to something useful */
     if (error_code == AWS_ERROR_SUCCESS) {
@@ -194,7 +265,11 @@ static void s_mqtt_client_shutdown(
                 mqtt_connection_lock_synced_data(connection);
                 stop_reconnect = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
                 if (stop_reconnect) {
-                    connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
+                    disconnected_state = true;
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: disconnect finished, switch state to DISCONNECTED.",
+                        (void *)connection);
                 }
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
@@ -213,6 +288,15 @@ static void s_mqtt_client_shutdown(
         }
         default:
             break;
+    }
+    if (disconnected_state) {
+        { /* BEGIN CRITICAL SECTION */
+            mqtt_connection_lock_synced_data(connection);
+            mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
+            mqtt_connection_unlock_synced_data(connection);
+        } /* END CRITICAL SECTION */
+        /* The connection can die now. Release the refcount */
+        aws_mqtt_client_connection_release(connection);
     }
 }
 
@@ -273,6 +357,7 @@ static void s_mqtt_client_init(
 
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
+
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
             /* It only happens when the user request disconnect during reconnecting, we don't need to fire any callback.
              * The on_disconnect will be invoked as channel finish shutting down. */
@@ -492,31 +577,6 @@ static bool s_uint16_t_eq(const void *a, const void *b) {
     return *(uint16_t *)a == *(uint16_t *)b;
 }
 
-static void s_outstanding_request_destroy(void *item) {
-    struct aws_mqtt_outstanding_request *request = item;
-
-    if (request->cancelled) {
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: (table element remove) Releasing request %" PRIu16 " to connection memory pool",
-            (void *)(request->connection),
-            request->packet_id);
-        /* Task ran as cancelled already, clean up the memory */
-        struct aws_mqtt_client_connection *connection = request->connection;
-        /* outstanding request will only be destoried with lock hold. We can touch the synced_data here */
-        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
-
-    } else {
-        /* Signal task to clean up request */
-        request->cancelled = true;
-        if (!request->completed) {
-            request->on_complete(
-                request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_SHUTDOWN, request->on_complete_ud);
-            request->completed = true;
-        }
-    }
-}
-
 static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connection *connection) {
     AWS_PRECONDITION(!connection || connection->allocator);
     if (!connection) {
@@ -557,12 +617,11 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
     /* clean up the pending_requests if it's not empty */
     while (!aws_linked_list_empty(&connection->synced_data.pending_requests_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&connection->synced_data.pending_requests_list);
-        struct aws_mqtt_outstanding_request *request =
-            AWS_CONTAINER_OF(node, struct aws_mqtt_outstanding_request, list_node);
-        /* Fire the callback and clean up the memory, as the connection get destoried. */
-        if (!request->completed) {
+        struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+        /* Fire the callback and clean up the memory, as the connection get destroyed. */
+        if (request->on_complete) {
             request->on_complete(
-                request->connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
+                connection, request->packet_id, AWS_ERROR_MQTT_CONNECTION_DESTROYED, request->on_complete_ud);
         }
         aws_memory_pool_release(&connection->synced_data.requests_pool, request);
     }
@@ -596,10 +655,13 @@ static void s_on_final_disconnect(struct aws_mqtt_client_connection *connection,
 static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connection *connection) {
     bool call_destroy_final = false;
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Last refcount on connection has been released, start destroying the connection.",
+        (void *)connection);
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
-
             /*
              * We don't call the on_disconnect callback until we've transitioned to the DISCONNECTED state.  So it's
              * safe to change it now while we hold the lock since we know we're not DISCONNECTED yet.
@@ -608,7 +670,11 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
 
             if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
                 mqtt_disconnect_impl(connection, AWS_ERROR_SUCCESS);
-                connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: final refcount has been released, switch state to DISCONNECTING.",
+                    (void *)connection);
+                mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTING);
             }
         } else {
             call_destroy_final = true;
@@ -643,6 +709,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->reconnect_timeouts.min = 1;
     connection->reconnect_timeouts.max = 128;
     aws_linked_list_init(&connection->synced_data.pending_requests_list);
+    aws_linked_list_init(&connection->thread_data.ongoing_requests_list);
 
     if (aws_mutex_init(&connection->synced_data.lock)) {
         AWS_LOGF_ERROR(
@@ -666,10 +733,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     }
 
     if (aws_memory_pool_init(
-            &connection->synced_data.requests_pool,
-            connection->allocator,
-            32,
-            sizeof(struct aws_mqtt_outstanding_request))) {
+            &connection->synced_data.requests_pool, connection->allocator, 32, sizeof(struct aws_mqtt_request))) {
 
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
@@ -683,11 +747,11 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     if (aws_hash_table_init(
             &connection->synced_data.outstanding_requests_table,
             connection->allocator,
-            sizeof(struct aws_mqtt_outstanding_request *),
+            sizeof(struct aws_mqtt_request *),
             s_hash_uint16_t,
             s_uint16_t_eq,
             NULL,
-            &s_outstanding_request_destroy)) {
+            NULL)) {
 
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
@@ -1289,7 +1353,9 @@ int aws_mqtt_client_connection_connect(
             mqtt_connection_unlock_synced_data(connection);
             return aws_raise_error(AWS_ERROR_MQTT_ALREADY_CONNECTED);
         }
-        connection->synced_data.state = AWS_MQTT_CLIENT_STATE_CONNECTING;
+        mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_CONNECTING);
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Begin connecting process, switch state to CONNECTING.", (void *)connection);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
@@ -1374,17 +1440,76 @@ int aws_mqtt_client_connection_connect(
         goto error;
     }
 
+    struct aws_linked_list cancelling_requests;
+    aws_linked_list_init(&cancelling_requests);
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        if (connection->clean_session) {
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: a clean session connection requested, all the previous requests will fail",
+                (void *)connection);
+            aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &cancelling_requests);
+        }
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
+    if (!aws_linked_list_empty(&cancelling_requests)) {
+
+        struct aws_linked_list_node *current = aws_linked_list_front(&cancelling_requests);
+        const struct aws_linked_list_node *end = aws_linked_list_end(&cancelling_requests);
+        /* invoke all the complete callback for requests from previous session */
+        while (current != end) {
+            struct aws_mqtt_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_request, list_node);
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Establishing a new clean session connection, discard the previous request %" PRIu16,
+                (void *)connection,
+                request->packet_id);
+            if (request->on_complete) {
+                request->on_complete(
+                    connection,
+                    request->packet_id,
+                    AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
+                    request->on_complete_ud);
+            }
+            current = current->next;
+        }
+        /* free the resource */
+        { /* BEGIN CRITICAL SECTION */
+            mqtt_connection_lock_synced_data(connection);
+            while (!aws_linked_list_empty(&cancelling_requests)) {
+                struct aws_linked_list_node *node = aws_linked_list_pop_front(&cancelling_requests);
+                struct aws_mqtt_request *request = AWS_CONTAINER_OF(node, struct aws_mqtt_request, list_node);
+                aws_hash_table_remove(
+                    &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
+                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+            }
+            mqtt_connection_unlock_synced_data(connection);
+        } /* END CRITICAL SECTION */
+    }
+
     if (s_mqtt_client_connect(connection, connection_options->on_connection_complete, connection_options->user_data)) {
         /* client_id has been updated with something but it will get cleaned up when the connection gets cleaned up
          * so we don't need to worry about it here*/
+        if (connection->clean_session) {
+            AWS_LOGF_WARN(
+                AWS_LS_MQTT_CLIENT, "id=%p: The previous session has been cleaned up and losted!", (void *)connection);
+        }
         goto error;
     }
-
+    /* Begin the connecting process, acquire the connection to keep it alive until we disconnected */
+    aws_mqtt_client_connection_acquire(connection);
     return AWS_OP_SUCCESS;
 
 error:
     aws_tls_connection_options_clean_up(&connection->tls_options);
     AWS_ZERO_STRUCT(connection->tls_options);
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
     return AWS_OP_ERR;
 }
 
@@ -1469,14 +1594,17 @@ int aws_mqtt_client_connection_disconnect(
             aws_raise_error(AWS_ERROR_MQTT_NOT_CONNECTED);
             return AWS_OP_ERR;
         }
-        connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+        mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTING);
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: User requests disconnecting, switch state to DISCONNECTING.",
+            (void *)connection);
+        connection->on_disconnect = on_disconnect;
+        connection->on_disconnect_ud = userdata;
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Closing connection", (void *)connection);
-
-    connection->on_disconnect = on_disconnect;
-    connection->on_disconnect_ud = userdata;
 
     mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
 
@@ -1759,8 +1887,8 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
         aws_array_list_push_back(&task_arg->topics, &task_topic);
     }
 
-    uint16_t packet_id =
-        mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg);
+    uint16_t packet_id = mqtt_create_request(
+        task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg, false /* noRetry */);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic subscribe %" PRIu16, (void *)connection, packet_id);
 
@@ -1888,8 +2016,8 @@ uint16_t aws_mqtt_client_connection_subscribe(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    uint16_t packet_id =
-        mqtt_create_request(task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg);
+    uint16_t packet_id = mqtt_create_request(
+        task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg, false /* noRetry */);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
@@ -2039,7 +2167,12 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
     task_topic->request.on_publish_ud = on_publish_ud;
 
     uint16_t packet_id = mqtt_create_request(
-        task_arg->connection, s_subscribe_local_send, task_arg, &s_subscribe_local_complete, task_arg);
+        task_arg->connection,
+        s_subscribe_local_send,
+        task_arg,
+        &s_subscribe_local_complete,
+        task_arg,
+        false /* noRetry */);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
@@ -2236,8 +2369,8 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     task_arg->on_suback.multi = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
-    uint16_t packet_id =
-        mqtt_create_request(task_arg->connection, &s_resubscribe_send, task_arg, &s_resubscribe_complete, task_arg);
+    uint16_t packet_id = mqtt_create_request(
+        task_arg->connection, &s_resubscribe_send, task_arg, &s_resubscribe_complete, task_arg, false /* noRetry */);
 
     if (packet_id == 0) {
         AWS_LOGF_ERROR(
@@ -2398,8 +2531,8 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
 
-    uint16_t packet_id =
-        mqtt_create_request(connection, &s_unsubscribe_send, task_arg, s_unsubscribe_complete, task_arg);
+    uint16_t packet_id = mqtt_create_request(
+        connection, &s_unsubscribe_send, task_arg, s_unsubscribe_complete, task_arg, false /* noRetry */);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting unsubscribe %" PRIu16, (void *)connection, packet_id);
 
@@ -2484,9 +2617,10 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
         }
 
         if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-
             aws_mem_release(message->allocator, message);
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+            /* If it's QoS 0, telling user that the message haven't been sent, else, the message will be resent once the
+             * connection is back */
+            return is_qos_0 ? AWS_MQTT_CLIENT_REQUEST_ERROR : AWS_MQTT_CLIENT_REQUEST_ONGOING;
         }
 
         /* If there's still payload left, get a new message and start again. */
@@ -2548,7 +2682,8 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->on_complete = on_complete;
     arg->userdata = userdata;
 
-    uint16_t packet_id = mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg);
+    bool retry = qos == AWS_MQTT_QOS_AT_MOST_ONCE;
+    uint16_t packet_id = mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg, retry);
 
     if (packet_id) {
         AWS_LOGF_DEBUG(
@@ -2583,54 +2718,81 @@ uint16_t aws_mqtt_client_connection_publish(
  * Ping
  ******************************************************************************/
 
+static void s_pingresp_received_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    struct aws_mqtt_client_connection *connection = arg;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        /* Check that a pingresp has been received since pingreq was sent */
+        if (connection->thread_data.waiting_on_ping_response) {
+            connection->thread_data.waiting_on_ping_response = false;
+            /* It's been too long since the last ping, close the connection */
+            AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: ping timeout detected", (void *)connection);
+            aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
+        }
+    }
+
+    aws_mem_release(connection->allocator, channel_task);
+}
+
 static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t packet_id, bool is_first_attempt, void *userdata) {
     (void)packet_id;
+    (void)is_first_attempt;
+    AWS_PRECONDITION(is_first_attempt);
 
     struct aws_mqtt_client_connection *connection = userdata;
 
-    if (is_first_attempt) {
-        /* First attempt, actually send the packet */
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: pingreq send", (void *)connection);
+    struct aws_mqtt_packet_connection pingreq;
+    aws_mqtt_packet_pingreq_init(&pingreq);
 
-        struct aws_mqtt_packet_connection pingreq;
-        aws_mqtt_packet_pingreq_init(&pingreq);
-
-        struct aws_io_message *message = mqtt_get_message_for_packet(connection, &pingreq.fixed_header);
-        if (!message) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-
-        if (aws_mqtt_packet_connection_encode(&message->message_data, &pingreq)) {
-            aws_mem_release(message->allocator, message);
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-
-        if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-            aws_mem_release(message->allocator, message);
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-
-        /* Mark down that now is when the last pingreq was sent */
-        connection->thread_data.waiting_on_ping_response = true;
-
-        return AWS_MQTT_CLIENT_REQUEST_ONGOING;
+    struct aws_io_message *message = mqtt_get_message_for_packet(connection, &pingreq.fixed_header);
+    if (!message) {
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
-    /* Check that a pingresp has been received since pingreq was sent */
-    if (connection->thread_data.waiting_on_ping_response) {
-        connection->thread_data.waiting_on_ping_response = false;
-        /* It's been too long since the last ping, close the connection */
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: ping timeout detected", (void *)connection);
-        aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_TIMEOUT);
+    if (aws_mqtt_packet_connection_encode(&message->message_data, &pingreq)) {
+        aws_mem_release(message->allocator, message);
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
+    if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+    }
+
+    /* Mark down that now is when the last pingreq was sent */
+    connection->thread_data.waiting_on_ping_response = true;
+
+    struct aws_channel_task *ping_timeout_task =
+        aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_channel_task));
+    if (!ping_timeout_task) {
+        /* allocation failed, no log, just return error. */
+        goto error;
+    }
+    aws_channel_task_init(ping_timeout_task, s_pingresp_received_timeout, connection, "mqtt_pingresp_timeout");
+    uint64_t now = 0;
+    if (aws_channel_current_clock_time(connection->slot->channel, &now)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "static: Failed to setting MQTT handler into slot on channel %p, error %d (%s).",
+            (void *)connection->slot->channel,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        goto error;
+    }
+    now += connection->request_timeout_ns;
+    aws_channel_schedule_task_future(connection->slot->channel, ping_timeout_task, now);
     return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
+
+error:
+    return AWS_MQTT_CLIENT_REQUEST_ERROR;
 }
 
 int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection) {
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    uint16_t packet_id = mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL);
+    uint16_t packet_id = mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL, true /* noRetry */);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
 

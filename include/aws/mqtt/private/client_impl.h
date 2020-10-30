@@ -34,6 +34,8 @@
         }                                                                                                              \
     } while (false)
 
+#define ASSERT_SYNCED_DATA_LOCK_HELD(object) AWS_ASSERT(aws_mutex_try_lock(&(object)->synced_data.lock) == AWS_OP_ERR)
+
 enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_CONNECTING,
     AWS_MQTT_CLIENT_STATE_CONNECTED,
@@ -58,18 +60,17 @@ enum aws_mqtt_client_request_state {
 typedef enum aws_mqtt_client_request_state(
     aws_mqtt_send_request_fn)(uint16_t packet_id, bool is_first_attempt, void *userdata);
 
-struct aws_mqtt_outstanding_request {
+struct aws_mqtt_request {
     struct aws_linked_list_node list_node;
 
     struct aws_allocator *allocator;
     struct aws_mqtt_client_connection *connection;
 
-    struct aws_channel_task timeout_task;
+    struct aws_channel_task outgoing_task;
 
     uint16_t packet_id;
+    bool retryable;
     bool initiated;
-    bool completed;
-    bool cancelled;
     aws_mqtt_send_request_fn *send_request;
     void *send_request_ud;
     aws_mqtt_op_complete_fn *on_complete;
@@ -117,6 +118,7 @@ struct aws_mqtt_client_connection {
         uint64_t max;          /* seconds */
         uint64_t next_attempt; /* milliseconds */
     } reconnect_timeouts;
+
     /* User connection callbacks */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *on_connection_complete_ud;
@@ -143,7 +145,6 @@ struct aws_mqtt_client_connection {
 
     /* Only the event-loop thread may touch this data */
     struct {
-
         /* If an incomplete packet arrives, store the data here. */
         struct aws_byte_buf pending_packet;
 
@@ -154,6 +155,10 @@ struct aws_mqtt_client_connection {
          * endpoint and connect with another endpoint, the subscription tree will still be the same as before. */
         struct aws_mqtt_topic_tree subscriptions;
 
+        /**
+         * List of all requests waiting for response.
+         */
+        struct aws_linked_list ongoing_requests_list;
     } thread_data;
 
     /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
@@ -165,7 +170,7 @@ struct aws_mqtt_client_connection {
         enum aws_mqtt_client_connection_state state;
 
         /**
-         * Memory pool for all aws_mqtt_outstanding_request.
+         * Memory pool for all aws_mqtt_request.
          */
         struct aws_memory_pool requests_pool;
 
@@ -178,7 +183,6 @@ struct aws_mqtt_client_connection {
 
         /**
          * List of all requests that cannot be scheduled until the connection comes online.
-         * TODO: make the size of the list configurable. Stop it from from ever-growing
          */
         struct aws_linked_list pending_requests_list;
     } synced_data;
@@ -212,17 +216,24 @@ struct aws_io_message *mqtt_get_message_for_packet(
 void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
 
+/* Note: needs to be called with lock held. */
+void mqtt_connection_set_state(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_client_connection_state state);
+
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).
  * send_request will be called from request_timeout_task if everything succeed. Not called with error.
  * on_complete will be called once the request completed, either either in success or error.
+ * noRetry is true for the packets will never be retried or offline queued.
  */
 AWS_MQTT_API uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
     aws_mqtt_op_complete_fn *on_complete,
-    void *on_complete_ud);
+    void *on_complete_ud,
+    bool noRetry);
 
 /* Call when an ack packet comes back from the server. */
 AWS_MQTT_API void mqtt_request_complete(
