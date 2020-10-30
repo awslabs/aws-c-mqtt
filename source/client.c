@@ -1497,6 +1497,7 @@ int aws_mqtt_client_connection_connect(
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_CONNECTING);
+        /* Begin the connecting process, acquire the connection to keep it alive until we disconnected */
         aws_mqtt_client_connection_acquire(connection);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
