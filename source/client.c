@@ -1353,6 +1353,7 @@ int aws_mqtt_client_connection_connect(
             mqtt_connection_unlock_synced_data(connection);
             return aws_raise_error(AWS_ERROR_MQTT_ALREADY_CONNECTED);
         }
+        mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_CONNECTING);
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT, "id=%p: Begin connecting process, switch state to CONNECTING.", (void *)connection);
         mqtt_connection_unlock_synced_data(connection);
@@ -1439,12 +1440,6 @@ int aws_mqtt_client_connection_connect(
         goto error;
     }
 
-    if (s_mqtt_client_connect(connection, connection_options->on_connection_complete, connection_options->user_data)) {
-        /* client_id has been updated with something but it will get cleaned up when the connection gets cleaned up
-         * so we don't need to worry about it here*/
-        goto error;
-    }
-    /* Call will not fail after this. */
     struct aws_linked_list cancelling_requests;
     aws_linked_list_init(&cancelling_requests);
     { /* BEGIN CRITICAL SECTION */
@@ -1494,18 +1489,23 @@ int aws_mqtt_client_connection_connect(
         } /* END CRITICAL SECTION */
     }
 
-    { /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
-        mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_CONNECTING);
-        /* Begin the connecting process, acquire the connection to keep it alive until we disconnected */
-        aws_mqtt_client_connection_acquire(connection);
-        mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
+    if (s_mqtt_client_connect(connection, connection_options->on_connection_complete, connection_options->user_data)) {
+        /* client_id has been updated with something but it will get cleaned up when the connection gets cleaned up
+         * so we don't need to worry about it here*/
+        goto error;
+    }
+    /* Begin the connecting process, acquire the connection to keep it alive until we disconnected */
+    aws_mqtt_client_connection_acquire(connection);
     return AWS_OP_SUCCESS;
 
 error:
     aws_tls_connection_options_clean_up(&connection->tls_options);
     AWS_ZERO_STRUCT(connection->tls_options);
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
     return AWS_OP_ERR;
 }
 
