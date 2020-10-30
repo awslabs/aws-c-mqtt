@@ -100,7 +100,7 @@ static int s_packet_handler_connack(
                 (void *)connection,
                 (int)connection->synced_data.state);
             /* Don't change the state if it's not ACCEPTED by broker */
-            connection->synced_data.state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+            mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_CONNECTED);
             aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
         }
         mqtt_connection_unlock_synced_data(connection);
@@ -725,6 +725,7 @@ uint16_t mqtt_create_request(
     AWS_ASSERT(send_request);
     struct aws_mqtt_request *next_request = NULL;
     bool should_schedule_task = false;
+    struct aws_channel *channel;
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
@@ -792,30 +793,23 @@ uint16_t mqtt_create_request(
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
             aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &next_request->list_node);
         } else {
+            AWS_ASSERT(connection->slot);
             should_schedule_task = true;
+            channel = connection->slot->channel;
+            /* keep the channel alive until the task is scheduled */
+            aws_channel_acquire_hold(channel);
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
     if (should_schedule_task) {
-        /* It's possible that after we release the lock, the slot is gone. So, let's check the slot. */
-        if (connection->slot && connection->slot->channel) {
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Currently not in the event-loop thread, scheduling a task to send message id %" PRIu16 ".",
-                (void *)connection,
-                next_request->packet_id);
-            aws_channel_schedule_task_now(connection->slot->channel, &next_request->outgoing_task);
-        } else {
-            /* channel has been shutdown after we release the lock, grab the lock again and put the request into the
-             * pending list */
-
-            { /* BEGIN CRITICAL SECTION */
-                mqtt_connection_lock_synced_data(connection);
-                AWS_ASSERT(connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED);
-                aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &next_request->list_node);
-                mqtt_connection_unlock_synced_data(connection);
-            } /* END CRITICAL SECTION */
-        }
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Currently not in the event-loop thread, scheduling a task to send message id %" PRIu16 ".",
+            (void *)connection,
+            next_request->packet_id);
+        aws_channel_schedule_task_now(channel, &next_request->outgoing_task);
+        /* release the refcount we hold with the protection of lock */
+        aws_channel_release_hold(channel);
     }
 
     return next_request->packet_id;
