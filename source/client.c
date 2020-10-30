@@ -149,8 +149,8 @@ static void s_mqtt_client_shutdown(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Discard ongoing requests and pending requests when a clean session connection lost.",
                 (void *)connection);
-            aws_linked_list_move_all_back(&cancelling_requests, &connection->synced_data.pending_requests_list);
             aws_linked_list_move_all_back(&cancelling_requests, &connection->thread_data.ongoing_requests_list);
+            aws_linked_list_move_all_back(&cancelling_requests, &connection->synced_data.pending_requests_list);
         } else {
             aws_linked_list_move_all_back(
                 &connection->synced_data.pending_requests_list, &connection->thread_data.ongoing_requests_list);
