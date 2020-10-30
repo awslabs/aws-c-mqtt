@@ -94,11 +94,15 @@ static int s_packet_handler_connack(
 
         was_reconnecting = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
         if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: connection was accepted, switch state from %d to CONNECTED.",
+                (void *)connection,
+                (int)connection->synced_data.state);
             /* Don't change the state if it's not ACCEPTED by broker */
-            connection->synced_data.state = AWS_MQTT_CLIENT_STATE_CONNECTED;
+            mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_CONNECTED);
             aws_linked_list_swap_contents(&connection->synced_data.pending_requests_list, &requests);
         }
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock released from s_packet_handler_connack", (void *)connection);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
     connection->connection_count++;
@@ -110,15 +114,13 @@ static int s_packet_handler_connack(
         /* If successfully connected, schedule all pending tasks */
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted processing offline requests.", (void *)connection);
-        /**
-         * TODO: if the clean_session is true, the pending requests should be cleaned up.
-         */
+
         if (!aws_linked_list_empty(&requests)) {
+
             struct aws_linked_list_node *current = aws_linked_list_front(&requests);
             const struct aws_linked_list_node *end = aws_linked_list_end(&requests);
 
             do {
-
                 struct aws_mqtt_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_request, list_node);
                 AWS_LOGF_TRACE(
                     AWS_LS_MQTT_CLIENT,
@@ -126,7 +128,6 @@ static int s_packet_handler_connack(
                     (void *)connection,
                     request->packet_id);
                 aws_channel_schedule_task_now(connection->slot->channel, &request->outgoing_task);
-
                 current = current->next;
             } while (current != end);
         }
@@ -370,7 +371,6 @@ static int s_process_mqtt_packet(
             aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
             return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
         }
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Lock released from s_packet_handler_connack", (void *)connection);
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
@@ -725,6 +725,7 @@ uint16_t mqtt_create_request(
     AWS_ASSERT(send_request);
     struct aws_mqtt_request *next_request = NULL;
     bool should_schedule_task = false;
+    struct aws_channel *channel = NULL;
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
@@ -792,7 +793,12 @@ uint16_t mqtt_create_request(
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
             aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &next_request->list_node);
         } else {
+            AWS_ASSERT(connection->slot);
+            AWS_ASSERT(connection->slot->channel);
             should_schedule_task = true;
+            channel = connection->slot->channel;
+            /* keep the channel alive until the task is scheduled */
+            aws_channel_acquire_hold(channel);
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
@@ -802,7 +808,9 @@ uint16_t mqtt_create_request(
             "id=%p: Currently not in the event-loop thread, scheduling a task to send message id %" PRIu16 ".",
             (void *)connection,
             next_request->packet_id);
-        aws_channel_schedule_task_now(connection->slot->channel, &next_request->outgoing_task);
+        aws_channel_schedule_task_now(channel, &next_request->outgoing_task);
+        /* release the refcount we hold with the protection of lock */
+        aws_channel_release_hold(channel);
     }
 
     return next_request->packet_id;

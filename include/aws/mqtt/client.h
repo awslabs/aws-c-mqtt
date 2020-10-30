@@ -183,8 +183,8 @@ struct aws_mqtt_topic_subscription {
  * reconnect will not happen automatically. For PINGREQ, the connection will shutdown and try to reconnect
  * automactically. For other requests, they will be resent in this case.
  *
- * on_connection_complete    The callback to fire when the connection attempt completes user_data
- *                           Passed to the userdata param of on_connection_complete
+ * on_connection_complete    The callback to fire when the connection attempt completes
+ * user_data                 Passed to the userdata param of on_connection_complete
  */
 struct aws_mqtt_connection_options {
     struct aws_byte_cursor host_name;
@@ -252,6 +252,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_acquire(struct aws
 
 /**
  * Decrements the ref count on an mqtt connection.  If the ref count drops to zero, the connection is cleaned up.
+ * Note: cannot call this with lock held, since it will start the destroy process and cause a dead lock.
  *
  * \param[in] connection    The connection object
  */

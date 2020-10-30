@@ -216,6 +216,11 @@ struct aws_io_message *mqtt_get_message_for_packet(
 void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
 
+/* Note: needs to be called with lock held. */
+void mqtt_connection_set_state(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_client_connection_state state);
+
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).
  * send_request will be called from request_timeout_task if everything succeed. Not called with error.
