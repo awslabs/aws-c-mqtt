@@ -284,6 +284,7 @@ static void s_mqtt_client_shutdown(
                     "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
                     (void *)connection);
                 MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                break;
             case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
                 AWS_LOGF_DEBUG(
                     AWS_LS_MQTT_CLIENT,
