@@ -240,18 +240,6 @@ static void s_mqtt_client_shutdown(
                 el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
             break;
         }
-        case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Disconnect completed, clearing request queue and calling callback",
-                (void *)connection);
-            MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
-            break;
-        case AWS_MQTT_CLIENT_STATE_CONNECTING:
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT, "id=%p: Initial connection attempt failed, calling callback", (void *)connection);
-            MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
-            break;
         case AWS_MQTT_CLIENT_STATE_CONNECTED: {
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_CLIENT,
@@ -273,13 +261,7 @@ static void s_mqtt_client_shutdown(
                 }
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
-            if (stop_reconnect) {
-                AWS_LOGF_TRACE(
-                    AWS_LS_MQTT_CLIENT,
-                    "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
-                    (void *)connection);
-                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
-            } else {
+            if (!stop_reconnect) {
                 /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
                 connection->reconnect_task->task.fn(
                     &connection->reconnect_task->task, connection->reconnect_task->task.arg, AWS_TASK_STATUS_RUN_READY);
@@ -295,6 +277,31 @@ static void s_mqtt_client_shutdown(
             mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
             mqtt_connection_unlock_synced_data(connection);
         } /* END CRITICAL SECTION */
+        switch (prev_state) {
+            case AWS_MQTT_CLIENT_STATE_CONNECTED:
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
+                    (void *)connection);
+                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                break;
+            case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Disconnect completed, clearing request queue and calling callback",
+                    (void *)connection);
+                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                break;
+            case AWS_MQTT_CLIENT_STATE_CONNECTING:
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Initial connection attempt failed, calling callback",
+                    (void *)connection);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+                break;
+            default:
+                break;
+        }
         /* The connection can die now. Release the refcount */
         aws_mqtt_client_connection_release(connection);
     }
