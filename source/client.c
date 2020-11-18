@@ -2565,6 +2565,52 @@ struct publish_task_arg {
     void *userdata;
 };
 
+static int s_get_element_from_outstanding_requests_table(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    struct aws_hash_element **elem) {
+
+    aws_mutex_lock(&connection->synced_data.lock);
+    aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, elem);
+    aws_mutex_unlock(&connection->synced_data.lock);
+
+    if (*elem == NULL) {
+        return AWS_OP_ERR;
+    }
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt_client_get_payload_for_outstanding_publish_packet(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    struct aws_byte_cursor *result) {
+
+    struct aws_hash_element *elem = NULL;
+    if (s_get_element_from_outstanding_requests_table(connection, packet_id, &elem)) {
+        return;
+    }
+
+    struct aws_mqtt_request *request = elem->value;
+    struct publish_task_arg pub = *(struct publish_task_arg *)request->send_request_ud;
+    *result = aws_byte_cursor_from_c_str((const char *)pub.payload.ptr);
+}
+
+void aws_mqtt_client_get_topic_for_outstanding_publish_packet(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    struct aws_allocator *allocator,
+    struct aws_string **result) {
+
+    struct aws_hash_element *elem = NULL;
+    if (s_get_element_from_outstanding_requests_table(connection, packet_id, &elem)) {
+        return;
+    }
+
+    struct aws_mqtt_request *request = elem->value;
+    struct publish_task_arg pub = *(struct publish_task_arg *)request->send_request_ud;
+    *result = aws_string_new_from_string(allocator, pub.topic_string);
+}
+
 static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, bool is_first_attempt, void *userdata) {
     struct publish_task_arg *task_arg = userdata;
 
