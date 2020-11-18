@@ -42,6 +42,10 @@ file(GLOB AWS_MQTT_PRIV_HEADERS
         "include/aws/mqtt/private/*.h"
         )
 
+file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
+        "include/aws/mqtt/private/mqtt_client_test_helper.h"
+        )
+
 file(GLOB AWS_MQTT_SRC
         "source/*.c"
         )
@@ -81,6 +85,7 @@ aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
 install(FILES ${AWS_MQTT_HEADERS} DESTINATION "include/aws/mqtt" COMPONENT Development)
 install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "include/aws/testing/mqtt" COMPONENT Development)
+install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "include/aws/mqtt/private" COMPONENT Development)
 
 if (BUILD_SHARED_LIBS)
    set (TARGET_DIR "shared")
