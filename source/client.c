@@ -1296,7 +1296,7 @@ error:
     s_on_websocket_setup(NULL, error_code, -1, NULL, 0, connection);
 }
 
-#else /* AWS_MQTT_WITH_WEBSOCKETS */
+#else  /* AWS_MQTT_WITH_WEBSOCKETS */
 int aws_mqtt_client_connection_use_websockets(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_transform_websocket_handshake_fn *transformer,
