@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/mqtt/private/client_impl.h>
+#include <aws/mqtt/exports.h>
 
 #ifndef AWS_UNSTABLE_TESTING_API
 #    error The functions in this header file are for testing purposes only!
