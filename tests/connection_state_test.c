@@ -212,7 +212,11 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     state_test_data->test_channel_handler = new_mqtt_mock_server(allocator);
     ASSERT_NOT_NULL(state_test_data->test_channel_handler);
 
-    state_test_data->server_bootstrap = aws_server_bootstrap_new(allocator, state_test_data->el_group);
+    struct aws_server_bootstrap_options server_bootstrap_options = {
+        .event_loop_group = state_test_data->el_group,
+    };
+
+    state_test_data->server_bootstrap = aws_server_bootstrap_new(allocator, &server_bootstrap_options);
     ASSERT_NOT_NULL(state_test_data->server_bootstrap);
 
     struct aws_socket_options socket_options = {
@@ -233,7 +237,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
         LOCAL_SOCK_TEST_PATTERN,
         (long long unsigned)timestamp);
 
-    struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
+    struct aws_server_socket_channel_bootstrap_options server_listener_bootstrap_options = {
         .bootstrap = state_test_data->server_bootstrap,
         .host_name = state_test_data->endpoint.address,
         .port = state_test_data->endpoint.port,
@@ -243,7 +247,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
         .destroy_callback = s_on_listener_destroy,
         .user_data = state_test_data,
     };
-    state_test_data->listener = aws_server_bootstrap_new_socket_listener(&server_bootstrap_options);
+    state_test_data->listener = aws_server_bootstrap_new_socket_listener(&server_listener_bootstrap_options);
 
     ASSERT_NOT_NULL(state_test_data->listener);
 
