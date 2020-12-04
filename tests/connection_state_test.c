@@ -247,7 +247,11 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
 
     ASSERT_NOT_NULL(state_test_data->listener);
 
-    state_test_data->host_resolver = aws_host_resolver_new_default(allocator, 1, state_test_data->el_group, NULL);
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = state_test_data->el_group,
+        .max_entries = 1,
+    };
+    state_test_data->host_resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = state_test_data->el_group,
