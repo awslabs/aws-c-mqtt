@@ -270,7 +270,12 @@ int s_initialize_test(
     aws_condition_variable_init(&tester->signal);
 
     tester->el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    tester->resolver = aws_host_resolver_new_default(allocator, 8, tester->el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = tester->el_group,
+        .max_entries = 8,
+    };
+    tester->resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = tester->el_group,
