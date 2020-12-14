@@ -1099,6 +1099,8 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
     connection->websocket.proxy_options->host = aws_byte_cursor_from_buf(&connection->websocket.proxy->host);
     /* Update proxy options values */
     connection->websocket.proxy_options->port = proxy_options->port;
+    connection->websocket.proxy_options->connection_type = proxy_options->connection_type;
+    connection->websocket.proxy_options->proxy_strategy_factory = connection->websocket.proxy->proxy_strategy_factory;
 
     return AWS_OP_SUCCESS;
 }
