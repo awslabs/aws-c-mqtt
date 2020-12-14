@@ -196,8 +196,7 @@ struct aws_mqtt_client_connection {
 
         struct {
             struct aws_byte_buf host;
-            struct aws_byte_buf auth_username;
-            struct aws_byte_buf auth_password;
+            struct aws_http_proxy_strategy_factory *proxy_strategy_factory;
             struct aws_tls_connection_options tls_options;
         } * proxy;
         struct aws_http_proxy_options *proxy_options;
