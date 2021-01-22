@@ -643,7 +643,7 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
     /* Clean up the websocket proxy options */
     if (connection->websocket.proxy) {
         aws_tls_connection_options_clean_up(&connection->websocket.proxy->tls_options);
-        aws_http_proxy_strategy_factory_release(connection->websocket.proxy->proxy_strategy_factory);
+        aws_http_proxy_strategy_release(connection->websocket.proxy->proxy_strategy);
 
         aws_mem_release(connection->allocator, connection->websocket.proxy);
         connection->websocket.proxy = NULL;
@@ -1052,7 +1052,7 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
     /* If there is existing proxy options, nuke em */
     if (connection->websocket.proxy) {
         aws_tls_connection_options_clean_up(&connection->websocket.proxy->tls_options);
-        aws_http_proxy_strategy_factory_release(connection->websocket.proxy->proxy_strategy_factory);
+        aws_http_proxy_strategy_release(connection->websocket.proxy->proxy_strategy);
 
         aws_mem_release(connection->allocator, connection->websocket.proxy);
         connection->websocket.proxy = NULL;
@@ -1087,8 +1087,7 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
 
     /* Init the byte bufs */
     connection->websocket.proxy->host = aws_byte_buf_from_empty_array(host_buffer, proxy_options->host.len);
-    connection->websocket.proxy->proxy_strategy_factory =
-        aws_http_proxy_strategy_factory_acquire(proxy_options->proxy_strategy_factory);
+    connection->websocket.proxy->proxy_strategy = aws_http_proxy_strategy_acquire(proxy_options->proxy_strategy);
 
     /* Write out the various strings */
     bool succ = true;
@@ -1100,7 +1099,7 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
     /* Update proxy options values */
     connection->websocket.proxy_options->port = proxy_options->port;
     connection->websocket.proxy_options->connection_type = proxy_options->connection_type;
-    connection->websocket.proxy_options->proxy_strategy_factory = connection->websocket.proxy->proxy_strategy_factory;
+    connection->websocket.proxy_options->proxy_strategy = connection->websocket.proxy->proxy_strategy;
 
     return AWS_OP_SUCCESS;
 }
