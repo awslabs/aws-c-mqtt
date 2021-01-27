@@ -359,7 +359,7 @@ int s_cleanup_test(struct test_context *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
 
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+    aws_thread_join_all_managed();
 
     aws_logger_clean_up(&tester->logger);
 
