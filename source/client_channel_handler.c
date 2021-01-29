@@ -232,7 +232,6 @@ static int s_packet_handler_publish(
 }
 
 static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor) {
-    /* TODO: we need more detail from ack packets, eg: return code from suback */
     struct aws_mqtt_packet_ack ack;
     if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
         return AWS_OP_ERR;
@@ -242,6 +241,49 @@ static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, s
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
     mqtt_request_complete(connection, AWS_OP_SUCCESS, ack.packet_identifier);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_packet_handler_suback(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_byte_cursor message_cursor) {
+    struct aws_mqtt_packet_suback suback;
+    if (aws_mqtt_packet_suback_init(&suback, connection->allocator, 0 /* fake packet_id */)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_mqtt_packet_suback_decode(&message_cursor, &suback)) {
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: received suback for message id %" PRIu16,
+        (void *)connection,
+        suback.packet_identifier);
+
+    /* TODO: return code has the maximun QoS, it's probably better to inform user about it */
+    /* TODO: We need a way to handle multisubscribe, in which one of the subscribe can fail and others can succeed */
+
+    int error_code = AWS_ERROR_SUCCESS;
+    size_t num_filters = aws_array_list_length(&suback.return_codes);
+    for (size_t i = 0; i < num_filters; ++i) {
+
+        uint8_t return_code = 0;
+        if (aws_array_list_get_at(&suback.return_codes, (void *)&return_code, i)) {
+
+            return AWS_OP_ERR;
+        }
+        if (return_code == AWS_MQTT_RC_FAILURE) {
+            error_code = AWS_ERROR_MQTT_SUBSCRIBE_REJECTED;
+            break;
+        }
+    }
+
+    mqtt_request_complete(connection, error_code, suback.packet_identifier);
+
+    aws_mqtt_packet_suback_clean_up(&suback);
 
     return AWS_OP_SUCCESS;
 }
@@ -344,7 +386,7 @@ static packet_handler_fn *s_packet_handlers[] = {
     [AWS_MQTT_PACKET_SUBSCRIBE] = &s_packet_handler_default,
     [AWS_MQTT_PACKET_SUBACK] = &s_packet_handler_ack,
     [AWS_MQTT_PACKET_UNSUBSCRIBE] = &s_packet_handler_default,
-    [AWS_MQTT_PACKET_UNSUBACK] = &s_packet_handler_ack,
+    [AWS_MQTT_PACKET_UNSUBACK] = &s_packet_handler_suback,
     [AWS_MQTT_PACKET_PINGREQ] = &s_packet_handler_default,
     [AWS_MQTT_PACKET_PINGRESP] = &s_packet_handler_pingresp,
     [AWS_MQTT_PACKET_DISCONNECT] = &s_packet_handler_default,
