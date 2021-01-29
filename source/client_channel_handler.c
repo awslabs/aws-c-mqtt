@@ -265,6 +265,7 @@ static int s_packet_handler_suback(
 
     /* TODO: return code has the maximun QoS, it's probably better to inform user about it */
     /* TODO: We need a way to handle multisubscribe, in which one of the subscribe can fail and others can succeed */
+    /* TODO: check the length of return code maches the length of topics sent in SUBSCRIBE */
 
     int error_code = AWS_ERROR_SUCCESS;
     size_t num_filters = aws_array_list_length(&suback.return_codes);

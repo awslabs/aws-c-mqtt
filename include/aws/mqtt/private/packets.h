@@ -291,7 +291,7 @@ AWS_MQTT_API
 void aws_mqtt_packet_suback_clean_up(struct aws_mqtt_packet_suback *packet);
 
 AWS_MQTT_API
-void aws_mqtt_packet_suback_add_return_code(struct aws_mqtt_packet_suback *packet, uint8_t return_code);
+int aws_mqtt_packet_suback_add_return_code(struct aws_mqtt_packet_suback *packet, uint8_t return_code);
 
 AWS_MQTT_API
 int aws_mqtt_packet_suback_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_suback *packet);

@@ -859,7 +859,6 @@ int aws_mqtt_packet_suback_encode(struct aws_byte_buf *buf, const struct aws_mqt
 
         uint8_t return_code = 0;
         if (aws_array_list_get_at(&packet->return_codes, (void *)&return_code, i)) {
-
             return AWS_OP_ERR;
         }
         if (!aws_byte_buf_write_u8(buf, return_code)) {
