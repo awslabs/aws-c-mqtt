@@ -10,7 +10,8 @@
 #include <aws/io/channel.h>
 #include <aws/testing/aws_test_harness.h>
 
-#define CVAR_TIMEOUT (1000000000 * 10) /* 10sec */
+/* 10sec */
+#define CVAR_TIMEOUT (10 * (int64_t)1000000000)
 
 struct mqtt_mock_server_handler {
     struct aws_channel_handler handler;
@@ -466,6 +467,7 @@ struct mqtt_mock_server_ack_args {
 };
 
 static void s_send_ack_in_thread(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    (void)channel_task;
     (void)status;
     struct mqtt_mock_server_ack_args *ack_args = arg;
     struct aws_io_message *msg =
@@ -630,7 +632,7 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
             case AWS_MQTT_PACKET_CONNECT: {
                 struct aws_mqtt_packet_connect connect_packet;
                 AWS_ZERO_STRUCT(connect_packet);
-                ASSERT_SUCCESS(aws_mqtt_packet_connect_decode(&message_cur, &connect_packet)));
+                ASSERT_SUCCESS(aws_mqtt_packet_connect_decode(&message_cur, &connect_packet));
                 packet->clean_session = connect_packet.clean_session;
                 packet->has_will = connect_packet.has_will;
                 packet->will_retain = connect_packet.will_retain;
