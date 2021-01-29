@@ -140,7 +140,10 @@ static int s_mqtt_mock_server_handler_process_packet(
                     aws_channel_acquire_message_from_pool(server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
                 struct aws_mqtt_packet_suback suback;
                 err |= aws_mqtt_packet_suback_init(&suback, server->handler.alloc, subscribe_packet.packet_identifier);
-                err |= aws_mqtt_packet_suback_add_return_code(&suback, AWS_MQTT_RC_MAX_2);
+                const size_t num_filters = aws_array_list_length(&subscribe_packet.topic_filters);
+                for (size_t i = 0; i < num_filters; ++i) {
+                    err |= aws_mqtt_packet_suback_add_return_code(&suback, AWS_MQTT_RC_MAX_2);
+                }
                 err |= aws_mqtt_packet_suback_encode(&suback_msg->message_data, &suback);
                 err |= aws_channel_slot_send_message(server->slot, suback_msg, AWS_CHANNEL_DIR_WRITE);
                 aws_mqtt_packet_suback_clean_up(&suback);
@@ -323,6 +326,7 @@ int mqtt_mock_server_send_publish(
 
     return AWS_OP_SUCCESS;
 }
+
 static int s_mqtt_mock_server_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
