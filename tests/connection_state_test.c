@@ -1748,12 +1748,12 @@ static int s_check_packets_received_order(
     uint16_t packet_id_2,
     uint16_t packet_id_3) {
     ASSERT_SUCCESS(mqtt_mock_server_decode_packets(handler));
-    int packet_idx_1 = 0;
-    int packet_idx_2 = 0;
-    int packet_idx_3 = 0;
-    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_ID(handler, search_start_idx, packet_id_1, &packet_idx_1));
-    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_ID(handler, search_start_idx, packet_id_2, &packet_idx_2));
-    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_ID(handler, search_start_idx, packet_id_3, &packet_idx_3));
+    size_t packet_idx_1 = 0;
+    size_t packet_idx_2 = 0;
+    size_t packet_idx_3 = 0;
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_id(handler, search_start_idx, packet_id_1, &packet_idx_1));
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_id(handler, search_start_idx, packet_id_2, &packet_idx_2));
+    ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_id(handler, search_start_idx, packet_id_3, &packet_idx_3));
     ASSERT_TRUE(packet_idx_3 > packet_idx_2 && packet_idx_2 > packet_idx_1);
     return AWS_OP_SUCCESS;
 }
@@ -2048,7 +2048,7 @@ static int s_test_mqtt_connection_not_resend_packets_on_health_connection_fn(
     aws_thread_current_sleep((uint64_t)ONE_SEC * 3);
     /* Check all received packets, only one publish and subscribe received */
     ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->test_channel_handler));
-    int pre_index = -1;
+    size_t pre_index = SIZE_MAX;
     ASSERT_NOT_NULL(mqtt_mock_server_find_decoded_packet_by_type(handler, 0, AWS_MQTT_PACKET_PUBLISH, &pre_index));
     if (pre_index + 1 < mqtt_mock_server_decoded_packets_count(handler)) {
         /* If it's not the last packet, search again, and result should be NULL. */

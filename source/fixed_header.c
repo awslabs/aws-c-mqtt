@@ -29,20 +29,20 @@ static int s_encode_remaining_length(struct aws_byte_buf *buf, size_t remaining_
 
     return AWS_OP_SUCCESS;
 }
-static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remaining_length) {
+static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remaining_length_out) {
 
     AWS_PRECONDITION(cur);
 
     /* Read remaining_length */
     size_t multiplier = 1;
-    *remaining_length = 0;
+    size_t remaining_length = 0;
     while (true) {
         uint8_t encoded_byte;
         if (!aws_byte_cursor_read_u8(cur, &encoded_byte)) {
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }
 
-        *remaining_length += (encoded_byte & 127) * multiplier;
+        remaining_length += (encoded_byte & 127) * multiplier;
         multiplier *= 128;
 
         if (!(encoded_byte & 128)) {
@@ -54,6 +54,7 @@ static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remain
         }
     }
 
+    *remaining_length_out = remaining_length;
     return AWS_OP_SUCCESS;
 }
 
