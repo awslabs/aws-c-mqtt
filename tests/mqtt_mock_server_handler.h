@@ -4,15 +4,16 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#include <aws/common/condition_variable.h>
-#include <aws/common/mutex.h>
-#include <aws/io/channel.h>
 #include <aws/mqtt/private/packets.h>
+
+struct aws_channel_handler;
+struct aws_channel_slot;
 
 static const int MOCK_LOG_SUBJECT = 60000;
 
 struct mqtt_decoded_packet {
     enum aws_mqtt_packet_type type;
+    struct aws_allocator *alloc;
 
     /* CONNECT */
     bool clean_session;
@@ -37,36 +38,6 @@ struct mqtt_decoded_packet {
 
     /* index of the received packet, indicating when it's received by the server */
     size_t index;
-};
-
-struct mqtt_mock_server_handler {
-    struct aws_channel_handler handler;
-    struct aws_channel_slot *slot;
-    struct aws_array_list response_messages;
-    size_t ping_resp_avail;
-    uint16_t last_packet_id;
-    size_t pubacks_received;
-    size_t connacks_avail;
-    struct aws_mutex lock;
-    struct aws_condition_variable cvar;
-    struct aws_byte_buf pending_packet;
-    bool auto_ack;
-
-    struct aws_array_list packets; /* contains mqtt_decoded_packet */
-    size_t decoded_index;
-
-    struct {
-        struct aws_array_list received_messages;
-        /* data */
-    } synced_data;
-};
-
-struct mqtt_mock_server_publish_args {
-    struct aws_channel_task task;
-    struct aws_byte_cursor topic;
-    struct aws_byte_cursor payload;
-    enum aws_mqtt_qos qos;
-    struct mqtt_mock_server_handler *testing_handler;
 };
 
 struct aws_channel_handler *new_mqtt_mock_server(struct aws_allocator *allocator);
@@ -125,25 +96,25 @@ struct mqtt_decoded_packet *mqtt_mock_server_get_latest_decoded_packet(struct aw
 /**
  * Get the decoded packet by packetID started from search_start_idx (included), Note: it may have multiple packets with
  * the same ID, this will return the earliest received on with the packetID. If out_idx is not NULL, the index of found
- * packet will be stored at there, and if failed to find the packet, it will be set to -1, and the return value will be
- * NULL.
+ * packet will be stored at there, and if failed to find the packet, it will be set to SIZE_MAX, and the return value
+ * will be NULL.
  */
-struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_ID(
+struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_id(
     struct aws_channel_handler *handler,
     size_t search_start_idx,
-    uint16_t packetID,
-    int *out_idx);
+    uint16_t packet_id,
+    size_t *out_idx);
 /**
  * Get the decoded packet by type started from search_start_idx (included), Note: it may have multiple packets with
  * the same type, this will return the earliest received on with the packetID. If out_idx is not NULL, the index of
- * found packet will be stored at there, and if failed to find the packet, it will be set to -1, and the return value
- * will be NULL.
+ * found packet will be stored at there, and if failed to find the packet, it will be set to SIZE_MAX, and the return
+ * value will be NULL.
  */
 struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_type(
     struct aws_channel_handler *handler,
     size_t search_start_idx,
     enum aws_mqtt_packet_type type,
-    int *out_idx);
+    size_t *out_idx);
 
 /**
  * Run all received messages through, and decode the messages.
