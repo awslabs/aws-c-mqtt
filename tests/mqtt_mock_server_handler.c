@@ -60,22 +60,14 @@ static void s_mqtt_decoded_packet_destroy(struct mqtt_decoded_packet *packet) {
     aws_mem_release(packet->alloc, packet);
 }
 
-static void s_synced_lock(struct mqtt_mock_server_handler *server) {
-    AWS_FATAL_ASSERT(0 == aws_mutex_try_lock(&server->synced.lock));
-}
-
-static void s_synced_unlock(struct mqtt_mock_server_handler *server) {
-    AWS_FATAL_ASSERT(0 == aws_mutex_unlock(&server->synced.lock));
-}
-
 static int s_mqtt_mock_server_handler_process_packet(
     struct mqtt_mock_server_handler *server,
     struct aws_byte_cursor *message_cur) {
     struct aws_byte_buf received_message;
     aws_byte_buf_init_copy_from_cursor(&received_message, server->handler.alloc, *message_cur);
-    s_synced_lock(server);
+    aws_mutex_lock(&server->synced.lock);
     aws_array_list_push_back(&server->synced.raw_packets, &received_message);
-    s_synced_unlock(server);
+    aws_mutex_unlock(&server->synced.lock);
 
     struct aws_byte_cursor message_cur_cpy = *message_cur;
     int err = 0;
@@ -84,13 +76,13 @@ static int s_mqtt_mock_server_handler_process_packet(
     switch (packet_type) {
         case AWS_MQTT_PACKET_CONNECT: {
             size_t connacks_available = 0;
-            s_synced_lock(server);
+            aws_mutex_lock(&server->synced.lock);
             AWS_LOGF_DEBUG(
                 MOCK_LOG_SUBJECT,
                 "server, CONNECT received, %llu available connacks.",
                 (long long unsigned)server->synced.connacks_avail);
             connacks_available = server->synced.connacks_avail > 0 ? server->synced.connacks_avail-- : 0;
-            s_synced_unlock(server);
+            aws_mutex_unlock(&server->synced.lock);
 
             if (connacks_available) {
                 struct aws_io_message *connack_msg =
@@ -117,9 +109,9 @@ static int s_mqtt_mock_server_handler_process_packet(
             AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "server, PINGREQ received");
 
             size_t ping_resp_available = 0;
-            s_synced_lock(server);
+            aws_mutex_lock(&server->synced.lock);
             ping_resp_available = server->synced.ping_resp_avail > 0 ? server->synced.ping_resp_avail-- : 0;
-            s_synced_unlock(server);
+            aws_mutex_unlock(&server->synced.lock);
 
             if (ping_resp_available) {
                 struct aws_io_message *ping_resp =
@@ -139,9 +131,9 @@ static int s_mqtt_mock_server_handler_process_packet(
             err |= aws_mqtt_packet_subscribe_init(&subscribe_packet, server->handler.alloc, 0);
             err |= aws_mqtt_packet_subscribe_decode(message_cur, &subscribe_packet);
 
-            s_synced_lock(server);
+            aws_mutex_lock(&server->synced.lock);
             bool auto_ack = server->synced.auto_ack;
-            s_synced_unlock(server);
+            aws_mutex_unlock(&server->synced.lock);
 
             if (auto_ack) {
                 struct aws_io_message *suback_msg =
@@ -162,9 +154,9 @@ static int s_mqtt_mock_server_handler_process_packet(
             err |= aws_mqtt_packet_unsubscribe_init(&unsubscribe_packet, server->handler.alloc, 0);
             err |= aws_mqtt_packet_unsubscribe_decode(message_cur, &unsubscribe_packet);
 
-            s_synced_lock(server);
+            aws_mutex_lock(&server->synced.lock);
             bool auto_ack = server->synced.auto_ack;
-            s_synced_unlock(server);
+            aws_mutex_unlock(&server->synced.lock);
 
             if (auto_ack) {
                 struct aws_io_message *unsuback_msg =
@@ -184,9 +176,9 @@ static int s_mqtt_mock_server_handler_process_packet(
             struct aws_mqtt_packet_publish publish_packet;
             err |= aws_mqtt_packet_publish_decode(message_cur, &publish_packet);
 
-            s_synced_lock(server);
+            aws_mutex_lock(&server->synced.lock);
             bool auto_ack = server->synced.auto_ack;
-            s_synced_unlock(server);
+            aws_mutex_unlock(&server->synced.lock);
 
             if (auto_ack) {
                 struct aws_io_message *puback_msg =
@@ -202,9 +194,9 @@ static int s_mqtt_mock_server_handler_process_packet(
         case AWS_MQTT_PACKET_PUBACK:
             AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "server, PUBACK received");
 
-            s_synced_lock(server);
+            aws_mutex_lock(&server->synced.lock);
             server->synced.pubacks_received++;
-            s_synced_unlock(server);
+            aws_mutex_unlock(&server->synced.lock);
             err |= aws_condition_variable_notify_one(&server->synced.cvar);
             break;
 
@@ -431,33 +423,33 @@ void destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
 void mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, size_t max_ping) {
     struct mqtt_mock_server_handler *server = handler->impl;
 
-    s_synced_lock(server);
+    aws_mutex_lock(&server->synced.lock);
     server->synced.ping_resp_avail = max_ping;
-    s_synced_unlock(server);
+    aws_mutex_unlock(&server->synced.lock);
 }
 
 void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_t connack_avail) {
     struct mqtt_mock_server_handler *server = handler->impl;
 
-    s_synced_lock(server);
+    aws_mutex_lock(&server->synced.lock);
     server->synced.connacks_avail = connack_avail;
-    s_synced_unlock(server);
+    aws_mutex_unlock(&server->synced.lock);
 }
 
 void mqtt_mock_server_disable_auto_ack(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *server = handler->impl;
 
-    s_synced_lock(server);
+    aws_mutex_lock(&server->synced.lock);
     server->synced.auto_ack = false;
-    s_synced_unlock(server);
+    aws_mutex_unlock(&server->synced.lock);
 }
 
 void mqtt_mock_server_enable_auto_ack(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *server = handler->impl;
 
-    s_synced_lock(server);
+    aws_mutex_lock(&server->synced.lock);
     server->synced.auto_ack = true;
-    s_synced_unlock(server);
+    aws_mutex_unlock(&server->synced.lock);
 }
 
 struct mqtt_mock_server_ack_args {
@@ -533,11 +525,11 @@ void mqtt_mock_server_wait_for_pubacks(struct aws_channel_handler *handler, size
     waiter.server = server;
     waiter.wait_for_count = puback_count;
 
-    s_synced_lock(server);
+    aws_mutex_lock(&server->synced.lock);
     AWS_FATAL_ASSERT(
         0 == aws_condition_variable_wait_for_pred(
                  &server->synced.cvar, &server->synced.lock, CVAR_TIMEOUT, s_is_pubacks_complete, &waiter));
-    s_synced_unlock(server);
+    aws_mutex_unlock(&server->synced.lock);
 }
 
 size_t mqtt_mock_server_decoded_packets_count(struct aws_channel_handler *handler) {
@@ -616,7 +608,7 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
 
     /* NOTE: if there's an error in this function we may not unlock, but don't care because
      * this is only called from main test thread which will fail if this errors */
-    s_synced_lock(server);
+    aws_mutex_lock(&server->synced.lock);
 
     struct aws_array_list raw_packets = server->synced.raw_packets;
     size_t length = aws_array_list_length(&raw_packets);
@@ -709,6 +701,6 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
         aws_array_list_push_back(&server->decoded_packets, &packet);
     }
     server->synced.decoded_index = length;
-    s_synced_unlock(server);
+    aws_mutex_unlock(&server->synced.lock);
     return AWS_OP_SUCCESS;
 }
