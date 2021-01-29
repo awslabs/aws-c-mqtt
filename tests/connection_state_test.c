@@ -823,11 +823,11 @@ static int s_test_mqtt_connection_any_publish_fn(struct aws_allocator *allocator
     /* NOTE: mock server sends to client with no subscription at all, which should not happen in the real world! */
     state_test_data->expected_any_publishes = 2;
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
-    ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &topic_1, &payload_1, AWS_MQTT_QOS_AT_LEAST_ONCE));
+    ASSERT_SUCCESS(
+        mqtt_mock_server_send_publish(state_test_data->mock_server, &topic_1, &payload_1, AWS_MQTT_QOS_AT_LEAST_ONCE));
     struct aws_byte_cursor payload_2 = aws_byte_cursor_from_c_str("Test Message 2");
-    ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &topic_2, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
+    ASSERT_SUCCESS(
+        mqtt_mock_server_send_publish(state_test_data->mock_server, &topic_2, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
 
     s_wait_for_any_publish(state_test_data);
     mqtt_mock_server_wait_for_pubacks(state_test_data->mock_server, 2);
@@ -1067,8 +1067,8 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
     state_test_data->expected_any_publishes = 3;
     struct aws_byte_cursor payload_3 = aws_byte_cursor_from_c_str("Test Message 3");
     struct aws_byte_cursor topic_3 = aws_byte_cursor_from_c_str("/test/topic3");
-    ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &topic_3, &payload_3, AWS_MQTT_QOS_AT_LEAST_ONCE));
+    ASSERT_SUCCESS(
+        mqtt_mock_server_send_publish(state_test_data->mock_server, &topic_3, &payload_3, AWS_MQTT_QOS_AT_LEAST_ONCE));
     s_wait_for_any_publish(state_test_data);
 
     mqtt_mock_server_wait_for_pubacks(state_test_data->mock_server, 3);
@@ -1798,8 +1798,8 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
     ASSERT_TRUE(packet_id_3 > 0);
     /* Wait for 1 sec. ensure all the publishes have been received by the server */
     aws_thread_current_sleep(ONE_SEC);
-    ASSERT_SUCCESS(s_check_packets_received_order(
-        state_test_data->mock_server, 0, packet_id_1, packet_id_2, packet_id_3));
+    ASSERT_SUCCESS(
+        s_check_packets_received_order(state_test_data->mock_server, 0, packet_id_1, packet_id_2, packet_id_3));
     size_t packet_count = mqtt_mock_server_decoded_packets_count(state_test_data->mock_server);
 
     /* shutdown the channel for some error */
@@ -1874,8 +1874,8 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
     /* Check all received packets, no publish packets ever received by the server. Because the connection lost before it
      * ever get sent. */
     ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->mock_server));
-    ASSERT_NULL(mqtt_mock_server_find_decoded_packet_by_type(
-        state_test_data->mock_server, 0, AWS_MQTT_PACKET_PUBLISH, NULL));
+    ASSERT_NULL(
+        mqtt_mock_server_find_decoded_packet_by_type(state_test_data->mock_server, 0, AWS_MQTT_PACKET_PUBLISH, NULL));
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
