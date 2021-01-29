@@ -614,7 +614,8 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
     struct mqtt_mock_server_handler *server = handler->impl;
     struct aws_allocator *alloc = handler->alloc;
 
-    /* NOTE: may not unlock if there's an error, but that will kill testing main thread anyway, so don't care */
+    /* NOTE: if there's an error in this function we may not unlock, but don't care because
+     * this is only called from main test thread which will fail if this errors */
     s_synced_lock(server);
 
     struct aws_array_list raw_packets = server->synced.raw_packets;
