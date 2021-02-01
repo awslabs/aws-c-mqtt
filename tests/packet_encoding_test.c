@@ -307,7 +307,7 @@ static int s_test_publish_qos0_dup_init(struct packet_test_fixture *fixture) {
         (AWS_MQTT_PACKET_PUBLISH << 4) /* Packet type bits 7-4 */
         | (1 << 3) /* DUP bit 3 */
         | (AWS_MQTT_QOS_AT_MOST_ONCE << 1) /* QoS bits 2-1 */
-        | (0 << 0) /* RETAIN bit 0 */);
+        | 0 /* RETAIN bit 0 */);
     aws_byte_buf_write_u8(
         &fixture->buffer, 2 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
     aws_byte_buf_write_u8(
@@ -342,7 +342,7 @@ static int s_test_publish_qos2_retain_init(struct packet_test_fixture *fixture) 
         (AWS_MQTT_PACKET_PUBLISH << 4) /* Packet type bits 7-4 */
         | (0 << 3) /* DUP bit 3 */
         | (AWS_MQTT_QOS_EXACTLY_ONCE << 1) /* QoS bits 2-1 */
-        | (1 << 0) /* RETAIN bit 0 */);
+        | 1 /* RETAIN bit 0 */);
     aws_byte_buf_write_u8(
         &fixture->buffer, 4 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
     aws_byte_buf_write_u8(
