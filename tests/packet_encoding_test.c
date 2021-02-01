@@ -288,44 +288,8 @@ PACKET_TEST(CONNACK, connack, &s_test_connack_init, NULL, NULL)
 /*****************************************************************************/
 /* Publish                                                                   */
 
-/* QoS2 (has packet ID) with no other flags */
-static int s_test_publish_a_init(struct packet_test_fixture *fixture) {
-
-    /* Init packet */
-    ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
-        fixture->in_packet,
-        false,
-        AWS_MQTT_QOS_EXACTLY_ONCE,
-        false,
-        aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
-        7,
-        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
-
-    /* Init buffer */
-    /* clang-format off */
-    aws_byte_buf_write_u8(
-        &fixture->buffer, (AWS_MQTT_PACKET_PUBLISH << 4) | (AWS_MQTT_QOS_EXACTLY_ONCE << 1)); /* Packet type */
-    aws_byte_buf_write_u8(
-        &fixture->buffer, 4 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
-    aws_byte_buf_write_u8(
-        &fixture->buffer, 0); /* Topic name len byte 1 */
-    aws_byte_buf_write_u8(
-        &fixture->buffer, TOPIC_NAME_LEN); /* Topic name len byte 2 */
-    aws_byte_buf_write(
-        &fixture->buffer, s_topic_name, TOPIC_NAME_LEN); /* Topic name */
-    aws_byte_buf_write_u8(
-        &fixture->buffer, 0);       /* Packet id byte 1 */
-    aws_byte_buf_write_u8(
-        &fixture->buffer, 7);       /* Packet id byte 2 */
-    aws_byte_buf_write(
-        &fixture->buffer, s_payload, PAYLOAD_LEN); /* payload */
-    /* clang-format on */
-
-    return AWS_OP_SUCCESS;
-}
-
 /* QoS0 (no packet ID) with DUP and RETAIN flag set */
-static int s_test_publish_b_init(struct packet_test_fixture *fixture) {
+static int s_test_publish_qos0_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
@@ -360,6 +324,42 @@ static int s_test_publish_b_init(struct packet_test_fixture *fixture) {
     return AWS_OP_SUCCESS;
 }
 
+/* QoS2 (has packet ID) with no other flags */
+static int s_test_publish_qos2_init(struct packet_test_fixture *fixture) {
+
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
+        fixture->in_packet,
+        false,
+        AWS_MQTT_QOS_EXACTLY_ONCE,
+        false,
+        aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
+        7,
+        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
+
+    /* Init buffer */
+    /* clang-format off */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, (AWS_MQTT_PACKET_PUBLISH << 4) | (AWS_MQTT_QOS_EXACTLY_ONCE << 1)); /* Packet type */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 4 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0); /* Topic name len byte 1 */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, TOPIC_NAME_LEN); /* Topic name len byte 2 */
+    aws_byte_buf_write(
+        &fixture->buffer, s_topic_name, TOPIC_NAME_LEN); /* Topic name */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0);       /* Packet id byte 1 */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 7);       /* Packet id byte 2 */
+    aws_byte_buf_write(
+        &fixture->buffer, s_payload, PAYLOAD_LEN); /* payload */
+    /* clang-format on */
+
+    return AWS_OP_SUCCESS;
+}
+
 static bool s_test_publish_eq(void *a, void *b, size_t size) {
 
     (void)size;
@@ -370,8 +370,8 @@ static bool s_test_publish_eq(void *a, void *b, size_t size) {
     return s_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->packet_identifier == r->packet_identifier &&
            aws_byte_cursor_eq(&l->topic_name, &r->topic_name) && aws_byte_cursor_eq(&l->payload, &r->payload);
 }
-PACKET_TEST_NAME(PUBLISH, publish_a, publish, &s_test_publish_a_init, NULL, &s_test_publish_eq)
-PACKET_TEST_NAME(PUBLISH, publish_b, publish, &s_test_publish_b_init, NULL, &s_test_publish_eq)
+PACKET_TEST_NAME(PUBLISH, publish_qos0, publish, &s_test_publish_qos0_init, NULL, &s_test_publish_eq)
+PACKET_TEST_NAME(PUBLISH, publish_qos2, publish, &s_test_publish_qos2_init, NULL, &s_test_publish_eq)
 
 /*****************************************************************************/
 /* Subscribe                                                                 */
