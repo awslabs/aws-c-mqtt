@@ -288,7 +288,6 @@ PACKET_TEST(CONNACK, connack, &s_test_connack_init, NULL, NULL)
 /*****************************************************************************/
 /* Publish                                                                   */
 
-/* QoS0 (no packet ID) with DUP flag set */
 static int s_test_publish_qos0_dup_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
@@ -324,7 +323,6 @@ static int s_test_publish_qos0_dup_init(struct packet_test_fixture *fixture) {
     return AWS_OP_SUCCESS;
 }
 
-/* QoS2 (has packet ID) with no other flags */
 static int s_test_publish_qos2_retain_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
