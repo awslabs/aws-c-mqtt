@@ -284,14 +284,49 @@ PACKET_TEST(CONNACK, connack, &s_test_connack_init, NULL, NULL)
 /*****************************************************************************/
 /* Publish                                                                   */
 
-static int s_test_publish_init(struct packet_test_fixture *fixture) {
+static int s_test_publish_qos0_dup_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
         fixture->in_packet,
-        false,
+        false /* retain */,
+        AWS_MQTT_QOS_AT_MOST_ONCE,
+        true /* dup */,
+        aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
+        0,
+        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
+
+    /* Init buffer */
+    /* clang-format off */
+    aws_byte_buf_write_u8(
+        &fixture->buffer,
+        (AWS_MQTT_PACKET_PUBLISH << 4) /* Packet type bits 7-4 */
+        | (1 << 3) /* DUP bit 3 */
+        | (AWS_MQTT_QOS_AT_MOST_ONCE << 1) /* QoS bits 2-1 */
+        | 0 /* RETAIN bit 0 */);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 2 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0); /* Topic name len byte 1 */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, TOPIC_NAME_LEN); /* Topic name len byte 2 */
+    aws_byte_buf_write(
+        &fixture->buffer, s_topic_name, TOPIC_NAME_LEN); /* Topic name */
+    aws_byte_buf_write(
+        &fixture->buffer, s_payload, PAYLOAD_LEN); /* payload */
+    /* clang-format on */
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_publish_qos2_retain_init(struct packet_test_fixture *fixture) {
+
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
+        fixture->in_packet,
+        true /* retain */,
         AWS_MQTT_QOS_EXACTLY_ONCE,
-        false,
+        false /* dup */,
         aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
         7,
         aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
@@ -299,7 +334,11 @@ static int s_test_publish_init(struct packet_test_fixture *fixture) {
     /* Init buffer */
     /* clang-format off */
     aws_byte_buf_write_u8(
-        &fixture->buffer, (AWS_MQTT_PACKET_PUBLISH << 4) | (AWS_MQTT_QOS_EXACTLY_ONCE << 1)); /* Packet type */
+        &fixture->buffer,
+        (AWS_MQTT_PACKET_PUBLISH << 4) /* Packet type bits 7-4 */
+        | (0 << 3) /* DUP bit 3 */
+        | (AWS_MQTT_QOS_EXACTLY_ONCE << 1) /* QoS bits 2-1 */
+        | 1 /* RETAIN bit 0 */);
     aws_byte_buf_write_u8(
         &fixture->buffer, 4 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
     aws_byte_buf_write_u8(
@@ -318,6 +357,7 @@ static int s_test_publish_init(struct packet_test_fixture *fixture) {
 
     return AWS_OP_SUCCESS;
 }
+
 static bool s_test_publish_eq(void *a, void *b, size_t size) {
 
     (void)size;
@@ -328,7 +368,8 @@ static bool s_test_publish_eq(void *a, void *b, size_t size) {
     return s_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->packet_identifier == r->packet_identifier &&
            aws_byte_cursor_eq(&l->topic_name, &r->topic_name) && aws_byte_cursor_eq(&l->payload, &r->payload);
 }
-PACKET_TEST(PUBLISH, publish, &s_test_publish_init, NULL, &s_test_publish_eq)
+PACKET_TEST_NAME(PUBLISH, publish_qos0_dup, publish, &s_test_publish_qos0_dup_init, NULL, &s_test_publish_eq)
+PACKET_TEST_NAME(PUBLISH, publish_qos2_retain, publish, &s_test_publish_qos2_retain_init, NULL, &s_test_publish_eq)
 
 /*****************************************************************************/
 /* Subscribe                                                                 */
