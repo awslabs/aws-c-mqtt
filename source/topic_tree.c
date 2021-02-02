@@ -875,7 +875,10 @@ static void s_topic_tree_publish_do_recurse(
 
         /* If this is the last node and is a sub, call it */
         if (s_topic_node_is_subscription(current)) {
-            current->callback(&pub->topic_name, &pub->payload, current->userdata);
+            bool dup = aws_mqtt_packet_publish_get_dup(pub);
+            enum aws_mqtt_qos qos = aws_mqtt_packet_publish_get_qos(pub);
+            bool retain = aws_mqtt_packet_publish_get_retain(pub);
+            current->callback(&pub->topic_name, &pub->payload, dup, qos, retain, current->userdata);
         }
         return;
     }
@@ -888,7 +891,10 @@ static void s_topic_tree_publish_do_recurse(
         /* Must be a subscription and have no children */
         AWS_ASSERT(s_topic_node_is_subscription(multi_wildcard));
         AWS_ASSERT(0 == aws_hash_table_get_entry_count(&multi_wildcard->subtopics));
-        multi_wildcard->callback(&pub->topic_name, &pub->payload, multi_wildcard->userdata);
+        bool dup = aws_mqtt_packet_publish_get_dup(pub);
+        enum aws_mqtt_qos qos = aws_mqtt_packet_publish_get_qos(pub);
+        bool retain = aws_mqtt_packet_publish_get_retain(pub);
+        multi_wildcard->callback(&pub->topic_name, &pub->payload, dup, qos, retain, multi_wildcard->userdata);
     }
 
     /* Check single level wildcard */

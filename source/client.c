@@ -1657,12 +1657,16 @@ struct subscribe_task_arg {
 static void s_on_publish_client_wrapper(
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *userdata) {
 
     struct subscribe_task_topic *task_topic = userdata;
 
     /* Call out to the user callback */
-    task_topic->request.on_publish(task_topic->connection, topic, payload, task_topic->request.on_publish_ud);
+    task_topic->request.on_publish(
+        task_topic->connection, topic, payload, dup, qos, retain, task_topic->request.on_publish_ud);
 }
 
 static void s_task_topic_release(void *userdata) {

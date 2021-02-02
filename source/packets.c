@@ -532,7 +532,7 @@ int aws_mqtt_packet_publish_encode_headers(struct aws_byte_buf *buf, const struc
         return AWS_OP_ERR;
     }
 
-    enum aws_mqtt_qos qos = ((packet->fixed_header.flags >> 1) & 0x3);
+    enum aws_mqtt_qos qos = aws_mqtt_packet_publish_get_qos(packet);
     if (qos > 0) {
         /* Write packet identifier */
         if (!aws_byte_buf_write_be16(buf, packet->packet_identifier)) {
@@ -566,7 +566,10 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     size_t payload_size = packet->fixed_header.remaining_length - s_sizeof_encoded_buffer(&packet->topic_name);
 
     /* Read QoS */
-    enum aws_mqtt_qos qos = ((packet->fixed_header.flags >> 1) & 0x3);
+    enum aws_mqtt_qos qos = aws_mqtt_packet_publish_get_qos(packet);
+    if (qos > 2) {
+        return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+    }
 
     /* Read packet identifier */
     if (qos > 0) {
@@ -586,6 +589,18 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     }
 
     return AWS_OP_SUCCESS;
+}
+
+bool aws_mqtt_packet_publish_get_dup(const struct aws_mqtt_packet_publish *packet) {
+    return packet->fixed_header.flags & (1 << 3); /* bit 3 */
+}
+
+enum aws_mqtt_qos aws_mqtt_packet_publish_get_qos(const struct aws_mqtt_packet_publish *packet) {
+    return (packet->fixed_header.flags >> 1) & 0x3; /* bits 2,1 */
+}
+
+bool aws_mqtt_packet_publish_get_retain(const struct aws_mqtt_packet_publish *packet) {
+    return packet->fixed_header.flags & 0x1; /* bit 0 */
 }
 
 /*****************************************************************************/

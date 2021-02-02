@@ -28,6 +28,9 @@ static const int ONE_SEC = 1000000000;
 struct received_publish_packet {
     struct aws_byte_buf topic;
     struct aws_byte_buf payload;
+    bool dup;
+    enum aws_mqtt_qos qos;
+    bool retain;
 };
 
 struct mqtt_connection_state_test {
@@ -77,6 +80,9 @@ static void s_on_any_publish_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *userdata);
 
 static void s_on_incoming_channel_setup_fn(
@@ -377,6 +383,9 @@ static void s_on_any_publish_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *userdata) {
     (void)connection;
     struct mqtt_connection_state_test *state_test_data = userdata;
@@ -385,7 +394,13 @@ static void s_on_any_publish_received(
     aws_byte_buf_init_copy_from_cursor(&payload_cp, state_test_data->allocator, *payload);
     struct aws_byte_buf topic_cp;
     aws_byte_buf_init_copy_from_cursor(&topic_cp, state_test_data->allocator, *topic);
-    struct received_publish_packet received_packet = {.payload = payload_cp, .topic = topic_cp};
+    struct received_publish_packet received_packet = {
+        .payload = payload_cp,
+        .topic = topic_cp,
+        .dup = dup,
+        .qos = qos,
+        .retain = retain,
+    };
 
     aws_mutex_lock(&state_test_data->lock);
     aws_array_list_push_back(&state_test_data->any_published_messages, &received_packet);
@@ -412,7 +427,11 @@ static void s_on_publish_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *userdata) {
+
     (void)connection;
     (void)topic;
     struct mqtt_connection_state_test *state_test_data = userdata;
@@ -421,7 +440,13 @@ static void s_on_publish_received(
     aws_byte_buf_init_copy_from_cursor(&payload_cp, state_test_data->allocator, *payload);
     struct aws_byte_buf topic_cp;
     aws_byte_buf_init_copy_from_cursor(&topic_cp, state_test_data->allocator, *topic);
-    struct received_publish_packet received_packet = {.payload = payload_cp, .topic = topic_cp};
+    struct received_publish_packet received_packet = {
+        .payload = payload_cp,
+        .topic = topic_cp,
+        .dup = dup,
+        .qos = qos,
+        .retain = retain,
+    };
 
     aws_mutex_lock(&state_test_data->lock);
     aws_array_list_push_back(&state_test_data->published_messages, &received_packet);
@@ -823,11 +848,21 @@ static int s_test_mqtt_connection_any_publish_fn(struct aws_allocator *allocator
     /* NOTE: mock server sends to client with no subscription at all, which should not happen in the real world! */
     state_test_data->expected_any_publishes = 2;
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
-    ASSERT_SUCCESS(
-        mqtt_mock_server_send_publish(state_test_data->mock_server, &topic_1, &payload_1, AWS_MQTT_QOS_AT_LEAST_ONCE));
+    ASSERT_SUCCESS(mqtt_mock_server_send_publish(
+        state_test_data->mock_server,
+        &topic_1,
+        &payload_1,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
     struct aws_byte_cursor payload_2 = aws_byte_cursor_from_c_str("Test Message 2");
-    ASSERT_SUCCESS(
-        mqtt_mock_server_send_publish(state_test_data->mock_server, &topic_2, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
+    ASSERT_SUCCESS(mqtt_mock_server_send_publish(
+        state_test_data->mock_server,
+        &topic_2,
+        &payload_2,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
 
     s_wait_for_any_publish(state_test_data);
     mqtt_mock_server_wait_for_pubacks(state_test_data->mock_server, 2);
@@ -942,14 +977,26 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
     s_wait_for_subscribe_to_complete(state_test_data);
 
     state_test_data->expected_publishes = 2;
+    state_test_data->expected_any_publishes = 2;
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &sub_topic, &payload_1, AWS_MQTT_QOS_AT_LEAST_ONCE));
+        state_test_data->mock_server,
+        &sub_topic,
+        &payload_1,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        true /*retain*/));
     struct aws_byte_cursor payload_2 = aws_byte_cursor_from_c_str("Test Message 2");
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &sub_topic, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
+        state_test_data->mock_server,
+        &sub_topic,
+        &payload_2,
+        true /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
 
     s_wait_for_publish(state_test_data);
+    s_wait_for_any_publish(state_test_data);
     mqtt_mock_server_wait_for_pubacks(state_test_data->mock_server, 2);
 
     ASSERT_SUCCESS(
@@ -984,15 +1031,36 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
     received_packet = mqtt_mock_server_get_decoded_packet_by_index(state_test_data->mock_server, 4);
     ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_DISCONNECT, received_packet->type);
 
+    /* Check PUBLISH packets received via subscription callback */
     ASSERT_UINT_EQUALS(2, aws_array_list_length(&state_test_data->published_messages));
 
     struct received_publish_packet *publish_msg = NULL;
     ASSERT_SUCCESS(aws_array_list_get_at_ptr(&state_test_data->published_messages, (void **)&publish_msg, 0));
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&sub_topic, &publish_msg->topic));
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&payload_1, &publish_msg->payload));
+    ASSERT_FALSE(publish_msg->dup);
+    ASSERT_TRUE(publish_msg->retain);
+
     ASSERT_SUCCESS(aws_array_list_get_at_ptr(&state_test_data->published_messages, (void **)&publish_msg, 1));
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&sub_topic, &publish_msg->topic));
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&payload_2, &publish_msg->payload));
+    ASSERT_TRUE(publish_msg->dup);
+    ASSERT_FALSE(publish_msg->retain);
+
+    /* Check PUBLISH packets received via on_any_publish callback */
+    ASSERT_UINT_EQUALS(2, aws_array_list_length(&state_test_data->any_published_messages));
+
+    ASSERT_SUCCESS(aws_array_list_get_at_ptr(&state_test_data->any_published_messages, (void **)&publish_msg, 0));
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&sub_topic, &publish_msg->topic));
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&payload_1, &publish_msg->payload));
+    ASSERT_FALSE(publish_msg->dup);
+    ASSERT_TRUE(publish_msg->retain);
+
+    ASSERT_SUCCESS(aws_array_list_get_at_ptr(&state_test_data->any_published_messages, (void **)&publish_msg, 1));
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&sub_topic, &publish_msg->topic));
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&payload_2, &publish_msg->payload));
+    ASSERT_TRUE(publish_msg->dup);
+    ASSERT_FALSE(publish_msg->retain);
 
     return AWS_OP_SUCCESS;
 }
@@ -1057,18 +1125,34 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
     state_test_data->expected_publishes = 2;
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &sub_topic_1, &payload_1, AWS_MQTT_QOS_AT_LEAST_ONCE));
+        state_test_data->mock_server,
+        &sub_topic_1,
+        &payload_1,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
     struct aws_byte_cursor payload_2 = aws_byte_cursor_from_c_str("Test Message 2");
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &sub_topic_2, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
+        state_test_data->mock_server,
+        &sub_topic_2,
+        &payload_2,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
     s_wait_for_publish(state_test_data);
 
-    /* Let's do another publish on a topic that is not subscribed by client, which should not happen in real life */
+    /* Let's do another publish on a topic that is not subscribed by client.
+     * This can happen if the Server automatically assigned a subscription to the Client */
     state_test_data->expected_any_publishes = 3;
     struct aws_byte_cursor payload_3 = aws_byte_cursor_from_c_str("Test Message 3");
     struct aws_byte_cursor topic_3 = aws_byte_cursor_from_c_str("/test/topic3");
-    ASSERT_SUCCESS(
-        mqtt_mock_server_send_publish(state_test_data->mock_server, &topic_3, &payload_3, AWS_MQTT_QOS_AT_LEAST_ONCE));
+    ASSERT_SUCCESS(mqtt_mock_server_send_publish(
+        state_test_data->mock_server,
+        &topic_3,
+        &payload_3,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
     s_wait_for_any_publish(state_test_data);
 
     mqtt_mock_server_wait_for_pubacks(state_test_data->mock_server, 3);
@@ -1184,10 +1268,20 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
     state_test_data->expected_any_publishes = 2;
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &sub_topic_1, &payload_1, AWS_MQTT_QOS_AT_LEAST_ONCE));
+        state_test_data->mock_server,
+        &sub_topic_1,
+        &payload_1,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
     struct aws_byte_cursor payload_2 = aws_byte_cursor_from_c_str("Test Message 2");
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &sub_topic_2, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
+        state_test_data->mock_server,
+        &sub_topic_2,
+        &payload_2,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
     s_wait_for_any_publish(state_test_data);
     mqtt_mock_server_wait_for_pubacks(state_test_data->mock_server, 2);
 
@@ -1200,9 +1294,19 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
     ASSERT_TRUE(unsub_packet_id > 0);
     /* Even when the UNSUBACK has not received, the client will not invoke the on_pub callback for that topic */
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &sub_topic_1, &payload_1, AWS_MQTT_QOS_AT_LEAST_ONCE));
+        state_test_data->mock_server,
+        &sub_topic_1,
+        &payload_1,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
-        state_test_data->mock_server, &sub_topic_2, &payload_2, AWS_MQTT_QOS_AT_LEAST_ONCE));
+        state_test_data->mock_server,
+        &sub_topic_2,
+        &payload_2,
+        false /*dup*/,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false /*retain*/));
     state_test_data->expected_any_publishes = 2;
     s_wait_for_any_publish(state_test_data);
     mqtt_mock_server_wait_for_pubacks(state_test_data->mock_server, 2);

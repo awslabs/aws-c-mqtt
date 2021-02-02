@@ -90,11 +90,24 @@ typedef void(aws_mqtt_suback_fn)(
     int error_code,
     void *userdata);
 
-/** Type of function called when a publish received matches a subscription (client specific) */
+/**
+ * Called when a publish message is received.
+ *
+ * \param[in] connection    The connection object
+ * \param[in] topic         The information channel to which the payload data was published.
+ * \param[in] payload       The payload data.
+ * \param[in] dup           DUP flag. If true, this might be re-delivery of an earlier attempt to send the message.
+ * \param[in] qos           Quality of Service used to deliver the message.
+ * \param[in] retain        Retain flag. If true, the message was sent as a result of a new subscription being
+ *                          made by the client.
+ */
 typedef void(aws_mqtt_client_publish_received_fn)(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *userdata);
 
 /** Called when a connection is closed, right before any resources are deleted */

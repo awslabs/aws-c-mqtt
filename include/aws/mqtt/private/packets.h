@@ -205,6 +205,15 @@ int aws_mqtt_packet_publish_encode_headers(struct aws_byte_buf *buf, const struc
 AWS_MQTT_API
 int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_publish *packet);
 
+AWS_MQTT_API
+bool aws_mqtt_packet_publish_get_dup(const struct aws_mqtt_packet_publish *packet);
+
+AWS_MQTT_API
+enum aws_mqtt_qos aws_mqtt_packet_publish_get_qos(const struct aws_mqtt_packet_publish *packet);
+
+AWS_MQTT_API
+bool aws_mqtt_packet_publish_get_retain(const struct aws_mqtt_packet_publish *packet);
+
 /*****************************************************************************/
 /* Puback                                                                    */
 

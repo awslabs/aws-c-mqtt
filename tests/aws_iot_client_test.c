@@ -91,11 +91,16 @@ static void s_on_packet_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *userdata) {
 
     (void)connection;
     (void)topic;
-    (void)payload;
+    (void)dup;
+    (void)qos;
+    (void)retain;
 
     AWS_FATAL_ASSERT(payload->len == PAYLOAD_LEN);
     AWS_FATAL_ASSERT(0 == memcmp(payload->ptr, s_payload, PAYLOAD_LEN));

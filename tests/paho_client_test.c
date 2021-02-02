@@ -65,11 +65,16 @@ static void s_on_packet_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *user_data) {
 
     (void)connection;
     (void)topic;
-    (void)payload;
+    (void)dup;
+    (void)qos;
+    (void)retain;
 
     struct aws_byte_cursor expected_payload = {
         .ptr = s_payload,
@@ -92,11 +97,16 @@ static void s_on_any_packet_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *user_data) {
 
     (void)connection;
     (void)topic;
-    (void)payload;
+    (void)dup;
+    (void)qos;
+    (void)retain;
 
     struct aws_byte_cursor expected_payload = {
         .ptr = s_payload,
