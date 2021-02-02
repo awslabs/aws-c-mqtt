@@ -327,6 +327,52 @@ int mqtt_mock_server_send_publish(
     return AWS_OP_SUCCESS;
 }
 
+struct mqtt_mock_server_suback_args {
+    struct aws_channel_task task;
+    uint16_t packet_id;
+    enum aws_mqtt_return_code return_code;
+    struct mqtt_mock_server_handler *server;
+};
+
+static void s_mqtt_send_suback_in_thread(
+    struct aws_channel_task *channel_task,
+    void *arg,
+    enum aws_task_status status) {
+    (void)channel_task;
+    (void)status;
+    struct mqtt_mock_server_suback_args *suback_args = arg;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_mqtt_packet_suback suback;
+        aws_mqtt_packet_suback_init(&suback, suback_args->server->handler.alloc, suback_args->packet_id);
+        aws_mqtt_packet_suback_add_return_code(&suback, suback_args->return_code);
+        struct aws_io_message *suback_msg = aws_channel_acquire_message_from_pool(
+            suback_args->server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
+        aws_mqtt_packet_suback_encode(&suback_msg->message_data, &suback);
+        aws_channel_slot_send_message(suback_args->server->slot, suback_msg, AWS_CHANNEL_DIR_WRITE);
+        aws_mqtt_packet_suback_clean_up(&suback);
+    }
+    aws_mem_release(suback_args->server->handler.alloc, suback_args);
+}
+
+void mqtt_mock_server_send_single_suback(
+    struct aws_channel_handler *handler,
+    uint16_t packet_id,
+    enum aws_mqtt_return_code return_code) {
+
+    struct mqtt_mock_server_handler *server = handler->impl;
+
+    struct mqtt_mock_server_suback_args *args =
+        aws_mem_calloc(handler->alloc, 1, sizeof(struct mqtt_mock_server_suback_args));
+    args->task.task_fn = s_mqtt_send_suback_in_thread;
+    args->task.arg = args;
+    args->packet_id = packet_id;
+    args->return_code = return_code;
+    args->server = server;
+
+    aws_channel_schedule_task_now(server->slot->channel, &args->task);
+}
+
 static int s_mqtt_mock_server_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,

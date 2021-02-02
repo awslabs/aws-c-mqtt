@@ -1004,6 +1004,58 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
+/* Subscribe to a topic and broker returns a SUBACK with failure return code, the subscribe should fail */
+static int s_test_mqtt_connect_subscribe_fail_from_broker_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    /* Disable the auto ACK packets sent by the server, we will send failure SUBACK */
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    struct aws_byte_cursor sub_topic = aws_byte_cursor_from_c_str("/test/topic");
+
+    uint16_t packet_id = aws_mqtt_client_connection_subscribe(
+        state_test_data->mqtt_connection,
+        &sub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_on_publish_received,
+        state_test_data,
+        NULL,
+        s_on_suback,
+        state_test_data);
+    ASSERT_TRUE(packet_id > 0);
+
+    mqtt_mock_server_send_single_suback(state_test_data->mock_server, packet_id, AWS_MQTT_RC_FAILURE);
+    s_wait_for_subscribe_to_complete(state_test_data);
+    /* Check the subscribe failed */
+    ASSERT_UINT_EQUALS(AWS_ERROR_MQTT_SUBSCRIBE_REJECTED, state_test_data->subscribe_complete_error);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connect_subscribe_fail_from_broker,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connect_subscribe_fail_from_broker_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
 /* Subscribe to multiple topics prior to connection, make a CONNECT, have the server send PUBLISH messages,
  * make sure they're received, then send a DISCONNECT. */
 static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void *ctx) {

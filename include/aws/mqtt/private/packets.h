@@ -33,8 +33,10 @@ enum aws_mqtt_return_code {
     AWS_MQTT_RC_MAX_1 = 0x01,
     AWS_MQTT_RC_MAX_2 = 0x02,
     AWS_MQTT_RC_FAILURE = 0x80,
+
     /**
-     * check the return code has no other values than listed above
+     * Not a valid return code.
+     * Check the return code has no other values than listed above
      * 0111 1100
      **/
     AWS_MQTT_RC_CHECK = 0x7C,
