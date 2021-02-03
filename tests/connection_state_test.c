@@ -67,7 +67,7 @@ struct mqtt_connection_state_test {
     size_t publishes_received;
     size_t expected_publishes;
     /* The returned QoS from mock server */
-    uint8_t qos_returned;
+    struct aws_array_list qos_returned; /* list of uint_8 */
     size_t ops_completed;
     size_t expected_ops_completed;
 };
@@ -280,6 +280,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
         &state_test_data->published_messages, allocator, 4, sizeof(struct received_publish_packet)));
     ASSERT_SUCCESS(aws_array_list_init_dynamic(
         &state_test_data->any_published_messages, allocator, 4, sizeof(struct received_publish_packet)));
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&state_test_data->qos_returned, allocator, 2, sizeof(uint8_t)));
     return AWS_OP_SUCCESS;
 }
 
@@ -301,6 +302,7 @@ static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_
 
         s_received_publish_packet_list_clean_up(&state_test_data->published_messages);
         s_received_publish_packet_list_clean_up(&state_test_data->any_published_messages);
+        aws_array_list_clean_up(&state_test_data->qos_returned);
         aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
         aws_mqtt_client_release(state_test_data->mqtt_client);
         aws_client_bootstrap_release(state_test_data->client_bootstrap);
@@ -459,7 +461,7 @@ static void s_on_suback(
     struct mqtt_connection_state_test *state_test_data = userdata;
 
     aws_mutex_lock(&state_test_data->lock);
-    state_test_data->qos_returned = qos;
+    aws_array_list_push_back(&state_test_data->qos_returned, &qos);
     state_test_data->subscribe_completed = true;
     state_test_data->subscribe_complete_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
@@ -494,6 +496,12 @@ static void s_on_multi_suback(
 
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->subscribe_completed = true;
+    size_t length = aws_array_list_length(topic_subacks);
+    for (size_t i = 0; i < length; ++i) {
+        struct aws_mqtt_topic_subscription *subscription = NULL;
+        aws_array_list_get_at(topic_subacks, &subscription, i);
+        aws_array_list_push_back(&state_test_data->qos_returned, &subscription->qos);
+    }
     aws_mutex_unlock(&state_test_data->lock);
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
@@ -1060,7 +1068,11 @@ static int s_test_mqtt_connect_subscribe_fail_from_broker_fn(struct aws_allocato
     ASSERT_SUCCESS(mqtt_mock_server_send_single_suback(state_test_data->mock_server, packet_id, AWS_MQTT_QOS_FAILURE));
     s_wait_for_subscribe_to_complete(state_test_data);
     /* Check the subscribe returned QoS is failure */
-    ASSERT_UINT_EQUALS(AWS_MQTT_QOS_FAILURE, state_test_data->qos_returned);
+    size_t length = aws_array_list_length(&state_test_data->qos_returned);
+    ASSERT_UINT_EQUALS(1, length);
+    uint8_t qos = 0;
+    ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 0));
+    ASSERT_UINT_EQUALS(AWS_MQTT_QOS_FAILURE, qos);
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
@@ -1125,6 +1137,14 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
     s_wait_for_connection_to_complete(state_test_data);
 
     s_wait_for_subscribe_to_complete(state_test_data);
+    /* Check the subscribe returned QoS is expected */
+    size_t length = aws_array_list_length(&state_test_data->qos_returned);
+    ASSERT_UINT_EQUALS(2, length);
+    uint8_t qos = 0;
+    ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 0));
+    ASSERT_UINT_EQUALS(AWS_MQTT_QOS_EXACTLY_ONCE, qos);
+    ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 1));
+    ASSERT_UINT_EQUALS(AWS_MQTT_QOS_EXACTLY_ONCE, qos);
 
     state_test_data->expected_publishes = 2;
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
