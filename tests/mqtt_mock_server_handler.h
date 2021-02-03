@@ -77,7 +77,7 @@ void mqtt_mock_server_enable_auto_ack(struct aws_channel_handler *handler);
 int mqtt_mock_server_send_unsuback(struct aws_channel_handler *handler, uint16_t packet_id);
 int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t packet_id);
 
-void mqtt_mock_server_send_single_suback(
+int mqtt_mock_server_send_single_suback(
     struct aws_channel_handler *handler,
     uint16_t packet_id,
     enum aws_mqtt_return_code return_code);

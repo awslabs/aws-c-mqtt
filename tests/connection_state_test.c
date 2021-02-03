@@ -1057,7 +1057,7 @@ static int s_test_mqtt_connect_subscribe_fail_from_broker_fn(struct aws_allocato
         state_test_data);
     ASSERT_TRUE(packet_id > 0);
 
-    mqtt_mock_server_send_single_suback(state_test_data->mock_server, packet_id, AWS_MQTT_RC_FAILURE);
+    ASSERT_SUCCESS(mqtt_mock_server_send_single_suback(state_test_data->mock_server, packet_id, AWS_MQTT_RC_FAILURE));
     s_wait_for_subscribe_to_complete(state_test_data);
     /* Check the subscribe failed */
     ASSERT_UINT_EQUALS(AWS_ERROR_MQTT_SUBSCRIBE_REJECTED, state_test_data->subscribe_complete_error);
