@@ -461,7 +461,9 @@ static void s_on_suback(
     struct mqtt_connection_state_test *state_test_data = userdata;
 
     aws_mutex_lock(&state_test_data->lock);
-    aws_array_list_push_back(&state_test_data->qos_returned, &qos);
+    if (!error_code) {
+        aws_array_list_push_back(&state_test_data->qos_returned, &qos);
+    }
     state_test_data->subscribe_completed = true;
     state_test_data->subscribe_complete_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
@@ -496,11 +498,13 @@ static void s_on_multi_suback(
 
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->subscribe_completed = true;
-    size_t length = aws_array_list_length(topic_subacks);
-    for (size_t i = 0; i < length; ++i) {
-        struct aws_mqtt_topic_subscription *subscription = NULL;
-        aws_array_list_get_at(topic_subacks, &subscription, i);
-        aws_array_list_push_back(&state_test_data->qos_returned, &subscription->qos);
+    if (!error_code) {
+        size_t length = aws_array_list_length(topic_subacks);
+        for (size_t i = 0; i < length; ++i) {
+            struct aws_mqtt_topic_subscription *subscription = NULL;
+            aws_array_list_get_at(topic_subacks, &subscription, i);
+            aws_array_list_push_back(&state_test_data->qos_returned, &subscription->qos);
+        }
     }
     aws_mutex_unlock(&state_test_data->lock);
     aws_condition_variable_notify_one(&state_test_data->cvar);
