@@ -80,7 +80,7 @@ int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t p
 int mqtt_mock_server_send_single_suback(
     struct aws_channel_handler *handler,
     uint16_t packet_id,
-    enum aws_mqtt_return_code return_code);
+    enum aws_mqtt_qos return_code);
 /**
  * Wait for puback_count PUBACK packages from client
  */

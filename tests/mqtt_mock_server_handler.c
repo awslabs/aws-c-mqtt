@@ -333,7 +333,7 @@ int mqtt_mock_server_send_publish(
 int mqtt_mock_server_send_single_suback(
     struct aws_channel_handler *handler,
     uint16_t packet_id,
-    enum aws_mqtt_return_code return_code) {
+    enum aws_mqtt_qos return_code) {
 
     struct mqtt_mock_server_handler *server = handler->impl;
 
