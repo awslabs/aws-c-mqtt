@@ -51,7 +51,9 @@ int mqtt_mock_server_send_publish(
     struct aws_channel_handler *handler,
     struct aws_byte_cursor *topic,
     struct aws_byte_cursor *payload,
-    enum aws_mqtt_qos qos);
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain);
 /**
  * Set max number of PINGRESP that mock server will send back to client
  */
