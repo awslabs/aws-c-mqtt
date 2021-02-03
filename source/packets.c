@@ -10,8 +10,7 @@ enum { S_BIT_1_FLAGS = 0x2 };
 
 enum {
     /**
-     * Not a valid return code.
-     * Check the return code has no other values than listed above
+     * Check the return code has no other values than aws_mqtt_qos
      * 0111 1100
      **/
     S_RC_CHECK = 0x7C,

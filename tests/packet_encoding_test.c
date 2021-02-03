@@ -456,18 +456,21 @@ static int s_test_suback_init(struct packet_test_fixture *fixture) {
     ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->out_packet, fixture->allocator, 0));
 
     ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(fixture->in_packet, AWS_MQTT_QOS_EXACTLY_ONCE));
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(fixture->in_packet, AWS_MQTT_QOS_FAILURE));
 
     /* Init buffer */ /* clang-format off */
     aws_byte_buf_write_u8(
         &fixture->buffer, (AWS_MQTT_PACKET_SUBACK << 4) | 0x0); /* Packet type & flags */
     aws_byte_buf_write_u8(
-        &fixture->buffer, 2/* variable header */ + 1/* payload */); /* Remaining length */
+        &fixture->buffer, 2/* variable header */ + 2/* payload */); /* Remaining length */
     aws_byte_buf_write_u8(
         &fixture->buffer, 0);
     aws_byte_buf_write_u8(
         &fixture->buffer, 7);
     aws_byte_buf_write_u8(
         &fixture->buffer, AWS_MQTT_QOS_EXACTLY_ONCE); /* Payload */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, AWS_MQTT_QOS_FAILURE); /* Payload */
     /* clang-format on */
 
     return AWS_OP_SUCCESS;
