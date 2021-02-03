@@ -18,7 +18,6 @@ struct mqtt_mock_server_handler {
 
     struct aws_channel_slot *slot;
 
-
     /* partial incoming packet, finish decoding when the rest arrives */
     struct aws_byte_buf pending_packet;
 
