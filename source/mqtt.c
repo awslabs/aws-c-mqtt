@@ -139,9 +139,6 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_BUILT_WITHOUT_WEBSOCKETS,
                 "Library built without MQTT_WITH_WEBSOCKETS option."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_SUBSCRIBE_REJECTED,
-                "The broker rejected the subscribe with failure suback return code."),
-            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_UNEXPECTED_HANGUP,
                 "The connection was closed unexpectedly."),
             AWS_DEFINE_ERROR_INFO_MQTT(

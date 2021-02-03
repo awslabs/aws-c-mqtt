@@ -8,6 +8,15 @@
 enum { S_PROTOCOL_LEVEL = 4 };
 enum { S_BIT_1_FLAGS = 0x2 };
 
+enum {
+    /**
+     * Not a valid return code.
+     * Check the return code has no other values than listed above
+     * 0111 1100
+     **/
+    S_RC_CHECK = 0x7C,
+};
+
 static struct aws_byte_cursor s_protocol_name = {
     .ptr = (uint8_t *)"MQTT",
     .len = 4,
@@ -815,7 +824,7 @@ void aws_mqtt_packet_suback_clean_up(struct aws_mqtt_packet_suback *packet) {
 int aws_mqtt_packet_suback_add_return_code(struct aws_mqtt_packet_suback *packet, uint8_t return_code) {
 
     AWS_PRECONDITION(packet);
-    if (return_code & AWS_MQTT_RC_CHECK) {
+    if (return_code & S_RC_CHECK) {
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_RETURN_CODE);
     }
 
@@ -905,7 +914,7 @@ int aws_mqtt_packet_suback_decode(struct aws_byte_cursor *cur, struct aws_mqtt_p
         if (!aws_byte_cursor_read_u8(cur, &return_code)) {
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }
-        if (return_code & AWS_MQTT_RC_CHECK) {
+        if (return_code & S_RC_CHECK) {
             return aws_raise_error(AWS_ERROR_MQTT_INVALID_RETURN_CODE);
         }
 

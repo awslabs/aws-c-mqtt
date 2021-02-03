@@ -455,7 +455,7 @@ static int s_test_suback_init(struct packet_test_fixture *fixture) {
     ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->in_packet, fixture->allocator, 7));
     ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->out_packet, fixture->allocator, 0));
 
-    ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(fixture->in_packet, AWS_MQTT_RC_MAX_2));
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(fixture->in_packet, AWS_MQTT_QOS_EXACTLY_ONCE));
 
     /* Init buffer */ /* clang-format off */
     aws_byte_buf_write_u8(
@@ -467,7 +467,7 @@ static int s_test_suback_init(struct packet_test_fixture *fixture) {
     aws_byte_buf_write_u8(
         &fixture->buffer, 7);
     aws_byte_buf_write_u8(
-        &fixture->buffer, AWS_MQTT_RC_MAX_2); /* Payload */
+        &fixture->buffer, AWS_MQTT_QOS_EXACTLY_ONCE); /* Payload */
     /* clang-format on */
 
     return AWS_OP_SUCCESS;

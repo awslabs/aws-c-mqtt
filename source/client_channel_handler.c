@@ -240,7 +240,7 @@ static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, s
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
-    mqtt_request_complete(connection, AWS_OP_SUCCESS, ack.packet_identifier);
+    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
 
     return AWS_OP_SUCCESS;
 }
@@ -254,7 +254,7 @@ static int s_packet_handler_suback(
     }
 
     if (aws_mqtt_packet_suback_decode(&message_cursor, &suback)) {
-        return AWS_OP_ERR;
+        goto error;
     }
 
     AWS_LOGF_TRACE(
@@ -266,27 +266,43 @@ static int s_packet_handler_suback(
     /* TODO: return code has the maximun QoS, it's probably better to inform user about it */
     /* TODO: We need a way to handle multisubscribe, in which one of the subscribe can fail and others can succeed */
     /* TODO: check the length of return code maches the length of topics sent in SUBSCRIBE */
+    struct aws_hash_element *elem = NULL;
 
-    int error_code = AWS_ERROR_SUCCESS;
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &suback.packet_identifier, &elem);
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
+    if (elem == NULL) {
+        /* no corresponding request found */
+        goto done;
+    }
+
+    struct aws_mqtt_request *request = elem->value;
+    struct subscribe_task_arg *task_arg = request->on_complete_ud;
+    size_t request_topics_len = aws_array_list_length(&task_arg->topics);
+    size_t suback_return_code_len = aws_array_list_length(&suback.return_codes);
+    if (request_topics_len != suback_return_code_len) {
+        goto error;
+    }
     size_t num_filters = aws_array_list_length(&suback.return_codes);
     for (size_t i = 0; i < num_filters; ++i) {
 
         uint8_t return_code = 0;
-        if (aws_array_list_get_at(&suback.return_codes, (void *)&return_code, i)) {
-
-            return AWS_OP_ERR;
-        }
-        if (return_code == AWS_MQTT_RC_FAILURE) {
-            error_code = AWS_ERROR_MQTT_SUBSCRIBE_REJECTED;
-            break;
-        }
+        struct subscribe_task_topic *topic = NULL;
+        aws_array_list_get_at(&suback.return_codes, (void *)&return_code, i);
+        aws_array_list_get_at(&task_arg->topics, &topic, i);
+        topic->request.qos = return_code;
     }
 
-    mqtt_request_complete(connection, error_code, suback.packet_identifier);
-
+done:
+    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, suback.packet_identifier);
     aws_mqtt_packet_suback_clean_up(&suback);
-
     return AWS_OP_SUCCESS;
+error:
+    aws_mqtt_packet_suback_clean_up(&suback);
+    return AWS_OP_ERR;
 }
 
 static int s_packet_handler_pubrec(

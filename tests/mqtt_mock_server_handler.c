@@ -142,7 +142,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                 err |= aws_mqtt_packet_suback_init(&suback, server->handler.alloc, subscribe_packet.packet_identifier);
                 const size_t num_filters = aws_array_list_length(&subscribe_packet.topic_filters);
                 for (size_t i = 0; i < num_filters; ++i) {
-                    err |= aws_mqtt_packet_suback_add_return_code(&suback, AWS_MQTT_RC_MAX_2);
+                    err |= aws_mqtt_packet_suback_add_return_code(&suback, AWS_MQTT_QOS_EXACTLY_ONCE);
                 }
                 err |= aws_mqtt_packet_suback_encode(&suback_msg->message_data, &suback);
                 err |= aws_channel_slot_send_message(server->slot, suback_msg, AWS_CHANNEL_DIR_WRITE);

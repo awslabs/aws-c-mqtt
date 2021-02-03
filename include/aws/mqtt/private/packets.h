@@ -28,19 +28,6 @@ struct aws_mqtt_subscription {
     enum aws_mqtt_qos qos;
 };
 
-enum aws_mqtt_return_code {
-    AWS_MQTT_RC_MAX_0 = 0x00,
-    AWS_MQTT_RC_MAX_1 = 0x01,
-    AWS_MQTT_RC_MAX_2 = 0x02,
-    AWS_MQTT_RC_FAILURE = 0x80,
-
-    /**
-     * Not a valid return code.
-     * Check the return code has no other values than listed above
-     * 0111 1100
-     **/
-    AWS_MQTT_RC_CHECK = 0x7C,
-};
 /**
  * Used to represent the following MQTT packets:
  * - PUBACK

@@ -66,7 +66,8 @@ struct mqtt_connection_state_test {
     struct aws_array_list published_messages; /* list of struct received_publish_packet */
     size_t publishes_received;
     size_t expected_publishes;
-
+    /* The returned QoS from mock server */
+    uint8_t qos_returned;
     size_t ops_completed;
     size_t expected_ops_completed;
 };
@@ -454,12 +455,11 @@ static void s_on_suback(
     (void)connection;
     (void)packet_id;
     (void)topic;
-    (void)qos;
-    (void)error_code;
 
     struct mqtt_connection_state_test *state_test_data = userdata;
 
     aws_mutex_lock(&state_test_data->lock);
+    state_test_data->qos_returned = qos;
     state_test_data->subscribe_completed = true;
     state_test_data->subscribe_complete_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
@@ -1057,10 +1057,10 @@ static int s_test_mqtt_connect_subscribe_fail_from_broker_fn(struct aws_allocato
         state_test_data);
     ASSERT_TRUE(packet_id > 0);
 
-    ASSERT_SUCCESS(mqtt_mock_server_send_single_suback(state_test_data->mock_server, packet_id, AWS_MQTT_RC_FAILURE));
+    ASSERT_SUCCESS(mqtt_mock_server_send_single_suback(state_test_data->mock_server, packet_id, AWS_MQTT_QOS_FAILURE));
     s_wait_for_subscribe_to_complete(state_test_data);
-    /* Check the subscribe failed */
-    ASSERT_UINT_EQUALS(AWS_ERROR_MQTT_SUBSCRIBE_REJECTED, state_test_data->subscribe_complete_error);
+    /* Check the subscribe returned QoS is failure */
+    ASSERT_UINT_EQUALS(AWS_MQTT_QOS_FAILURE, state_test_data->qos_returned);
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
