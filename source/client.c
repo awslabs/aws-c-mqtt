@@ -5,6 +5,7 @@
 #include <aws/mqtt/client.h>
 
 #include <aws/mqtt/private/client_impl.h>
+#include <aws/mqtt/private/mqtt_client_test_helper.h>
 #include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/topic_tree.h>
 
