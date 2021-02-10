@@ -18,9 +18,6 @@ struct mqtt_mock_server_handler {
 
     struct aws_channel_slot *slot;
 
-    /* last ID used when sending PUBLISH (QoS1+) to client */
-    uint16_t last_packet_id;
-
     /* partial incoming packet, finish decoding when the rest arrives */
     struct aws_byte_buf pending_packet;
 
@@ -33,6 +30,9 @@ struct mqtt_mock_server_handler {
         size_t pubacks_received;
         size_t connacks_avail;
         bool auto_ack;
+
+        /* last ID used when sending PUBLISH (QoS1+) to client */
+        uint16_t last_packet_id;
 
         /* contains aws_byte_buf with raw bytes of each packet received. */
         struct aws_array_list raw_packets;
@@ -138,10 +138,15 @@ static int s_mqtt_mock_server_handler_process_packet(
             if (auto_ack) {
                 struct aws_io_message *suback_msg =
                     aws_channel_acquire_message_from_pool(server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
-                struct aws_mqtt_packet_ack suback;
-                err |= aws_mqtt_packet_suback_init(&suback, subscribe_packet.packet_identifier);
-                err |= aws_mqtt_packet_ack_encode(&suback_msg->message_data, &suback);
+                struct aws_mqtt_packet_suback suback;
+                err |= aws_mqtt_packet_suback_init(&suback, server->handler.alloc, subscribe_packet.packet_identifier);
+                const size_t num_filters = aws_array_list_length(&subscribe_packet.topic_filters);
+                for (size_t i = 0; i < num_filters; ++i) {
+                    err |= aws_mqtt_packet_suback_add_return_code(&suback, AWS_MQTT_QOS_EXACTLY_ONCE);
+                }
+                err |= aws_mqtt_packet_suback_encode(&suback_msg->message_data, &suback);
                 err |= aws_channel_slot_send_message(server->slot, suback_msg, AWS_CHANNEL_DIR_WRITE);
+                aws_mqtt_packet_suback_clean_up(&suback);
             }
             aws_mqtt_packet_subscribe_clean_up(&subscribe_packet);
             break;
@@ -270,57 +275,81 @@ cleanup:
     return AWS_OP_SUCCESS;
 }
 
-struct mqtt_mock_server_publish_args {
+struct mqtt_mock_server_send_args {
     struct aws_channel_task task;
-    struct aws_byte_cursor topic;
-    struct aws_byte_cursor payload;
-    enum aws_mqtt_qos qos;
     struct mqtt_mock_server_handler *server;
+    struct aws_byte_buf data;
 };
 
-static void s_mqtt_send_publish_in_thread(
-    struct aws_channel_task *channel_task,
-    void *arg,
-    enum aws_task_status status) {
+static void s_mqtt_send_in_thread(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
     (void)channel_task;
-    (void)status;
-    struct mqtt_mock_server_publish_args *publish_args = arg;
+    struct mqtt_mock_server_send_args *send_args = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        uint16_t id = publish_args->qos == 0 ? 0 : ++publish_args->server->last_packet_id;
-        struct aws_mqtt_packet_publish publish;
-        aws_mqtt_packet_publish_init(
-            &publish, false, publish_args->qos, false, publish_args->topic, id, publish_args->payload);
-        struct aws_io_message *publish_msg = aws_channel_acquire_message_from_pool(
-            publish_args->server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, publish_args->payload.len + 256);
-
-        aws_mqtt_packet_publish_encode(&publish_msg->message_data, &publish);
-        aws_channel_slot_send_message(publish_args->server->slot, publish_msg, AWS_CHANNEL_DIR_WRITE);
+        struct aws_io_message *msg = aws_channel_acquire_message_from_pool(
+            send_args->server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, send_args->data.len);
+        AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_buffer(&msg->message_data, send_args->data));
+        AWS_FATAL_ASSERT(0 == aws_channel_slot_send_message(send_args->server->slot, msg, AWS_CHANNEL_DIR_WRITE));
     }
-    aws_mem_release(publish_args->server->handler.alloc, publish_args);
+
+    aws_byte_buf_clean_up(&send_args->data);
+    aws_mem_release(send_args->server->handler.alloc, send_args);
+}
+
+static struct mqtt_mock_server_send_args *s_mqtt_send_args_create(struct mqtt_mock_server_handler *server) {
+    struct mqtt_mock_server_send_args *args =
+        aws_mem_calloc(server->handler.alloc, 1, sizeof(struct mqtt_mock_server_send_args));
+    aws_channel_task_init(&args->task, s_mqtt_send_in_thread, args, "mqtt_mock_server_send_in_thread");
+    args->server = server;
+    aws_byte_buf_init(&args->data, server->handler.alloc, 1024);
+    return args;
 }
 
 int mqtt_mock_server_send_publish(
     struct aws_channel_handler *handler,
     struct aws_byte_cursor *topic,
     struct aws_byte_cursor *payload,
-    enum aws_mqtt_qos qos) {
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain) {
 
     struct mqtt_mock_server_handler *server = handler->impl;
 
-    struct mqtt_mock_server_publish_args *args =
-        aws_mem_calloc(handler->alloc, 1, sizeof(struct mqtt_mock_server_publish_args));
-    args->task.task_fn = s_mqtt_send_publish_in_thread;
-    args->task.arg = args;
-    args->topic = *topic;
-    args->payload = *payload;
-    args->qos = qos;
-    args->server = server;
+    struct mqtt_mock_server_send_args *args = s_mqtt_send_args_create(server);
+
+    aws_mutex_lock(&server->synced.lock);
+    uint16_t id = qos == 0 ? 0 : ++server->synced.last_packet_id;
+    aws_mutex_unlock(&server->synced.lock);
+
+    struct aws_mqtt_packet_publish publish;
+    ASSERT_SUCCESS(aws_mqtt_packet_publish_init(&publish, retain, qos, dup, *topic, id, *payload));
+    ASSERT_SUCCESS(aws_mqtt_packet_publish_encode(&args->data, &publish));
 
     aws_channel_schedule_task_now(server->slot->channel, &args->task);
 
     return AWS_OP_SUCCESS;
 }
+
+int mqtt_mock_server_send_single_suback(
+    struct aws_channel_handler *handler,
+    uint16_t packet_id,
+    enum aws_mqtt_qos return_code) {
+
+    struct mqtt_mock_server_handler *server = handler->impl;
+
+    struct mqtt_mock_server_send_args *args = s_mqtt_send_args_create(server);
+
+    struct aws_mqtt_packet_suback suback;
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_init(&suback, server->handler.alloc, packet_id));
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(&suback, return_code));
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_encode(&args->data, &suback));
+    aws_mqtt_packet_suback_clean_up(&suback);
+
+    aws_channel_schedule_task_now(server->slot->channel, &args->task);
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_mqtt_mock_server_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -470,7 +499,7 @@ static void s_send_ack_in_thread(struct aws_channel_task *channel_task, void *ar
     aws_mem_release(ack_args->server->handler.alloc, ack_args);
 }
 
-static int s_send_ack(struct aws_channel_handler *handler, uint16_t packetID, enum aws_mqtt_packet_type type) {
+static int s_send_ack(struct aws_channel_handler *handler, uint16_t packet_id, enum aws_mqtt_packet_type type) {
     struct mqtt_mock_server_handler *server = handler->impl;
     struct mqtt_mock_server_ack_args *args =
         aws_mem_calloc(server->handler.alloc, 1, sizeof(struct mqtt_mock_server_ack_args));
@@ -478,14 +507,10 @@ static int s_send_ack(struct aws_channel_handler *handler, uint16_t packetID, en
     aws_channel_task_init(&args->task, s_send_ack_in_thread, args, "send ack in thread");
     switch (type) {
         case AWS_MQTT_PACKET_PUBACK:
-            ASSERT_SUCCESS(aws_mqtt_packet_puback_init(&args->ack, packetID));
-            break;
-
-        case AWS_MQTT_PACKET_SUBACK:
-            ASSERT_SUCCESS(aws_mqtt_packet_suback_init(&args->ack, packetID));
+            ASSERT_SUCCESS(aws_mqtt_packet_puback_init(&args->ack, packet_id));
             break;
         case AWS_MQTT_PACKET_UNSUBACK:
-            ASSERT_SUCCESS(aws_mqtt_packet_unsuback_init(&args->ack, packetID));
+            ASSERT_SUCCESS(aws_mqtt_packet_unsuback_init(&args->ack, packet_id));
             break;
         default:
             AWS_FATAL_ASSERT(0);
@@ -496,15 +521,11 @@ static int s_send_ack(struct aws_channel_handler *handler, uint16_t packetID, en
     return AWS_OP_SUCCESS;
 }
 
-/* Send response back the client given the packet ID */
-int mqtt_mock_server_send_suback(struct aws_channel_handler *handler, uint16_t packetID) {
-    return s_send_ack(handler, packetID, AWS_MQTT_PACKET_SUBACK);
+int mqtt_mock_server_send_unsuback(struct aws_channel_handler *handler, uint16_t packet_id) {
+    return s_send_ack(handler, packet_id, AWS_MQTT_PACKET_UNSUBACK);
 }
-int mqtt_mock_server_send_unsuback(struct aws_channel_handler *handler, uint16_t packetID) {
-    return s_send_ack(handler, packetID, AWS_MQTT_PACKET_UNSUBACK);
-}
-int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t packetID) {
-    return s_send_ack(handler, packetID, AWS_MQTT_PACKET_PUBACK);
+int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t packet_id) {
+    return s_send_ack(handler, packet_id, AWS_MQTT_PACKET_PUBACK);
 }
 
 struct puback_waiter {

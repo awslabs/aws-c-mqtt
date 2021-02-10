@@ -83,6 +83,38 @@ struct aws_mqtt_reconnect_task {
     struct aws_allocator *allocator;
 };
 
+/* The lifetime of this struct is from subscribe -> suback */
+struct subscribe_task_arg {
+
+    struct aws_mqtt_client_connection *connection;
+
+    /* list of pointer of subscribe_task_topics */
+    struct aws_array_list topics;
+
+    /* Packet to populate */
+    struct aws_mqtt_packet_subscribe subscribe;
+
+    /* true if transaction was committed to the topic tree, false requires a retry */
+    bool tree_updated;
+
+    struct {
+        aws_mqtt_suback_multi_fn *multi;
+        aws_mqtt_suback_fn *single;
+    } on_suback;
+    void *on_suback_ud;
+};
+
+/* The lifetime of this struct is the same as the lifetime of the subscription */
+struct subscribe_task_topic {
+    struct aws_mqtt_client_connection *connection;
+
+    struct aws_mqtt_topic_subscription request;
+    struct aws_string *filter;
+    bool is_local;
+
+    struct aws_ref_count ref_count;
+};
+
 struct aws_mqtt_client_connection {
 
     struct aws_allocator *allocator;

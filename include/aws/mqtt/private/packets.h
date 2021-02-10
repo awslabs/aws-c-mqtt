@@ -34,7 +34,6 @@ struct aws_mqtt_subscription {
  * - PUBREC
  * - PUBREL
  * - PUBCOMP
- * - SUBACK
  * - UNSUBACK
  */
 struct aws_mqtt_packet_ack {
@@ -43,6 +42,21 @@ struct aws_mqtt_packet_ack {
 
     /* Variable header */
     uint16_t packet_identifier;
+};
+
+/**
+ * Represents the MQTT SUBACK packet
+ */
+struct aws_mqtt_packet_suback {
+    /* Fixed header */
+    struct aws_mqtt_fixed_header fixed_header;
+
+    /* Variable header */
+    uint16_t packet_identifier;
+
+    /* Payload */
+    /* List of uint8_t return code */
+    struct aws_array_list return_codes;
 };
 
 /* Represents the MQTT CONNECT packet */
@@ -257,7 +271,22 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
 /* Suback                                                                    */
 
 AWS_MQTT_API
-int aws_mqtt_packet_suback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier);
+int aws_mqtt_packet_suback_init(
+    struct aws_mqtt_packet_suback *packet,
+    struct aws_allocator *allocator,
+    uint16_t packet_identifier);
+
+AWS_MQTT_API
+void aws_mqtt_packet_suback_clean_up(struct aws_mqtt_packet_suback *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_suback_add_return_code(struct aws_mqtt_packet_suback *packet, uint8_t return_code);
+
+AWS_MQTT_API
+int aws_mqtt_packet_suback_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_suback *packet);
+
+AWS_MQTT_API
+int aws_mqtt_packet_suback_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_suback *packet);
 
 /*****************************************************************************/
 /* Unsubscribe                                                               */

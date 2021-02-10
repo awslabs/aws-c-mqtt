@@ -187,9 +187,6 @@ static int s_test_ack_init(struct packet_test_fixture *fixture) {
         case AWS_MQTT_PACKET_PUBCOMP:
             ASSERT_SUCCESS(aws_mqtt_packet_pubcomp_init(fixture->in_packet, packet_id));
             break;
-        case AWS_MQTT_PACKET_SUBACK:
-            ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->in_packet, packet_id));
-            break;
         case AWS_MQTT_PACKET_UNSUBACK:
             ASSERT_SUCCESS(aws_mqtt_packet_unsuback_init(fixture->in_packet, packet_id));
             break;
@@ -208,7 +205,6 @@ PACKET_TEST_ACK(PUBACK, puback)
 PACKET_TEST_ACK(PUBREC, pubrec)
 PACKET_TEST_ACK(PUBREL, pubrel)
 PACKET_TEST_ACK(PUBCOMP, pubcomp)
-PACKET_TEST_ACK(SUBACK, suback)
 PACKET_TEST_ACK(UNSUBACK, unsuback)
 #undef PACKET_TEST_ACK
 
@@ -449,6 +445,70 @@ static bool s_test_subscribe_eq(void *a, void *b, size_t size) {
     return true;
 }
 PACKET_TEST(SUBSCRIBE, subscribe, &s_test_subscribe_init, &s_test_subscribe_clean_up, &s_test_subscribe_eq)
+
+/*****************************************************************************/
+/* Suback                                                                */
+
+static int s_test_suback_init(struct packet_test_fixture *fixture) {
+
+    /* Init packets */
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->in_packet, fixture->allocator, 7));
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->out_packet, fixture->allocator, 0));
+
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(fixture->in_packet, AWS_MQTT_QOS_EXACTLY_ONCE));
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(fixture->in_packet, AWS_MQTT_QOS_FAILURE));
+
+    /* Init buffer */ /* clang-format off */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, (AWS_MQTT_PACKET_SUBACK << 4) | 0x0); /* Packet type & flags */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 2/* variable header */ + 2/* payload */); /* Remaining length */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 7);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, AWS_MQTT_QOS_EXACTLY_ONCE); /* Payload */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, AWS_MQTT_QOS_FAILURE); /* Payload */
+    /* clang-format on */
+
+    return AWS_OP_SUCCESS;
+}
+static int s_test_suback_clean_up(struct packet_test_fixture *fixture) {
+
+    aws_mqtt_packet_suback_clean_up(fixture->in_packet);
+    aws_mqtt_packet_suback_clean_up(fixture->out_packet);
+
+    return AWS_OP_SUCCESS;
+}
+static bool s_test_suback_eq(void *a, void *b, size_t size) {
+
+    (void)size;
+
+    struct aws_mqtt_packet_suback *l = a;
+    struct aws_mqtt_packet_suback *r = b;
+
+    if (!s_fixed_header_eq(&l->fixed_header, &r->fixed_header) || l->packet_identifier != r->packet_identifier) {
+        return false;
+    }
+
+    const size_t length = aws_array_list_length(&l->return_codes);
+    if (length != aws_array_list_length(&r->return_codes)) {
+        return false;
+    }
+
+    for (size_t i = 0; i < length; ++i) {
+        uint8_t lt = 0;
+        aws_array_list_get_at(&l->return_codes, (void *)&lt, i);
+        uint8_t rt = 0;
+        aws_array_list_get_at(&r->return_codes, (void *)&rt, i);
+        AWS_ASSUME(lt && rt);
+    }
+
+    return true;
+}
+PACKET_TEST(SUBACK, suback, &s_test_suback_init, &s_test_suback_clean_up, &s_test_suback_eq)
 
 /*****************************************************************************/
 /* Unsubscribe                                                               */
