@@ -115,9 +115,6 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_INVALID_QOS,
                 "Both bits in a QoS field must not be set."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_INVALID_RETURN_CODE,
-                "Return code for SUBACK is invalid, can only be 0x00, 0x01, 0x02 and 0x80"),
-            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_INVALID_PACKET_TYPE,
                 "Packet type in packet fixed header is invalid."),
             AWS_DEFINE_ERROR_INFO_MQTT(

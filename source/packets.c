@@ -8,14 +8,6 @@
 enum { S_PROTOCOL_LEVEL = 4 };
 enum { S_BIT_1_FLAGS = 0x2 };
 
-enum {
-    /**
-     * Check the return code has no other values than aws_mqtt_qos
-     * 0111 1100
-     **/
-    S_RC_CHECK = 0x7C,
-};
-
 static struct aws_byte_cursor s_protocol_name = {
     .ptr = (uint8_t *)"MQTT",
     .len = 4,
@@ -820,11 +812,19 @@ void aws_mqtt_packet_suback_clean_up(struct aws_mqtt_packet_suback *packet) {
     AWS_ZERO_STRUCT(*packet);
 }
 
+static bool s_return_code_check(uint8_t return_code) {
+    if (return_code != AWS_MQTT_QOS_FAILURE && return_code != AWS_MQTT_QOS_AT_MOST_ONCE &&
+        return_code != AWS_MQTT_QOS_AT_LEAST_ONCE && return_code != AWS_MQTT_QOS_EXACTLY_ONCE) {
+        return false;
+    }
+    return true;
+}
+
 int aws_mqtt_packet_suback_add_return_code(struct aws_mqtt_packet_suback *packet, uint8_t return_code) {
 
     AWS_PRECONDITION(packet);
-    if (return_code & S_RC_CHECK) {
-        return aws_raise_error(AWS_ERROR_MQTT_INVALID_RETURN_CODE);
+    if (!(s_return_code_check(return_code))) {
+        return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
     }
 
     /* Add to the array list */
@@ -913,8 +913,8 @@ int aws_mqtt_packet_suback_decode(struct aws_byte_cursor *cur, struct aws_mqtt_p
         if (!aws_byte_cursor_read_u8(cur, &return_code)) {
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }
-        if (return_code & S_RC_CHECK) {
-            return aws_raise_error(AWS_ERROR_MQTT_INVALID_RETURN_CODE);
+        if (!(s_return_code_check(return_code))) {
+            return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
         }
 
         aws_array_list_push_back(&packet->return_codes, &return_code);
