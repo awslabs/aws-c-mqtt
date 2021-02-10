@@ -58,7 +58,7 @@ static int s_decode_buffer(struct aws_byte_cursor *cur, struct aws_byte_cursor *
 }
 
 /*****************************************************************************/
-/* Ack                                                                       */
+/* Ack without payload                                                       */
 
 static void s_ack_init(struct aws_mqtt_packet_ack *packet, enum aws_mqtt_packet_type type, uint16_t packet_identifier) {
 
@@ -798,9 +798,144 @@ int aws_mqtt_packet_subscribe_decode(struct aws_byte_cursor *cur, struct aws_mqt
 /*****************************************************************************/
 /* Suback                                                                    */
 
-int aws_mqtt_packet_suback_init(struct aws_mqtt_packet_ack *packet, uint16_t packet_identifier) {
+int aws_mqtt_packet_suback_init(
+    struct aws_mqtt_packet_suback *packet,
+    struct aws_allocator *allocator,
+    uint16_t packet_identifier) {
 
-    s_ack_init(packet, AWS_MQTT_PACKET_SUBACK, packet_identifier);
+    AWS_PRECONDITION(packet);
+
+    AWS_ZERO_STRUCT(*packet);
+
+    packet->fixed_header.packet_type = AWS_MQTT_PACKET_SUBACK;
+    packet->fixed_header.remaining_length = sizeof(uint16_t);
+
+    packet->packet_identifier = packet_identifier;
+
+    if (aws_array_list_init_dynamic(&packet->return_codes, allocator, 1, sizeof(uint8_t))) {
+        return AWS_OP_ERR;
+    }
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt_packet_suback_clean_up(struct aws_mqtt_packet_suback *packet) {
+
+    AWS_PRECONDITION(packet);
+
+    aws_array_list_clean_up(&packet->return_codes);
+
+    AWS_ZERO_STRUCT(*packet);
+}
+
+static bool s_return_code_check(uint8_t return_code) {
+    if (return_code != AWS_MQTT_QOS_FAILURE && return_code != AWS_MQTT_QOS_AT_MOST_ONCE &&
+        return_code != AWS_MQTT_QOS_AT_LEAST_ONCE && return_code != AWS_MQTT_QOS_EXACTLY_ONCE) {
+        return false;
+    }
+    return true;
+}
+
+int aws_mqtt_packet_suback_add_return_code(struct aws_mqtt_packet_suback *packet, uint8_t return_code) {
+
+    AWS_PRECONDITION(packet);
+    if (!(s_return_code_check(return_code))) {
+        return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+    }
+
+    /* Add to the array list */
+    if (aws_array_list_push_back(&packet->return_codes, &return_code)) {
+        return AWS_OP_ERR;
+    }
+
+    /* Add to the remaining length, each return code takes one byte */
+    packet->fixed_header.remaining_length += 1;
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt_packet_suback_encode(struct aws_byte_buf *buf, const struct aws_mqtt_packet_suback *packet) {
+
+    AWS_PRECONDITION(buf);
+    AWS_PRECONDITION(packet);
+
+    /*************************************************************************/
+    /* Fixed Header */
+
+    if (aws_mqtt_fixed_header_encode(buf, &packet->fixed_header)) {
+        return AWS_OP_ERR;
+    }
+
+    /*************************************************************************/
+    /* Variable Header                                                       */
+
+    /* Write packet identifier */
+    if (!aws_byte_buf_write_be16(buf, packet->packet_identifier)) {
+        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+    }
+
+    /*************************************************************************/
+    /* Payload                                                               */
+
+    /* Write topic filters */
+    const size_t num_filters = aws_array_list_length(&packet->return_codes);
+    for (size_t i = 0; i < num_filters; ++i) {
+
+        uint8_t return_code = 0;
+        if (aws_array_list_get_at(&packet->return_codes, (void *)&return_code, i)) {
+            return AWS_OP_ERR;
+        }
+        if (!aws_byte_buf_write_u8(buf, return_code)) {
+            return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+        }
+    }
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt_packet_suback_decode(struct aws_byte_cursor *cur, struct aws_mqtt_packet_suback *packet) {
+
+    AWS_PRECONDITION(cur);
+    AWS_PRECONDITION(packet);
+
+    /*************************************************************************/
+    /* Fixed Header */
+
+    if (aws_mqtt_fixed_header_decode(cur, &packet->fixed_header)) {
+        return AWS_OP_ERR;
+    }
+
+    /* Validate flags */
+    if (packet->fixed_header.flags != (aws_mqtt_packet_has_flags(&packet->fixed_header) ? S_BIT_1_FLAGS : 0U)) {
+
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_RESERVED_BITS);
+    }
+
+    /*************************************************************************/
+    /* Variable Header                                                       */
+
+    /* Read packet identifier */
+    if (!aws_byte_cursor_read_be16(cur, &packet->packet_identifier)) {
+        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+    }
+
+    /*************************************************************************/
+    /* Payload                                                               */
+
+    /* Read return codes */
+    size_t remaining_length = packet->fixed_header.remaining_length - sizeof(uint16_t);
+    while (remaining_length) {
+
+        uint8_t return_code = 0;
+        if (!aws_byte_cursor_read_u8(cur, &return_code)) {
+            return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+        }
+        if (!(s_return_code_check(return_code))) {
+            return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+        }
+
+        aws_array_list_push_back(&packet->return_codes, &return_code);
+
+        remaining_length -= 1;
+    }
 
     return AWS_OP_SUCCESS;
 }

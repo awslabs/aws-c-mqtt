@@ -245,7 +245,6 @@ static int s_packet_handler_publish(
 }
 
 static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor) {
-    /* TODO: we need more detail from ack packets, eg: return code from suback */
     struct aws_mqtt_packet_ack ack;
     if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
         return AWS_OP_ERR;
@@ -254,9 +253,66 @@ static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, s
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
-    mqtt_request_complete(connection, AWS_OP_SUCCESS, ack.packet_identifier);
+    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
 
     return AWS_OP_SUCCESS;
+}
+
+static int s_packet_handler_suback(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_byte_cursor message_cursor) {
+    struct aws_mqtt_packet_suback suback;
+    if (aws_mqtt_packet_suback_init(&suback, connection->allocator, 0 /* fake packet_id */)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_mqtt_packet_suback_decode(&message_cursor, &suback)) {
+        goto error;
+    }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: received suback for message id %" PRIu16,
+        (void *)connection,
+        suback.packet_identifier);
+
+    struct aws_hash_element *elem = NULL;
+
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &suback.packet_identifier, &elem);
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
+    if (elem == NULL) {
+        /* no corresponding request found */
+        goto done;
+    }
+
+    struct aws_mqtt_request *request = elem->value;
+    struct subscribe_task_arg *task_arg = request->on_complete_ud;
+    size_t request_topics_len = aws_array_list_length(&task_arg->topics);
+    size_t suback_return_code_len = aws_array_list_length(&suback.return_codes);
+    if (request_topics_len != suback_return_code_len) {
+        goto error;
+    }
+    size_t num_filters = aws_array_list_length(&suback.return_codes);
+    for (size_t i = 0; i < num_filters; ++i) {
+
+        uint8_t return_code = 0;
+        struct subscribe_task_topic *topic = NULL;
+        aws_array_list_get_at(&suback.return_codes, (void *)&return_code, i);
+        aws_array_list_get_at(&task_arg->topics, &topic, i);
+        topic->request.qos = return_code;
+    }
+
+done:
+    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, suback.packet_identifier);
+    aws_mqtt_packet_suback_clean_up(&suback);
+    return AWS_OP_SUCCESS;
+error:
+    aws_mqtt_packet_suback_clean_up(&suback);
+    return AWS_OP_ERR;
 }
 
 static int s_packet_handler_pubrec(
@@ -355,7 +411,7 @@ static packet_handler_fn *s_packet_handlers[] = {
     [AWS_MQTT_PACKET_PUBREL] = &s_packet_handler_pubrel,
     [AWS_MQTT_PACKET_PUBCOMP] = &s_packet_handler_ack,
     [AWS_MQTT_PACKET_SUBSCRIBE] = &s_packet_handler_default,
-    [AWS_MQTT_PACKET_SUBACK] = &s_packet_handler_ack,
+    [AWS_MQTT_PACKET_SUBACK] = &s_packet_handler_suback,
     [AWS_MQTT_PACKET_UNSUBSCRIBE] = &s_packet_handler_default,
     [AWS_MQTT_PACKET_UNSUBACK] = &s_packet_handler_ack,
     [AWS_MQTT_PACKET_PINGREQ] = &s_packet_handler_default,

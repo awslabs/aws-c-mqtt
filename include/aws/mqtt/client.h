@@ -73,7 +73,11 @@ typedef void(aws_mqtt_client_on_connection_resumed_fn)(
     bool session_present,
     void *userdata);
 
-/** Called when a multi-topic subscription request is complete */
+/**
+ * Called when a multi-topic subscription request is complete.
+ * Note: If any topic_suback's qos value is AWS_MQTT_QOS_FAILURE,
+ * then that topic subscription was rejected by the broker.
+ */
 typedef void(aws_mqtt_suback_multi_fn)(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
@@ -81,7 +85,11 @@ typedef void(aws_mqtt_suback_multi_fn)(
     int error_code,
     void *userdata);
 
-/** Called when a single-topic subscription request is complete */
+/**
+ * Called when a single-topic subscription request is complete.
+ * Note: If the qos value is AWS_MQTT_QOS_FAILURE,
+ * then the subscription was rejected by the broker.
+ */
 typedef void(aws_mqtt_suback_fn)(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
@@ -433,6 +441,8 @@ int aws_mqtt_client_connection_disconnect(
  * \param[in] connection        The connection to subscribe on
  * \param[in] topic_filters     An array_list of aws_mqtt_topic_subscription (NOT pointers) describing the requests.
  * \param[in] on_suback         Called when a SUBACK has been received from the server and the subscription is complete
+ *                              Broker may fail one of the topics, check the qos in
+ *                              aws_mqtt_topic_subscription from the callback
  * \param[in] on_suback_ud      Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0.
