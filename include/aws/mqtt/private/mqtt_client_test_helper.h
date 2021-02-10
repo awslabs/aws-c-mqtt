@@ -8,10 +8,6 @@
 #include <aws/common/stdint.h>
 #include <aws/mqtt/exports.h>
 
-#if !defined(AWS_UNSTABLE_TESTING_API) && !defined(AWS_MQTT_EXPORTS)
-#    error The functions in this header file are for testing purposes only!
-#endif
-
 struct aws_allocator;
 struct aws_byte_cursor;
 struct aws_mqtt_client_connection;
