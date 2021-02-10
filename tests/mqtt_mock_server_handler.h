@@ -51,7 +51,9 @@ int mqtt_mock_server_send_publish(
     struct aws_channel_handler *handler,
     struct aws_byte_cursor *topic,
     struct aws_byte_cursor *payload,
-    enum aws_mqtt_qos qos);
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain);
 /**
  * Set max number of PINGRESP that mock server will send back to client
  */
@@ -72,10 +74,13 @@ void mqtt_mock_server_enable_auto_ack(struct aws_channel_handler *handler);
 /**
  * Send response back the client given the packet ID
  */
-int mqtt_mock_server_send_suback(struct aws_channel_handler *handler, uint16_t packetID);
-int mqtt_mock_server_send_unsuback(struct aws_channel_handler *handler, uint16_t packetID);
-int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t packetID);
+int mqtt_mock_server_send_unsuback(struct aws_channel_handler *handler, uint16_t packet_id);
+int mqtt_mock_server_send_puback(struct aws_channel_handler *handler, uint16_t packet_id);
 
+int mqtt_mock_server_send_single_suback(
+    struct aws_channel_handler *handler,
+    uint16_t packet_id,
+    enum aws_mqtt_qos return_code);
 /**
  * Wait for puback_count PUBACK packages from client
  */
@@ -94,8 +99,8 @@ struct mqtt_decoded_packet *mqtt_mock_server_get_decoded_packet_by_index(struct 
  */
 struct mqtt_decoded_packet *mqtt_mock_server_get_latest_decoded_packet(struct aws_channel_handler *handler);
 /**
- * Get the decoded packet by packetID started from search_start_idx (included), Note: it may have multiple packets with
- * the same ID, this will return the earliest received on with the packetID. If out_idx is not NULL, the index of found
+ * Get the decoded packet by packet_id started from search_start_idx (included), Note: it may have multiple packets with
+ * the same ID, this will return the earliest received on with the packet_id. If out_idx is not NULL, the index of found
  * packet will be stored at there, and if failed to find the packet, it will be set to SIZE_MAX, and the return value
  * will be NULL.
  */
@@ -106,7 +111,7 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_id(
     size_t *out_idx);
 /**
  * Get the decoded packet by type started from search_start_idx (included), Note: it may have multiple packets with
- * the same type, this will return the earliest received on with the packetID. If out_idx is not NULL, the index of
+ * the same type, this will return the earliest received on with the packet_id. If out_idx is not NULL, the index of
  * found packet will be stored at there, and if failed to find the packet, it will be set to SIZE_MAX, and the return
  * value will be NULL.
  */
