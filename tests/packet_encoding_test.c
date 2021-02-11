@@ -155,6 +155,10 @@ static uint8_t s_topic_name[] = "test/topic";
 enum { TOPIC_NAME_LEN = sizeof(s_topic_name) };
 static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
 enum { PAYLOAD_LEN = sizeof(s_payload) };
+static uint8_t s_username[] = "admin";
+enum { USERNAME_LEN = sizeof(s_username) };
+static uint8_t s_password[] = "12345";
+enum { PASSWORD_LEN = sizeof(s_password) };
 
 /*****************************************************************************/
 /* Ack                                                                       */
@@ -299,19 +303,19 @@ static int s_test_connect_will_init(struct packet_test_fixture *fixture) {
 PACKET_TEST_NAME(CONNECT, connect_will, connect, &s_test_connect_will_init, NULL, &s_test_connect_eq)
 
 static int s_test_connect_password_init(struct packet_test_fixture *fixture) {
-    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("admin");
-    struct aws_byte_cursor password = aws_byte_cursor_from_c_str("12345");
-
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
         fixture->in_packet, aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN), false, 0xBEEF));
-    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_credentials(fixture->in_packet, username, password));
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_credentials(
+        fixture->in_packet,
+        aws_byte_cursor_from_array(s_username, USERNAME_LEN),
+        aws_byte_cursor_from_array(s_password, PASSWORD_LEN)));
 
     /* Init buffer */
     /* clang-format off */
     uint8_t header[] = {
         AWS_MQTT_PACKET_CONNECT << 4,   /* Packet type */
-        10 + (2 + CLIENT_ID_LEN) + (2 + username.len) + (2 + password.len), /* Remaining length */
+        10 + (2 + CLIENT_ID_LEN) + (2 + USERNAME_LEN) + (2 + PASSWORD_LEN), /* Remaining length */
         0, 4, 'M', 'Q', 'T', 'T',       /* Protocol name */
         4,                              /* Protocol level */
         (1 << 7) | (1 << 6),            /* Connect Flags: username bit 7, password bit 6 */
@@ -325,11 +329,11 @@ static int s_test_connect_password_init(struct packet_test_fixture *fixture) {
     aws_byte_buf_write_be16(&fixture->buffer, CLIENT_ID_LEN);
     aws_byte_buf_write(&fixture->buffer, s_client_id, CLIENT_ID_LEN);
     /* username */
-    aws_byte_buf_write_be16(&fixture->buffer, username.len);
-    aws_byte_buf_write_from_whole_cursor(&fixture->buffer, username);
+    aws_byte_buf_write_be16(&fixture->buffer, USERNAME_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_username, USERNAME_LEN);
     /* password */
-    aws_byte_buf_write_be16(&fixture->buffer, password.len);
-    aws_byte_buf_write_from_whole_cursor(&fixture->buffer, password);
+    aws_byte_buf_write_be16(&fixture->buffer, PASSWORD_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_password, PASSWORD_LEN);
 
     return AWS_OP_SUCCESS;
 }
