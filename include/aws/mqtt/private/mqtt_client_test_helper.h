@@ -5,17 +5,13 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/common/allocator.h>
-#include <aws/common/byte_buf.h>
 #include <aws/common/stdint.h>
-#include <aws/common/string.h>
 #include <aws/mqtt/exports.h>
 
-#ifndef AWS_UNSTABLE_TESTING_API
-#    error The functions in this header file are for testing purposes only!
-#endif
-
+struct aws_allocator;
+struct aws_byte_cursor;
 struct aws_mqtt_client_connection;
+struct aws_string;
 
 AWS_EXTERN_C_BEGIN
 
