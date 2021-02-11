@@ -211,8 +211,7 @@ PACKET_TEST_ACK(UNSUBACK, unsuback)
 /*****************************************************************************/
 /* Connect                                                                   */
 
-static int s_test_connect_init(
-struct packet_test_fixture *fixture) {
+static int s_test_connect_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
@@ -257,8 +256,87 @@ static bool s_test_connect_eq(void *a, void *b, size_t size) {
 }
 PACKET_TEST(CONNECT, connect, &s_test_connect_init, NULL, &s_test_connect_eq)
 
+static int s_test_connect_will_init(struct packet_test_fixture *fixture) {
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
+        fixture->in_packet, aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN), false, 0));
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_will(
+        fixture->in_packet,
+        aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
+        AWS_MQTT_QOS_EXACTLY_ONCE,
+        true /*retain*/,
+        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
+
+    /* Init buffer */
+    /* clang-format off */
+    uint8_t header[] = {
+        AWS_MQTT_PACKET_CONNECT << 4,   /* Packet type */
+        10 + (2 + CLIENT_ID_LEN) + (2 + TOPIC_NAME_LEN) + (2 + PAYLOAD_LEN), /* Remaining length */
+        0, 4, 'M', 'Q', 'T', 'T',       /* Protocol name */
+        4,                              /* Protocol level */
+                                        /* Connect Flags: */
+        (1 << 2)                        /*   Will flag, bit 2 */
+        | (AWS_MQTT_QOS_EXACTLY_ONCE << 3)/* Will QoS, bits 4-3 */
+        | (1 << 5),                     /*   Will Retain, bit 5 */
+
+        0, 0,                           /* Keep alive */
+    };
+    /* clang-format on */
+
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
+    /* client identifier */
+    aws_byte_buf_write_be16(&fixture->buffer, CLIENT_ID_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_client_id, CLIENT_ID_LEN);
+    /* will topic */
+    aws_byte_buf_write_be16(&fixture->buffer, TOPIC_NAME_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_topic_name, TOPIC_NAME_LEN);
+    /* will payload */
+    aws_byte_buf_write_be16(&fixture->buffer, PAYLOAD_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_payload, PAYLOAD_LEN);
+
+    return AWS_OP_SUCCESS;
+}
+PACKET_TEST_NAME(CONNECT, connect_will, connect, &s_test_connect_will_init, NULL, &s_test_connect_eq)
+
+static int s_test_connect_password_init(struct packet_test_fixture *fixture) {
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("admin");
+    struct aws_byte_cursor password = aws_byte_cursor_from_c_str("12345");
+
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
+        fixture->in_packet, aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN), false, 0xBEEF));
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_credentials(fixture->in_packet, username, password));
+
+    /* Init buffer */
+    /* clang-format off */
+    uint8_t header[] = {
+        AWS_MQTT_PACKET_CONNECT << 4,   /* Packet type */
+        10 + (2 + CLIENT_ID_LEN) + (2 + username.len) + (2 + password.len), /* Remaining length */
+        0, 4, 'M', 'Q', 'T', 'T',       /* Protocol name */
+        4,                              /* Protocol level */
+        (1 << 7) | (1 << 6),            /* Connect Flags: username bit 7, password bit 6 */
+        0xBE, 0xEF,                     /* Keep alive */
+    };
+    /* clang-format on */
+
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
+
+    /* client identifier */
+    aws_byte_buf_write_be16(&fixture->buffer, CLIENT_ID_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_client_id, CLIENT_ID_LEN);
+    /* username */
+    aws_byte_buf_write_be16(&fixture->buffer, username.len);
+    aws_byte_buf_write_from_whole_cursor(&fixture->buffer, username);
+    /* password */
+    aws_byte_buf_write_be16(&fixture->buffer, password.len);
+    aws_byte_buf_write_from_whole_cursor(&fixture->buffer, password);
+
+    return AWS_OP_SUCCESS;
+}
+PACKET_TEST_NAME(CONNECT, connect_password, connect, &s_test_connect_password_init, NULL, &s_test_connect_eq)
+
 /*****************************************************************************/
-/* Connect                                                                   */
+/* Connack                                                                   */
 
 static int s_test_connack_init(struct packet_test_fixture *fixture) {
 
