@@ -309,7 +309,6 @@ static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_
         aws_server_bootstrap_release(state_test_data->server_bootstrap);
         aws_event_loop_group_release(state_test_data->el_group);
         destroy_mqtt_mock_server(state_test_data->test_channel_handler);
-        aws_thread_join_all_managed();
     }
 
     aws_mqtt_library_clean_up();

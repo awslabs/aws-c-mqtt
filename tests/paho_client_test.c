@@ -295,8 +295,6 @@ static int s_cleanup_test(struct test_context *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
 
-    aws_thread_join_all_managed();
-
     aws_mutex_clean_up(&tester->lock);
     aws_condition_variable_clean_up(&tester->signal);
 
