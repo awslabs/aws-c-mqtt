@@ -184,18 +184,27 @@ static int s_packet_handler_publish(
 
     aws_mqtt_topic_tree_publish(&connection->thread_data.subscriptions, &publish);
 
-    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_any_publish, &publish.topic_name, &publish.payload);
+    bool dup = aws_mqtt_packet_publish_get_dup(&publish);
+    enum aws_mqtt_qos qos = aws_mqtt_packet_publish_get_qos(&publish);
+    bool retain = aws_mqtt_packet_publish_get_retain(&publish);
+
+    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_any_publish, &publish.topic_name, &publish.payload, dup, qos, retain);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: publish received with message id %" PRIu16,
+        "id=%p: publish received with msg id=%" PRIu16 " dup=%d qos=%d retain=%d payload-size=%zu topic=" PRInSTR,
         (void *)connection,
-        publish.packet_identifier);
+        publish.packet_identifier,
+        dup,
+        qos,
+        retain,
+        publish.payload.len,
+        AWS_BYTE_CURSOR_PRI(publish.topic_name));
     struct aws_mqtt_packet_ack puback;
     AWS_ZERO_STRUCT(puback);
 
     /* Switch on QoS flags (bits 1 & 2) */
-    switch ((publish.fixed_header.flags >> 1) & 0x3) {
+    switch (qos) {
         case AWS_MQTT_QOS_AT_MOST_ONCE:
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT, "id=%p: received publish QOS is 0, not sending puback", (void *)connection);
@@ -208,6 +217,10 @@ static int s_packet_handler_publish(
         case AWS_MQTT_QOS_EXACTLY_ONCE:
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: received publish QOS is 2, sending pubrec", (void *)connection);
             aws_mqtt_packet_pubrec_init(&puback, publish.packet_identifier);
+            break;
+        default:
+            /* Impossible to hit this branch. QoS value is checked when decoding */
+            AWS_FATAL_ASSERT(0);
             break;
     }
 

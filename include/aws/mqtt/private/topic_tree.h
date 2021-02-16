@@ -14,6 +14,9 @@
 typedef void(aws_mqtt_publish_received_fn)(
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *user_data);
 
 /**
