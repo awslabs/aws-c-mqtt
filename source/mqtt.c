@@ -192,6 +192,7 @@ void aws_mqtt_library_init(struct aws_allocator *allocator) {
 void aws_mqtt_library_clean_up(void) {
     if (s_mqtt_library_initialized) {
         s_mqtt_library_initialized = false;
+        aws_thread_join_all_managed();
         aws_unregister_error_info(&s_error_list);
         aws_unregister_log_subject_info_list(&s_logging_subjects_list);
 #ifdef AWS_MQTT_WITH_WEBSOCKETS
