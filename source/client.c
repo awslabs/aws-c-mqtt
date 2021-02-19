@@ -5,6 +5,7 @@
 #include <aws/mqtt/client.h>
 
 #include <aws/mqtt/private/client_impl.h>
+#include <aws/mqtt/private/mqtt_client_test_helper.h>
 #include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/topic_tree.h>
 
@@ -1611,47 +1612,19 @@ int aws_mqtt_client_connection_disconnect(
  * Subscribe
  ******************************************************************************/
 
-/* The lifetime of this struct is the same as the lifetime of the subscription */
-struct subscribe_task_topic {
-    struct aws_mqtt_client_connection *connection;
-
-    struct aws_mqtt_topic_subscription request;
-    struct aws_string *filter;
-    bool is_local;
-
-    struct aws_ref_count ref_count;
-};
-
-/* The lifetime of this struct is from subscribe -> suback */
-struct subscribe_task_arg {
-
-    struct aws_mqtt_client_connection *connection;
-
-    /* list of subscribe_task_topic *s */
-    struct aws_array_list topics;
-
-    /* Packet to populate */
-    struct aws_mqtt_packet_subscribe subscribe;
-
-    /* true if transaction was committed to the topic tree, false requires a retry */
-    bool tree_updated;
-
-    struct {
-        aws_mqtt_suback_multi_fn *multi;
-        aws_mqtt_suback_fn *single;
-    } on_suback;
-    void *on_suback_ud;
-};
-
 static void s_on_publish_client_wrapper(
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *userdata) {
 
     struct subscribe_task_topic *task_topic = userdata;
 
     /* Call out to the user callback */
-    task_topic->request.on_publish(task_topic->connection, topic, payload, task_topic->request.on_publish_ud);
+    task_topic->request.on_publish(
+        task_topic->connection, topic, payload, dup, qos, retain, task_topic->request.on_publish_ud);
 }
 
 static void s_task_topic_release(void *userdata) {

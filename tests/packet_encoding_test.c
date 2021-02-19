@@ -155,6 +155,10 @@ static uint8_t s_topic_name[] = "test/topic";
 enum { TOPIC_NAME_LEN = sizeof(s_topic_name) };
 static uint8_t s_payload[] = "This s_payload contains data. It is some good ol' fashioned data.";
 enum { PAYLOAD_LEN = sizeof(s_payload) };
+static uint8_t s_username[] = "admin";
+enum { USERNAME_LEN = sizeof(s_username) };
+static uint8_t s_password[] = "12345";
+enum { PASSWORD_LEN = sizeof(s_password) };
 
 /*****************************************************************************/
 /* Ack                                                                       */
@@ -187,9 +191,6 @@ static int s_test_ack_init(struct packet_test_fixture *fixture) {
         case AWS_MQTT_PACKET_PUBCOMP:
             ASSERT_SUCCESS(aws_mqtt_packet_pubcomp_init(fixture->in_packet, packet_id));
             break;
-        case AWS_MQTT_PACKET_SUBACK:
-            ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->in_packet, packet_id));
-            break;
         case AWS_MQTT_PACKET_UNSUBACK:
             ASSERT_SUCCESS(aws_mqtt_packet_unsuback_init(fixture->in_packet, packet_id));
             break;
@@ -208,15 +209,13 @@ PACKET_TEST_ACK(PUBACK, puback)
 PACKET_TEST_ACK(PUBREC, pubrec)
 PACKET_TEST_ACK(PUBREL, pubrel)
 PACKET_TEST_ACK(PUBCOMP, pubcomp)
-PACKET_TEST_ACK(SUBACK, suback)
 PACKET_TEST_ACK(UNSUBACK, unsuback)
 #undef PACKET_TEST_ACK
 
 /*****************************************************************************/
 /* Connect                                                                   */
 
-static int s_test_connect_init(
-struct packet_test_fixture *fixture) {
+static int s_test_connect_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
@@ -261,8 +260,87 @@ static bool s_test_connect_eq(void *a, void *b, size_t size) {
 }
 PACKET_TEST(CONNECT, connect, &s_test_connect_init, NULL, &s_test_connect_eq)
 
+static int s_test_connect_will_init(struct packet_test_fixture *fixture) {
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
+        fixture->in_packet, aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN), false, 0));
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_will(
+        fixture->in_packet,
+        aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
+        AWS_MQTT_QOS_EXACTLY_ONCE,
+        true /*retain*/,
+        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
+
+    /* Init buffer */
+    /* clang-format off */
+    uint8_t header[] = {
+        AWS_MQTT_PACKET_CONNECT << 4,   /* Packet type */
+        10 + (2 + CLIENT_ID_LEN) + (2 + TOPIC_NAME_LEN) + (2 + PAYLOAD_LEN), /* Remaining length */
+        0, 4, 'M', 'Q', 'T', 'T',       /* Protocol name */
+        4,                              /* Protocol level */
+                                        /* Connect Flags: */
+        (1 << 2)                        /*   Will flag, bit 2 */
+        | (AWS_MQTT_QOS_EXACTLY_ONCE << 3)/* Will QoS, bits 4-3 */
+        | (1 << 5),                     /*   Will Retain, bit 5 */
+
+        0, 0,                           /* Keep alive */
+    };
+    /* clang-format on */
+
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
+    /* client identifier */
+    aws_byte_buf_write_be16(&fixture->buffer, CLIENT_ID_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_client_id, CLIENT_ID_LEN);
+    /* will topic */
+    aws_byte_buf_write_be16(&fixture->buffer, TOPIC_NAME_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_topic_name, TOPIC_NAME_LEN);
+    /* will payload */
+    aws_byte_buf_write_be16(&fixture->buffer, PAYLOAD_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_payload, PAYLOAD_LEN);
+
+    return AWS_OP_SUCCESS;
+}
+PACKET_TEST_NAME(CONNECT, connect_will, connect, &s_test_connect_will_init, NULL, &s_test_connect_eq)
+
+static int s_test_connect_password_init(struct packet_test_fixture *fixture) {
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
+        fixture->in_packet, aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN), false, 0xBEEF));
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_credentials(
+        fixture->in_packet,
+        aws_byte_cursor_from_array(s_username, USERNAME_LEN),
+        aws_byte_cursor_from_array(s_password, PASSWORD_LEN)));
+
+    /* Init buffer */
+    /* clang-format off */
+    uint8_t header[] = {
+        AWS_MQTT_PACKET_CONNECT << 4,   /* Packet type */
+        10 + (2 + CLIENT_ID_LEN) + (2 + USERNAME_LEN) + (2 + PASSWORD_LEN), /* Remaining length */
+        0, 4, 'M', 'Q', 'T', 'T',       /* Protocol name */
+        4,                              /* Protocol level */
+        (1 << 7) | (1 << 6),            /* Connect Flags: username bit 7, password bit 6 */
+        0xBE, 0xEF,                     /* Keep alive */
+    };
+    /* clang-format on */
+
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
+
+    /* client identifier */
+    aws_byte_buf_write_be16(&fixture->buffer, CLIENT_ID_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_client_id, CLIENT_ID_LEN);
+    /* username */
+    aws_byte_buf_write_be16(&fixture->buffer, USERNAME_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_username, USERNAME_LEN);
+    /* password */
+    aws_byte_buf_write_be16(&fixture->buffer, PASSWORD_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_password, PASSWORD_LEN);
+
+    return AWS_OP_SUCCESS;
+}
+PACKET_TEST_NAME(CONNECT, connect_password, connect, &s_test_connect_password_init, NULL, &s_test_connect_eq)
+
 /*****************************************************************************/
-/* Connect                                                                   */
+/* Connack                                                                   */
 
 static int s_test_connack_init(struct packet_test_fixture *fixture) {
 
@@ -288,14 +366,49 @@ PACKET_TEST(CONNACK, connack, &s_test_connack_init, NULL, NULL)
 /*****************************************************************************/
 /* Publish                                                                   */
 
-static int s_test_publish_init(struct packet_test_fixture *fixture) {
+static int s_test_publish_qos0_dup_init(struct packet_test_fixture *fixture) {
 
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
         fixture->in_packet,
-        false,
+        false /* retain */,
+        AWS_MQTT_QOS_AT_MOST_ONCE,
+        true /* dup */,
+        aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
+        0,
+        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
+
+    /* Init buffer */
+    /* clang-format off */
+    aws_byte_buf_write_u8(
+        &fixture->buffer,
+        (AWS_MQTT_PACKET_PUBLISH << 4) /* Packet type bits 7-4 */
+        | (1 << 3) /* DUP bit 3 */
+        | (AWS_MQTT_QOS_AT_MOST_ONCE << 1) /* QoS bits 2-1 */
+        | 0 /* RETAIN bit 0 */);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 2 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0); /* Topic name len byte 1 */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, TOPIC_NAME_LEN); /* Topic name len byte 2 */
+    aws_byte_buf_write(
+        &fixture->buffer, s_topic_name, TOPIC_NAME_LEN); /* Topic name */
+    aws_byte_buf_write(
+        &fixture->buffer, s_payload, PAYLOAD_LEN); /* payload */
+    /* clang-format on */
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_publish_qos2_retain_init(struct packet_test_fixture *fixture) {
+
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
+        fixture->in_packet,
+        true /* retain */,
         AWS_MQTT_QOS_EXACTLY_ONCE,
-        false,
+        false /* dup */,
         aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
         7,
         aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
@@ -303,7 +416,11 @@ static int s_test_publish_init(struct packet_test_fixture *fixture) {
     /* Init buffer */
     /* clang-format off */
     aws_byte_buf_write_u8(
-        &fixture->buffer, (AWS_MQTT_PACKET_PUBLISH << 4) | (AWS_MQTT_QOS_EXACTLY_ONCE << 1)); /* Packet type */
+        &fixture->buffer,
+        (AWS_MQTT_PACKET_PUBLISH << 4) /* Packet type bits 7-4 */
+        | (0 << 3) /* DUP bit 3 */
+        | (AWS_MQTT_QOS_EXACTLY_ONCE << 1) /* QoS bits 2-1 */
+        | 1 /* RETAIN bit 0 */);
     aws_byte_buf_write_u8(
         &fixture->buffer, 4 + TOPIC_NAME_LEN + PAYLOAD_LEN); /* Remaining length */
     aws_byte_buf_write_u8(
@@ -322,6 +439,7 @@ static int s_test_publish_init(struct packet_test_fixture *fixture) {
 
     return AWS_OP_SUCCESS;
 }
+
 static bool s_test_publish_eq(void *a, void *b, size_t size) {
 
     (void)size;
@@ -332,7 +450,8 @@ static bool s_test_publish_eq(void *a, void *b, size_t size) {
     return s_fixed_header_eq(&l->fixed_header, &r->fixed_header) && l->packet_identifier == r->packet_identifier &&
            aws_byte_cursor_eq(&l->topic_name, &r->topic_name) && aws_byte_cursor_eq(&l->payload, &r->payload);
 }
-PACKET_TEST(PUBLISH, publish, &s_test_publish_init, NULL, &s_test_publish_eq)
+PACKET_TEST_NAME(PUBLISH, publish_qos0_dup, publish, &s_test_publish_qos0_dup_init, NULL, &s_test_publish_eq)
+PACKET_TEST_NAME(PUBLISH, publish_qos2_retain, publish, &s_test_publish_qos2_retain_init, NULL, &s_test_publish_eq)
 
 /*****************************************************************************/
 /* Subscribe                                                                 */
@@ -408,6 +527,70 @@ static bool s_test_subscribe_eq(void *a, void *b, size_t size) {
     return true;
 }
 PACKET_TEST(SUBSCRIBE, subscribe, &s_test_subscribe_init, &s_test_subscribe_clean_up, &s_test_subscribe_eq)
+
+/*****************************************************************************/
+/* Suback                                                                */
+
+static int s_test_suback_init(struct packet_test_fixture *fixture) {
+
+    /* Init packets */
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->in_packet, fixture->allocator, 7));
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_init(fixture->out_packet, fixture->allocator, 0));
+
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(fixture->in_packet, AWS_MQTT_QOS_EXACTLY_ONCE));
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_add_return_code(fixture->in_packet, AWS_MQTT_QOS_FAILURE));
+
+    /* Init buffer */ /* clang-format off */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, (AWS_MQTT_PACKET_SUBACK << 4) | 0x0); /* Packet type & flags */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 2/* variable header */ + 2/* payload */); /* Remaining length */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 0);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, 7);
+    aws_byte_buf_write_u8(
+        &fixture->buffer, AWS_MQTT_QOS_EXACTLY_ONCE); /* Payload */
+    aws_byte_buf_write_u8(
+        &fixture->buffer, AWS_MQTT_QOS_FAILURE); /* Payload */
+    /* clang-format on */
+
+    return AWS_OP_SUCCESS;
+}
+static int s_test_suback_clean_up(struct packet_test_fixture *fixture) {
+
+    aws_mqtt_packet_suback_clean_up(fixture->in_packet);
+    aws_mqtt_packet_suback_clean_up(fixture->out_packet);
+
+    return AWS_OP_SUCCESS;
+}
+static bool s_test_suback_eq(void *a, void *b, size_t size) {
+
+    (void)size;
+
+    struct aws_mqtt_packet_suback *l = a;
+    struct aws_mqtt_packet_suback *r = b;
+
+    if (!s_fixed_header_eq(&l->fixed_header, &r->fixed_header) || l->packet_identifier != r->packet_identifier) {
+        return false;
+    }
+
+    const size_t length = aws_array_list_length(&l->return_codes);
+    if (length != aws_array_list_length(&r->return_codes)) {
+        return false;
+    }
+
+    for (size_t i = 0; i < length; ++i) {
+        uint8_t lt = 0;
+        aws_array_list_get_at(&l->return_codes, (void *)&lt, i);
+        uint8_t rt = 0;
+        aws_array_list_get_at(&r->return_codes, (void *)&rt, i);
+        AWS_ASSUME(lt && rt);
+    }
+
+    return true;
+}
+PACKET_TEST(SUBACK, suback, &s_test_suback_init, &s_test_suback_clean_up, &s_test_suback_eq)
 
 /*****************************************************************************/
 /* Unsubscribe                                                               */

@@ -65,11 +65,16 @@ static void s_on_packet_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *user_data) {
 
     (void)connection;
     (void)topic;
-    (void)payload;
+    (void)dup;
+    (void)qos;
+    (void)retain;
 
     struct aws_byte_cursor expected_payload = {
         .ptr = s_payload,
@@ -92,11 +97,16 @@ static void s_on_any_packet_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *user_data) {
 
     (void)connection;
     (void)topic;
-    (void)payload;
+    (void)dup;
+    (void)qos;
+    (void)retain;
 
     struct aws_byte_cursor expected_payload = {
         .ptr = s_payload,
@@ -294,8 +304,6 @@ static int s_cleanup_test(struct test_context *tester) {
     aws_client_bootstrap_release(tester->bootstrap);
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
-
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_mutex_clean_up(&tester->lock);
     aws_condition_variable_clean_up(&tester->signal);

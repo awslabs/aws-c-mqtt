@@ -91,11 +91,16 @@ static void s_on_packet_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
     void *userdata) {
 
     (void)connection;
     (void)topic;
-    (void)payload;
+    (void)dup;
+    (void)qos;
+    (void)retain;
 
     AWS_FATAL_ASSERT(payload->len == PAYLOAD_LEN);
     AWS_FATAL_ASSERT(0 == memcmp(payload->ptr, s_payload, PAYLOAD_LEN));
@@ -358,8 +363,6 @@ int s_cleanup_test(struct test_context *tester) {
 
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
-
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_logger_clean_up(&tester->logger);
 

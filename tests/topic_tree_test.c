@@ -15,10 +15,19 @@ static struct aws_byte_cursor s_empty_cursor = {
 };
 
 static int times_called = 0;
-static void on_publish(const struct aws_byte_cursor *topic, const struct aws_byte_cursor *payload, void *user_data) {
+static void on_publish(
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    void *user_data) {
 
     (void)topic;
     (void)payload;
+    (void)dup;
+    (void)qos;
+    (void)retain;
     (void)user_data;
 
     times_called++;
