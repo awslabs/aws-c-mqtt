@@ -1062,12 +1062,16 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
 
     /* Allocate new proxy options object, and add space for buffered strings */
     void *host_buffer = NULL;
+    void *username_buffer = NULL;
+    void *password_buffer = NULL;
 
     /* clang-format off */
-    void *alloc = aws_mem_acquire_many(connection->allocator, 3,
+    void *alloc = aws_mem_acquire_many(connection->allocator, 5,
         &connection->websocket.proxy, sizeof(*connection->websocket.proxy),
         &connection->websocket.proxy_options, sizeof(struct aws_http_proxy_options),
-        &host_buffer, proxy_options->host.len);
+        &host_buffer, proxy_options->host.len,
+        &username_buffer, proxy_options->auth_username.len,
+        &password_buffer, proxy_options->auth_password.len);
     /* clang-format on */
 
     if (!alloc) {
@@ -1088,17 +1092,30 @@ int aws_mqtt_client_connection_set_websocket_proxy_options(
 
     /* Init the byte bufs */
     connection->websocket.proxy->host = aws_byte_buf_from_empty_array(host_buffer, proxy_options->host.len);
+    connection->websocket.proxy->auth_username =
+        aws_byte_buf_from_empty_array(username_buffer, proxy_options->auth_username.len);
+    connection->websocket.proxy->auth_password =
+        aws_byte_buf_from_empty_array(password_buffer, proxy_options->auth_password.len);
     connection->websocket.proxy->proxy_strategy = aws_http_proxy_strategy_acquire(proxy_options->proxy_strategy);
 
     /* Write out the various strings */
     bool succ = true;
     succ &= aws_byte_buf_write_from_whole_cursor(&connection->websocket.proxy->host, proxy_options->host);
+    succ &=
+        aws_byte_buf_write_from_whole_cursor(&connection->websocket.proxy->auth_username, proxy_options->auth_username);
+    succ &=
+        aws_byte_buf_write_from_whole_cursor(&connection->websocket.proxy->auth_password, proxy_options->auth_password);
     AWS_FATAL_ASSERT(succ);
 
     /* Update the proxy options cursors */
     connection->websocket.proxy_options->host = aws_byte_cursor_from_buf(&connection->websocket.proxy->host);
+    connection->websocket.proxy_options->auth_username =
+        aws_byte_cursor_from_buf(&connection->websocket.proxy->auth_username);
+    connection->websocket.proxy_options->auth_password =
+        aws_byte_cursor_from_buf(&connection->websocket.proxy->auth_password);
     /* Update proxy options values */
     connection->websocket.proxy_options->port = proxy_options->port;
+    connection->websocket.proxy_options->auth_type = proxy_options->auth_type;
     connection->websocket.proxy_options->connection_type = proxy_options->connection_type;
     connection->websocket.proxy_options->proxy_strategy = connection->websocket.proxy->proxy_strategy;
 
