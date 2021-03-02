@@ -1501,7 +1501,7 @@ static int s_mqtt_client_connect(
             AWS_ZERO_STRUCT(proxy_options);
 
             aws_http_proxy_options_init_from_config(&proxy_options, connection->http_proxy_config);
-            result = aws_http_proxy_new_socket_channel(&channel_options, &proxy_options);
+            result = aws_http_proxy_new_alpn_socket_channel(&channel_options, &proxy_options);
         }
     }
 
