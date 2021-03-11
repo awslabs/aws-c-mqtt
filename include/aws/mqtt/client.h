@@ -195,15 +195,13 @@ struct aws_mqtt_topic_subscription {
  *                           within this amount of time (milliseconds). If you specify 0, a default value of 3 seconds
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
- *                           and OS version. This duration must be shorter than keep_alive_time_secs. It is also used to
- *                           re-attempt requests with qos > 0 if they are not ACKed in time.
- *
- * TODO: The documentation is not clear. it's probably more clear to be named as request_timeout_ms, since we are using
- * this for all the requests that need a response.
- * Note: For CONNECT, if the response is not received within this amount of time, the connection will shutdown, and
- * reconnect will not happen automatically. For PINGREQ, the connection will shutdown and try to reconnect
- * automactically. For other requests, they will be resent in this case.
- *
+ *                           and OS version. This duration must be shorter than keep_alive_time_secs.
+ * publish_timeout_secs      Timeout when the response of publish QoS>0 has not received within this amount of time and
+ *                           no interruption on the connection. The lost of the connection will reset the timeout, and
+ *                           start timing when the connection resumes and publish is resent on a connection with
+ *                           clean_session false. If timeout happens, client will assume server side doesn't receive
+ *                           the publish at all, same as client never sent it.
+ *                           Set it to zero for no timeout.
  * on_connection_complete    The callback to fire when the connection attempt completes
  * user_data                 Passed to the userdata param of on_connection_complete
  */
@@ -215,6 +213,7 @@ struct aws_mqtt_connection_options {
     struct aws_byte_cursor client_id;
     uint16_t keep_alive_time_secs;
     uint32_t ping_timeout_ms;
+    uint16_t publish_timeout_secs;
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *user_data;
     bool clean_session;
