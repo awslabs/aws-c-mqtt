@@ -2084,6 +2084,7 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
+        .publish_timeout_secs = 3,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
@@ -2516,7 +2517,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
-        .publish_timeout_secs = 2,
+        .publish_timeout_secs = 3,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
@@ -2606,13 +2607,13 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_connection_lost_reset_tim
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* sleep for 2 sec, close the connection */
-    aws_thread_current_sleep(2 * ONE_SEC);
+    aws_thread_current_sleep((uint64_t)ONE_SEC * 2);
     /* Kill the connection, the requests will be retried and the timeout will be reset. */
     aws_channel_shutdown(state_test_data->server_channel, AWS_ERROR_INVALID_STATE);
     s_wait_for_reconnect_to_complete(state_test_data);
     /* sleep for 2 sec again, in total the response has not received for more than 4 sec, timeout should happen if the
      * lost of connection not reset the timeout */
-    aws_thread_current_sleep(2 * ONE_SEC);
+    aws_thread_current_sleep((uint64_t)ONE_SEC * 2);
     /* send a puback */
     ASSERT_SUCCESS(mqtt_mock_server_send_puback(state_test_data->mock_server, packet_id_1));
 

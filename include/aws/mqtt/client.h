@@ -197,11 +197,10 @@ struct aws_mqtt_topic_subscription {
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
  *                           and OS version. This duration must be shorter than keep_alive_time_secs.
  * publish_timeout_secs      Timeout when the response of publish QoS>0 has not received within this amount of time and
- *                           no interruption on the connection. The lost of the connection will reset the timeout, and
- *                           start timing when the connection resumes and publish is resent on a connection with
- *                           clean_session false. If timeout happens, client will assume server side doesn't receive
- *                           the publish at all, same as client never sent it.
- *                           Set it to zero for no timeout.
+ *                           no interruption on the connection. The lost of the connection will reset the timeout. The
+ *                           timer starts when the publish packet sent to the wire by the client.
+ *                           If timeout happens, client will assume server side doesn't receive the publish and fail the
+ *                           publish. Set it to zero for no timeout.
  * on_connection_complete    The callback to fire when the connection attempt completes
  * user_data                 Passed to the userdata param of on_connection_complete
  */
