@@ -196,7 +196,7 @@ struct aws_mqtt_topic_subscription {
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
  *                           and OS version. This duration must be shorter than keep_alive_time_secs.
- * publish_timeout_secs      Timeout when the response of publish QoS>0 has not received within this amount of time and
+ * publish_timeout_ms       Timeout when the response of publish QoS>0 has not received within this amount of time and
  *                           no interruption on the connection. The lost of the connection will reset the timeout. The
  *                           timer starts when the publish packet sent to the wire by the client.
  *                           If timeout happens, client will assume server side doesn't receive the publish and fail the
@@ -212,7 +212,7 @@ struct aws_mqtt_connection_options {
     struct aws_byte_cursor client_id;
     uint16_t keep_alive_time_secs;
     uint32_t ping_timeout_ms;
-    uint16_t publish_timeout_secs;
+    uint32_t publish_timeout_ms;
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *user_data;
     bool clean_session;

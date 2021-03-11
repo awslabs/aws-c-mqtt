@@ -1382,11 +1382,11 @@ int aws_mqtt_client_connection_connect(
     if (!connection->keep_alive_time_secs) {
         connection->keep_alive_time_secs = s_default_keep_alive_sec;
     }
-    if (!connection_options->publish_timeout_secs) {
+    if (!connection_options->publish_timeout_ms) {
         connection->publish_timeout_ns = UINT64_MAX;
     } else {
         connection->publish_timeout_ns = aws_timestamp_convert(
-            (uint64_t)connection_options->publish_timeout_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+            (uint64_t)connection_options->publish_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
     if (!connection_options->ping_timeout_ms) {
