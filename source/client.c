@@ -119,6 +119,8 @@ static struct request_timeout_task_arg *s_schedule_timeout_task(
     AWS_ZERO_STRUCT(*timeout_task_arg);
     timeout_task_arg->connection = connection;
     timeout_task_arg->packet_id = packet_id;
+    /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
+     * invoked, but some issues still exist from io side. */
     uint64_t timestamp = 0;
     if (aws_channel_current_clock_time(connection->slot->channel, &timestamp)) {
         aws_mem_release(connection->allocator, timeout_task_arg);
