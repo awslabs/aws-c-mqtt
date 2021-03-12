@@ -94,4 +94,5 @@ if [[ $OSTYPE != darwin* ]]; then
     install_dep s2n
 fi
 install_dep aws-c-io
+install_dep aws-c-compression
 install_dep aws-c-http
