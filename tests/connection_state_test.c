@@ -2503,7 +2503,7 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * Test that connection is health, user set the timeout for publish QoS1, and timeout happens, the publish failed.
+ * Test that connection is health, user set the timeout for request, and timeout happens, the publish failed.
  */
 static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
@@ -2563,7 +2563,61 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * Test that connection is health, user set the timeout for publish QoS1, and connection lost will reset timeout.
+ * Test that connection is health, user set the timeout for request, and timeout happens, the publish failed.
+ */
+static int s_test_mqtt_connection_unsub_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .ping_timeout_ms = 10,
+        .request_response_timeout_ms = 3000,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
+    };
+
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    /* unsubscribe to the first topic */
+    uint16_t unsub_packet_id = aws_mqtt_client_connection_unsubscribe(
+        state_test_data->mqtt_connection, &pub_topic, s_on_op_complete, state_test_data);
+    ASSERT_TRUE(unsub_packet_id > 0);
+
+    /* publish should complete after the shutdown */
+    s_wait_for_ops_completed(state_test_data);
+    /* Check the publish has been completed with timeout error */
+    ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_MQTT_TIMEOUT);
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_unsub_timeout,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_unsub_timeout_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/**
+ * Test that connection is health, user set the timeout for request, and connection lost will reset timeout.
  */
 static int s_test_mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time_fn(
     struct aws_allocator *allocator,
