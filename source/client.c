@@ -78,6 +78,57 @@ void mqtt_connection_set_state(
     connection->synced_data.state = state;
 }
 
+/* used for timeout task */
+struct request_timeout_task_arg {
+    bool cancelled;
+
+    uint16_t packet_id;
+    struct aws_mqtt_client_connection *connection;
+};
+
+static void s_request_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    (void)channel_task;
+    struct request_timeout_task_arg *timeout_task_arg = arg;
+    struct aws_mqtt_client_connection *connection = timeout_task_arg->connection;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        if (!timeout_task_arg->cancelled) {
+            mqtt_request_complete(connection, AWS_ERROR_MQTT_TIMEOUT, timeout_task_arg->packet_id);
+        }
+    }
+
+    aws_mem_release(connection->allocator, timeout_task_arg);
+}
+
+static struct request_timeout_task_arg *s_schedule_timeout_task(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id) {
+    /* schedule a timeout task to run, in case server consider the publish is not received */
+    struct aws_channel_task *request_timeout_task = NULL;
+    struct request_timeout_task_arg *timeout_task_arg = NULL;
+    if (!aws_mem_acquire_many(
+            connection->allocator,
+            2,
+            &timeout_task_arg,
+            sizeof(struct request_timeout_task_arg),
+            &request_timeout_task,
+            sizeof(struct aws_channel_task))) {
+        return NULL;
+    }
+    aws_channel_task_init(request_timeout_task, s_request_timeout, timeout_task_arg, "mqtt_request_timeout");
+    AWS_ZERO_STRUCT(*timeout_task_arg);
+    timeout_task_arg->connection = connection;
+    timeout_task_arg->packet_id = packet_id;
+    uint64_t timestamp = 0;
+    if (aws_channel_current_clock_time(connection->slot->channel, &timestamp)) {
+        aws_mem_release(connection->allocator, timeout_task_arg);
+        return NULL;
+    }
+    timestamp = aws_add_u64_saturating(timestamp, connection->request_timeout_ns);
+    aws_channel_schedule_task_future(connection->slot->channel, request_timeout_task, timestamp);
+    return timeout_task_arg;
+}
+
 /*******************************************************************************
  * Client Init
  ******************************************************************************/
@@ -1382,11 +1433,11 @@ int aws_mqtt_client_connection_connect(
     if (!connection->keep_alive_time_secs) {
         connection->keep_alive_time_secs = s_default_keep_alive_sec;
     }
-    if (!connection_options->publish_timeout_ms) {
-        connection->publish_timeout_ns = UINT64_MAX;
+    if (!connection_options->request_response_timeout_ms) {
+        connection->request_timeout_ns = UINT64_MAX;
     } else {
-        connection->publish_timeout_ns = aws_timestamp_convert(
-            (uint64_t)connection_options->publish_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+        connection->request_timeout_ns = aws_timestamp_convert(
+            (uint64_t)connection_options->request_response_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
     if (!connection_options->ping_timeout_ms) {
@@ -2389,6 +2440,7 @@ struct unsubscribe_task_arg {
 
     aws_mqtt_op_complete_fn *on_unsuback;
     void *on_unsuback_ud;
+    struct request_timeout_task_arg *timeout_arg;
 };
 
 static enum aws_mqtt_client_request_state s_unsubscribe_send(
@@ -2448,6 +2500,11 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
             goto handle_error;
         }
+        struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(task_arg->connection, packet_id);
+        if (!timeout_task_arg) {
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+        task_arg->timeout_arg = timeout_task_arg;
     }
 
     if (!task_arg->tree_updated) {
@@ -2541,30 +2598,8 @@ struct publish_task_arg {
 
     aws_mqtt_op_complete_fn *on_complete;
     void *userdata;
-    struct publish_timeout_task_arg *timeout_arg;
+    struct request_timeout_task_arg *timeout_arg;
 };
-
-/* used for timeout task of publish */
-struct publish_timeout_task_arg {
-    bool cancelled;
-
-    uint16_t packet_id;
-    struct aws_mqtt_client_connection *connection;
-};
-
-static void s_publish_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
-    (void)channel_task;
-    struct publish_timeout_task_arg *timeout_task_arg = arg;
-    struct aws_mqtt_client_connection *connection = timeout_task_arg->connection;
-
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        if (!timeout_task_arg->cancelled) {
-            mqtt_request_complete(connection, AWS_ERROR_MQTT_TIMEOUT, timeout_task_arg->packet_id);
-        }
-    }
-
-    aws_mem_release(connection->allocator, timeout_task_arg);
-}
 
 static int s_get_element_from_outstanding_requests_table(
     struct aws_mqtt_client_connection *connection,
@@ -2684,29 +2719,11 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
             goto write_payload_chunk;
         }
     }
-    if (!is_qos_0 && connection->publish_timeout_ns != UINT64_MAX) {
-        /* schedule a timeout task to run, in case server consider the publish is not received */
-        struct aws_channel_task *publish_timeout_task = NULL;
-        struct publish_timeout_task_arg *timeout_task_arg = NULL;
-        if (!aws_mem_acquire_many(
-                connection->allocator,
-                2,
-                &timeout_task_arg,
-                sizeof(struct publish_timeout_task_arg),
-                &publish_timeout_task,
-                sizeof(struct aws_channel_task))) {
+    if (!is_qos_0 && connection->request_timeout_ns != UINT64_MAX) {
+        struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(connection, packet_id);
+        if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
-        aws_channel_task_init(publish_timeout_task, s_publish_timeout, timeout_task_arg, "mqtt_publish_timeout");
-        AWS_ZERO_STRUCT(*timeout_task_arg);
-        timeout_task_arg->connection = connection;
-        timeout_task_arg->packet_id = packet_id;
-        uint64_t timestamp = 0;
-        if (aws_channel_current_clock_time(connection->slot->channel, &timestamp)) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-        timestamp = aws_add_u64_saturating(timestamp, connection->publish_timeout_ns);
-        aws_channel_schedule_task_future(connection->slot->channel, publish_timeout_task, timestamp);
         task_arg->timeout_arg = timeout_task_arg;
     }
 
