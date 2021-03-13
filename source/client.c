@@ -126,7 +126,7 @@ static struct request_timeout_task_arg *s_schedule_timeout_task(
         aws_mem_release(connection->allocator, timeout_task_arg);
         return NULL;
     }
-    timestamp = aws_add_u64_saturating(timestamp, connection->request_timeout_ns);
+    timestamp = aws_add_u64_saturating(timestamp, connection->operation_timeout_ns);
     aws_channel_schedule_task_future(connection->slot->channel, request_timeout_task, timestamp);
     return timeout_task_arg;
 }
@@ -1435,11 +1435,14 @@ int aws_mqtt_client_connection_connect(
     if (!connection->keep_alive_time_secs) {
         connection->keep_alive_time_secs = s_default_keep_alive_sec;
     }
-    if (!connection_options->request_response_timeout_ms) {
-        connection->request_timeout_ns = UINT64_MAX;
+    if (!connection_options->protocol_operation_timeout_ms) {
+        connection->operation_timeout_ns = UINT64_MAX;
     } else {
-        connection->request_timeout_ns = aws_timestamp_convert(
-            (uint64_t)connection_options->request_response_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+        connection->operation_timeout_ns = aws_timestamp_convert(
+            (uint64_t)connection_options->protocol_operation_timeout_ms,
+            AWS_TIMESTAMP_MILLIS,
+            AWS_TIMESTAMP_NANOS,
+            NULL);
     }
 
     if (!connection_options->ping_timeout_ms) {
@@ -2721,7 +2724,7 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
             goto write_payload_chunk;
         }
     }
-    if (!is_qos_0 && connection->request_timeout_ns != UINT64_MAX) {
+    if (!is_qos_0 && connection->operation_timeout_ns != UINT64_MAX) {
         struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(connection, packet_id);
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;

@@ -2084,7 +2084,7 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
-        .request_response_timeout_ms = 3000,
+        .protocol_operation_timeout_ms = 3000,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
@@ -2517,7 +2517,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
-        .request_response_timeout_ms = 3000,
+        .protocol_operation_timeout_ms = 3000,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
@@ -2577,7 +2577,7 @@ static int s_test_mqtt_connection_unsub_timeout_fn(struct aws_allocator *allocat
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
-        .request_response_timeout_ms = 3000,
+        .protocol_operation_timeout_ms = 3000,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
@@ -2633,7 +2633,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_connection_lost_reset_tim
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
         .ping_timeout_ms = 10,
-        .request_response_timeout_ms = 3000,
+        .protocol_operation_timeout_ms = 3000,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 

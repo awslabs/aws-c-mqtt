@@ -136,7 +136,7 @@ struct aws_mqtt_client_connection {
     bool clean_session;
     uint16_t keep_alive_time_secs;
     uint64_t ping_timeout_ns;
-    uint64_t request_timeout_ns;
+    uint64_t operation_timeout_ns;
     struct aws_string *username;
     struct aws_string *password;
     struct {

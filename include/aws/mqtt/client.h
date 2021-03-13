@@ -196,11 +196,11 @@ struct aws_mqtt_topic_subscription {
  *                           is used. Alternatively, tcp keep-alive may be away to accomplish this in a more efficient
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
  *                           and OS version. This duration must be shorter than keep_alive_time_secs.
- * request_response_timeout_ms
- *                           Timeout when waiting for the response to some requests needs response. Set to zero to
- *                           disable timeout. Otherwise, the operation will fail with error AWS_ERROR_MQTT_TIMEOUT if no
- *                           response is received within this amount of time after the packet is written to the socket.
- *                           The timer is reset if the connection is interrupted.
+ * protocol_operation_timeout_ms
+ *                           Timeout when waiting for the response to some operation requires response by protocol.
+ *                           Set to zero to disable timeout. Otherwise, the operation will fail with error
+ *                           AWS_ERROR_MQTT_TIMEOUT if no response is received within this amount of time after
+ *                           the packet is written to the socket. The timer is reset if the connection is interrupted.
  *                           It applied to PUBLISH (QoS>0) and UNSUBSCRIBE now.
  *                           Note: While the MQTT 3 specification states that a broker MUST respond,
  *                           some brokers are known to ignore publish packets in exceptional circumstances
@@ -216,7 +216,7 @@ struct aws_mqtt_connection_options {
     struct aws_byte_cursor client_id;
     uint16_t keep_alive_time_secs;
     uint32_t ping_timeout_ms;
-    uint32_t request_response_timeout_ms;
+    uint32_t protocol_operation_timeout_ms;
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *user_data;
     bool clean_session;
