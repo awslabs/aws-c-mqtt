@@ -2543,7 +2543,7 @@ static void s_unsubscribe_complete(
     struct unsubscribe_task_arg *task_arg = userdata;
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Unsubscribe %" PRIu16 " complete", (void *)connection, packet_id);
-
+    task_arg->timeout_arg->cancelled = true;
     if (task_arg->on_unsuback) {
         task_arg->on_unsuback(connection, packet_id, error_code, task_arg->on_unsuback_ud);
     }
