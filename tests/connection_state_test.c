@@ -2170,7 +2170,7 @@ AWS_TEST_CASE_FIXTURE(
 /**
  * Test that the request will not be retried even the response has not received for a while.
  */
-static int s_test_mqtt_connection_not_resend_packets_on_health_connection_fn(
+static int s_test_mqtt_connection_not_resend_packets_on_healthy_connection_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)allocator;
@@ -2248,9 +2248,9 @@ static int s_test_mqtt_connection_not_resend_packets_on_health_connection_fn(
 }
 
 AWS_TEST_CASE_FIXTURE(
-    mqtt_connection_not_resend_packets_on_health_connection,
+    mqtt_connection_not_resend_packets_on_healthy_connection,
     s_setup_mqtt_server_fn,
-    s_test_mqtt_connection_not_resend_packets_on_health_connection_fn,
+    s_test_mqtt_connection_not_resend_packets_on_healthy_connection_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
 
@@ -2503,7 +2503,7 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * Test that connection is health, user set the timeout for request, and timeout happens, the publish failed.
+ * Test that connection is healthy, user set the timeout for request, and timeout happens and the publish failed.
  */
 static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
@@ -2563,7 +2563,7 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * Test that connection is health, user set the timeout for request, and timeout happens, the publish failed.
+ * Test that connection is healthy, user set the timeout for request, and timeout happens and the unsubscribe failed.
  */
 static int s_test_mqtt_connection_unsub_timeout_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
@@ -2617,7 +2617,7 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * Test that connection is health, user set the timeout for request, and connection lost will reset timeout.
+ * Test that connection is healthy, user set the timeout for request, and connection lost will reset timeout.
  */
 static int s_test_mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time_fn(
     struct aws_allocator *allocator,

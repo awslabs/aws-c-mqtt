@@ -2505,7 +2505,8 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         }
 
         /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
-         * invoked, but some issues still exist from io side. */
+         * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
+         * fire fire the on_completion callbacks. */
         struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(task_arg->connection, packet_id);
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
@@ -2729,7 +2730,8 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
     }
     if (!is_qos_0 && connection->operation_timeout_ns != UINT64_MAX) {
         /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
-         * invoked, but some issues still exist from io side. */
+         * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
+         * fire fire the on_completion callbacks. */
         struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(connection, packet_id);
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
