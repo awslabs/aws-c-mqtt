@@ -119,8 +119,6 @@ static struct request_timeout_task_arg *s_schedule_timeout_task(
     AWS_ZERO_STRUCT(*timeout_task_arg);
     timeout_task_arg->connection = connection;
     timeout_task_arg->packet_id = packet_id;
-    /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
-     * invoked, but some issues still exist from io side. */
     uint64_t timestamp = 0;
     if (aws_channel_current_clock_time(connection->slot->channel, &timestamp)) {
         aws_mem_release(connection->allocator, timeout_task_arg);
@@ -2505,6 +2503,9 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
             goto handle_error;
         }
+
+        /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
+         * invoked, but some issues still exist from io side. */
         struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(task_arg->connection, packet_id);
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
@@ -2727,6 +2728,8 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
         }
     }
     if (!is_qos_0 && connection->operation_timeout_ns != UINT64_MAX) {
+        /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
+         * invoked, but some issues still exist from io side. */
         struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(connection, packet_id);
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
