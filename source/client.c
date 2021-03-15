@@ -32,7 +32,7 @@
 #endif
 
 /* 3 seconds */
-static const uint64_t s_default_request_timeout_ns = 3000000000;
+static const uint64_t s_default_ping_timeout_ns = 3000000000;
 
 /* 20 minutes - This is the default (and max) for AWS IoT as of 2020.02.18 */
 static const uint16_t s_default_keep_alive_sec = 1200;
@@ -76,6 +76,57 @@ void mqtt_connection_set_state(
         return;
     }
     connection->synced_data.state = state;
+}
+
+/* used for timeout task */
+struct request_timeout_task_arg {
+    bool cancelled;
+
+    uint16_t packet_id;
+    struct aws_mqtt_client_connection *connection;
+};
+
+static void s_request_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    (void)channel_task;
+    struct request_timeout_task_arg *timeout_task_arg = arg;
+    struct aws_mqtt_client_connection *connection = timeout_task_arg->connection;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        if (!timeout_task_arg->cancelled) {
+            mqtt_request_complete(connection, AWS_ERROR_MQTT_TIMEOUT, timeout_task_arg->packet_id);
+        }
+    }
+
+    aws_mem_release(connection->allocator, timeout_task_arg);
+}
+
+static struct request_timeout_task_arg *s_schedule_timeout_task(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id) {
+    /* schedule a timeout task to run, in case server consider the publish is not received */
+    struct aws_channel_task *request_timeout_task = NULL;
+    struct request_timeout_task_arg *timeout_task_arg = NULL;
+    if (!aws_mem_acquire_many(
+            connection->allocator,
+            2,
+            &timeout_task_arg,
+            sizeof(struct request_timeout_task_arg),
+            &request_timeout_task,
+            sizeof(struct aws_channel_task))) {
+        return NULL;
+    }
+    aws_channel_task_init(request_timeout_task, s_request_timeout, timeout_task_arg, "mqtt_request_timeout");
+    AWS_ZERO_STRUCT(*timeout_task_arg);
+    timeout_task_arg->connection = connection;
+    timeout_task_arg->packet_id = packet_id;
+    uint64_t timestamp = 0;
+    if (aws_channel_current_clock_time(connection->slot->channel, &timestamp)) {
+        aws_mem_release(connection->allocator, timeout_task_arg);
+        return NULL;
+    }
+    timestamp = aws_add_u64_saturating(timestamp, connection->operation_timeout_ns);
+    aws_channel_schedule_task_future(connection->slot->channel, request_timeout_task, timestamp);
+    return timeout_task_arg;
 }
 
 /*******************************************************************************
@@ -438,7 +489,7 @@ static void s_mqtt_client_init(
 
         goto handle_error;
     }
-    now += connection->request_timeout_ns;
+    now += connection->ping_timeout_ns;
     aws_channel_schedule_task_future(channel, connack_task, now);
 
     /* Send the connect packet */
@@ -1382,33 +1433,41 @@ int aws_mqtt_client_connection_connect(
     if (!connection->keep_alive_time_secs) {
         connection->keep_alive_time_secs = s_default_keep_alive_sec;
     }
+    if (!connection_options->protocol_operation_timeout_ms) {
+        connection->operation_timeout_ns = UINT64_MAX;
+    } else {
+        connection->operation_timeout_ns = aws_timestamp_convert(
+            (uint64_t)connection_options->protocol_operation_timeout_ms,
+            AWS_TIMESTAMP_MILLIS,
+            AWS_TIMESTAMP_NANOS,
+            NULL);
+    }
 
     if (!connection_options->ping_timeout_ms) {
-        connection->request_timeout_ns = s_default_request_timeout_ns;
+        connection->ping_timeout_ns = s_default_ping_timeout_ns;
     } else {
-        connection->request_timeout_ns = aws_timestamp_convert(
+        connection->ping_timeout_ns = aws_timestamp_convert(
             (uint64_t)connection_options->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
     /* Keep alive time should always be greater than the timeouts. */
-    if (AWS_UNLIKELY(
-            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->request_timeout_ns)) {
+    if (AWS_UNLIKELY(connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->ping_timeout_ns)) {
         AWS_LOGF_FATAL(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Illegal configuration, Connection keep alive %" PRIu64
             "ns must be greater than the request timeouts %" PRIu64 "ns.",
             (void *)connection,
             (uint64_t)connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS,
-            connection->request_timeout_ns);
+            connection->ping_timeout_ns);
         AWS_FATAL_ASSERT(
-            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS > connection->request_timeout_ns);
+            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS > connection->ping_timeout_ns);
     }
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT_CLIENT,
         "id=%p: using ping timeout of %" PRIu64 " ns",
         (void *)connection,
-        connection->request_timeout_ns);
+        connection->ping_timeout_ns);
 
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (connection_options->tls_options) {
@@ -2384,6 +2443,7 @@ struct unsubscribe_task_arg {
 
     aws_mqtt_op_complete_fn *on_unsuback;
     void *on_unsuback_ud;
+    struct request_timeout_task_arg *timeout_arg;
 };
 
 static enum aws_mqtt_client_request_state s_unsubscribe_send(
@@ -2443,6 +2503,15 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
             goto handle_error;
         }
+
+        /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
+         * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
+         * fire fire the on_completion callbacks. */
+        struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(task_arg->connection, packet_id);
+        if (!timeout_task_arg) {
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+        task_arg->timeout_arg = timeout_task_arg;
     }
 
     if (!task_arg->tree_updated) {
@@ -2476,7 +2545,9 @@ static void s_unsubscribe_complete(
     struct unsubscribe_task_arg *task_arg = userdata;
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Unsubscribe %" PRIu16 " complete", (void *)connection, packet_id);
-
+    if (task_arg->timeout_arg) {
+        task_arg->timeout_arg->cancelled = true;
+    }
     if (task_arg->on_unsuback) {
         task_arg->on_unsuback(connection, packet_id, error_code, task_arg->on_unsuback_ud);
     }
@@ -2536,6 +2607,7 @@ struct publish_task_arg {
 
     aws_mqtt_op_complete_fn *on_complete;
     void *userdata;
+    struct request_timeout_task_arg *timeout_arg;
 };
 
 static int s_get_element_from_outstanding_requests_table(
@@ -2586,6 +2658,7 @@ void aws_mqtt_client_get_topic_for_outstanding_publish_packet(
 
 static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, bool is_first_attempt, void *userdata) {
     struct publish_task_arg *task_arg = userdata;
+    struct aws_mqtt_client_connection *connection = task_arg->connection;
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
@@ -2655,6 +2728,16 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
             goto write_payload_chunk;
         }
     }
+    if (!is_qos_0 && connection->operation_timeout_ns != UINT64_MAX) {
+        /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
+         * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
+         * fire fire the on_completion callbacks. */
+        struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(connection, packet_id);
+        if (!timeout_task_arg) {
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+        task_arg->timeout_arg = timeout_task_arg;
+    }
 
     /* If QoS == 0, there will be no ack, so consider the request done now. */
     return is_qos_0 ? AWS_MQTT_CLIENT_REQUEST_COMPLETE : AWS_MQTT_CLIENT_REQUEST_ONGOING;
@@ -2672,7 +2755,9 @@ static void s_publish_complete(
     if (task_arg->on_complete) {
         task_arg->on_complete(connection, packet_id, error_code, task_arg->userdata);
     }
-
+    if (task_arg->timeout_arg) {
+        task_arg->timeout_arg->cancelled = true;
+    }
     aws_string_destroy(task_arg->topic_string);
     aws_mem_release(connection->allocator, task_arg);
 }
@@ -2798,15 +2883,9 @@ static enum aws_mqtt_client_request_state s_pingreq_send(uint16_t packet_id, boo
     aws_channel_task_init(ping_timeout_task, s_pingresp_received_timeout, connection, "mqtt_pingresp_timeout");
     uint64_t now = 0;
     if (aws_channel_current_clock_time(connection->slot->channel, &now)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "static: Failed to setting MQTT handler into slot on channel %p, error %d (%s).",
-            (void *)connection->slot->channel,
-            aws_last_error(),
-            aws_error_name(aws_last_error()));
         goto error;
     }
-    now += connection->request_timeout_ns;
+    now += connection->ping_timeout_ns;
     aws_channel_schedule_task_future(connection->slot->channel, ping_timeout_task, now);
     return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
 
