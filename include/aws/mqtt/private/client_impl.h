@@ -130,6 +130,7 @@ struct aws_mqtt_client_connection {
     uint16_t port;
     struct aws_tls_connection_options tls_options;
     struct aws_socket_options socket_options;
+    struct aws_http_proxy_config *http_proxy_config;
 
     /* Connect parameters */
     struct aws_byte_buf client_id;
@@ -226,14 +227,6 @@ struct aws_mqtt_client_connection {
         aws_mqtt_validate_websocket_handshake_fn *handshake_validator;
         void *handshake_validator_ud;
         bool enabled;
-
-        struct {
-            struct aws_byte_buf host;
-            struct aws_byte_buf auth_username;
-            struct aws_byte_buf auth_password;
-            struct aws_tls_connection_options tls_options;
-        } * proxy;
-        struct aws_http_proxy_options *proxy_options;
 
         struct aws_http_message *handshake_request;
     } websocket;
