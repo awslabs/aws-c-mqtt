@@ -2549,6 +2549,7 @@ struct publish_task_arg {
     enum aws_mqtt_qos qos;
     bool retain;
     struct aws_byte_cursor payload;
+    struct aws_byte_buf payload_buf;
 
     /* Packet to populate */
     struct aws_mqtt_packet_publish publish;
@@ -2585,7 +2586,7 @@ void aws_mqtt_client_get_payload_for_outstanding_publish_packet(
 
     struct aws_mqtt_request *request = elem->value;
     struct publish_task_arg pub = *(struct publish_task_arg *)request->send_request_ud;
-    *result = aws_byte_cursor_from_c_str((const char *)pub.payload.ptr);
+    *result = aws_byte_cursor_from_buf(&pub.payload_buf);
 }
 
 void aws_mqtt_client_get_topic_for_outstanding_publish_packet(
@@ -2706,6 +2707,7 @@ static void s_publish_complete(
     if (task_arg->timeout_arg) {
         task_arg->timeout_arg->cancelled = true;
     }
+    aws_byte_buf_clean_up(&task_arg->payload_buf);
     aws_string_destroy(task_arg->topic_string);
     aws_mem_release(connection->allocator, task_arg);
 }
@@ -2736,8 +2738,10 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->topic = aws_byte_cursor_from_string(arg->topic_string);
     arg->qos = qos;
     arg->retain = retain;
-    arg->payload = *payload;
-
+    if (aws_byte_buf_init_copy_from_cursor(&arg->payload_buf, connection->allocator, *payload)) {
+        return 0;
+    }
+    arg->payload = aws_byte_cursor_from_buf(&arg->payload_buf);
     arg->on_complete = on_complete;
     arg->userdata = userdata;
 
