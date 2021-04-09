@@ -1093,7 +1093,7 @@ int aws_mqtt_client_connection_use_websockets(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt_client_connection_set_websocket_proxy_options(
+int aws_mqtt_client_connection_set_http_proxy_options(
     struct aws_mqtt_client_connection *connection,
     struct aws_http_proxy_options *proxy_options) {
 
@@ -1553,7 +1553,15 @@ static int s_mqtt_client_connect(
         channel_options.shutdown_callback = &s_mqtt_client_shutdown;
         channel_options.user_data = connection;
 
-        result = aws_client_bootstrap_new_socket_channel(&channel_options);
+        if (connection->http_proxy_config == NULL) {
+            result = aws_client_bootstrap_new_socket_channel(&channel_options);
+        } else {
+            struct aws_http_proxy_options proxy_options;
+            AWS_ZERO_STRUCT(proxy_options);
+
+            aws_http_proxy_options_init_from_config(&proxy_options, connection->http_proxy_config);
+            result = aws_http_proxy_new_socket_channel(&channel_options, &proxy_options);
+        }
     }
 
     if (result) {

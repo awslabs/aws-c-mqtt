@@ -335,10 +335,10 @@ int aws_mqtt_client_connection_use_websockets(
     void *validator_ud);
 
 /**
- * Set proxy options for the websocket connection.
+ * Set http proxy options for the connection.
  */
 AWS_MQTT_API
-int aws_mqtt_client_connection_set_websocket_proxy_options(
+int aws_mqtt_client_connection_set_http_proxy_options(
     struct aws_mqtt_client_connection *connection,
     struct aws_http_proxy_options *proxy_options);
 
