@@ -1659,6 +1659,77 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
+/* Make a CONNECT, PUBLISH to a topic, free the payload before the publish completes to make sure it's safe */
+static int s_test_mqtt_publish_payload_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_buf buf_payload;
+    struct aws_byte_cursor ori_payload = aws_byte_cursor_from_c_str("Test Message 1");
+    ASSERT_SUCCESS(aws_byte_buf_init_copy_from_cursor(&buf_payload, allocator, ori_payload));
+    struct aws_byte_cursor payload_curser = aws_byte_cursor_from_buf(&buf_payload);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
+    uint16_t packet_id = aws_mqtt_client_connection_publish(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload_curser,
+        s_on_op_complete,
+        state_test_data);
+    ASSERT_TRUE(packet_id > 0);
+
+    /* clean up the payload buf, as user don't need to manage the buf and keep it valid until publish completes */
+    aws_byte_buf_clean_up(&buf_payload);
+    s_wait_for_ops_completed(state_test_data);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    /* Decode all received packets by mock server */
+    ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->mock_server));
+
+    ASSERT_UINT_EQUALS(3, mqtt_mock_server_decoded_packets_count(state_test_data->mock_server));
+    struct mqtt_decoded_packet *received_packet =
+        mqtt_mock_server_get_decoded_packet_by_index(state_test_data->mock_server, 0);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
+
+    received_packet = mqtt_mock_server_get_decoded_packet_by_index(state_test_data->mock_server, 1);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_PUBLISH, received_packet->type);
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->topic_name, &pub_topic));
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->publish_payload, &ori_payload));
+
+    received_packet = mqtt_mock_server_get_decoded_packet_by_index(state_test_data->mock_server, 2);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_DISCONNECT, received_packet->type);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connect_publish_payload,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_publish_payload_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
 /**
  * CONNECT, force the server to hang up after a successful connection and block all CONNACKS, send PUBLISH messages
  * let the server send CONNACKS, make sure when the client reconnects automatically, it sends the PUBLISH messages
