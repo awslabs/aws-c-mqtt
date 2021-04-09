@@ -8,8 +8,6 @@
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/packets.h>
 
-#include <aws/http/proxy.h>
-
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
@@ -264,6 +262,14 @@ int s_initialize_test(
     const char *endpoint) {
     aws_mqtt_library_init(allocator);
 
+    struct aws_logger_standard_options logger_options = {
+        .level = AWS_LL_TRACE,
+        .file = stdout,
+    };
+
+    aws_logger_init_standard(&tester->logger, allocator, &logger_options);
+    aws_logger_set(&tester->logger);
+
     tester->allocator = allocator;
     aws_mutex_init(&tester->lock);
     aws_condition_variable_init(&tester->signal);
@@ -321,7 +327,7 @@ int s_initialize_test(
 
     struct aws_mqtt_connection_options conn_options = {
         .host_name = host_name_cur,
-        .port = 443,
+        .port = 8883,
         .socket_options = &socket_options,
         .tls_options = &tester->tls_connection_options,
         .client_id = client_id_cur,
@@ -339,14 +345,6 @@ int s_initialize_test(
     struct aws_byte_cursor subscribe_topic_cur = aws_byte_cursor_from_string(s_subscribe_topic);
     struct aws_byte_cursor will_cur = aws_byte_cursor_from_array(s_will_payload, WILL_PAYLOAD_LEN);
     aws_mqtt_client_connection_set_will(tester->connection, &subscribe_topic_cur, 1, false, &will_cur);
-
-    struct aws_http_proxy_options proxy_options = {
-        .connection_type = AWS_HPCT_HTTP_TUNNEL,
-        .host = aws_byte_cursor_from_c_str("localhost"),
-        .port = 3128,
-    };
-
-    aws_mqtt_client_connection_set_http_proxy_options(tester->connection, &proxy_options);
 
     aws_mqtt_client_connection_connect(tester->connection, &conn_options);
 
@@ -393,16 +391,7 @@ int main(int argc, char **argv) {
     const char *private_key = argv[3];
     const char *root_ca = argv[4];
 
-    struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), NULL, AWS_MEMTRACE_STACKS, 8);
-
-    struct aws_logger_standard_options logger_options = {
-        .level = AWS_LL_TRACE,
-        .file = stdout,
-    };
-
-    struct aws_logger logger;
-    aws_logger_init_noalloc(&logger, allocator, &logger_options);
-    aws_logger_set(&logger);
+    struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), NULL, AWS_MEMTRACE_BYTES, 0);
 
     struct test_context tester;
     AWS_ZERO_STRUCT(tester);
@@ -455,12 +444,6 @@ int main(int argc, char **argv) {
     s_wait_on_tester_predicate(&tester, s_received_on_disconnect_pred);
 
     ASSERT_SUCCESS(s_cleanup_test(&tester));
-
-    if (aws_mem_tracer_count(allocator) != 0) {
-        aws_mem_tracer_dump(allocator);
-    }
-
-    aws_logger_clean_up(&logger);
 
     ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));
     allocator = aws_mem_tracer_destroy(allocator);
