@@ -887,21 +887,37 @@ uint16_t mqtt_create_request(
 
 void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int error_code, uint16_t packet_id) {
 
-    struct aws_hash_element *elem = NULL;
-
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: message id %" PRIu16 " completed with error code %d, removing from outstanding requests list.",
         (void *)connection,
         packet_id,
         error_code);
+
+    bool found_request = false;
+    aws_mqtt_op_complete_fn *on_complete = NULL;
+    void *on_complete_ud = NULL;
+
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
+        struct aws_hash_element *elem = NULL;
         aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, &elem);
+        if (elem != NULL) {
+            struct aws_mqtt_request *request = elem->value;
+            found_request = true;
+            on_complete = request->on_complete;
+            on_complete_ud = request->on_complete_ud;
+
+            /* clean up request resources */
+            aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
+            /* remove the request from the list, which is thread_data.ongoing_requests_list */
+            aws_linked_list_remove(&request->list_node);
+            aws_memory_pool_release(&connection->synced_data.requests_pool, request);
+        }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
-    if (elem == NULL) {
+    if (!found_request) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT,
             "id=%p: received completion for message id %" PRIu16
@@ -912,19 +928,10 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
         return;
     }
 
-    struct aws_mqtt_request *request = elem->value;
     /* Invoke the complete callback. */
-    if (request->on_complete) {
-        request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
+    if (on_complete) {
+        on_complete(connection, packet_id, error_code, on_complete_ud);
     }
-    /* remove the request from the list, which is the outgoing request list, and clean up the resource */
-    aws_linked_list_remove(&request->list_node);
-    { /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
-        aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
-        aws_memory_pool_release(&connection->synced_data.requests_pool, request);
-        mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
 }
 
 struct mqtt_shutdown_task {
