@@ -276,20 +276,23 @@ static int s_packet_handler_suback(
         (void *)connection,
         suback.packet_identifier);
 
-    struct aws_hash_element *elem = NULL;
+    struct aws_mqtt_request *request = NULL;
 
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
+        struct aws_hash_element *elem = NULL;
         aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &suback.packet_identifier, &elem);
+        if (elem != NULL) {
+            request = elem->value;
+        }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
-    if (elem == NULL) {
+    if (request == NULL) {
         /* no corresponding request found */
         goto done;
     }
 
-    struct aws_mqtt_request *request = elem->value;
     struct subscribe_task_arg *task_arg = request->on_complete_ud;
     size_t request_topics_len = aws_array_list_length(&task_arg->topics);
     size_t suback_return_code_len = aws_array_list_length(&suback.return_codes);
@@ -819,6 +822,46 @@ uint16_t mqtt_create_request(
             aws_raise_error(AWS_ERROR_MQTT_NOT_CONNECTED);
             return 0;
         }
+        /**
+         * Find a free packet ID.
+         * Not all packet types actually need an ID on the wire,
+         * but we assign them internally anyway and can't change that fact
+         * because the publish() API claims to return the packet ID and reserves
+         * 0 to indicate failure.
+         *
+         * Yes, this is an O(N) search.
+         * We remember the last ID we assigned, so it's O(1) in the common case.
+         * But it's theoretically possible to reach O(N) where N is just above 64000
+         * if the user is letting a ton of un-ack'd messages queue up
+         */
+        uint16_t search_start = connection->synced_data.packet_id;
+        struct aws_hash_element *elem = NULL;
+        while (true) {
+            /* Increment ID, watch out for overflow, ID cannot be 0 */
+            if (connection->synced_data.packet_id == UINT16_MAX) {
+                connection->synced_data.packet_id = 1;
+            } else {
+                connection->synced_data.packet_id++;
+            }
+
+            /* Is there already an outstanding request using this ID? */
+            aws_hash_table_find(
+                &connection->synced_data.outstanding_requests_table, &connection->synced_data.packet_id, &elem);
+
+            if (elem == NULL) {
+                /* Found a free ID! Break out of loop */
+                break;
+            } else if (connection->synced_data.packet_id == search_start) {
+                /* Every ID is taken */
+                mqtt_connection_unlock_synced_data(connection);
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Queue is full. No more packet IDs are available at this time.",
+                    (void *)connection);
+                aws_raise_error(AWS_ERROR_MQTT_QUEUE_FULL);
+                return 0;
+            }
+        }
 
         next_request = aws_memory_pool_acquire(&connection->synced_data.requests_pool);
         if (!next_request) {
@@ -826,20 +869,8 @@ uint16_t mqtt_create_request(
             return 0;
         }
         memset(next_request, 0, sizeof(struct aws_mqtt_request));
-        struct aws_hash_element *elem = NULL;
-        uint16_t next_id = 0;
-        /**
-         * QoS 0 publish and PINGREQ don't need a packet ID, but, we may still need a ID for publish QoS 0,
-         * For user to keep all data alive, an ID will help.
-         */
-        do {
-            /* find the next unused packet id for the new request */
-            ++next_id;
-            aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &next_id, &elem);
 
-        } while (elem);
-        AWS_ASSERT(next_id); /* Somehow have UINT16_MAX outstanding requests, definitely a bug */
-        next_request->packet_id = next_id;
+        next_request->packet_id = connection->synced_data.packet_id;
 
         if (aws_hash_table_put(
                 &connection->synced_data.outstanding_requests_table, &next_request->packet_id, next_request, NULL)) {
@@ -903,8 +934,9 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
         struct aws_hash_element *elem = NULL;
         aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, &elem);
         if (elem != NULL) {
-            struct aws_mqtt_request *request = elem->value;
             found_request = true;
+
+            struct aws_mqtt_request *request = elem->value;
             on_complete = request->on_complete;
             on_complete_ud = request->on_complete_ud;
 
