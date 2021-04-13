@@ -34,7 +34,16 @@
         }                                                                                                              \
     } while (false)
 
-#define ASSERT_SYNCED_DATA_LOCK_HELD(object) AWS_ASSERT(aws_mutex_try_lock(&(object)->synced_data.lock) == AWS_OP_ERR)
+#if DEBUG_BUILD
+#    define ASSERT_SYNCED_DATA_LOCK_HELD(object)                                                                       \
+        {                                                                                                              \
+            int cached_error = aws_last_error();                                                                       \
+            AWS_ASSERT(aws_mutex_try_lock(&(object)->synced_data.lock) == AWS_OP_ERR);                                 \
+            aws_raise_error(cached_error);                                                                             \
+        }
+#else
+#    define ASSERT_SYNCED_DATA_LOCK_HELD(object)
+#endif
 
 enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_CONNECTING,
@@ -219,6 +228,12 @@ struct aws_mqtt_client_connection {
          * List of all requests that cannot be scheduled until the connection comes online.
          */
         struct aws_linked_list pending_requests_list;
+
+        /**
+         * Remember the last packet ID assigned.
+         * Helps us find the next free ID faster.
+         */
+        uint16_t packet_id;
     } synced_data;
 
     struct {
