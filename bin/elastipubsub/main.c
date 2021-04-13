@@ -313,7 +313,8 @@ static void s_establish_connections(
             .client_id = aws_byte_cursor_from_c_str(client_id),
             .keep_alive_time_secs = 0,
             .ping_timeout_ms = 0,
-            .protocol_operation_timeout_ms = aws_timestamp_convert(10, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL),
+            .protocol_operation_timeout_ms =
+                (uint32_t)aws_timestamp_convert(10, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL),
             .on_connection_complete = s_on_connection_complete,
             .user_data = connection_data,
             .clean_session = true,
