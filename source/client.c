@@ -2567,50 +2567,61 @@ struct publish_task_arg {
     struct request_timeout_task_arg *timeout_arg;
 };
 
-static int s_get_element_from_outstanding_requests_table(
+/* should only be called by tests */
+static int s_get_stuff_from_outstanding_requests_table(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
-    struct aws_hash_element **elem) {
+    struct aws_allocator *allocator,
+    struct aws_byte_buf *result_buf,
+    struct aws_string **result_string) {
+
+    int err = AWS_OP_SUCCESS;
+    AWS_ZERO_STRUCT(*result_buf);
+    *result_string = NULL;
 
     aws_mutex_lock(&connection->synced_data.lock);
-    aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, elem);
+    struct aws_hash_element *elem = NULL;
+    aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, &elem);
+    if (elem) {
+        struct aws_mqtt_request *request = elem->value;
+        struct publish_task_arg *pub = (struct publish_task_arg *)request->send_request_ud;
+        if (result_buf != NULL) {
+            if (aws_byte_buf_init_copy(result_buf, allocator, &pub->payload_buf)) {
+                err = AWS_OP_ERR;
+            }
+        } else {
+            *result_string = aws_string_new_from_string(allocator, pub->topic_string);
+            if (*result_string == NULL) {
+                err = AWS_OP_ERR;
+            }
+        }
+    } else {
+        /* So lovely that this error is defined, but hashtable never actually raises it */
+        err = aws_raise_error(AWS_ERROR_HASHTBL_ITEM_NOT_FOUND);
+    }
     aws_mutex_unlock(&connection->synced_data.lock);
 
-    if (*elem == NULL) {
-        return AWS_OP_ERR;
-    }
-    return AWS_OP_SUCCESS;
+    return err;
 }
 
-void aws_mqtt_client_get_payload_for_outstanding_publish_packet(
+/* should only be called by tests */
+int aws_mqtt_client_get_payload_for_outstanding_publish_packet(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
-    struct aws_byte_cursor *result) {
+    struct aws_allocator *allocator,
+    struct aws_byte_buf *result) {
 
-    struct aws_hash_element *elem = NULL;
-    if (s_get_element_from_outstanding_requests_table(connection, packet_id, &elem)) {
-        return;
-    }
-
-    struct aws_mqtt_request *request = elem->value;
-    struct publish_task_arg pub = *(struct publish_task_arg *)request->send_request_ud;
-    *result = aws_byte_cursor_from_buf(&pub.payload_buf);
+    return s_get_stuff_from_outstanding_requests_table(connection, packet_id, allocator, result, NULL);
 }
 
-void aws_mqtt_client_get_topic_for_outstanding_publish_packet(
+/* should only be called by tests */
+int aws_mqtt_client_get_topic_for_outstanding_publish_packet(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
     struct aws_allocator *allocator,
     struct aws_string **result) {
 
-    struct aws_hash_element *elem = NULL;
-    if (s_get_element_from_outstanding_requests_table(connection, packet_id, &elem)) {
-        return;
-    }
-
-    struct aws_mqtt_request *request = elem->value;
-    struct publish_task_arg pub = *(struct publish_task_arg *)request->send_request_ud;
-    *result = aws_string_new_from_string(allocator, pub.topic_string);
+    return s_get_stuff_from_outstanding_requests_table(connection, packet_id, allocator, NULL, result);
 }
 
 static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, bool is_first_attempt, void *userdata) {

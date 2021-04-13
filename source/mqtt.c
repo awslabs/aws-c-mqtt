@@ -150,6 +150,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION,
                 "Old requests from the previous session are cancelled, and offline request will not be accept."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_QUEUE_FULL,
+                "MQTT request queue is full."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
