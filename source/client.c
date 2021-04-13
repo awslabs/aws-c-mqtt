@@ -2576,8 +2576,6 @@ static int s_get_stuff_from_outstanding_requests_table(
     struct aws_string **result_string) {
 
     int err = AWS_OP_SUCCESS;
-    AWS_ZERO_STRUCT(*result_buf);
-    *result_string = NULL;
 
     aws_mutex_lock(&connection->synced_data.lock);
     struct aws_hash_element *elem = NULL;
@@ -2589,7 +2587,7 @@ static int s_get_stuff_from_outstanding_requests_table(
             if (aws_byte_buf_init_copy(result_buf, allocator, &pub->payload_buf)) {
                 err = AWS_OP_ERR;
             }
-        } else {
+        } else if (result_string != NULL) {
             *result_string = aws_string_new_from_string(allocator, pub->topic_string);
             if (*result_string == NULL) {
                 err = AWS_OP_ERR;
@@ -2611,6 +2609,7 @@ int aws_mqtt_client_get_payload_for_outstanding_publish_packet(
     struct aws_allocator *allocator,
     struct aws_byte_buf *result) {
 
+    AWS_ZERO_STRUCT(*result);
     return s_get_stuff_from_outstanding_requests_table(connection, packet_id, allocator, result, NULL);
 }
 
@@ -2621,6 +2620,7 @@ int aws_mqtt_client_get_topic_for_outstanding_publish_packet(
     struct aws_allocator *allocator,
     struct aws_string **result) {
 
+    *result = NULL;
     return s_get_stuff_from_outstanding_requests_table(connection, packet_id, allocator, NULL, result);
 }
 
