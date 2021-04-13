@@ -824,10 +824,8 @@ uint16_t mqtt_create_request(
         }
         /**
          * Find a free packet ID.
-         * Not all packet types actually need an ID on the wire,
-         * but we assign them internally anyway and can't change that fact
-         * because the publish() API claims to return the packet ID and reserves
-         * 0 to indicate failure.
+         * QoS 0 PUBLISH packets don't actually need an ID on the wire,
+         * but we assign them internally anyway just so everything has a unique ID.
          *
          * Yes, this is an O(N) search.
          * We remember the last ID we assigned, so it's O(1) in the common case.
