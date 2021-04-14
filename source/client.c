@@ -89,6 +89,12 @@ struct request_timeout_task_arg {
     struct request_timeout_wrapper *task_arg_wrapper;
 };
 
+/*
+ * We want the timeout task to be able to destroy the forward reference from the operation's task arg structure
+ * to the timeout task.  But the operation task arg structures don't have any data structure in common.  So to allow
+ * the timeout to refer back to a zero-able forward pointer, we wrap a pointer to the timeout task and embed it
+ * in every operation's task arg that needs to create a timeout.
+ */
 struct request_timeout_wrapper {
     struct request_timeout_task_arg *timeout_task_arg;
 };
@@ -104,6 +110,12 @@ static void s_request_timeout(struct aws_channel_task *channel_task, void *arg, 
         }
     }
 
+    /*
+     * Whether cancelled or run, if we have a back pointer to the operation's task arg, we must zero it out
+     * so that when it completes it does not try to cancel us, because we will already be freed.
+     *
+     * If we don't have a back pointer to the operation's task arg, that means it already ran and completed.
+     */
     if (timeout_task_arg->task_arg_wrapper != NULL) {
         timeout_task_arg->task_arg_wrapper->timeout_task_arg = NULL;
         timeout_task_arg->task_arg_wrapper = NULL;
@@ -2505,6 +2517,11 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
+
+        /*
+         * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
+         * "wins", does its logic, and then breaks the connection between the two.
+         */
         task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
         timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
     }
@@ -2540,6 +2557,13 @@ static void s_unsubscribe_complete(
     struct unsubscribe_task_arg *task_arg = userdata;
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Unsubscribe %" PRIu16 " complete", (void *)connection, packet_id);
+
+    /*
+     * If we have a forward pointer to a timeout task, then that means the timeout task has not run yet.  So we should
+     * follow it and zero out the back pointer to us, because we're going away now.  The timeout task will run later
+     * and be harmless (even vs. future operations with the same packet id) because it only cancels if it has a back
+     * pointer.
+     */
     if (task_arg->timeout_wrapper.timeout_task_arg) {
         task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
         task_arg->timeout_wrapper.timeout_task_arg = NULL;
@@ -2761,6 +2785,11 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
+
+        /*
+         * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
+         * "wins", does its logic, and then breaks the connection between the two.
+         */
         task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
         timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
     }
@@ -2782,6 +2811,12 @@ static void s_publish_complete(
         task_arg->on_complete(connection, packet_id, error_code, task_arg->userdata);
     }
 
+    /*
+     * If we have a forward pointer to a timeout task, then that means the timeout task has not run yet.  So we should
+     * follow it and zero out the back pointer to us, because we're going away now.  The timeout task will run later
+     * and be harmless (even vs. future operations with the same packet id) because it only cancels if it has a back
+     * pointer.
+     */
     if (task_arg->timeout_wrapper.timeout_task_arg != NULL) {
         task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
         task_arg->timeout_wrapper.timeout_task_arg = NULL;
