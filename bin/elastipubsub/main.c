@@ -705,7 +705,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
 
-        struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 2, NULL);
+        struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 8, NULL);
 
         struct aws_host_resolver_default_options resolver_options = {
             .el_group = el_group,

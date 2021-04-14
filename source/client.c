@@ -1882,14 +1882,23 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
         aws_array_list_push_back(&task_arg->topics, &task_topic);
     }
 
-    uint16_t packet_id = mqtt_create_request(
+    struct aws_mqtt_request *request = mqtt_create_request(
         task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg, false /* noRetry */);
-
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic subscribe %" PRIu16, (void *)connection, packet_id);
-
-    if (packet_id) {
-        return packet_id;
+    if (request != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Sending multi-topic subscribe %" PRIu16,
+            (void *)connection,
+            request->packet_id);
+        return request->packet_id;
     }
+
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Failed to kick off multi-topic subscribe, error %d(%s)",
+        (void *)connection,
+        aws_last_error(),
+        aws_error_debug_str(aws_last_error()));
 
 handle_error:
 
@@ -2011,19 +2020,26 @@ uint16_t aws_mqtt_client_connection_subscribe(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    uint16_t packet_id = mqtt_create_request(
+    struct aws_mqtt_request *request = mqtt_create_request(
         task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg, false /* noRetry */);
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Starting subscribe %" PRIu16 " on topic " PRInSTR,
-        (void *)connection,
-        packet_id,
-        AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
-
-    if (packet_id) {
-        return packet_id;
+    if (request != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Starting subscribe %" PRIu16 " on topic " PRInSTR,
+            (void *)connection,
+            request->packet_id,
+            AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
+        return request->packet_id;
     }
+
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Failed to kick off subscribe on topic " PRInSTR " with error %d(%s)",
+        (void *)connection,
+        AWS_BYTE_CURSOR_PRI(task_topic->request.topic),
+        aws_last_error(),
+        aws_error_debug_str(aws_last_error()));
 
 handle_error:
 
@@ -2161,7 +2177,7 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    uint16_t packet_id = mqtt_create_request(
+    struct aws_mqtt_request *request = mqtt_create_request(
         task_arg->connection,
         s_subscribe_local_send,
         task_arg,
@@ -2169,16 +2185,23 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
         task_arg,
         false /* noRetry */);
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Starting local subscribe %" PRIu16 " on topic " PRInSTR,
-        (void *)connection,
-        packet_id,
-        AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
-
-    if (packet_id) {
-        return packet_id;
+    if (request != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Starting local subscribe %" PRIu16 " on topic " PRInSTR,
+            (void *)connection,
+            request->packet_id,
+            AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
+        return request->packet_id;
     }
+
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Failed to kick off local subscribe on topic " PRInSTR " with error %d(%s)",
+        (void *)connection,
+        AWS_BYTE_CURSOR_PRI(task_topic->request.topic),
+        aws_last_error(),
+        aws_error_debug_str(aws_last_error()));
 
 handle_error:
 
@@ -2364,22 +2387,26 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     task_arg->on_suback.multi = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
-    uint16_t packet_id = mqtt_create_request(
+    struct aws_mqtt_request *request = mqtt_create_request(
         task_arg->connection, &s_resubscribe_send, task_arg, &s_resubscribe_complete, task_arg, false /* noRetry */);
-
-    if (packet_id == 0) {
-        AWS_LOGF_ERROR(
+    if (request != NULL) {
+        AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT,
-            "id=%p: Failed to send multi-topic resubscribe with error %s",
+            "id=%p: Sending multi-topic resubscribe %" PRIu16,
             (void *)connection,
-            aws_error_name(aws_last_error()));
-        return 0;
+            request->packet_id);
+        return request->packet_id;
     }
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic resubscribe %" PRIu16, (void *)connection, packet_id);
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Failed to send multi-topic resubscribe with error %s",
+        (void *)connection,
+        aws_error_name(aws_last_error()));
 
-    return packet_id;
+    aws_mem_release(connection->allocator, task_arg);
+
+    return 0;
 }
 
 /*******************************************************************************
@@ -2538,12 +2565,18 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
 
-    uint16_t packet_id = mqtt_create_request(
+    struct aws_mqtt_request *request = mqtt_create_request(
         connection, &s_unsubscribe_send, task_arg, s_unsubscribe_complete, task_arg, false /* noRetry */);
+    if (request != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Starting unsubscribe %" PRIu16, (void *)connection, request->packet_id);
+        return request->packet_id;
+    }
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting unsubscribe %" PRIu16, (void *)connection, packet_id);
+    aws_string_destroy(task_arg->filter_string);
+    aws_mem_release(connection->allocator, task_arg);
 
-    return packet_id;
+    return 0;
 }
 
 /*******************************************************************************
@@ -2765,22 +2798,22 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->userdata = userdata;
 
     bool retry = qos == AWS_MQTT_QOS_AT_MOST_ONCE;
-    uint16_t packet_id = mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg, retry);
-
-    if (packet_id) {
+    struct aws_mqtt_request *request =
+        mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg, retry);
+    if (request != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Starting publish %" PRIu16 " to topic " PRInSTR,
             (void *)connection,
-            packet_id,
+            request->packet_id,
             AWS_BYTE_CURSOR_PRI(*topic));
-        return packet_id;
+        return request->packet_id;
     }
 
     /* bummer, we failed to make a new request */
     AWS_LOGF_ERROR(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: Failed starting publish to topic " PRInSTR ",error %d (%s)",
+        "id=%p: Failed starting publish to topic " PRInSTR ", error %d (%s)",
         (void *)connection,
         AWS_BYTE_CURSOR_PRI(*topic),
         aws_last_error(),
@@ -2790,6 +2823,8 @@ uint16_t aws_mqtt_client_connection_publish(
     if (arg->topic_string) {
         aws_string_destroy(arg->topic_string);
     }
+
+    aws_byte_buf_clean_up(&arg->payload_buf);
 
     aws_mem_release(connection->allocator, arg);
 
@@ -2868,9 +2903,20 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    uint16_t packet_id = mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL, true /* noRetry */);
+    struct aws_mqtt_request *request =
+        mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL, true /* noRetry */);
+    if (request != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, request->packet_id);
+        return AWS_OP_SUCCESS;
+    }
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Failed to start ping with error %d(%s)",
+        (void *)connection,
+        aws_last_error(),
+        aws_error_debug_str(aws_last_error()));
 
-    return (packet_id > 0) ? AWS_OP_SUCCESS : AWS_OP_ERR;
+    return AWS_OP_ERR;
 }

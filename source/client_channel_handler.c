@@ -785,7 +785,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
     }
 }
 
-uint16_t mqtt_create_request(
+struct aws_mqtt_request *mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
@@ -809,7 +809,7 @@ uint16_t mqtt_create_request(
                 "id=%p: Disconnect requested, stop creating any new request until disconnect process finishes.",
                 (void *)connection);
             aws_raise_error(AWS_ERROR_MQTT_CONNECTION_DISCONNECTING);
-            return 0;
+            return NULL;
         }
 
         if (noRetry && connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
@@ -820,7 +820,7 @@ uint16_t mqtt_create_request(
                 "id=%p: Not currently connected. No offline queueing for QoS 0 publish or pingreq.",
                 (void *)connection);
             aws_raise_error(AWS_ERROR_MQTT_NOT_CONNECTED);
-            return 0;
+            return NULL;
         }
         /**
          * Find a free packet ID.
@@ -857,14 +857,14 @@ uint16_t mqtt_create_request(
                     "id=%p: Queue is full. No more packet IDs are available at this time.",
                     (void *)connection);
                 aws_raise_error(AWS_ERROR_MQTT_QUEUE_FULL);
-                return 0;
+                return NULL;
             }
         }
 
         next_request = aws_memory_pool_acquire(&connection->synced_data.requests_pool);
         if (!next_request) {
             mqtt_connection_unlock_synced_data(connection);
-            return 0;
+            return NULL;
         }
         memset(next_request, 0, sizeof(struct aws_mqtt_request));
 
@@ -875,7 +875,7 @@ uint16_t mqtt_create_request(
             /* failed to put the next request into the table */
             aws_memory_pool_release(&connection->synced_data.requests_pool, next_request);
             mqtt_connection_unlock_synced_data(connection);
-            return 0;
+            return NULL;
         }
         /* Store the request by packet_id */
         next_request->allocator = connection->allocator;
@@ -911,7 +911,7 @@ uint16_t mqtt_create_request(
         aws_channel_release_hold(channel);
     }
 
-    return next_request->packet_id;
+    return next_request;
 }
 
 void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int error_code, uint16_t packet_id) {

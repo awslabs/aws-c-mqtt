@@ -268,7 +268,7 @@ void mqtt_connection_set_state(
  * on_complete will be called once the request completed, either either in success or error.
  * noRetry is true for the packets will never be retried or offline queued.
  */
-AWS_MQTT_API uint16_t mqtt_create_request(
+AWS_MQTT_API struct aws_mqtt_request *mqtt_create_request(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
