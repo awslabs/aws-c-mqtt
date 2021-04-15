@@ -80,12 +80,23 @@ void mqtt_connection_set_state(
     connection->synced_data.state = state;
 }
 
+struct request_timeout_wrapper;
+
 /* used for timeout task */
 struct request_timeout_task_arg {
-    bool cancelled;
-
     uint16_t packet_id;
     struct aws_mqtt_client_connection *connection;
+    struct request_timeout_wrapper *task_arg_wrapper;
+};
+
+/*
+ * We want the timeout task to be able to destroy the forward reference from the operation's task arg structure
+ * to the timeout task.  But the operation task arg structures don't have any data structure in common.  So to allow
+ * the timeout to refer back to a zero-able forward pointer, we wrap a pointer to the timeout task and embed it
+ * in every operation's task arg that needs to create a timeout.
+ */
+struct request_timeout_wrapper {
+    struct request_timeout_task_arg *timeout_task_arg;
 };
 
 static void s_request_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
@@ -94,9 +105,20 @@ static void s_request_timeout(struct aws_channel_task *channel_task, void *arg, 
     struct aws_mqtt_client_connection *connection = timeout_task_arg->connection;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        if (!timeout_task_arg->cancelled) {
+        if (timeout_task_arg->task_arg_wrapper != NULL) {
             mqtt_request_complete(connection, AWS_ERROR_MQTT_TIMEOUT, timeout_task_arg->packet_id);
         }
+    }
+
+    /*
+     * Whether cancelled or run, if we have a back pointer to the operation's task arg, we must zero it out
+     * so that when it completes it does not try to cancel us, because we will already be freed.
+     *
+     * If we don't have a back pointer to the operation's task arg, that means it already ran and completed.
+     */
+    if (timeout_task_arg->task_arg_wrapper != NULL) {
+        timeout_task_arg->task_arg_wrapper->timeout_task_arg = NULL;
+        timeout_task_arg->task_arg_wrapper = NULL;
     }
 
     aws_mem_release(connection->allocator, timeout_task_arg);
@@ -1885,11 +1907,17 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_complete, task_arg, false /* noRetry */);
 
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic subscribe %" PRIu16, (void *)connection, packet_id);
-
-    if (packet_id) {
-        return packet_id;
+    if (packet_id == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to kick off multi-topic subscribe, with error %s",
+            (void *)connection,
+            aws_error_debug_str(aws_last_error()));
+        goto handle_error;
     }
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic subscribe %" PRIu16, (void *)connection, packet_id);
+    return packet_id;
 
 handle_error:
 
@@ -2014,6 +2042,16 @@ uint16_t aws_mqtt_client_connection_subscribe(
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection, &s_subscribe_send, task_arg, &s_subscribe_single_complete, task_arg, false /* noRetry */);
 
+    if (packet_id == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to start subscribe on topic " PRInSTR " with error %s",
+            (void *)connection,
+            AWS_BYTE_CURSOR_PRI(task_topic->request.topic),
+            aws_error_debug_str(aws_last_error()));
+        goto handle_error;
+    }
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Starting subscribe %" PRIu16 " on topic " PRInSTR,
@@ -2021,9 +2059,7 @@ uint16_t aws_mqtt_client_connection_subscribe(
         packet_id,
         AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
 
-    if (packet_id) {
-        return packet_id;
-    }
+    return packet_id;
 
 handle_error:
 
@@ -2035,9 +2071,9 @@ handle_error:
     }
 
     if (task_arg) {
-
         aws_mem_release(connection->allocator, task_arg);
     }
+
     return 0;
 }
 
@@ -2169,16 +2205,23 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
         task_arg,
         false /* noRetry */);
 
+    if (packet_id == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to start local subscribe on topic " PRInSTR " with error %s",
+            (void *)connection,
+            AWS_BYTE_CURSOR_PRI(task_topic->request.topic),
+            aws_error_debug_str(aws_last_error()));
+        goto handle_error;
+    }
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Starting local subscribe %" PRIu16 " on topic " PRInSTR,
         (void *)connection,
         packet_id,
         AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
-
-    if (packet_id) {
-        return packet_id;
-    }
+    return packet_id;
 
 handle_error:
 
@@ -2190,9 +2233,9 @@ handle_error:
     }
 
     if (task_arg) {
-
         aws_mem_release(connection->allocator, task_arg);
     }
+
     return 0;
 }
 
@@ -2373,13 +2416,19 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
             "id=%p: Failed to send multi-topic resubscribe with error %s",
             (void *)connection,
             aws_error_name(aws_last_error()));
-        return 0;
+        goto handle_error;
     }
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: Sending multi-topic resubscribe %" PRIu16, (void *)connection, packet_id);
 
     return packet_id;
+
+handle_error:
+
+    aws_mem_release(connection->allocator, task_arg);
+
+    return 0;
 }
 
 /*******************************************************************************
@@ -2399,7 +2448,8 @@ struct unsubscribe_task_arg {
 
     aws_mqtt_op_complete_fn *on_unsuback;
     void *on_unsuback_ud;
-    struct request_timeout_task_arg *timeout_arg;
+
+    struct request_timeout_wrapper timeout_wrapper;
 };
 
 static enum aws_mqtt_client_request_state s_unsubscribe_send(
@@ -2467,7 +2517,13 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
-        task_arg->timeout_arg = timeout_task_arg;
+
+        /*
+         * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
+         * "wins", does its logic, and then breaks the connection between the two.
+         */
+        task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
+        timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
     }
 
     if (!task_arg->tree_updated) {
@@ -2501,9 +2557,18 @@ static void s_unsubscribe_complete(
     struct unsubscribe_task_arg *task_arg = userdata;
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Unsubscribe %" PRIu16 " complete", (void *)connection, packet_id);
-    if (task_arg->timeout_arg) {
-        task_arg->timeout_arg->cancelled = true;
+
+    /*
+     * If we have a forward pointer to a timeout task, then that means the timeout task has not run yet.  So we should
+     * follow it and zero out the back pointer to us, because we're going away now.  The timeout task will run later
+     * and be harmless (even vs. future operations with the same packet id) because it only cancels if it has a back
+     * pointer.
+     */
+    if (task_arg->timeout_wrapper.timeout_task_arg) {
+        task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
+        task_arg->timeout_wrapper.timeout_task_arg = NULL;
     }
+
     if (task_arg->on_unsuback) {
         task_arg->on_unsuback(connection, packet_id, error_code, task_arg->on_unsuback_ud);
     }
@@ -2540,10 +2605,25 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
 
     uint16_t packet_id = mqtt_create_request(
         connection, &s_unsubscribe_send, task_arg, s_unsubscribe_complete, task_arg, false /* noRetry */);
+    if (packet_id == 0) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to start unsubscribe, with error %s",
+            (void *)connection,
+            aws_error_debug_str(aws_last_error()));
+        goto handle_error;
+    }
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting unsubscribe %" PRIu16, (void *)connection, packet_id);
 
     return packet_id;
+
+handle_error:
+
+    aws_string_destroy(task_arg->filter_string);
+    aws_mem_release(connection->allocator, task_arg);
+
+    return 0;
 }
 
 /*******************************************************************************
@@ -2564,7 +2644,8 @@ struct publish_task_arg {
 
     aws_mqtt_op_complete_fn *on_complete;
     void *userdata;
-    struct request_timeout_task_arg *timeout_arg;
+
+    struct request_timeout_wrapper timeout_wrapper;
 };
 
 /* should only be called by tests */
@@ -2704,7 +2785,13 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
-        task_arg->timeout_arg = timeout_task_arg;
+
+        /*
+         * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
+         * "wins", does its logic, and then breaks the connection between the two.
+         */
+        task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
+        timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
     }
 
     /* If QoS == 0, there will be no ack, so consider the request done now. */
@@ -2723,9 +2810,18 @@ static void s_publish_complete(
     if (task_arg->on_complete) {
         task_arg->on_complete(connection, packet_id, error_code, task_arg->userdata);
     }
-    if (task_arg->timeout_arg) {
-        task_arg->timeout_arg->cancelled = true;
+
+    /*
+     * If we have a forward pointer to a timeout task, then that means the timeout task has not run yet.  So we should
+     * follow it and zero out the back pointer to us, because we're going away now.  The timeout task will run later
+     * and be harmless (even vs. future operations with the same packet id) because it only cancels if it has a back
+     * pointer.
+     */
+    if (task_arg->timeout_wrapper.timeout_task_arg != NULL) {
+        task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
+        task_arg->timeout_wrapper.timeout_task_arg = NULL;
     }
+
     aws_byte_buf_clean_up(&task_arg->payload_buf);
     aws_string_destroy(task_arg->topic_string);
     aws_mem_release(connection->allocator, task_arg);
@@ -2758,7 +2854,7 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->qos = qos;
     arg->retain = retain;
     if (aws_byte_buf_init_copy_from_cursor(&arg->payload_buf, connection->allocator, *payload)) {
-        return 0;
+        goto handle_error;
     }
     arg->payload = aws_byte_cursor_from_buf(&arg->payload_buf);
     arg->on_complete = on_complete;
@@ -2767,29 +2863,34 @@ uint16_t aws_mqtt_client_connection_publish(
     bool retry = qos == AWS_MQTT_QOS_AT_MOST_ONCE;
     uint16_t packet_id = mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg, retry);
 
-    if (packet_id) {
-        AWS_LOGF_DEBUG(
+    if (packet_id == 0) {
+        /* bummer, we failed to make a new request */
+        AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
-            "id=%p: Starting publish %" PRIu16 " to topic " PRInSTR,
+            "id=%p: Failed starting publish to topic " PRInSTR ",error %d (%s)",
             (void *)connection,
-            packet_id,
-            AWS_BYTE_CURSOR_PRI(*topic));
-        return packet_id;
+            AWS_BYTE_CURSOR_PRI(*topic),
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        goto handle_error;
     }
 
-    /* bummer, we failed to make a new request */
-    AWS_LOGF_ERROR(
+    AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: Failed starting publish to topic " PRInSTR ",error %d (%s)",
+        "id=%p: Starting publish %" PRIu16 " to topic " PRInSTR,
         (void *)connection,
-        AWS_BYTE_CURSOR_PRI(*topic),
-        aws_last_error(),
-        aws_error_name(aws_last_error()));
+        packet_id,
+        AWS_BYTE_CURSOR_PRI(*topic));
+    return packet_id;
+
+handle_error:
 
     /* we know arg is valid, topic_string may or may not be valid */
     if (arg->topic_string) {
         aws_string_destroy(arg->topic_string);
     }
+
+    aws_byte_buf_clean_up(&arg->payload_buf);
 
     aws_mem_release(connection->allocator, arg);
 

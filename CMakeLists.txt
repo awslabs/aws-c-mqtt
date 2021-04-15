@@ -109,4 +109,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
 include(CTest)
 if (BUILD_TESTING)
     add_subdirectory(tests)
+    if (NOT CMAKE_CROSSCOMPILING )
+        add_subdirectory(bin/elastipubsub)
+    endif()
 endif ()
