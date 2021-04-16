@@ -42,13 +42,12 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
 
     uint64_t now = 0;
     aws_channel_current_clock_time(connection->slot->channel, &now);
-    AWS_LOGF_TRACE(
-        AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING. current timestamp is %" PRIu64, (void *)connection, now);
+    AWS_LOGF_INFO(AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING. current timestamp is %" PRIu64, (void *)connection, now);
 
     uint64_t schedule_time =
         now + aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
-    AWS_LOGF_TRACE(
+    AWS_LOGF_INFO(
         AWS_LS_MQTT_CLIENT,
         "id=%p: The next ping will be run at timestamp %" PRIu64,
         (void *)connection,
@@ -61,7 +60,7 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_mqtt_client_connection *connection = arg;
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
+        AWS_LOGF_INFO(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
         aws_mqtt_client_connection_ping(connection);
         s_schedule_ping(connection);
     }
@@ -70,7 +69,7 @@ static int s_packet_handler_connack(
     struct aws_mqtt_client_connection *connection,
     struct aws_byte_cursor message_cursor) {
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: CONNACK received", (void *)connection);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: CONNACK received", (void *)connection);
 
     struct aws_mqtt_packet_connack connack;
     if (aws_mqtt_packet_connack_decode(&message_cursor, &connack)) {
@@ -87,7 +86,7 @@ static int s_packet_handler_connack(
         /* User requested disconnect, don't do anything */
         if (connection->synced_data.state >= AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
             mqtt_connection_unlock_synced_data(connection);
-            AWS_LOGF_TRACE(
+            AWS_LOGF_INFO(
                 AWS_LS_MQTT_CLIENT, "id=%p: User has requested disconnect, dropping connection", (void *)connection);
             return AWS_OP_SUCCESS;
         }
@@ -112,7 +111,7 @@ static int s_packet_handler_connack(
 
     if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
         /* If successfully connected, schedule all pending tasks */
-        AWS_LOGF_TRACE(
+        AWS_LOGF_INFO(
             AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted processing offline requests.", (void *)connection);
 
         if (!aws_linked_list_empty(&requests)) {
@@ -148,7 +147,7 @@ static int s_packet_handler_connack(
      * on the first successful CONNACK or user code will never think it's connected */
     if (was_reconnecting && connection->connection_count > 1) {
 
-        AWS_LOGF_TRACE(
+        AWS_LOGF_INFO(
             AWS_LS_MQTT_CLIENT,
             "id=%p: connection is a resumed connection, invoking on_resumed callback",
             (void *)connection);
@@ -158,7 +157,7 @@ static int s_packet_handler_connack(
 
         aws_create_reconnect_task(connection);
 
-        AWS_LOGF_TRACE(
+        AWS_LOGF_INFO(
             AWS_LS_MQTT_CLIENT,
             "id=%p: connection is a new connection, invoking on_connection_complete callback",
             (void *)connection);
@@ -166,7 +165,7 @@ static int s_packet_handler_connack(
             connection, on_connection_complete, AWS_OP_SUCCESS, connack.connect_return_code, connack.session_present);
     }
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection callback completed", (void *)connection);
+    AWS_LOGF_INFO(AWS_LS_MQTT_CLIENT, "id=%p: connection callback completed", (void *)connection);
 
     s_schedule_ping(connection);
     return AWS_OP_SUCCESS;

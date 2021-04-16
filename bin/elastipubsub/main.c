@@ -311,7 +311,7 @@ static void s_establish_connections(
             .socket_options = &socket_options,
             .tls_options = tls_connection_options,
             .client_id = aws_byte_cursor_from_c_str(client_id),
-            .keep_alive_time_secs = 0,
+            .keep_alive_time_secs = 60,
             .ping_timeout_ms = 0,
             .protocol_operation_timeout_ms =
                 (uint32_t)aws_timestamp_convert(10, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL),
@@ -645,7 +645,7 @@ int main(int argc, char **argv) {
             options.file = stderr;
         }
 
-        if (aws_logger_init_standard(&logger, allocator, &options)) {
+        if (aws_logger_init_noalloc(&logger, allocator, &options)) {
             fprintf(stderr, "Failed to initialize logger with error %s\n", aws_error_debug_str(aws_last_error()));
             exit(1);
         }
