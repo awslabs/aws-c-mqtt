@@ -525,7 +525,7 @@ static int s_process_read_message(
         AWS_ZERO_STRUCT(connection->thread_data.pending_packet);
 
         if (result) {
-            return AWS_OP_ERR;
+            goto cleanup;
         }
     }
 
@@ -561,10 +561,9 @@ static int s_process_read_message(
                 }
 
                 aws_reset_error();
-                goto cleanup;
-            } else {
-                return AWS_OP_ERR;
             }
+            /* done processing this packet, no more we can do */
+            goto cleanup;
         }
 
         struct aws_byte_cursor packet_data =
