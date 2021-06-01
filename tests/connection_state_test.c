@@ -2759,3 +2759,40 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/**
+ * Test that using invalid TLS connection options prevents the connection from opening.
+ */
+static int s_test_mqtt_connection_invalid_tls_options_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_tls_connection_options invalid_tls_conn_options;
+    AWS_ZERO_STRUCT(invalid_tls_conn_options);
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .ping_timeout_ms = 10,
+        .protocol_operation_timeout_ms = 3000,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
+        .tls_options = &invalid_tls_conn_options,
+    };
+
+    ASSERT_FAILS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+
+    ASSERT_TRUE(aws_last_error() == AWS_ERROR_INVALID_ARGUMENT);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_invalid_tls_options,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_invalid_tls_options_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)

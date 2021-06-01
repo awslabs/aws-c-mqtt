@@ -59,6 +59,7 @@ add_test_case(mqtt_clean_session_keep_next_session)
 add_test_case(mqtt_connection_publish_QoS1_timeout)
 add_test_case(mqtt_connection_unsub_timeout)
 add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
+add_test_case(mqtt_connection_invalid_tls_options)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
