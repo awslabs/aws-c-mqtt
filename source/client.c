@@ -1441,6 +1441,12 @@ int aws_mqtt_client_connection_connect(
 
     /* Cheat and set the tls_options host_name to our copy if they're the same */
     if (connection_options->tls_options) {
+        if (aws_tls_connection_options_is_valid(connection_options->tls_options)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT, "id=%p: Failed to setup connection due to invalid TLS options", (void *)connection);
+            goto error;
+        }
+
         connection->use_tls = true;
         if (aws_tls_connection_options_copy(&connection->tls_options, connection_options->tls_options)) {
 
