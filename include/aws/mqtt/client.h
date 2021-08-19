@@ -24,13 +24,7 @@ struct aws_http_message;
 struct aws_http_proxy_options;
 struct aws_socket_options;
 struct aws_tls_connection_options;
-
-struct aws_mqtt_client {
-    struct aws_allocator *allocator;
-    struct aws_client_bootstrap *bootstrap;
-    struct aws_ref_count ref_count;
-};
-
+struct aws_mqtt_client;
 struct aws_mqtt_client_connection;
 
 /**
@@ -180,13 +174,12 @@ struct aws_mqtt_topic_subscription {
 /**
  * host_name                 The server name to connect to. This resource may be freed immediately on return.
  * port                      The port on the server to connect to
- * client_id                 The clientid to place in the CONNECT packet.
  * socket_options            The socket options to pass to the aws_client_bootstrap functions.
  *                           This is copied into the connection
  * tls_options               TLS settings to use when opening a connection.
  *                           This is copied into the connection
  *                           Pass NULL to connect without TLS (NOT RECOMMENDED)
- * clean_session             True to discard all server session data and start fresh
+ * client_id                 The clientid to place in the CONNECT packet.
  * keep_alive_time_secs      The keep alive value to place in the CONNECT PACKET, a PING will automatically
  *                           be sent at this interval as well. If you specify 0, defaults will be used
  *                           and a ping will be sent once per 20 minutes.
@@ -197,16 +190,17 @@ struct aws_mqtt_topic_subscription {
  *                           (low-power) scenario, but keep-alive options may not work the same way on every platform
  *                           and OS version. This duration must be shorter than keep_alive_time_secs.
  * protocol_operation_timeout_ms
- *                           Timeout when waiting for the response to some operation requires response by protocol.
+ *                           Timeout when waiting for the response to an operation that requires a response by protocol.
  *                           Set to zero to disable timeout. Otherwise, the operation will fail with error
  *                           AWS_ERROR_MQTT_TIMEOUT if no response is received within this amount of time after
  *                           the packet is written to the socket. The timer is reset if the connection is interrupted.
- *                           It applied to PUBLISH (QoS>0) and UNSUBSCRIBE now.
+ *                           The timeout is only applied to PUBLISH (QoS>0) and UNSUBSCRIBE operations.
  *                           Note: While the MQTT 3 specification states that a broker MUST respond,
  *                           some brokers are known to ignore publish packets in exceptional circumstances
  *                           (e.g. AWS IoT Core will not respond if the publish quota is exceeded).
  * on_connection_complete    The callback to fire when the connection attempt completes
  * user_data                 Passed to the userdata param of on_connection_complete
+ * clean_session             True to discard all server session data and start fresh
  */
 struct aws_mqtt_connection_options {
     struct aws_byte_cursor host_name;
@@ -416,6 +410,7 @@ int aws_mqtt_client_connection_connect(
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
+AWS_MQTT_API
 int aws_mqtt_client_connection_reconnect(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,

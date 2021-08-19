@@ -5,6 +5,8 @@
 
 #include <aws/mqtt/private/fixed_header.h>
 
+#include <aws/common/byte_buf.h>
+
 /**
  * Implements encoding & decoding of the remaining_length field across 1-4 bytes [MQTT-2.2.3].
  *
@@ -29,6 +31,7 @@ static int s_encode_remaining_length(struct aws_byte_buf *buf, size_t remaining_
 
     return AWS_OP_SUCCESS;
 }
+
 static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remaining_length_out) {
 
     AWS_PRECONDITION(cur);
@@ -37,7 +40,7 @@ static int s_decode_remaining_length(struct aws_byte_cursor *cur, size_t *remain
     size_t multiplier = 1;
     size_t remaining_length = 0;
     while (true) {
-        uint8_t encoded_byte;
+        uint8_t encoded_byte = 0;
         if (!aws_byte_cursor_read_u8(cur, &encoded_byte)) {
             return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
         }

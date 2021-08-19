@@ -9,6 +9,7 @@
 #include <aws/mqtt/client.h>
 
 #include <aws/mqtt/private/fixed_header.h>
+#include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/hash_table.h>
@@ -159,7 +160,7 @@ struct aws_mqtt_client_connection {
         uint64_t current;      /* seconds */
         uint64_t min;          /* seconds */
         uint64_t max;          /* seconds */
-        uint64_t next_attempt; /* milliseconds */
+        uint64_t next_attempt; /* nanoseconds */
     } reconnect_timeouts;
 
     /* User connection callbacks */
@@ -206,19 +207,19 @@ struct aws_mqtt_client_connection {
 
     /* Any thread may touch this data, but the lock must be held (unless it's an atomic) */
     struct {
-        /* Note: never fire user callback with lock hold. */
+        /* Note: never fire user callback with lock held. */
         struct aws_mutex lock;
 
         /* The state of the connection */
         enum aws_mqtt_client_connection_state state;
 
         /**
-         * Memory pool for all aws_mqtt_request.
+         * Memory pool for all aws_mqtt_request objects.
          */
         struct aws_memory_pool requests_pool;
 
         /**
-         * Store all requests that is not completed including the pending requests.
+         * Store all requests that are not completed, including the pending requests.
          *
          * hash table from uint16_t (packet_id) to aws_mqtt_outstanding_request
          */
@@ -247,18 +248,24 @@ struct aws_mqtt_client_connection {
     } websocket;
 };
 
-struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
+struct aws_mqtt_client {
+    struct aws_allocator *allocator;
+    struct aws_client_bootstrap *bootstrap;
+    struct aws_ref_count ref_count;
+};
+
+AWS_MQTT_API struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
 
 /* Helper for getting a message object for a packet */
-struct aws_io_message *mqtt_get_message_for_packet(
+AWS_MQTT_API struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header);
 
-void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
-void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
+AWS_MQTT_API void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
+AWS_MQTT_API void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
 
 /* Note: needs to be called with lock held. */
-void mqtt_connection_set_state(
+AWS_MQTT_API void mqtt_connection_set_state(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_client_connection_state state);
 
@@ -298,6 +305,6 @@ AWS_MQTT_API void aws_create_reconnect_task(struct aws_mqtt_client_connection *c
  * \returns AWS_OP_SUCCESS if the connection is open and the PINGREQ is sent or queued to send,
  *              otherwise AWS_OP_ERR and aws_last_error() is set.
  */
-int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
+AWS_MQTT_API int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */

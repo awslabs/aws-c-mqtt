@@ -6,9 +6,14 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/common/byte_buf.h>
 #include <aws/common/hash_table.h>
 
-#include <aws/mqtt/private/packets.h>
+#include <aws/mqtt/mqtt.h>
+
+struct aws_mqtt_packet_publish;
+
+//#include <aws/mqtt/private/packets.h>
 
 /** Type of function called when a publish received matches a subscription */
 typedef void(aws_mqtt_publish_received_fn)(

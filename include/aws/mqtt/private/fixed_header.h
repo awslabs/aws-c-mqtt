@@ -6,9 +6,10 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/common/byte_buf.h>
-
 #include <aws/mqtt/mqtt.h>
+
+struct aws_byte_buf;
+struct aws_byte_cursor;
 
 /* Represents the types of the MQTT control packets [MQTT-2.2.1]. */
 enum aws_mqtt_packet_type {

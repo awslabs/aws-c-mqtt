@@ -5,10 +5,12 @@
 
 #include <aws/mqtt/private/topic_tree.h>
 
+#include <aws/common/string.h>
+#include <aws/common/task_scheduler.h>
+
 #include <aws/io/logging.h>
 
-#include <aws/common/byte_buf.h>
-#include <aws/common/task_scheduler.h>
+#include <aws/mqtt/private/packets.h>
 
 #ifdef _MSC_VER
 /* disables warning non const declared initializers for Microsoft compilers */

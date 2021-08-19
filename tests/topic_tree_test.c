@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/testing/aws_test_harness.h>

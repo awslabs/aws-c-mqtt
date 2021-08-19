@@ -6,10 +6,11 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/common/byte_buf.h>
 #include <aws/common/logging.h>
 
 #include <aws/mqtt/exports.h>
+
+struct aws_byte_cursor;
 
 #define AWS_C_MQTT_PACKAGE_ID 5
 
@@ -71,6 +72,7 @@ AWS_EXTERN_C_BEGIN
 
 AWS_MQTT_API
 bool aws_mqtt_is_valid_topic(const struct aws_byte_cursor *topic);
+
 AWS_MQTT_API
 bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter);
 
