@@ -2978,10 +2978,10 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
 struct mqtt_shutdown_task {
     int error_code;
-    struct aws_channel_task task;
+    struct aws_task task;
 };
 
-static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+static void s_mqtt_disconnect_task(struct aws_task *channel_task, void *arg, enum aws_task_status status) {
 
     (void)status;
 
@@ -3005,17 +3005,20 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
 
     if (connection->slot && connection->slot->channel) {
         aws_channel_shutdown(connection->slot->channel, task->error_code);
+    } else {
+        // Channel didn't exist, shut down the connection
+        s_mqtt_client_shutdown(connection->client->bootstrap, task->error_code, NULL, connection);
     }
 
     aws_mem_release(connection->allocator, task);
 }
 
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
-    if (connection->slot) {
-        struct mqtt_shutdown_task *shutdown_task =
-            aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));
-        shutdown_task->error_code = error_code;
-        aws_channel_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
-        aws_channel_schedule_task_now(connection->slot->channel, &shutdown_task->task);
-    }
+    struct mqtt_shutdown_task *shutdown_task =
+        aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));
+    shutdown_task->error_code = error_code;
+    aws_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
+    struct aws_event_loop *el =
+        aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+    aws_event_loop_schedule_task_now(el, &shutdown_task->task);
 }
