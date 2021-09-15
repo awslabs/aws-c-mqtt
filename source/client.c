@@ -1671,8 +1671,10 @@ static void s_on_publish_client_wrapper(
     struct subscribe_task_topic *task_topic = userdata;
 
     /* Call out to the user callback */
-    task_topic->request.on_publish(
-        task_topic->connection, topic, payload, dup, qos, retain, task_topic->request.on_publish_ud);
+    if (task_topic->request.on_publish) {
+        task_topic->request.on_publish(
+            task_topic->connection, topic, payload, dup, qos, retain, task_topic->request.on_publish_ud);
+    }
 }
 
 static void s_task_topic_release(void *userdata) {
