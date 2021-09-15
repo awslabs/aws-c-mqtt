@@ -393,6 +393,8 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
  * Once the connection is opened, on_connack will be called. Only called when connection is disconnected.
  *
  * \param[in] connection                The connection object
+ * \param[in] connection_options        Configuration information for the connection attempt
+ *
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
@@ -411,7 +413,7 @@ int aws_mqtt_client_connection_connect(
  *
  * \param[in] connection                The connection object
  * \param[in] on_connection_complete    The callback to fire when the connection attempt completes
- * \param[in] userdata                  Passed to the userdata param of on_connection_complete
+ * \param[in] userdata                  (nullable) Passed to the userdata param of on_connection_complete
  *
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
@@ -427,6 +429,8 @@ int aws_mqtt_client_connection_reconnect(
  * clean_session. DISCONNECT packet will be sent, which deletes the will message from server.
  *
  * \param[in] connection    The connection to close
+ * \param[in] on_disconnect (nullable) Callback function to invoke when the connection is completely disconnected.
+ * \param[in] userdata      (nullable) passed to on_disconnect
  *
  * \returns AWS_OP_SUCCESS if the connection is open and is being shutdown,
  *              otherwise AWS_OP_ERR and aws_last_error() is set.
@@ -442,10 +446,10 @@ int aws_mqtt_client_connection_disconnect(
  *
  * \param[in] connection        The connection to subscribe on
  * \param[in] topic_filters     An array_list of aws_mqtt_topic_subscription (NOT pointers) describing the requests.
- * \param[in] on_suback         Called when a SUBACK has been received from the server and the subscription is complete
- *                              Broker may fail one of the topics, check the qos in
+ * \param[in] on_suback         (nullable) Called when a SUBACK has been received from the server and the subscription
+ *                              is complete.  Broker may fail one of the topics, check the qos in
  *                              aws_mqtt_topic_subscription from the callback
- * \param[in] on_suback_ud      Passed to on_suback
+ * \param[in] on_suback_ud      (nullable) Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0.
  */
@@ -462,11 +466,12 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
  * \param[in] connection    The connection to subscribe on
  * \param[in] topic_filter  The topic filter to subscribe on.  This resource must persist until on_suback.
  * \param[in] qos           The maximum QoS of messages to receive
- * \param[in] on_publish    Called when a PUBLISH packet matching topic_filter is received
- * \param[in] on_publish_ud Passed to on_publish
- * \param[in] on_ud_cleanup Called when a subscription is removed, on_publish_ud is passed.
- * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
- * \param[in] on_suback_ud  Passed to on_suback
+ * \param[in] on_publish    (nullable) Called when a PUBLISH packet matching topic_filter is received
+ * \param[in] on_publish_ud (nullable) Passed to on_publish
+ * \param[in] on_ud_cleanup (nullable) Called when a subscription is removed, on_publish_ud is passed.
+ * \param[in] on_suback     (nullable) Called when a SUBACK has been received from the server and the subscription is
+ *                          complete
+ * \param[in] on_suback_ud  (nullable) Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0.
  */
@@ -488,11 +493,12 @@ uint16_t aws_mqtt_client_connection_subscribe(
  *
  * \param[in] connection    The connection to subscribe on
  * \param[in] topic_filter  The topic filter to subscribe on.  This resource must persist until on_suback.
- * \param[in] on_publish    Called when a PUBLISH packet matching topic_filter is received
- * \param[in] on_publish_ud Passed to on_publish
- * \param[in] on_ud_cleanup Called when a subscription is removed, on_publish_ud is passed.
- * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
- * \param[in] on_suback_ud  Passed to on_suback
+ * \param[in] on_publish    (nullable) Called when a PUBLISH packet matching topic_filter is received
+ * \param[in] on_publish_ud (nullable) Passed to on_publish
+ * \param[in] on_ud_cleanup (nullable) Called when a subscription is removed, on_publish_ud is passed.
+ * \param[in] on_suback     (nullable) Called when a SUBACK has been received from the server and the subscription is
+ *                          complete
+ * \param[in] on_suback_ud  (nullable) Passed to on_suback
  *
  * \returns The "packet id" of the operation if successfully initiated, otherwise 0.
  */
@@ -510,8 +516,9 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
  * Resubscribe to all topics currently subscribed to. This is to help when resuming a connection with a clean session.
  *
  * \param[in] connection    The connection to subscribe on
- * \param[in] on_suback     Called when a SUBACK has been received from the server and the subscription is complete
- * \param[in] on_suback_ud  Passed to on_suback
+ * \param[in] on_suback     (nullable) Called when a SUBACK has been received from the server and the subscription is
+ *                          complete
+ * \param[in] on_suback_ud  (nullable) Passed to on_suback
  *
  * \returns The packet id of the subscribe packet if successfully sent, otherwise 0 (and aws_last_error() will be set).
  */
@@ -526,8 +533,9 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
  *
  * \param[in] connection        The connection to unsubscribe on
  * \param[in] topic_filter      The topic filter to unsubscribe on. This resource must persist until on_unsuback.
- * \param[in] on_unsuback       Called when a UNSUBACK has been received from the server and the subscription is removed
- * \param[in] on_unsuback_ud    Passed to on_unsuback
+ * \param[in] on_unsuback       (nullable) Called when a UNSUBACK has been received from the server and the subscription
+ *                              is removed
+ * \param[in] on_unsuback_ud    (nullable) Passed to on_unsuback
  *
  * \returns The packet id of the unsubscribe packet if successfully sent, otherwise 0.
  */
@@ -546,9 +554,10 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
  * \param[in] qos           The requested QoS of the packet
  * \param[in] retain        True to have the server save the packet, and send to all new subscriptions matching topic
  * \param[in] payload       The data to send as the payload of the publish
- * \param[in] on_complete   For QoS 0, called as soon as the packet is sent
+ * \param[in] on_complete   (nullable) For QoS 0, called as soon as the packet is sent
  *                          For QoS 1, called when PUBACK is received
  *                          For QoS 2, called when PUBCOMP is received
+ * \param[in] user_data     (nullable) Passed to on_complete
  *
  * \returns The packet id of the publish packet if successfully sent, otherwise 0.
  */
