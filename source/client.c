@@ -1526,7 +1526,16 @@ int aws_mqtt_client_connection_connect(
         } /* END CRITICAL SECTION */
     }
 
+    /* Begin the connecting process, acquire the connection to keep it alive until we disconnected */
+    aws_mqtt_client_connection_acquire(connection);
+
     if (s_mqtt_client_connect(connection, connection_options->on_connection_complete, connection_options->user_data)) {
+        /*
+         * An error calling s_mqtt_client_connect should (must) be mutually exclusive with s_mqtt_client_shutdown().
+         * So it should be safe and correct to call release now to undo the pinning we did a few lines above.
+         */
+        aws_mqtt_client_connection_release(connection);
+
         /* client_id has been updated with something but it will get cleaned up when the connection gets cleaned up
          * so we don't need to worry about it here*/
         if (connection->clean_session) {
@@ -1535,8 +1544,7 @@ int aws_mqtt_client_connection_connect(
         }
         goto error;
     }
-    /* Begin the connecting process, acquire the connection to keep it alive until we disconnected */
-    aws_mqtt_client_connection_acquire(connection);
+
     return AWS_OP_SUCCESS;
 
 error:
