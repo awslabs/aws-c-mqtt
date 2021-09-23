@@ -307,13 +307,10 @@ static void s_mqtt_client_shutdown(
     switch (prev_state) {
         case AWS_MQTT_CLIENT_STATE_RECONNECTING: {
             /* If reconnect attempt failed, schedule the next attempt */
-            struct aws_event_loop *el =
-                aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
-
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Reconnect failed, retrying", (void *)connection);
 
             aws_event_loop_schedule_task_future(
-                el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
+                connection->loop, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
             break;
         }
         case AWS_MQTT_CLIENT_STATE_CONNECTED: {
@@ -622,16 +619,14 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
                 connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
 
             /* If reconnect attempt failed, schedule the next attempt */
-            struct aws_event_loop *el =
-                aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
             aws_event_loop_schedule_task_future(
-                el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
+                connection->loop, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
                 (void *)connection,
                 connection->reconnect_timeouts.next_attempt,
-                (void *)el);
+                (void *)connection->loop);
         } else {
             connection->reconnect_task->task.timestamp = 0;
         }
@@ -784,6 +779,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     aws_ref_count_init(
         &connection->ref_count, connection, (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
     connection->client = aws_mqtt_client_acquire(client);
+    connection->loop = aws_event_loop_group_get_next_loop(client->bootstrap->event_loop_group);
+
     AWS_ZERO_STRUCT(connection->synced_data);
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min = 1;
@@ -3028,7 +3025,6 @@ void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int err
         aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));
     shutdown_task->error_code = error_code;
     aws_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
-    struct aws_event_loop *el =
-        aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+    struct aws_event_loop *el = aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
     aws_event_loop_schedule_task_now(el, &shutdown_task->task);
 }

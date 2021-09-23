@@ -129,6 +129,7 @@ struct aws_mqtt_client_connection {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
     struct aws_mqtt_client *client;
+    struct aws_event_loop *loop;
 
     /* Channel handler information */
     struct aws_channel_handler handler;
