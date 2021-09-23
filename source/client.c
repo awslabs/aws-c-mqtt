@@ -3028,7 +3028,6 @@ void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int err
         aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));
     shutdown_task->error_code = error_code;
     aws_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
-    struct aws_event_loop *el =
-        aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+    struct aws_event_loop *el = aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
     aws_event_loop_schedule_task_now(el, &shutdown_task->task);
 }
