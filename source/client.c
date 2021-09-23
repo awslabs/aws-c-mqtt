@@ -2985,3 +2985,50 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     return (packet_id > 0) ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
+
+struct mqtt_shutdown_task {
+    int error_code;
+    struct aws_task task;
+};
+
+static void s_mqtt_disconnect_task(struct aws_task *channel_task, void *arg, enum aws_task_status status) {
+
+    (void)status;
+
+    struct mqtt_shutdown_task *task = AWS_CONTAINER_OF(channel_task, struct mqtt_shutdown_task, task);
+    struct aws_mqtt_client_connection *connection = arg;
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Doing disconnect", (void *)connection);
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        /* If there is an outstanding reconnect task, cancel it */
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
+            aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
+            /* If the reconnect_task isn't scheduled, free it */
+            if (connection->reconnect_task && !connection->reconnect_task->task.timestamp) {
+                aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
+            }
+            connection->reconnect_task = NULL;
+        }
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
+    if (connection->slot && connection->slot->channel) {
+        aws_channel_shutdown(connection->slot->channel, task->error_code);
+    } else {
+        // Channel didn't exist, shut down the connection
+        s_mqtt_client_shutdown(connection->client->bootstrap, task->error_code, NULL, connection);
+    }
+
+    aws_mem_release(connection->allocator, task);
+}
+
+void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
+    struct mqtt_shutdown_task *shutdown_task =
+        aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));
+    shutdown_task->error_code = error_code;
+    aws_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
+    struct aws_event_loop *el =
+        aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+    aws_event_loop_schedule_task_now(el, &shutdown_task->task);
+}
