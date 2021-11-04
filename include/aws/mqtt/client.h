@@ -418,6 +418,7 @@ int aws_mqtt_client_connection_connect(
  * \returns AWS_OP_SUCCESS if the connection has been successfully initiated,
  *              otherwise AWS_OP_ERR and aws_last_error() will be set.
  */
+AWS_MQTT_API
 int aws_mqtt_client_connection_reconnect(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
