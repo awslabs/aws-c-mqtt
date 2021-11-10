@@ -584,7 +584,7 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     /*************************************************************************/
     /* Payload                                                               */
     packet->payload = aws_byte_cursor_advance(cur, payload_size);
-    if (packet->payload.len == 0) {
+    if (packet->payload.len != payload_size) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
