@@ -20,7 +20,7 @@ static size_t s_sizeof_encoded_buffer(struct aws_byte_cursor *buf) {
 static int s_encode_buffer(struct aws_byte_buf *buf, const struct aws_byte_cursor cur) {
 
     AWS_PRECONDITION(buf);
-    AWS_PRECONDITION(cur.ptr && cur.len);
+    AWS_PRECONDITION(aws_byte_cursor_is_valid(&cur));
 
     /* Make sure the buffer isn't too big */
     if (cur.len > UINT16_MAX) {
@@ -584,7 +584,7 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     /*************************************************************************/
     /* Payload                                                               */
     packet->payload = aws_byte_cursor_advance(cur, payload_size);
-    if (packet->payload.len == 0) {
+    if (packet->payload.len != payload_size) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
