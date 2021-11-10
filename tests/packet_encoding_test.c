@@ -302,6 +302,57 @@ static int s_test_connect_will_init(struct packet_test_fixture *fixture) {
 }
 PACKET_TEST_NAME(CONNECT, connect_will, connect, &s_test_connect_will_init, NULL, &s_test_connect_eq)
 
+static uint8_t s_empty_payload[] = "";
+enum { EMPTY_PAYLOAD_LEN = 0 };
+
+static int s_test_connect_empty_payload_will_init(struct packet_test_fixture *fixture) {
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
+        fixture->in_packet, aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN), false, 0));
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_will(
+        fixture->in_packet,
+        aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
+        AWS_MQTT_QOS_EXACTLY_ONCE,
+        true /*retain*/,
+        aws_byte_cursor_from_array(s_empty_payload, EMPTY_PAYLOAD_LEN)));
+
+    /* Init buffer */
+    /* clang-format off */
+    uint8_t header[] = {
+        AWS_MQTT_PACKET_CONNECT << 4,   /* Packet type */
+        10 + (2 + CLIENT_ID_LEN) + (2 + TOPIC_NAME_LEN) + (2 + EMPTY_PAYLOAD_LEN), /* Remaining length */
+        0, 4, 'M', 'Q', 'T', 'T',       /* Protocol name */
+        4,                              /* Protocol level */
+                                        /* Connect Flags: */
+        (1 << 2)                        /*   Will flag, bit 2 */
+        | (AWS_MQTT_QOS_EXACTLY_ONCE << 3)/* Will QoS, bits 4-3 */
+        | (1 << 5),                     /*   Will Retain, bit 5 */
+
+        0, 0,                           /* Keep alive */
+    };
+    /* clang-format on */
+
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
+    /* client identifier */
+    aws_byte_buf_write_be16(&fixture->buffer, CLIENT_ID_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_client_id, CLIENT_ID_LEN);
+    /* will topic */
+    aws_byte_buf_write_be16(&fixture->buffer, TOPIC_NAME_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_topic_name, TOPIC_NAME_LEN);
+    /* will payload */
+    aws_byte_buf_write_be16(&fixture->buffer, EMPTY_PAYLOAD_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_empty_payload, EMPTY_PAYLOAD_LEN);
+
+    return AWS_OP_SUCCESS;
+}
+PACKET_TEST_NAME(
+    CONNECT,
+    connect_empty_payload_will,
+    connect,
+    &s_test_connect_empty_payload_will_init,
+    NULL,
+    &s_test_connect_eq)
+
 static int s_test_connect_password_init(struct packet_test_fixture *fixture) {
     /* Init packet */
     ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
