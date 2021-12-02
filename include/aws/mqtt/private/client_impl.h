@@ -34,6 +34,17 @@
         }                                                                                                              \
     } while (false)
 
+#if DEBUG_BUILD
+#    define ASSERT_SYNCED_DATA_LOCK_HELD(object)                                                                       \
+        {                                                                                                              \
+            int cached_error = aws_last_error();                                                                       \
+            AWS_ASSERT(aws_mutex_try_lock(&(object)->synced_data.lock) == AWS_OP_ERR);                                 \
+            aws_raise_error(cached_error);                                                                             \
+        }
+#else
+#    define ASSERT_SYNCED_DATA_LOCK_HELD(object)
+#endif
+
 enum aws_mqtt_client_connection_state {
     AWS_MQTT_CLIENT_STATE_CONNECTING,
     AWS_MQTT_CLIENT_STATE_CONNECTED,

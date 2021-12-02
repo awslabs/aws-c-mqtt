@@ -54,6 +54,7 @@ void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connect
 }
 
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection) {
+    ASSERT_SYNCED_DATA_LOCK_HELD(connection);
 
     int err = aws_mutex_unlock(&connection->synced_data.lock);
     AWS_ASSERT(!err);
@@ -71,6 +72,7 @@ static void s_aws_mqtt_client_destroy(struct aws_mqtt_client *client) {
 void mqtt_connection_set_state(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_client_connection_state state) {
+    ASSERT_SYNCED_DATA_LOCK_HELD(connection);
     if (connection->synced_data.state == state) {
         AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: MQTT connection already in state %d", (void *)connection, state);
         return;
