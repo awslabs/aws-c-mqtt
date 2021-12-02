@@ -16,7 +16,7 @@ env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_REGION: us-east-1
-  
+
 jobs:
   linux-compat:
     runs-on: ubuntu-latest
@@ -36,7 +36,7 @@ jobs:
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
         aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }} downstream
+        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DASSERT_LOCK_HELD=ON downstream
 
   linux-compiler-compat:
     runs-on: ubuntu-latest
@@ -59,7 +59,7 @@ jobs:
       - name: Build ${{ env.PACKAGE_NAME }}
         run: |
           aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=${{ matrix.compiler }} --spec downstream
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=${{ matrix.compiler }} --cmake-extra=-DASSERT_LOCK_HELD=ON --spec downstream
 
   clang-sanitizers:
     runs-on: ubuntu-latest
@@ -71,7 +71,7 @@ jobs:
       - name: Build ${{ env.PACKAGE_NAME }}
         run: |
           aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-11 --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-11 --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DASSERT_LOCK_HELD=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
 
   linux-shared-libs:
     runs-on: ubuntu-latest
@@ -80,7 +80,7 @@ jobs:
       - name: Build ${{ env.PACKAGE_NAME }}
         run: |
           aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON --cmake-extra=-DASSERT_LOCK_HELD=ON
 
   windows:
     runs-on: windows-latest
@@ -88,7 +88,7 @@ jobs:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
-        python builder.pyz build -p ${{ env.PACKAGE_NAME }}
+        python builder.pyz build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DASSERT_LOCK_HELD=ON
 
   windows-vc14:
     runs-on: windows-latest
@@ -99,7 +99,7 @@ jobs:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
-        python builder.pyz build -p ${{ env.PACKAGE_NAME }} --target windows-${{ matrix.arch }} --compiler msvc-14
+        python builder.pyz build -p ${{ env.PACKAGE_NAME }} --target windows-${{ matrix.arch }} --compiler msvc-14 --cmake-extra=-DASSERT_LOCK_HELD=ON
 
   windows-shared-libs:
     runs-on: windows-latest
@@ -107,7 +107,7 @@ jobs:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
-        python builder.pyz build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
+        python builder.pyz build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON --cmake-extra=-DASSERT_LOCK_HELD=ON
 
   osx:
     runs-on: macos-latest
@@ -116,6 +116,4 @@ jobs:
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} default-downstream
-
-
+        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DASSERT_LOCK_HELD=ON default-downstream
