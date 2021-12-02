@@ -34,7 +34,7 @@
         }                                                                                                              \
     } while (false)
 
-#if DEBUG_BUILD
+#if ASSERT_LOCK_HELD
 #    define ASSERT_SYNCED_DATA_LOCK_HELD(object)                                                                       \
         {                                                                                                              \
             int cached_error = aws_last_error();                                                                       \
