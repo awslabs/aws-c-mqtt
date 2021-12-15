@@ -17,6 +17,40 @@ struct aws_tls_connection_options;
 
 struct aws_mqtt5_client;
 
+/*
+ * Fundamental Tenets:
+ *
+ * (1) All mqtt packet information must be surfaced to the user (previously many things just got consumed but
+ * not surfaced; with user properties and dynamic negotiation we might as well tell the user about everything.
+ * (2) Only keep mqtt spec level behavior (+ reconnect) in the base client and layer on a higher level client that
+ * is responsible/extensible for additional behavior (queuing, etc...)
+ * (3) config is done 100% at client creation time.
+ */
+/*
+// Higher level client stuff, rejected from here
+
+// queuing configuration
+
+enum aws_mqtt5_operation_queuing_behavior_type {
+    AWS_MQTT5_OQBT_NONE,
+    AWS_MQTT5_OQBT_BOUNDED,
+    AWS_MQTT5_OQBT_UNBOUNDED,
+};
+
+enum aws_mqtt5_operation_bounding_queue_limit_type {
+    AWS_MQTT5_OBQLT_PAYLOAD_SIZE,
+    AWS_MQTT5_OBQLT_QUEUE_SIZE,
+};
+
+// ??;
+struct aws_mqtt5_client_queuing_options {
+    enum aws_mqtt5_operation_queuing_behavior_type queuing_behavior;
+    enum aws_mqtt5_operation_bounding_queue_limit_type limit_type;
+    uint64_t limit_bound;
+};
+
+ */
+
 // likely private impl detail
 typedef uint64_t aws_mqtt5_op_id;
 typedef uint16_t aws_mqtt5_packet_id;
@@ -53,7 +87,7 @@ struct aws_mqtt5_epehemeral_property_list {
 struct aws_mqtt5_timeout_options {
     uint16_t keep_alive_time_secs;
     uint32_t ping_timeout_ms;
-    uint32_t protocol_operation_timeout_ms;
+    uint32_t protocol_operation_timeout_ms; // consider removing or reworking or moving to higher level client
 };
 
 /* Session configuration */
@@ -61,28 +95,12 @@ struct aws_mqtt5_timeout_options {
 struct aws_mqtt5_client_session_options {
     uint32_t session_expiry_interval;
     bool clean_start;
+
+    // potentially rework into a strategy given that IoT core limits (8/sub) make this tricky
     bool resubscribe_on_clean_connect;
 };
 
-/* Queuing configuration */
 
-enum aws_mqtt5_operation_queuing_behavior_type {
-    AWS_MQTT5_OQBT_NONE,
-    AWS_MQTT5_OQBT_BOUNDED,
-    AWS_MQTT5_OQBT_UNBOUNDED,
-};
-
-enum aws_mqtt5_operation_bounding_queue_limit_type {
-    AWS_MQTT5_OBQLT_PAYLOAD_SIZE,
-    AWS_MQTT5_OBQLT_QUEUE_SIZE,
-};
-
-// ??;
-struct aws_mqtt5_client_queuing_options {
-    enum aws_mqtt5_operation_queuing_behavior_type queuing_behavior;
-    enum aws_mqtt5_operation_bounding_queue_limit_type limit_type;
-    uint64_t limit_bound;
-};
 
 /* Connection event callback configuration */
 
@@ -108,11 +126,12 @@ enum aws_mqtt5_client_connection_event_type {
 };
 
  */
-enum aws_mqtt5_client_connection_event_type {
-    AWS_MQTT5_CCET_CONNECTION_ESTABLISHED,
-    AWS_MQTT5_CCET_CONNECTION_FAILED,
-    AWS_MQTT5_CCET_CONNECTION_INTERRUPTED,
-    AWS_MQTT5_CCET_STOPPED,
+
+enum aws_mqtt5_client_lifecycle_event_type {
+    AWS_MQTT5_CLET_CONNECTION_ESTABLISHED,
+    AWS_MQTT5_CLET_CONNECTION_FAILED,
+    AWS_MQTT5_CLET_CONNECTION_INTERRUPTED,
+    AWS_MQTT5_CLET_STOPPED,
 };
 
 // ??;
@@ -235,22 +254,22 @@ struct aws_mqtt5_client_connect_options {
     struct aws_mqtt5_client_connect_property_options *connect_property_options;
 };
 
-/* Client configuration */
+/* Underlying transport (tcp/websocket/tls) configuration */
 
-struct aws_mqtt5_client_config_options {
-    /*
-     * pre-mqtt connect configuration
-     */
+struct aws_mqtt5_client_transport_config_options {
     struct aws_byte_cursor host_name;
     uint16_t port;
+    struct aws_client_bootstrap *bootstrap;
     struct aws_socket_options *socket_options;
     struct aws_tls_connection_options *tls_options;
     struct aws_http_proxy_options *http_proxy_options;
     struct aws_mqtt5_client_websocket_options *websocket_options;
+};
 
-    /*
-     * mqtt connect configuration
-     */
+/* Client configuration */
+
+struct aws_mqtt5_client_config_options {
+    struct aws_mqtt5_client_transport_config_options transport_options;
     struct aws_mqtt5_client_connect_options *connect_options;
 
     /*
@@ -259,7 +278,6 @@ struct aws_mqtt5_client_config_options {
     struct aws_mqtt5_timeout_options *timeout_options;
     struct aws_mqtt5_client_connection_event_options *connection_event_options;
     struct aws_mqtt5_client_reconnect_options *reconnect_options;
-    struct aws_mqtt5_client_queuing_options *queuing_options;
 };
 
 
