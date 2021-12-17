@@ -36,10 +36,12 @@ include(AwsFindPackage)
 
 file(GLOB AWS_MQTT_HEADERS
         "include/aws/mqtt/*.h"
+        "include/aws/mqtt/v5/*.h"
         )
 
 file(GLOB AWS_MQTT_PRIV_HEADERS
         "include/aws/mqtt/private/*.h"
+        "include/aws/mqtt/private/v5/*.h"
         )
 
 file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
@@ -48,6 +50,7 @@ file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
 
 file(GLOB AWS_MQTT_SRC
         "source/*.c"
+        "source/v5/*.c"
         )
 
 file(GLOB MQTT_HEADERS
