@@ -5,8 +5,22 @@
 
 #include <aws/mqtt/v5/mqtt5_client_config.h>
 
+#include <aws/common/string.h>
+#include <aws/http/proxy.h>
 #include <aws/io/channel_bootstrap.h>
+#include <aws/io/tls_channel_handler.h>
 #include <aws/mqtt/v5/private/mqtt5_client_impl.h>
+
+#include <inttypes.h>
+
+#define DEFAULT_MIN_RECONNECT_DELAY_MS 1000
+#define DEFAULT_MAX_RECONNECT_DELAY_MS 120000
+#define DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS 30000
+#define DEFAULT_KEEP_ALIVE_INTERVAL_MS 1200000
+#define DEFAULT_PING_TIMEOUT_MS 3000
+
+/* ToDo: this is new to mqtt5 and we may want the default to depend on something about AWS IoT */
+#define DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS 0
 
 struct aws_mqtt5_client_config *aws_mqtt5_client_config_new(struct aws_allocator *allocator) {
     AWS_FATAL_ASSERT(allocator != NULL);
@@ -14,6 +28,15 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new(struct aws_allocator
     struct aws_mqtt5_client_config *config = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_client_config));
 
     config->allocator = allocator;
+
+    /* "Zeroed" is a sensible default for many, but not all, values in the config */
+    config->min_reconnect_delay_ms = DEFAULT_MIN_RECONNECT_DELAY_MS;
+    config->max_reconnect_delay_ms = DEFAULT_MAX_RECONNECT_DELAY_MS;
+    config->min_connected_time_to_reset_reconnect_delay_ms = DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS;
+    config->keep_alive_interval_ms = DEFAULT_KEEP_ALIVE_INTERVAL_MS;
+    config->ping_timeout_ms = DEFAULT_PING_TIMEOUT_MS;
+    config->session_expiry_interval_seconds = DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS;
+    config->request_problem_information = true;
 
     return config;
 }
@@ -31,6 +54,29 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new_clone(
     aws_mqtt5_client_config_set_port(config, from->port);
     aws_mqtt5_client_config_set_bootstrap(config, from->bootstrap);
     aws_mqtt5_client_config_set_socket_options(config, &from->socket_options);
+    aws_mqtt5_client_config_set_tls_connection_options(config, from->tls_options_ptr);
+    aws_mqtt5_client_config_set_http_proxy_host_name(config, aws_byte_cursor_from_buf(&from->http_proxy_host_name));
+    aws_mqtt5_client_config_set_http_proxy_port(config, from->http_proxy_port);
+    aws_mqtt5_client_config_set_http_proxy_tls_connection_options(config, from->http_proxy_tls_options_ptr);
+    aws_mqtt5_client_config_set_http_proxy_strategy(config, from->http_proxy_strategy);
+    aws_mqtt5_client_config_set_reconnect_behavior(config, from->reconnect_behavior);
+    aws_mqtt5_client_config_set_reconnect_delay(config, from->min_reconnect_delay_ms, from->max_reconnect_delay_ms);
+    aws_mqtt5_client_config_set_reconnect_delay_reset_interval(
+        config, from->min_connected_time_to_reset_reconnect_delay_ms);
+    aws_mqtt5_client_config_set_keep_alive_interval_ms(config, from->keep_alive_interval_ms);
+    aws_mqtt5_client_config_set_ping_timeout_ms(config, from->ping_timeout_ms);
+    aws_mqtt5_client_config_set_client_id(config, aws_byte_cursor_from_buf(&from->client_id));
+    aws_mqtt5_client_config_set_connect_username(config, from->username_ptr);
+    aws_mqtt5_client_config_set_connect_password(config, aws_byte_cursor_from_buf(&from->password));
+    aws_mqtt5_client_config_set_connect_session_expiry_interval_seconds(config, from->session_expiry_interval_seconds);
+    aws_mqtt5_client_config_set_connect_session_behavior(config, from->session_behavior);
+    aws_mqtt5_client_config_set_connect_authentication_method(config, from->authentication_method_ptr);
+    aws_mqtt5_client_config_set_connect_authentication_data(config, from->authentication_data_ptr);
+    aws_mqtt5_client_config_set_connect_request_response_information(config, from->request_response_information);
+    aws_mqtt5_client_config_set_connect_request_problem_information(config, from->request_problem_information);
+    aws_mqtt5_client_config_set_connect_receive_maximum(config, from->receive_maximum);
+    aws_mqtt5_client_config_set_connect_topic_alias_maximum(config, from->topic_alias_maximum);
+    aws_mqtt5_client_config_set_connect_maximum_packet_size(config, from->maximum_packet_size_bytes);
 
     return config;
 }
@@ -42,6 +88,14 @@ void aws_mqtt5_client_config_destroy(struct aws_mqtt5_client_config *config) {
 
     aws_byte_buf_clean_up(&config->host_name);
     aws_client_bootstrap_release(config->bootstrap);
+    aws_tls_connection_options_clean_up(&config->tls_options);
+    aws_byte_buf_clean_up(&config->http_proxy_host_name);
+    aws_tls_connection_options_clean_up(&config->http_proxy_tls_options);
+    aws_http_proxy_strategy_release(config->http_proxy_strategy);
+    aws_byte_buf_clean_up(&config->username);
+    aws_byte_buf_clean_up(&config->password);
+    aws_byte_buf_clean_up(&config->authentication_method);
+    aws_byte_buf_clean_up(&config->authentication_data);
 
     aws_mem_release(config->allocator, config);
 }
@@ -63,6 +117,11 @@ int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config) {
     if (config->socket_options.type != AWS_SOCKET_STREAM || config->socket_options.connect_timeout_ms == 0) {
         return AWS_ERROR_MQTT_CONFIG_VALIDATION_INVALID_SOCKET_OPTIONS;
     }
+
+    /*
+     * no invalid proxy options possible.  If port is zero with a non-empty host, we'll use 443/80 depending on
+     * proxy tls configuration
+     */
 
     return AWS_ERROR_SUCCESS;
 }
@@ -109,11 +168,12 @@ void aws_mqtt5_client_config_set_socket_options(
     AWS_FATAL_ASSERT(config != NULL);
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CONFIG,
-        "(%p) mqtt5_client_config - setting setting socket options, type = %d, domain = %d, connect_timeout_ms = %u",
+        "(%p) mqtt5_client_config - setting setting socket options, type = %d, domain = %d, connect_timeout_ms "
+        "= " PRIu32,
         (void *)config,
         (int)socket_options->type,
         (int)socket_options->domain,
-        (uint32_t)socket_options->connect_timeout_ms);
+        socket_options->connect_timeout_ms);
     if (socket_options->keepalive) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CONFIG,
@@ -128,88 +188,422 @@ void aws_mqtt5_client_config_set_socket_options(
     config->socket_options = *socket_options;
 }
 
+static void s_log_tls_connection_options(
+    struct aws_mqtt5_client_config *config,
+    struct aws_tls_connection_options *tls_options,
+    const char *log_text) {
+    AWS_LOGF_DEBUG(AWS_LL_DEBUG, AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - setting %s", config, log_text);
+
+    if (tls_options->advertise_alpn_message && tls_options->alpn_list) {
+        AWS_LOGF_DEBUG(
+            AWS_LL_DEBUG,
+            AWS_LS_MQTT_CONFIG,
+            "(%p) mqtt5_client_config - %s alpn protocol list: %s",
+            config,
+            log_text,
+            aws_string_c_str(tls_options->alpn_list));
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LL_DEBUG, AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - %s alpn not used", config, log_text);
+    }
+
+    if (tls_options->server_name) {
+        AWS_LOGF_DEBUG(
+            AWS_LL_DEBUG,
+            AWS_LS_MQTT_CONFIG,
+            "(%p) mqtt5_client_config - %s SNI value: %s",
+            config,
+            log_text,
+            aws_string_c_str(tls_options->server_name));
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LL_DEBUG, AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - %s SNI not used", config, log_text);
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LL_DEBUG,
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - %s tls context: %p",
+        config,
+        log_text,
+        tls_options->ctx);
+    AWS_LOGF_DEBUG(
+        AWS_LL_DEBUG,
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - %s tls handshake timeout: " PRIu32,
+        config,
+        log_text,
+        tls_options->timeout_ms);
+}
+
 void aws_mqtt5_client_config_set_tls_connection_options(
     struct aws_mqtt5_client_config *config,
     struct aws_tls_connection_options *tls_options) {
     AWS_FATAL_ASSERT(config != NULL);
+
+    aws_tls_connection_options_clean_up(&config->tls_options);
+    if (tls_options != NULL) {
+        aws_tls_connection_options_copy(&config->tls_options, tls_options);
+        config->tls_options_ptr = &config->tls_options;
+
+        s_log_tls_connection_options(config, config->tls_options_ptr, "tls options");
+    } else {
+        AWS_ZERO_STRUCT(config->tls_options);
+        config->tls_options_ptr = NULL;
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - not using tls to remote endpoint", (void *)config);
+    }
 }
 
-void aws_mqtt5_client_config_set_http_proxy_options(
+void aws_mqtt5_client_config_set_http_proxy_host_name(
     struct aws_mqtt5_client_config *config,
-    struct aws_http_proxy_options *http_proxy_options) {
+    struct aws_byte_cursor proxy_host_name) {
+
     AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting proxy host to " PRInSTR,
+        (void *)config,
+        AWS_BYTE_CURSOR_PRI(proxy_host_name));
+
+    aws_byte_buf_clean_up(&config->http_proxy_host_name);
+    aws_byte_buf_init_copy_from_cursor(&config->http_proxy_host_name, config->allocator, proxy_host_name);
 }
 
-void aws_mqtt5_client_config_set_websocket_options(
-    struct aws_mqtt5_client_config *config,
-    struct aws_mqtt5_websocket_options *websocket_options) {
+void aws_mqtt5_client_config_set_http_proxy_port(struct aws_mqtt5_client_config *config, uint16_t port) {
+
     AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - setting proxy port to %d", (void *)config, (int)port);
+
+    config->http_proxy_port = port;
+}
+
+void aws_mqtt5_client_config_set_http_proxy_tls_connection_options(
+    struct aws_mqtt5_client_config *config,
+    struct aws_tls_connection_options *tls_options) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+
+    aws_tls_connection_options_clean_up(&config->http_proxy_tls_options);
+    if (tls_options != NULL) {
+        aws_tls_connection_options_copy(&config->http_proxy_tls_options, tls_options);
+        config->http_proxy_tls_options_ptr = &config->http_proxy_tls_options;
+
+        s_log_tls_connection_options(config, config->http_proxy_tls_options_ptr, "http proxy tls options");
+    } else {
+        AWS_ZERO_STRUCT(config->http_proxy_tls_options);
+        config->http_proxy_tls_options_ptr = NULL;
+
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - not using tls to proxy", (void *)config);
+    }
+}
+
+void aws_mqtt5_client_config_set_http_proxy_strategy(
+    struct aws_mqtt5_client_config *config,
+    struct aws_http_proxy_strategy *strategy) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+
+    /* ToDo: add (and use) an API to proxy strategy that returns a debug string (Basic, Adaptive, etc...) */
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting http proxy strategy to %p",
+        (void *)config,
+        (void *)strategy);
+
+    aws_http_proxy_strategy_release(config->http_proxy_strategy);
+    config->http_proxy_strategy = aws_http_proxy_strategy_acquire(strategy);
+}
+
+void aws_mqtt5_client_config_set_websocket_transform(
+    struct aws_mqtt5_client_config *config,
+    aws_mqtt5_transform_websocket_handshake_fn *transform) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    if (transform != NULL) {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - enabling websockets", (void *)config);
+    } else {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - disabling websockets", (void *)config);
+    }
+
+    config->websocket_handshake_transform = transform;
+}
+
+void aws_mqtt5_client_config_set_websocket_transform_user_data(
+    struct aws_mqtt5_client_config *config,
+    void *user_data) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting websocket handshake transform user data to: ",
+        (void *)config,
+        user_data);
+
+    config->websocket_handshake_transform_user_data = user_data;
 }
 
 void aws_mqtt5_client_config_set_reconnect_behavior(
     struct aws_mqtt5_client_config *config,
-    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior);
+    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting reconnect behavior to: %d(%s)",
+        (void *)config,
+        (int)reconnect_behavior,
+        aws_mqtt5_client_reconnect_behavior_type_to_c_string(reconnect_behavior));
+
+    config->reconnect_behavior = reconnect_behavior;
+}
 
 void aws_mqtt5_client_config_set_reconnect_delay(
     struct aws_mqtt5_client_config *config,
     uint64_t min_reconnect_delay_ms,
-    uint64_t max_reconnect_delay_ms);
+    uint64_t max_reconnect_delay_ms) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting reconnect delay boundaries, min: " PRIu64 " ms, max: " PRIu64 " ms",
+        (void *)config,
+        min_reconnect_delay_ms,
+        max_reconnect_delay_ms);
+
+    config->min_reconnect_delay_ms = min_reconnect_delay_ms;
+    config->max_reconnect_delay_ms = max_reconnect_delay_ms;
+}
 
 void aws_mqtt5_client_config_set_reconnect_delay_reset_interval(
     struct aws_mqtt5_client_config *config,
-    uint64_t min_connected_time_to_reset_reconnect_delay_ms);
+    uint64_t min_connected_time_to_reset_reconnect_delay_ms) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting minimum necessary connection time in order to reset the reconnect "
+        "delay: " PRIu64 " ms",
+        (void *)config,
+        min_connected_time_to_reset_reconnect_delay_ms);
+
+    config->min_connected_time_to_reset_reconnect_delay_ms = min_connected_time_to_reset_reconnect_delay_ms;
+}
 
 void aws_mqtt5_client_config_set_keep_alive_interval_ms(
     struct aws_mqtt5_client_config *config,
-    uint32_t keep_alive_interval_ms);
+    uint32_t keep_alive_interval_ms) {
 
-void aws_mqtt5_client_config_set_ping_timeout_ms(struct aws_mqtt5_client_config *config, uint32_t ping_timeout_ms);
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting keep alive interval to " PRIu32 " ms",
+        (void *)config,
+        keep_alive_interval_ms);
 
-void aws_mqtt5_client_config_set_client_id(struct aws_mqtt5_client_config *config, struct aws_byte_cursor client_id);
+    config->keep_alive_interval_ms = keep_alive_interval_ms;
+}
+
+void aws_mqtt5_client_config_set_ping_timeout_ms(struct aws_mqtt5_client_config *config, uint32_t ping_timeout_ms) {
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting ping timeout interval to " PRIu32 " ms",
+        (void *)config,
+        ping_timeout_ms);
+
+    config->ping_timeout_ms = ping_timeout_ms;
+}
+
+void aws_mqtt5_client_config_set_client_id(struct aws_mqtt5_client_config *config, struct aws_byte_cursor client_id) {
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting client id to " PRInSTR,
+        (void *)config,
+        AWS_BYTE_CURSOR_PRI(client_id));
+
+    aws_byte_buf_clean_up(&config->client_id);
+    aws_byte_buf_init_copy_from_cursor(&config->client_id, config->allocator, client_id);
+}
 
 void aws_mqtt5_client_config_set_connect_username(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor username);
+    struct aws_byte_cursor *username) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    if (username != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CONFIG,
+            "(%p) mqtt5_client_config - setting username to \"" PRInSTR "\"",
+            (void *)config,
+            AWS_BYTE_CURSOR_PRI(*username));
+
+        aws_byte_buf_clean_up(&config->username);
+        aws_byte_buf_init_copy_from_cursor(&config->username, config->allocator, *username);
+        config->username_ptr = &config->username;
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - disabling username/password in CONNECT", (void *)config);
+        config->username_ptr = NULL;
+    }
+}
 
 void aws_mqtt5_client_config_set_connect_password(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor password);
+    struct aws_byte_cursor password) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - setting password", (void *)config);
+
+    aws_byte_buf_clean_up(&config->password);
+    aws_byte_buf_init_copy_from_cursor(&config->password, config->allocator, password);
+}
 
 void aws_mqtt5_client_config_set_connect_session_expiry_interval_seconds(
     struct aws_mqtt5_client_config *config,
-    uint32_t session_expiry_interval_seconds);
+    uint32_t session_expiry_interval_seconds) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting session expiry interval to " PRIu32 " seconds",
+        (void *)config,
+        session_expiry_interval_seconds);
+
+    config->session_expiry_interval_seconds = session_expiry_interval_seconds;
+}
 
 void aws_mqtt5_client_config_set_connect_session_behavior(
     struct aws_mqtt5_client_config *config,
-    enum aws_mqtt5_client_session_behavior_type);
+    enum aws_mqtt5_client_session_behavior_type session_behavior) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting connect session behavior to: %d(%s)",
+        (void *)config,
+        (int)session_behavior,
+        aws_mqtt5_client_session_behavior_type_to_c_string(session_behavior));
+
+    config->session_behavior = session_behavior;
+}
 
 void aws_mqtt5_client_config_set_connect_authentication_method(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor authentication_method);
+    struct aws_byte_cursor *authentication_method) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    if (authentication_method != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CONFIG,
+            "(%p) mqtt5_client_config - setting authentication method to \"" PRInSTR "\"",
+            (void *)config,
+            AWS_BYTE_CURSOR_PRI(*authentication_method));
+
+        aws_byte_buf_clean_up(&config->authentication_method);
+        aws_byte_buf_init_copy_from_cursor(&config->authentication_method, config->allocator, *authentication_method);
+        config->authentication_method_ptr = &config->authentication_method;
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - disabling authentication method property", (void *)config);
+        config->authentication_method_ptr = NULL;
+    }
+}
 
 void aws_mqtt5_client_config_set_connect_authentication_data(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor authentication_data);
+    struct aws_byte_cursor *authentication_data) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    if (authentication_data != NULL) {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - setting authentication data", (void *)config);
+
+        aws_byte_buf_clean_up(&config->authentication_data);
+        aws_byte_buf_init_copy_from_cursor(&config->authentication_data, config->allocator, *authentication_data);
+        config->authentication_data_ptr = &config->authentication_data;
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - disabling authentication data property", (void *)config);
+        config->authentication_data_ptr = NULL;
+    }
+}
 
 void aws_mqtt5_client_config_set_connect_request_response_information(
     struct aws_mqtt5_client_config *config,
-    bool request_response_information);
+    bool request_response_information) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting request response information to %d",
+        (void *)config,
+        (int)request_response_information);
+
+    config->request_response_information = request_response_information;
+}
 
 void aws_mqtt5_client_config_set_connect_request_problem_information(
     struct aws_mqtt5_client_config *config,
-    bool request_problem_information);
+    bool request_problem_information) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting request problem information to %d",
+        (void *)config,
+        (int)request_problem_information);
+
+    config->request_problem_information = request_problem_information;
+}
 
 void aws_mqtt5_client_config_set_connect_receive_maximum(
     struct aws_mqtt5_client_config *config,
-    uint16_t receive_maximum);
+    uint16_t receive_maximum) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting receive maximum to %d",
+        (void *)config,
+        (int)receive_maximum);
+
+    config->receive_maximum = receive_maximum;
+}
 
 void aws_mqtt5_client_config_set_connect_topic_alias_maximum(
     struct aws_mqtt5_client_config *config,
-    uint16_t topic_alias_maximum);
+    uint16_t topic_alias_maximum) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting topic alias maximum to %d",
+        (void *)config,
+        (int)topic_alias_maximum);
+
+    config->topic_alias_maximum = topic_alias_maximum;
+}
 
 void aws_mqtt5_client_config_set_connect_maximum_packet_size(
     struct aws_mqtt5_client_config *config,
-    uint32_t maximum_packet_size_bytes);
+    uint32_t maximum_packet_size_bytes) {
+
+    AWS_FATAL_ASSERT(config != NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting maximum packet size to " PRIu32 " bytes",
+        (void *)config,
+        maximum_packet_size_bytes);
+
+    config->maximum_packet_size_bytes = maximum_packet_size_bytes;
+}
+
+void aws_mqtt5_client_config_add_connect_user_property(
+    struct aws_mqtt5_client_config *config,
+    struct aws_mqtt5_user_property *property);
 
 void aws_mqtt5_client_config_set_will_payload_format(
     struct aws_mqtt5_client_config *config,
@@ -247,4 +641,8 @@ void aws_mqtt5_client_config_add_will_user_property(
 
 void aws_mqtt5_client_config_set_lifecycle_event_handler(
     struct aws_mqtt5_client_config *config,
-    struct aws_mqtt5_client_lifecycle_event_handler_options *lifecycle_event_handling_options);
+    aws_mqtt5_client_connection_event_callback_fn *lifecycle_event_handler);
+
+void aws_mqtt5_client_config_set_lifecycle_event_handler_user_data(
+    struct aws_mqtt5_client_config *config,
+    void *user_data);

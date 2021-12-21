@@ -258,7 +258,8 @@ enum aws_mqtt5_packet_type {
     AWS_MQTT5_PT_CONNECT = 1,
     AWS_MQTT5_PT_CONNACK = 2,
     AWS_MQTT5_PT_PUBLISH = 3,
-    AWS_MQTT5_PT_PUBACK = 4. AWS_MQTT5_PT_PUBREC = 5,
+    AWS_MQTT5_PT_PUBACK = 4,
+    AWS_MQTT5_PT_PUBREC = 5,
     AWS_MQTT5_PT_PUBREL = 6,
     AWS_MQTT5_PT_PUBCOMP = 7,
     AWS_MQTT5_PT_SUBSCRIBE = 8,
@@ -279,13 +280,8 @@ typedef void(aws_mqtt5_transform_websocket_handshake_complete_fn)(
 typedef void(aws_mqtt5_transform_websocket_handshake_fn)(
     struct aws_http_message *request,
     void *user_data,
-    aws_mqtt_transform_websocket_handshake_complete_fn *complete_fn,
+    aws_mqtt5_transform_websocket_handshake_complete_fn *complete_fn,
     void *complete_ctx);
-
-struct aws_mqtt5_websocket_options {
-    aws_mqtt_transform_websocket_handshake_fn *handshake_transformation;
-    void *handshake_transformation_user_data;
-};
 
 enum aws_mqtt5_client_reconnect_behavior_type {
     AWS_MQTT5_CRBT_RECONNECT_IF_INITIAL_SUCCESS,
@@ -324,11 +320,6 @@ struct aws_mqtt5_client_lifecycle_event {
 
 typedef void(aws_mqtt5_client_connection_event_callback_fn)(struct aws_mqtt5_connection_event *event);
 
-struct aws_mqtt5_client_lifecycle_event_handling_options {
-    aws_mqtt5_client_connection_event_callback_fn *lifecycle_event_callback;
-    void *lifecycle_event_callback_user_data;
-};
-
 /* https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901063 */
 enum aws_mqtt5_payload_format_indicator {
     AWS_MQTT5_PFI_BYTES = 0,
@@ -341,6 +332,15 @@ AWS_MQTT_API const char *aws_mqtt5_disconnect_reason_code_to_c_string(
     enum aws_mqtt5_disconnect_reason_code reason_code);
 
 AWS_MQTT_API const char *aws_mqtt5_connect_reason_code_to_c_string(enum aws_mqtt5_connect_reason_code reason_code);
+
+AWS_MQTT_API const char *aws_mqtt5_client_reconnect_behavior_type_to_c_string(
+    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior);
+
+AWS_MQTT_API const char *aws_mqtt5_client_session_behavior_type_to_c_string(
+    enum aws_mqtt5_client_session_behavior_type session_behavior);
+
+AWS_MQTT_API const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
+    enum aws_mqtt5_client_lifecycle_event_type lifecycle_event);
 
 AWS_EXTERN_C_END
 

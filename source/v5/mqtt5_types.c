@@ -160,3 +160,45 @@ const char *aws_mqtt5_disconnect_reason_code_to_c_string(enum aws_mqtt5_disconne
 
     return "Unknown Reason";
 }
+
+const char *aws_mqtt5_client_reconnect_behavior_type_to_c_string(
+    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior) {
+    switch (reconnect_behavior) {
+        case AWS_MQTT5_CRBT_RECONNECT_IF_INITIAL_SUCCESS:
+            return "Reconnect if and only if initial connection attempt succeeded";
+        case AWS_MQTT5_CRBT_RECONNECT_ALWAYS:
+            return "Reconnect always";
+        case AWS_MQTT5_CRBT_RECONNECT_NEVER:
+            return "Reconnect never";
+    }
+
+    return "Unknown reconnect behavior";
+}
+
+const char *aws_mqtt5_client_session_behavior_type_to_c_string(
+    enum aws_mqtt5_client_session_behavior_type session_behavior) {
+    switch (session_behavior) {
+        case AWS_MQTT5_CSBT_CLEAN:
+            return "Clean session always";
+        case AWS_MQTT5_CSBT_REJOIN:
+            return "Rejoin session always";
+        case AWS_MQTT5_CSBT_REJOIN_AND_RESUB_ON_CLEAN:
+            return "Rejoin session always and resubscribe to client-tracked topics if no session could be rejoined";
+    }
+
+    return "Unknown session behavior";
+}
+
+const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
+    enum aws_mqtt5_client_lifecycle_event_type lifecycle_event) {
+    switch (lifecycle_event) {
+        case AWS_MQTT5_CLET_CONNECTION_RESULT:
+            return "Connection establishment result";
+        case AWS_MQTT5_CLET_DISCONNECTION:
+            return "Disconnection";
+        case AWS_MQTT5_CLET_STOPPED:
+            return "Client stopped";
+    }
+
+    return "Unknown lifecycle event";
+}
