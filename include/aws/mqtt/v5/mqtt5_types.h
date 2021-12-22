@@ -322,6 +322,7 @@ typedef void(aws_mqtt5_client_connection_event_callback_fn)(struct aws_mqtt5_con
 
 /* https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901063 */
 enum aws_mqtt5_payload_format_indicator {
+    AWS_MQTT5_PFI_NOT_SET = -1, /* not in the spec, indicates no value supplied */
     AWS_MQTT5_PFI_BYTES = 0,
     AWS_MQTT5_PFI_UTF8 = 1,
 };
@@ -341,6 +342,9 @@ AWS_MQTT_API const char *aws_mqtt5_client_session_behavior_type_to_c_string(
 
 AWS_MQTT_API const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
     enum aws_mqtt5_client_lifecycle_event_type lifecycle_event);
+
+AWS_MQTT_API const char *aws_mqtt5_payload_format_indicator_to_c_string(
+    enum aws_mqtt5_payload_format_indicator format_indicator);
 
 AWS_EXTERN_C_END
 

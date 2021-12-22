@@ -14,6 +14,12 @@
 
 struct aws_client_bootstrap;
 
+struct aws_mqtt5_name_value_pair {
+    struct aws_byte_buf name_value_pair;
+    struct aws_byte_cursor name;
+    struct aws_byte_cursor value;
+};
+
 struct aws_mqtt5_client_config {
     struct aws_allocator *allocator;
 
@@ -48,6 +54,7 @@ struct aws_mqtt5_client_config {
     struct aws_byte_buf *username_ptr;
 
     struct aws_byte_buf password;
+    struct aws_byte_buf *password_ptr;
 
     uint32_t session_expiry_interval_seconds;
     enum aws_mqtt5_client_session_behavior_type session_behavior;
@@ -63,6 +70,35 @@ struct aws_mqtt5_client_config {
     uint16_t receive_maximum;
     uint16_t topic_alias_maximum;
     uint32_t maximum_packet_size_bytes;
+
+    struct aws_array_list connect_user_properties;
+
+    enum aws_mqtt5_payload_format_indicator will_payload_format;
+
+    uint32_t will_message_expiry_seconds;
+    uint32_t *will_message_expiry_seconds_ptr;
+
+    struct aws_byte_buf will_content_type;
+    struct aws_byte_buf *will_content_type_ptr;
+
+    struct aws_byte_buf will_response_topic;
+    struct aws_byte_buf *will_response_topic_ptr;
+
+    struct aws_byte_buf will_correlation_data;
+    struct aws_byte_buf *will_correlation_data_ptr;
+
+    uint32_t will_delay_seconds;
+    enum aws_mqtt5_qos will_qos;
+
+    struct aws_byte_buf will_topic;
+    struct aws_byte_buf will_payload;
+
+    bool will_retained;
+
+    struct aws_array_list will_user_properties;
+
+    aws_mqtt5_client_connection_event_callback_fn *lifecycle_event_handler;
+    void *lifecycle_event_handler_user_data;
 };
 
 struct aws_mqtt5_client {

@@ -145,7 +145,7 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_client_id(
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_username(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor *username);
+    struct aws_byte_cursor username);
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_password(
     struct aws_mqtt5_client_config *config,
@@ -161,11 +161,11 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_connect_session_behavior(
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_authentication_method(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor *authentication_method);
+    struct aws_byte_cursor authentication_method);
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_authentication_data(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor *authentication_data);
+    struct aws_byte_cursor authentication_data);
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_request_response_information(
     struct aws_mqtt5_client_config *config,
@@ -222,15 +222,7 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_will_delay(
     struct aws_mqtt5_client_config *config,
     uint32_t will_delay_seconds);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_will_qos(struct aws_mqtt5_client_config *config, enum aws_mqtt5_qos qos);
-
-AWS_MQTT_API void aws_mqtt5_client_config_set_will_topic(
-    struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor topic);
-
-AWS_MQTT_API void aws_mqtt5_client_config_set_will_payload(
-    struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor payload);
+AWS_MQTT_API void aws_mqtt5_client_config_set_will(struct aws_mqtt5_client_config *config, struct aws_byte_cursor topic, struct aws_byte_cursor payload, enum aws_mqtt5_qos qos);
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_retained(struct aws_mqtt5_client_config *config, bool retained);
 

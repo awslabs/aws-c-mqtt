@@ -19,8 +19,67 @@
 #define DEFAULT_KEEP_ALIVE_INTERVAL_MS 1200000
 #define DEFAULT_PING_TIMEOUT_MS 3000
 
-/* ToDo: this is new to mqtt5 and we may want the default to depend on something about AWS IoT */
+/* ToDo: this is almost certainly the wrong value to use as a default */
 #define DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS 0
+
+static void s_cleanup_user_properties_array_list(struct aws_array_list *property_list) {
+    if (property_list == NULL) {
+        return;
+    }
+
+    size_t property_count = aws_array_list_length(property_list);
+    for (size_t i = 0; i < property_count; ++i) {
+        struct aws_mqtt5_name_value_pair *nv_pair = NULL;
+        if (aws_array_list_get_at(property_list, &nv_pair, i)) {
+            continue;
+        }
+
+        aws_byte_buf_clean_up(&nv_pair->name_value_pair);
+    }
+
+    aws_array_list_clean_up(property_list);
+}
+
+static void s_add_user_property_to_array_list(struct aws_mqtt5_client_config *config, struct aws_mqtt5_user_property *property, struct aws_array_list *property_list, const char *logging_qualifier) {
+    struct aws_mqtt5_name_value_pair nv_pair;
+    AWS_ZERO_STRUCT(nv_pair);
+
+    aws_byte_buf_init(&nv_pair.name_value_pair, config->allocator, property->name.len + property->value.len);
+    nv_pair.name = property->name;
+    nv_pair.value = property->value;
+
+    aws_byte_buf_append_and_update(&nv_pair.name_value_pair, &nv_pair.name);
+    aws_byte_buf_append_and_update(&nv_pair.name_value_pair, &nv_pair.value);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - adding %s user property - name: \"" PRInSTR "\", value: \"" PRInSTR "\"",
+        (void *)config,
+        logging_qualifier,
+        AWS_BYTE_CURSOR_PRI(property->name),
+        AWS_BYTE_CURSOR_PRI(property->value));
+}
+
+static void s_copy_user_properties_array_list(struct aws_mqtt5_client_config *config, const struct aws_array_list *source_list, struct aws_array_list *dest_list, const char *logging_qualifier) {
+    if (source_list == NULL || dest_list == NULL) {
+        return;
+    }
+
+    size_t property_count = aws_array_list_length(source_list);
+    for (size_t i = 0; i < property_count; ++i) {
+        struct aws_mqtt5_name_value_pair *nv_pair = NULL;
+        if (aws_array_list_get_at(source_list, &nv_pair, i)) {
+            continue;
+        }
+
+        struct aws_mqtt5_user_property property;
+        AWS_ZERO_STRUCT(property);
+        property.name = nv_pair->name;
+        property.value = nv_pair->value;
+
+        s_add_user_property_to_array_list(config, &property, dest_list, logging_qualifier);
+    }
+}
 
 struct aws_mqtt5_client_config *aws_mqtt5_client_config_new(struct aws_allocator *allocator) {
     AWS_FATAL_ASSERT(allocator != NULL);
@@ -28,6 +87,9 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new(struct aws_allocator
     struct aws_mqtt5_client_config *config = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_client_config));
 
     config->allocator = allocator;
+
+    aws_array_list_init_dynamic(&config->connect_user_properties, allocator, 0, sizeof(struct aws_mqtt5_name_value_pair));
+    aws_array_list_init_dynamic(&config->will_user_properties, allocator, 0, sizeof(struct aws_mqtt5_name_value_pair));
 
     /* "Zeroed" is a sensible default for many, but not all, values in the config */
     config->min_reconnect_delay_ms = DEFAULT_MIN_RECONNECT_DELAY_MS;
@@ -37,6 +99,7 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new(struct aws_allocator
     config->ping_timeout_ms = DEFAULT_PING_TIMEOUT_MS;
     config->session_expiry_interval_seconds = DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS;
     config->request_problem_information = true;
+    config->will_payload_format = AWS_MQTT5_PFI_NOT_SET;
 
     return config;
 }
@@ -49,6 +112,8 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new_clone(
     struct aws_mqtt5_client_config *config = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_client_config));
 
     config->allocator = allocator;
+
+    aws_array_list_init_dynamic(&config->connect_user_properties, allocator, 0, sizeof(struct aws_mqtt5_name_value_pair));
 
     aws_mqtt5_client_config_set_host_name(config, aws_byte_cursor_from_buf(&from->host_name));
     aws_mqtt5_client_config_set_port(config, from->port);
@@ -66,17 +131,54 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new_clone(
     aws_mqtt5_client_config_set_keep_alive_interval_ms(config, from->keep_alive_interval_ms);
     aws_mqtt5_client_config_set_ping_timeout_ms(config, from->ping_timeout_ms);
     aws_mqtt5_client_config_set_client_id(config, aws_byte_cursor_from_buf(&from->client_id));
-    aws_mqtt5_client_config_set_connect_username(config, from->username_ptr);
+    if (from->username_ptr != NULL) {
+        aws_mqtt5_client_config_set_connect_username(config, aws_byte_cursor_from_buf(&from->username));
+    }
     aws_mqtt5_client_config_set_connect_password(config, aws_byte_cursor_from_buf(&from->password));
     aws_mqtt5_client_config_set_connect_session_expiry_interval_seconds(config, from->session_expiry_interval_seconds);
     aws_mqtt5_client_config_set_connect_session_behavior(config, from->session_behavior);
-    aws_mqtt5_client_config_set_connect_authentication_method(config, from->authentication_method_ptr);
-    aws_mqtt5_client_config_set_connect_authentication_data(config, from->authentication_data_ptr);
+    if (from->authentication_method_ptr != NULL) {
+        aws_mqtt5_client_config_set_connect_authentication_method(config, aws_byte_cursor_from_buf(&from->authentication_method));
+    }
+    if (from->authentication_data_ptr != NULL) {
+        aws_mqtt5_client_config_set_connect_authentication_data(config, aws_byte_cursor_from_buf(&from->authentication_data));
+    }
     aws_mqtt5_client_config_set_connect_request_response_information(config, from->request_response_information);
     aws_mqtt5_client_config_set_connect_request_problem_information(config, from->request_problem_information);
     aws_mqtt5_client_config_set_connect_receive_maximum(config, from->receive_maximum);
     aws_mqtt5_client_config_set_connect_topic_alias_maximum(config, from->topic_alias_maximum);
     aws_mqtt5_client_config_set_connect_maximum_packet_size(config, from->maximum_packet_size_bytes);
+    s_copy_user_properties_array_list(config, &from->connect_user_properties, &config->connect_user_properties, "CONNECT");
+    aws_mqtt5_client_config_set_will_payload_format(config, from->will_payload_format);
+
+    if (from->will_message_expiry_seconds_ptr != NULL) {
+        aws_mqtt5_client_config_set_will_message_expiry(config, from->will_message_expiry_seconds_ptr);
+    }
+
+    if (from->will_content_type_ptr != NULL) {
+        aws_mqtt5_client_config_set_will_content_type(config, aws_byte_cursor_from_buf(&from->will_content_type));
+    }
+
+    if (from->will_response_topic_ptr != NULL) {
+        aws_mqtt5_client_config_set_will_response_topic(config, aws_byte_cursor_from_buf(&from->will_response_topic));
+    }
+
+    if (from->will_correlation_data_ptr != NULL) {
+        aws_mqtt5_client_config_set_will_correlation_data(config, aws_byte_cursor_from_buf(&from->will_correlation_data));
+    }
+
+    aws_mqtt5_client_config_set_will_delay(config, from->will_delay_seconds);
+
+    if (from->will_topic.len > 0) {
+        aws_mqtt5_client_config_set_will(config, aws_byte_cursor_from_buf(&from->will_topic), aws_byte_cursor_from_buf(&from->will_payload), from->will_qos);
+    }
+
+    aws_mqtt5_client_config_set_will_retained(config, from->will_retained);
+
+    s_copy_user_properties_array_list(config, &from->will_user_properties, &config->will_user_properties, "Will");
+
+    aws_mqtt5_client_config_set_lifecycle_event_handler(config, from->lifecycle_event_handler);
+    aws_mqtt5_client_config_set_lifecycle_event_handler_user_data(config, from->lifecycle_event_handler_user_data);
 
     return config;
 }
@@ -93,9 +195,16 @@ void aws_mqtt5_client_config_destroy(struct aws_mqtt5_client_config *config) {
     aws_tls_connection_options_clean_up(&config->http_proxy_tls_options);
     aws_http_proxy_strategy_release(config->http_proxy_strategy);
     aws_byte_buf_clean_up(&config->username);
-    aws_byte_buf_clean_up(&config->password);
+    aws_byte_buf_clean_up_secure(&config->password);
     aws_byte_buf_clean_up(&config->authentication_method);
-    aws_byte_buf_clean_up(&config->authentication_data);
+    aws_byte_buf_clean_up_secure(&config->authentication_data);
+    s_cleanup_user_properties_array_list(&config->connect_user_properties);
+    aws_byte_buf_clean_up(&config->will_content_type);
+    aws_byte_buf_clean_up(&config->will_response_topic);
+    aws_byte_buf_clean_up(&config->will_correlation_data);
+    aws_byte_buf_clean_up(&config->will_topic);
+    aws_byte_buf_clean_up(&config->will_payload);
+    s_cleanup_user_properties_array_list(&config->will_user_properties);
 
     aws_mem_release(config->allocator, config);
 }
@@ -431,24 +540,19 @@ void aws_mqtt5_client_config_set_client_id(struct aws_mqtt5_client_config *confi
 
 void aws_mqtt5_client_config_set_connect_username(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor *username) {
+    struct aws_byte_cursor username) {
 
     AWS_FATAL_ASSERT(config != NULL);
-    if (username != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CONFIG,
-            "(%p) mqtt5_client_config - setting username to \"" PRInSTR "\"",
-            (void *)config,
-            AWS_BYTE_CURSOR_PRI(*username));
 
-        aws_byte_buf_clean_up(&config->username);
-        aws_byte_buf_init_copy_from_cursor(&config->username, config->allocator, *username);
-        config->username_ptr = &config->username;
-    } else {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - disabling username/password in CONNECT", (void *)config);
-        config->username_ptr = NULL;
-    }
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting username to \"" PRInSTR "\"",
+        (void *)config,
+        AWS_BYTE_CURSOR_PRI(username));
+
+    aws_byte_buf_clean_up(&config->username);
+    aws_byte_buf_init_copy_from_cursor(&config->username, config->allocator, username);
+    config->username_ptr = &config->username;
 }
 
 void aws_mqtt5_client_config_set_connect_password(
@@ -460,6 +564,7 @@ void aws_mqtt5_client_config_set_connect_password(
 
     aws_byte_buf_clean_up(&config->password);
     aws_byte_buf_init_copy_from_cursor(&config->password, config->allocator, password);
+    config->password_ptr = &config->password;
 }
 
 void aws_mqtt5_client_config_set_connect_session_expiry_interval_seconds(
@@ -493,42 +598,30 @@ void aws_mqtt5_client_config_set_connect_session_behavior(
 
 void aws_mqtt5_client_config_set_connect_authentication_method(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor *authentication_method) {
+    struct aws_byte_cursor authentication_method) {
 
     AWS_FATAL_ASSERT(config != NULL);
-    if (authentication_method != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CONFIG,
-            "(%p) mqtt5_client_config - setting authentication method to \"" PRInSTR "\"",
-            (void *)config,
-            AWS_BYTE_CURSOR_PRI(*authentication_method));
 
-        aws_byte_buf_clean_up(&config->authentication_method);
-        aws_byte_buf_init_copy_from_cursor(&config->authentication_method, config->allocator, *authentication_method);
-        config->authentication_method_ptr = &config->authentication_method;
-    } else {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - disabling authentication method property", (void *)config);
-        config->authentication_method_ptr = NULL;
-    }
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CONFIG,
+        "(%p) mqtt5_client_config - setting authentication method to \"" PRInSTR "\"",
+        (void *)config,
+        AWS_BYTE_CURSOR_PRI(authentication_method));
+
+    aws_byte_buf_clean_up(&config->authentication_method);
+    aws_byte_buf_init_copy_from_cursor(&config->authentication_method, config->allocator, authentication_method);
+    config->authentication_method_ptr = &config->authentication_method;
 }
 
 void aws_mqtt5_client_config_set_connect_authentication_data(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor *authentication_data) {
+    struct aws_byte_cursor authentication_data) {
 
-    AWS_FATAL_ASSERT(config != NULL);
-    if (authentication_data != NULL) {
-        AWS_LOGF_DEBUG(AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - setting authentication data", (void *)config);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - setting authentication data", (void *)config);
 
-        aws_byte_buf_clean_up(&config->authentication_data);
-        aws_byte_buf_init_copy_from_cursor(&config->authentication_data, config->allocator, *authentication_data);
-        config->authentication_data_ptr = &config->authentication_data;
-    } else {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CONFIG, "(%p) mqtt5_client_config - disabling authentication data property", (void *)config);
-        config->authentication_data_ptr = NULL;
-    }
+    aws_byte_buf_clean_up(&config->authentication_data);
+    aws_byte_buf_init_copy_from_cursor(&config->authentication_data, config->allocator, authentication_data);
+    config->authentication_data_ptr = &config->authentication_data;
 }
 
 void aws_mqtt5_client_config_set_connect_request_response_information(
@@ -603,37 +696,52 @@ void aws_mqtt5_client_config_set_connect_maximum_packet_size(
 
 void aws_mqtt5_client_config_add_connect_user_property(
     struct aws_mqtt5_client_config *config,
-    struct aws_mqtt5_user_property *property);
+    struct aws_mqtt5_user_property *property) {
+
+    s_add_user_property_to_array_list(config, property, &config->connect_user_properties, "CONNECT");
+}
 
 void aws_mqtt5_client_config_set_will_payload_format(
     struct aws_mqtt5_client_config *config,
-    enum aws_mqtt5_payload_format_indicator payload_format);
+    enum aws_mqtt5_payload_format_indicator payload_format) {
+
+}
 
 void aws_mqtt5_client_config_set_will_message_expiry(
     struct aws_mqtt5_client_config *config,
-    uint32_t message_expiry_seconds);
+    uint32_t message_expiry_seconds) {
+
+}
 
 void aws_mqtt5_client_config_set_will_content_type(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor content_type);
+    struct aws_byte_cursor content_type) {
+
+}
 
 void aws_mqtt5_client_config_set_will_response_topic(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor response_topic);
+    struct aws_byte_cursor response_topic) {
+
+}
 
 void aws_mqtt5_client_config_set_will_correlation_data(
     struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor correlation_data);
+    struct aws_byte_cursor correlation_data) {
 
-void aws_mqtt5_client_config_set_will_delay(struct aws_mqtt5_client_config *config, uint32_t will_delay_seconds);
+}
 
-void aws_mqtt5_client_config_set_will_qos(struct aws_mqtt5_client_config *config, enum aws_mqtt5_qos qos);
+void aws_mqtt5_client_config_set_will_delay(struct aws_mqtt5_client_config *config, uint32_t will_delay_seconds) {
 
-void aws_mqtt5_client_config_set_will_topic(struct aws_mqtt5_client_config *config, struct aws_byte_cursor topic);
+}
 
-void aws_mqtt5_client_config_set_will_payload(struct aws_mqtt5_client_config *config, struct aws_byte_cursor payload);
+void aws_mqtt5_client_config_set_will(struct aws_mqtt5_client_config *config, struct aws_byte_cursor topic, struct aws_byte_cursor payload, enum aws_mqtt5_qos qos) {
 
-void aws_mqtt5_client_config_set_will_retained(struct aws_mqtt5_client_config *config, bool retained);
+}
+
+void aws_mqtt5_client_config_set_will_retained(struct aws_mqtt5_client_config *config, bool retained) {
+
+}
 
 void aws_mqtt5_client_config_add_will_user_property(
     struct aws_mqtt5_client_config *config,
