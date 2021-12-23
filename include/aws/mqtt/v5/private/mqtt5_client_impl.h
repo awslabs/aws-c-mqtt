@@ -102,7 +102,7 @@ struct aws_mqtt5_client_config {
 };
 
 struct aws_mqtt5_client {
-    struct aws_mqtt5_client_config *config;
+    const struct aws_mqtt5_client_config *config;
 };
 
 #endif /* AWS_MQTT_MQTT5_CLIENT_IMPL_H */

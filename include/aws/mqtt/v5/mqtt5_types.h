@@ -318,7 +318,7 @@ struct aws_mqtt5_client_lifecycle_event {
     } packet_data;
 };
 
-typedef void(aws_mqtt5_client_connection_event_callback_fn)(struct aws_mqtt5_connection_event *event);
+typedef void(aws_mqtt5_client_connection_event_callback_fn)(struct aws_mqtt5_client_lifecycle_event *event);
 
 /* https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901063 */
 enum aws_mqtt5_payload_format_indicator {

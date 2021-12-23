@@ -46,7 +46,7 @@ int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config);
  * websocket options
  */
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_host_name(
+AWS_MQTT_API int aws_mqtt5_client_config_set_host_name(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor host_name);
 
@@ -60,17 +60,17 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_socket_options(
     struct aws_mqtt5_client_config *config,
     struct aws_socket_options *socket_options);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_tls_connection_options(
+AWS_MQTT_API int aws_mqtt5_client_config_set_tls_connection_options(
     struct aws_mqtt5_client_config *config,
     struct aws_tls_connection_options *tls_options);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_http_proxy_host_name(
+AWS_MQTT_API int aws_mqtt5_client_config_set_http_proxy_host_name(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor proxy_host_name);
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_http_proxy_port(struct aws_mqtt5_client_config *config, uint16_t port);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_http_proxy_tls_connection_options(
+AWS_MQTT_API int aws_mqtt5_client_config_set_http_proxy_tls_connection_options(
     struct aws_mqtt5_client_config *config,
     struct aws_tls_connection_options *tls_options);
 
@@ -139,15 +139,15 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_ping_timeout_ms(
  * maximum packet size
  */
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_client_id(
+AWS_MQTT_API int aws_mqtt5_client_config_set_client_id(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor client_id);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_connect_username(
+AWS_MQTT_API int aws_mqtt5_client_config_set_connect_username(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor username);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_connect_password(
+AWS_MQTT_API int aws_mqtt5_client_config_set_connect_password(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor password);
 
@@ -159,11 +159,11 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_connect_session_behavior(
     struct aws_mqtt5_client_config *config,
     enum aws_mqtt5_client_session_behavior_type session_behavior);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_connect_authentication_method(
+AWS_MQTT_API int aws_mqtt5_client_config_set_connect_authentication_method(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor authentication_method);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_connect_authentication_data(
+AWS_MQTT_API int aws_mqtt5_client_config_set_connect_authentication_data(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor authentication_data);
 
@@ -187,7 +187,7 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_connect_maximum_packet_size(
     struct aws_mqtt5_client_config *config,
     uint32_t maximum_packet_size_bytes);
 
-AWS_MQTT_API void aws_mqtt5_client_config_add_connect_user_property(
+AWS_MQTT_API int aws_mqtt5_client_config_add_connect_user_property(
     struct aws_mqtt5_client_config *config,
     struct aws_mqtt5_user_property *property);
 
@@ -206,15 +206,15 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_will_message_expiry(
     struct aws_mqtt5_client_config *config,
     uint32_t message_expiry_seconds);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_will_content_type(
+AWS_MQTT_API int aws_mqtt5_client_config_set_will_content_type(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor content_type);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_will_response_topic(
+AWS_MQTT_API int aws_mqtt5_client_config_set_will_response_topic(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor response_topic);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_will_correlation_data(
+AWS_MQTT_API int aws_mqtt5_client_config_set_will_correlation_data(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor correlation_data);
 
@@ -222,11 +222,15 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_will_delay(
     struct aws_mqtt5_client_config *config,
     uint32_t will_delay_seconds);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_will(struct aws_mqtt5_client_config *config, struct aws_byte_cursor topic, struct aws_byte_cursor payload, enum aws_mqtt5_qos qos);
+AWS_MQTT_API int aws_mqtt5_client_config_set_will(
+    struct aws_mqtt5_client_config *config,
+    struct aws_byte_cursor topic,
+    struct aws_byte_cursor payload,
+    enum aws_mqtt5_qos qos);
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_retained(struct aws_mqtt5_client_config *config, bool retained);
 
-AWS_MQTT_API void aws_mqtt5_client_config_add_will_user_property(
+AWS_MQTT_API int aws_mqtt5_client_config_add_will_user_property(
     struct aws_mqtt5_client_config *config,
     struct aws_mqtt5_user_property *property);
 
