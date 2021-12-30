@@ -13,10 +13,10 @@
 
 struct aws_http_message;
 
-typedef uint64_t aws_mqtt5_op_id;
+typedef uint64_t aws_mqtt5_op_id_t;
 
 /* https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901026 */
-typedef uint16_t aws_mqtt5_packet_id;
+typedef uint16_t aws_mqtt5_packet_id_t;
 
 /* https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901234 */
 enum aws_mqtt5_qos {

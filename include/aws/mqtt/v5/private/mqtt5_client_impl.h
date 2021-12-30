@@ -14,6 +14,15 @@
 
 struct aws_client_bootstrap;
 
+#define AWS_MQTT5_DEFAULT_MIN_RECONNECT_DELAY_MS 1000
+#define AWS_MQTT5_DEFAULT_MAX_RECONNECT_DELAY_MS 120000
+#define AWS_MQTT5_DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS 30000
+#define AWS_MQTT5_DEFAULT_KEEP_ALIVE_INTERVAL_MS 1200000
+#define AWS_MQTT5_DEFAULT_PING_TIMEOUT_MS 3000
+
+/* ToDo: this is almost certainly the wrong value to use as a default */
+#define AWS_MQTT5_DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS 0
+
 struct aws_mqtt5_name_value_pair {
     struct aws_byte_buf name_value_pair;
     struct aws_byte_cursor name;

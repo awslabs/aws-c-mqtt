@@ -13,15 +13,6 @@
 
 #include <inttypes.h>
 
-#define DEFAULT_MIN_RECONNECT_DELAY_MS 1000
-#define DEFAULT_MAX_RECONNECT_DELAY_MS 120000
-#define DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS 30000
-#define DEFAULT_KEEP_ALIVE_INTERVAL_MS 1200000
-#define DEFAULT_PING_TIMEOUT_MS 3000
-
-/* ToDo: this is almost certainly the wrong value to use as a default */
-#define DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS 0
-
 static void s_cleanup_user_properties_array_list(struct aws_array_list *property_list) {
     if (property_list == NULL) {
         return;
@@ -131,12 +122,13 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new(struct aws_allocator
     }
 
     /* "Zeroed" is a sensible default for many, but not all, values in the config */
-    config->min_reconnect_delay_ms = DEFAULT_MIN_RECONNECT_DELAY_MS;
-    config->max_reconnect_delay_ms = DEFAULT_MAX_RECONNECT_DELAY_MS;
-    config->min_connected_time_to_reset_reconnect_delay_ms = DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS;
-    config->keep_alive_interval_ms = DEFAULT_KEEP_ALIVE_INTERVAL_MS;
-    config->ping_timeout_ms = DEFAULT_PING_TIMEOUT_MS;
-    config->session_expiry_interval_seconds = DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS;
+    config->min_reconnect_delay_ms = AWS_MQTT5_DEFAULT_MIN_RECONNECT_DELAY_MS;
+    config->max_reconnect_delay_ms = AWS_MQTT5_DEFAULT_MAX_RECONNECT_DELAY_MS;
+    config->min_connected_time_to_reset_reconnect_delay_ms =
+        AWS_MQTT5_DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS;
+    config->keep_alive_interval_ms = AWS_MQTT5_DEFAULT_KEEP_ALIVE_INTERVAL_MS;
+    config->ping_timeout_ms = AWS_MQTT5_DEFAULT_PING_TIMEOUT_MS;
+    config->session_expiry_interval_seconds = AWS_MQTT5_DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS;
     config->request_problem_information = true;
     config->will_payload_format = AWS_MQTT5_PFI_NOT_SET;
 
@@ -188,8 +180,8 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new_clone(
     aws_mqtt5_client_config_set_http_proxy_strategy(config, from->http_proxy_strategy);
 
     aws_mqtt5_client_config_set_reconnect_behavior(config, from->reconnect_behavior);
-    aws_mqtt5_client_config_set_reconnect_delay(config, from->min_reconnect_delay_ms, from->max_reconnect_delay_ms);
-    aws_mqtt5_client_config_set_reconnect_delay_reset_interval(
+    aws_mqtt5_client_config_set_reconnect_delay_ms(config, from->min_reconnect_delay_ms, from->max_reconnect_delay_ms);
+    aws_mqtt5_client_config_set_reconnect_delay_reset_interval_ms(
         config, from->min_connected_time_to_reset_reconnect_delay_ms);
     aws_mqtt5_client_config_set_keep_alive_interval_ms(config, from->keep_alive_interval_ms);
     aws_mqtt5_client_config_set_ping_timeout_ms(config, from->ping_timeout_ms);
@@ -598,7 +590,7 @@ void aws_mqtt5_client_config_set_reconnect_behavior(
     config->reconnect_behavior = reconnect_behavior;
 }
 
-void aws_mqtt5_client_config_set_reconnect_delay(
+void aws_mqtt5_client_config_set_reconnect_delay_ms(
     struct aws_mqtt5_client_config *config,
     uint64_t min_reconnect_delay_ms,
     uint64_t max_reconnect_delay_ms) {
@@ -615,7 +607,7 @@ void aws_mqtt5_client_config_set_reconnect_delay(
     config->max_reconnect_delay_ms = max_reconnect_delay_ms;
 }
 
-void aws_mqtt5_client_config_set_reconnect_delay_reset_interval(
+void aws_mqtt5_client_config_set_reconnect_delay_reset_interval_ms(
     struct aws_mqtt5_client_config *config,
     uint64_t min_connected_time_to_reset_reconnect_delay_ms) {
 

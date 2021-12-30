@@ -98,12 +98,12 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_behavior(
     struct aws_mqtt5_client_config *config,
     enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_delay(
+AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_delay_ms(
     struct aws_mqtt5_client_config *config,
     uint64_t min_reconnect_delay_ms,
     uint64_t max_reconnect_delay_ms);
 
-AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_delay_reset_interval(
+AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_delay_reset_interval_ms(
     struct aws_mqtt5_client_config *config,
     uint64_t min_connected_time_to_reset_reconnect_delay_ms);
 
