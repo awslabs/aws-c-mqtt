@@ -114,4 +114,12 @@ struct aws_mqtt5_client {
     const struct aws_mqtt5_client_config *config;
 };
 
+AWS_EXTERN_C_BEGIN
+
+AWS_MQTT_API void aws_mqtt5_client_config_clear_connect_user_properties(struct aws_mqtt5_client_config *config);
+
+AWS_MQTT_API void aws_mqtt5_client_config_clear_will_user_properties(struct aws_mqtt5_client_config *config);
+
+AWS_EXTERN_C_END
+
 #endif /* AWS_MQTT_MQTT5_CLIENT_IMPL_H */

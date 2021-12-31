@@ -13,7 +13,7 @@
 
 #include <inttypes.h>
 
-static void s_cleanup_user_properties_array_list(struct aws_array_list *property_list) {
+static void s_clear_user_properties_array_list(struct aws_array_list *property_list) {
     if (property_list == NULL) {
         return;
     }
@@ -21,14 +21,14 @@ static void s_cleanup_user_properties_array_list(struct aws_array_list *property
     size_t property_count = aws_array_list_length(property_list);
     for (size_t i = 0; i < property_count; ++i) {
         struct aws_mqtt5_name_value_pair *nv_pair = NULL;
-        if (aws_array_list_get_at(property_list, &nv_pair, i)) {
+        if (aws_array_list_get_at_ptr(property_list, (void **)&nv_pair, i)) {
             continue;
         }
 
         aws_byte_buf_clean_up(&nv_pair->name_value_pair);
     }
 
-    aws_array_list_clean_up(property_list);
+    aws_array_list_clear(property_list);
 }
 
 static int s_add_user_property_to_array_list(
@@ -87,7 +87,7 @@ static int s_copy_user_properties_array_list(
     size_t property_count = aws_array_list_length(source_list);
     for (size_t i = 0; i < property_count; ++i) {
         struct aws_mqtt5_name_value_pair *nv_pair = NULL;
-        if (aws_array_list_get_at(source_list, &nv_pair, i)) {
+        if (aws_array_list_get_at_ptr(source_list, (void **)&nv_pair, i)) {
             return AWS_OP_ERR;
         }
 
@@ -146,12 +146,8 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new_clone(
     struct aws_mqtt5_client_config *from) {
 
     AWS_FATAL_ASSERT(allocator != NULL);
-    struct aws_mqtt5_client_config *config = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_client_config));
-
-    config->allocator = allocator;
-
-    if (aws_array_list_init_dynamic(
-            &config->connect_user_properties, allocator, 0, sizeof(struct aws_mqtt5_name_value_pair))) {
+    struct aws_mqtt5_client_config *config = aws_mqtt5_client_config_new(allocator);
+    if (config == NULL) {
         goto on_error;
     }
 
@@ -178,6 +174,9 @@ struct aws_mqtt5_client_config *aws_mqtt5_client_config_new_clone(
     }
 
     aws_mqtt5_client_config_set_http_proxy_strategy(config, from->http_proxy_strategy);
+
+    aws_mqtt5_client_config_set_websocket_transform(config, from->websocket_handshake_transform);
+    aws_mqtt5_client_config_set_websocket_transform_user_data(config, from->websocket_handshake_transform_user_data);
 
     aws_mqtt5_client_config_set_reconnect_behavior(config, from->reconnect_behavior);
     aws_mqtt5_client_config_set_reconnect_delay_ms(config, from->min_reconnect_delay_ms, from->max_reconnect_delay_ms);
@@ -287,37 +286,40 @@ void aws_mqtt5_client_config_destroy(struct aws_mqtt5_client_config *config) {
     aws_byte_buf_clean_up(&config->http_proxy_host_name);
     aws_tls_connection_options_clean_up(&config->http_proxy_tls_options);
     aws_http_proxy_strategy_release(config->http_proxy_strategy);
+    aws_byte_buf_clean_up(&config->client_id);
     aws_byte_buf_clean_up(&config->username);
     aws_byte_buf_clean_up_secure(&config->password);
     aws_byte_buf_clean_up(&config->authentication_method);
     aws_byte_buf_clean_up_secure(&config->authentication_data);
-    s_cleanup_user_properties_array_list(&config->connect_user_properties);
+    s_clear_user_properties_array_list(&config->connect_user_properties);
+    aws_array_list_clean_up(&config->connect_user_properties);
     aws_byte_buf_clean_up(&config->will_content_type);
     aws_byte_buf_clean_up(&config->will_response_topic);
     aws_byte_buf_clean_up(&config->will_correlation_data);
     aws_byte_buf_clean_up(&config->will_topic);
     aws_byte_buf_clean_up(&config->will_payload);
-    s_cleanup_user_properties_array_list(&config->will_user_properties);
+    s_clear_user_properties_array_list(&config->will_user_properties);
+    aws_array_list_clean_up(&config->will_user_properties);
 
     aws_mem_release(config->allocator, config);
 }
 
 int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config) {
     if (config->host_name.len == 0) {
-        return AWS_ERROR_MQTT_CONFIG_VALIDATION_HOST_NOT_SET;
+        return aws_raise_error(AWS_ERROR_MQTT_CONFIG_VALIDATION_HOST_NOT_SET);
     }
 
     if (config->port == 0) {
-        return AWS_ERROR_MQTT_CONFIG_VALIDATION_PORT_NOT_SET;
+        return aws_raise_error(AWS_ERROR_MQTT_CONFIG_VALIDATION_PORT_NOT_SET);
     }
 
     if (config->bootstrap == NULL) {
-        return AWS_ERROR_MQTT_CONFIG_VALIDATION_CLIENT_BOOTSTRAP_NOT_SET;
+        return aws_raise_error(AWS_ERROR_MQTT_CONFIG_VALIDATION_CLIENT_BOOTSTRAP_NOT_SET);
     }
 
     /* forbid no-timeout until someone convinces me otherwise */
     if (config->socket_options.type != AWS_SOCKET_STREAM || config->socket_options.connect_timeout_ms == 0) {
-        return AWS_ERROR_MQTT_CONFIG_VALIDATION_INVALID_SOCKET_OPTIONS;
+        return aws_raise_error(AWS_ERROR_MQTT_CONFIG_VALIDATION_INVALID_SOCKET_OPTIONS);
     }
 
     /*
@@ -325,7 +327,7 @@ int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config) {
      * proxy tls configuration
      */
 
-    return AWS_ERROR_SUCCESS;
+    return AWS_OP_SUCCESS;
 }
 
 /*
@@ -846,6 +848,10 @@ int aws_mqtt5_client_config_add_connect_user_property(
     return s_add_user_property_to_array_list(config, property, &config->connect_user_properties, "CONNECT");
 }
 
+void aws_mqtt5_client_config_clear_connect_user_properties(struct aws_mqtt5_client_config *config) {
+    s_clear_user_properties_array_list(&config->connect_user_properties);
+}
+
 void aws_mqtt5_client_config_set_will_payload_format(
     struct aws_mqtt5_client_config *config,
     enum aws_mqtt5_payload_format_indicator payload_format) {
@@ -995,6 +1001,10 @@ int aws_mqtt5_client_config_add_will_user_property(
     struct aws_mqtt5_user_property *property) {
 
     return s_add_user_property_to_array_list(config, property, &config->will_user_properties, "Will");
+}
+
+void aws_mqtt5_client_config_clear_will_user_properties(struct aws_mqtt5_client_config *config) {
+    s_clear_user_properties_array_list(&config->will_user_properties);
 }
 
 void aws_mqtt5_client_config_set_lifecycle_event_handler(

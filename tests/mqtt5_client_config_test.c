@@ -75,20 +75,64 @@ static int s_mqtt5_client_config_new_destroy_fn(struct aws_allocator *allocator,
 
 AWS_TEST_CASE(mqtt5_client_config_new_destroy, s_mqtt5_client_config_new_destroy_fn)
 
-/*
-aws_mqtt5_client_config_add_connect_user_property
-aws_mqtt5_client_config_set_will_payload_format
-aws_mqtt5_client_config_set_will_message_expiry
-aws_mqtt5_client_config_set_will_content_type
-aws_mqtt5_client_config_set_will_response_topic
-aws_mqtt5_client_config_set_will_correlation_data
-aws_mqtt5_client_config_set_will_delay
-aws_mqtt5_client_config_set_will
-aws_mqtt5_client_config_set_will_retained
-aws_mqtt5_client_config_add_will_user_property
-aws_mqtt5_client_config_set_lifecycle_event_handler
-aws_mqtt5_client_config_set_lifecycle_event_handler_user_data
-*/
+struct property_pair {
+    const char *name;
+    const char *value;
+};
+
+typedef int(add_property_fn)(struct aws_mqtt5_client_config *config, struct aws_mqtt5_user_property *property);
+
+static int s_add_user_properties(
+    struct aws_mqtt5_client_config *config,
+    add_property_fn add_property_function,
+    size_t property_count,
+    const struct property_pair *properties) {
+    for (size_t i = 0; i < property_count; ++i) {
+        const struct property_pair *property = &properties[i];
+
+        struct aws_mqtt5_user_property user_property = {
+            .name = aws_byte_cursor_from_c_str(property->name),
+            .value = aws_byte_cursor_from_c_str(property->value),
+        };
+
+        ASSERT_SUCCESS(add_property_function(config, &user_property));
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_verify_user_properties(
+    struct aws_array_list *property_list,
+    size_t expected_count,
+    const struct property_pair *expected_properties) {
+    ASSERT_UINT_EQUALS(expected_count, aws_array_list_length(property_list));
+
+    for (size_t i = 0; i < expected_count; ++i) {
+        const struct property_pair *expected_property = &expected_properties[i];
+        struct aws_byte_cursor expected_name = aws_byte_cursor_from_c_str(expected_property->name);
+        struct aws_byte_cursor expected_value = aws_byte_cursor_from_c_str(expected_property->value);
+
+        bool found = false;
+        for (size_t j = 0; j < expected_count; ++j) {
+            struct aws_mqtt5_name_value_pair *nv_pair = NULL;
+            if (aws_array_list_get_at_ptr(property_list, (void **)&nv_pair, j)) {
+                return AWS_OP_ERR;
+            }
+
+            if (aws_byte_cursor_compare_lexical(&expected_name, &nv_pair->name) == 0 &&
+                aws_byte_cursor_compare_lexical(&expected_value, &nv_pair->value) == 0) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
 
 static struct aws_client_bootstrap *s_new_bootstrap(struct aws_allocator *allocator) {
     struct aws_event_loop_group *elg = aws_event_loop_group_new_default(allocator, 1, NULL);
@@ -144,6 +188,10 @@ static void s_websocket_transform(
     (void)complete_ctx;
 }
 
+static void s_lifecycle_event_handler(struct aws_mqtt5_client_lifecycle_event *event) {
+    (void)event;
+}
+
 static const char *HOST_NAME = "hello-world.com";
 static const uint16_t PORT = 8883;
 static struct aws_socket_options SOCKET_OPTIONS = {
@@ -174,6 +222,30 @@ static const char *AUTHENTICATION_DATA = "Nothing";
 static const uint16_t RECEIVE_MAXIMUM = 4096;
 static const uint16_t TOPIC_ALIAS_MAXIMUM = 32;
 static const uint32_t MAXIMUM_PACKET_SIZE = 65536;
+static const struct property_pair CONNECT_PROPERTIES[] = {
+    {
+        .name = "Somename",
+        .value = "Somevalue",
+    },
+    {
+        .name = "Anothername",
+        .value = "Anothervalue",
+    },
+};
+static const struct property_pair WILL_PROPERTIES[] = {
+    {
+        .name = "Willname",
+        .value = "Willvalue",
+    },
+};
+static const uint32_t WILL_MESSAGE_EXPIRY = 1000;
+static const char *WILL_CONTENT_TYPE = "SomeContentType";
+static const char *WILL_RESPONSE_TOPIC = "SomeResponseTopic";
+static const char *WILL_CORRELATION_DATA = "SomeCorrelationData";
+static const uint32_t WILL_DELAY = 60;
+static void *LIFECYCLE_EVENT_HANDLER_USER_DATA = (void *)2;
+static const char *WILL_TOPIC = "SomeTopic";
+static const char *WILL_PAYLOAD = "SomePayload";
 
 static int s_set_config(struct aws_mqtt5_client_config *config) {
 
@@ -232,15 +304,46 @@ static int s_set_config(struct aws_mqtt5_client_config *config) {
     aws_mqtt5_client_config_set_connect_session_expiry_interval_seconds(config, SESSION_EXPIRY_SECONDS);
     aws_mqtt5_client_config_set_connect_session_behavior(config, AWS_MQTT5_CSBT_REJOIN_AND_RESUB_ON_CLEAN);
 
-    aws_mqtt5_client_config_set_connect_authentication_method(
-        config, aws_byte_cursor_from_c_str(AUTHENTICATION_METHOD));
-    aws_mqtt5_client_config_set_connect_authentication_data(config, aws_byte_cursor_from_c_str(AUTHENTICATION_DATA));
+    ASSERT_SUCCESS(aws_mqtt5_client_config_set_connect_authentication_method(
+        config, aws_byte_cursor_from_c_str(AUTHENTICATION_METHOD)));
+    ASSERT_SUCCESS(aws_mqtt5_client_config_set_connect_authentication_data(
+        config, aws_byte_cursor_from_c_str(AUTHENTICATION_DATA)));
 
     aws_mqtt5_client_config_set_connect_request_response_information(config, true);
     aws_mqtt5_client_config_set_connect_request_problem_information(config, false);
     aws_mqtt5_client_config_set_connect_receive_maximum(config, RECEIVE_MAXIMUM);
     aws_mqtt5_client_config_set_connect_topic_alias_maximum(config, TOPIC_ALIAS_MAXIMUM);
     aws_mqtt5_client_config_set_connect_maximum_packet_size(config, MAXIMUM_PACKET_SIZE);
+
+    aws_mqtt5_client_config_clear_connect_user_properties(config);
+    ASSERT_SUCCESS(s_add_user_properties(
+        config,
+        aws_mqtt5_client_config_add_connect_user_property,
+        AWS_ARRAY_SIZE(CONNECT_PROPERTIES),
+        &CONNECT_PROPERTIES[0]));
+
+    aws_mqtt5_client_config_set_will_payload_format(config, AWS_MQTT5_PFI_BYTES);
+    aws_mqtt5_client_config_set_will_message_expiry(config, WILL_MESSAGE_EXPIRY);
+    ASSERT_SUCCESS(
+        aws_mqtt5_client_config_set_will_content_type(config, aws_byte_cursor_from_c_str(WILL_CONTENT_TYPE)));
+    ASSERT_SUCCESS(
+        aws_mqtt5_client_config_set_will_response_topic(config, aws_byte_cursor_from_c_str(WILL_RESPONSE_TOPIC)));
+    ASSERT_SUCCESS(
+        aws_mqtt5_client_config_set_will_correlation_data(config, aws_byte_cursor_from_c_str(WILL_CORRELATION_DATA)));
+    aws_mqtt5_client_config_set_will_delay(config, WILL_DELAY);
+    ASSERT_SUCCESS(aws_mqtt5_client_config_set_will(
+        config,
+        aws_byte_cursor_from_c_str(WILL_TOPIC),
+        aws_byte_cursor_from_c_str(WILL_PAYLOAD),
+        AWS_MQTT5_QOS_AT_LEAST_ONCE));
+    aws_mqtt5_client_config_set_will_retained(config, true);
+
+    aws_mqtt5_client_config_clear_will_user_properties(config);
+    ASSERT_SUCCESS(s_add_user_properties(
+        config, aws_mqtt5_client_config_add_will_user_property, AWS_ARRAY_SIZE(WILL_PROPERTIES), &WILL_PROPERTIES[0]));
+
+    aws_mqtt5_client_config_set_lifecycle_event_handler(config, s_lifecycle_event_handler);
+    aws_mqtt5_client_config_set_lifecycle_event_handler_user_data(config, LIFECYCLE_EVENT_HANDLER_USER_DATA);
 
     return AWS_OP_SUCCESS;
 }
@@ -316,6 +419,28 @@ static int s_verify_set_config(struct aws_mqtt5_client_config *config) {
     ASSERT_UINT_EQUALS(TOPIC_ALIAS_MAXIMUM, config->topic_alias_maximum);
     ASSERT_UINT_EQUALS(MAXIMUM_PACKET_SIZE, config->maximum_packet_size_bytes);
 
+    ASSERT_SUCCESS(s_verify_user_properties(
+        &config->connect_user_properties, AWS_ARRAY_SIZE(CONNECT_PROPERTIES), &CONNECT_PROPERTIES[0]));
+
+    ASSERT_INT_EQUALS(AWS_MQTT5_PFI_BYTES, config->will_payload_format);
+    ASSERT_UINT_EQUALS(WILL_MESSAGE_EXPIRY, *config->will_message_expiry_seconds_ptr);
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_content_type, WILL_CONTENT_TYPE));
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_response_topic, WILL_RESPONSE_TOPIC));
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_correlation_data, WILL_CORRELATION_DATA));
+    ASSERT_UINT_EQUALS(WILL_DELAY, config->will_delay_seconds);
+
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_topic, WILL_TOPIC));
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_payload, WILL_PAYLOAD));
+    ASSERT_INT_EQUALS(AWS_MQTT5_QOS_AT_LEAST_ONCE, config->will_qos);
+
+    ASSERT_TRUE(config->will_retained);
+
+    ASSERT_SUCCESS(
+        s_verify_user_properties(&config->will_user_properties, AWS_ARRAY_SIZE(WILL_PROPERTIES), &WILL_PROPERTIES[0]));
+
+    ASSERT_PTR_EQUALS(s_lifecycle_event_handler, config->lifecycle_event_handler);
+    ASSERT_PTR_EQUALS(LIFECYCLE_EVENT_HANDLER_USER_DATA, config->lifecycle_event_handler_user_data);
+
     return AWS_OP_SUCCESS;
 }
 
@@ -344,6 +469,19 @@ static const char *ALT_AUTHENTICATION_DATA = "Hmm";
 static const uint16_t ALT_RECEIVE_MAXIMUM = 128;
 static const uint16_t ALT_TOPIC_ALIAS_MAXIMUM = 64;
 static const uint32_t ALT_MAXIMUM_PACKET_SIZE = 2048;
+static const struct property_pair ALT_CONNECT_PROPERTIES[] = {
+    {
+        .name = "Hello",
+        .value = "There",
+    },
+};
+static const uint32_t ALT_WILL_MESSAGE_EXPIRY = 120;
+static const char *ALT_WILL_CONTENT_TYPE = "DifferentContentType";
+static const char *ALT_WILL_RESPONSE_TOPIC = "DifferentResponseTopic";
+static const char *ALT_WILL_CORRELATION_DATA = "DifferentCorrelationData";
+static const uint32_t ALT_WILL_DELAY = 120;
+static const char *ALT_WILL_TOPIC = "DifferentTopic";
+static const char *ALT_WILL_PAYLOAD = "DifferentPayload";
 
 static int s_set_config_alt(struct aws_mqtt5_client_config *config) {
 
@@ -361,6 +499,7 @@ static int s_set_config_alt(struct aws_mqtt5_client_config *config) {
     ASSERT_SUCCESS(
         aws_mqtt5_client_config_set_http_proxy_host_name(config, aws_byte_cursor_from_c_str(ALT_PROXY_HOST_NAME)));
     aws_mqtt5_client_config_set_http_proxy_port(config, ALT_PROXY_PORT);
+    aws_mqtt5_client_config_set_http_proxy_strategy(config, NULL);
 
     ASSERT_SUCCESS(aws_mqtt5_client_config_set_http_proxy_tls_connection_options(config, NULL));
 
@@ -391,6 +530,32 @@ static int s_set_config_alt(struct aws_mqtt5_client_config *config) {
     aws_mqtt5_client_config_set_connect_receive_maximum(config, ALT_RECEIVE_MAXIMUM);
     aws_mqtt5_client_config_set_connect_topic_alias_maximum(config, ALT_TOPIC_ALIAS_MAXIMUM);
     aws_mqtt5_client_config_set_connect_maximum_packet_size(config, ALT_MAXIMUM_PACKET_SIZE);
+
+    aws_mqtt5_client_config_clear_connect_user_properties(config);
+    ASSERT_SUCCESS(s_add_user_properties(
+        config,
+        aws_mqtt5_client_config_add_connect_user_property,
+        AWS_ARRAY_SIZE(ALT_CONNECT_PROPERTIES),
+        &ALT_CONNECT_PROPERTIES[0]));
+
+    aws_mqtt5_client_config_set_will_payload_format(config, AWS_MQTT5_PFI_UTF8);
+    aws_mqtt5_client_config_set_will_message_expiry(config, ALT_WILL_MESSAGE_EXPIRY);
+    aws_mqtt5_client_config_set_will_content_type(config, aws_byte_cursor_from_c_str(ALT_WILL_CONTENT_TYPE));
+    aws_mqtt5_client_config_set_will_response_topic(config, aws_byte_cursor_from_c_str(ALT_WILL_RESPONSE_TOPIC));
+    aws_mqtt5_client_config_set_will_correlation_data(config, aws_byte_cursor_from_c_str(ALT_WILL_CORRELATION_DATA));
+    aws_mqtt5_client_config_set_will_delay(config, ALT_WILL_DELAY);
+    ASSERT_SUCCESS(aws_mqtt5_client_config_set_will(
+        config,
+        aws_byte_cursor_from_c_str(ALT_WILL_TOPIC),
+        aws_byte_cursor_from_c_str(ALT_WILL_PAYLOAD),
+        AWS_MQTT5_QOS_EXACTLY_ONCE));
+    aws_mqtt5_client_config_set_will_retained(config, false);
+
+    aws_mqtt5_client_config_clear_will_user_properties(config);
+    ASSERT_SUCCESS(s_add_user_properties(config, aws_mqtt5_client_config_add_will_user_property, 0, NULL));
+
+    aws_mqtt5_client_config_set_lifecycle_event_handler(config, NULL);
+    aws_mqtt5_client_config_set_lifecycle_event_handler_user_data(config, NULL);
 
     return AWS_OP_SUCCESS;
 }
@@ -433,6 +598,27 @@ static int s_verify_set_config_alt(struct aws_mqtt5_client_config *config) {
     ASSERT_UINT_EQUALS(ALT_RECEIVE_MAXIMUM, config->receive_maximum);
     ASSERT_UINT_EQUALS(ALT_TOPIC_ALIAS_MAXIMUM, config->topic_alias_maximum);
     ASSERT_UINT_EQUALS(ALT_MAXIMUM_PACKET_SIZE, config->maximum_packet_size_bytes);
+
+    ASSERT_SUCCESS(s_verify_user_properties(
+        &config->connect_user_properties, AWS_ARRAY_SIZE(ALT_CONNECT_PROPERTIES), &ALT_CONNECT_PROPERTIES[0]));
+
+    ASSERT_INT_EQUALS(AWS_MQTT5_PFI_UTF8, config->will_payload_format);
+    ASSERT_UINT_EQUALS(ALT_WILL_MESSAGE_EXPIRY, *config->will_message_expiry_seconds_ptr);
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_content_type, ALT_WILL_CONTENT_TYPE));
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_response_topic, ALT_WILL_RESPONSE_TOPIC));
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_correlation_data, ALT_WILL_CORRELATION_DATA));
+    ASSERT_UINT_EQUALS(ALT_WILL_DELAY, config->will_delay_seconds);
+
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_topic, ALT_WILL_TOPIC));
+    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->will_payload, ALT_WILL_PAYLOAD));
+    ASSERT_INT_EQUALS(AWS_MQTT5_QOS_EXACTLY_ONCE, config->will_qos);
+
+    ASSERT_FALSE(config->will_retained);
+
+    ASSERT_UINT_EQUALS(0, aws_array_list_length(&config->will_user_properties));
+
+    ASSERT_NULL(config->lifecycle_event_handler);
+    ASSERT_NULL(config->lifecycle_event_handler_user_data);
 
     return AWS_OP_SUCCESS;
 }
