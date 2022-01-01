@@ -46,6 +46,7 @@ file(GLOB AWS_MQTT_PRIV_HEADERS
 
 file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
         "include/aws/mqtt/private/mqtt_client_test_helper.h"
+        "include/aws/mqtt/private/v5/mqtt5_client_impl.h"
         )
 
 file(GLOB AWS_MQTT_SRC

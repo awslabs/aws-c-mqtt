@@ -74,7 +74,7 @@ void aws_mqtt5_client_config_destroy(struct aws_mqtt5_client_config *config);
 AWS_MQTT_API
 int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config);
 
-/*
+/***************************************************************************
  * Underlying transport (pre-mqtt - tcp/websocket/tls) configuration
  *
  * host_name
@@ -84,7 +84,7 @@ int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config);
  * tls options
  * http proxy options
  * websocket options
- */
+ **************************************************************************/
 
 AWS_MQTT_API int aws_mqtt5_client_config_set_host_name(
     struct aws_mqtt5_client_config *config,
