@@ -14,6 +14,7 @@
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_client_bootstrap;
+struct aws_event_loop;
 
 #define AWS_MQTT5_DEFAULT_MIN_RECONNECT_DELAY_MS 1000
 #define AWS_MQTT5_DEFAULT_MAX_RECONNECT_DELAY_MS 120000
@@ -115,6 +116,8 @@ struct aws_mqtt5_client {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
     const struct aws_mqtt5_client_config *config;
+
+    struct aws_event_loop *loop;
 };
 
 /*

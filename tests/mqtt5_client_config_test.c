@@ -444,6 +444,10 @@ static int s_verify_set_config(struct aws_mqtt5_client_config *config) {
     return AWS_OP_SUCCESS;
 }
 
+static void s_alt_lifecycle_event_handler(struct aws_mqtt5_client_lifecycle_event *event) {
+    (void)event;
+}
+
 static const char *ALT_HOST_NAME = "alt-hello.org";
 static const uint16_t ALT_PORT = 1883;
 static struct aws_socket_options ALT_SOCKET_OPTIONS = {
@@ -554,7 +558,7 @@ static int s_set_config_alt(struct aws_mqtt5_client_config *config) {
     aws_mqtt5_client_config_clear_will_user_properties(config);
     ASSERT_SUCCESS(s_add_user_properties(config, aws_mqtt5_client_config_add_will_user_property, 0, NULL));
 
-    aws_mqtt5_client_config_set_lifecycle_event_handler(config, NULL);
+    aws_mqtt5_client_config_set_lifecycle_event_handler(config, s_alt_lifecycle_event_handler);
     aws_mqtt5_client_config_set_lifecycle_event_handler_user_data(config, NULL);
 
     return AWS_OP_SUCCESS;
@@ -617,7 +621,7 @@ static int s_verify_set_config_alt(struct aws_mqtt5_client_config *config) {
 
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&config->will_user_properties));
 
-    ASSERT_NULL(config->lifecycle_event_handler);
+    ASSERT_PTR_EQUALS(s_alt_lifecycle_event_handler, config->lifecycle_event_handler);
     ASSERT_NULL(config->lifecycle_event_handler_user_data);
 
     return AWS_OP_SUCCESS;

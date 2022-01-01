@@ -328,6 +328,11 @@ int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config) {
         }
     }
 
+    /* can't think of why you'd ever want an MQTT client without lifecycle event notifications */
+    if (config->lifecycle_event_handler == NULL) {
+        return aws_raise_error(AWS_ERROR_MQTT_CONFIG_VALIDATION_NO_LIFECYCLE_HANDLER_SET);
+    }
+
     return AWS_OP_SUCCESS;
 }
 

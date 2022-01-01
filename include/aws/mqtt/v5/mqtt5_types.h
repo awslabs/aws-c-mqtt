@@ -20,15 +20,16 @@ struct aws_http_message;
 typedef uint64_t aws_mqtt5_op_id_t;
 
 /**
- * over-the-wire packet id as defined in the mqtt spec.  Allocated at the point in time when the packet is
- * about to be encoded and is next to go down the channel.
+ * Over-the-wire packet id as defined in the mqtt spec.  Allocated at the point in time when the packet is
+ * is next to go down the channel and about to be encoded into a io message buffer.
  *
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901026
  */
 typedef uint16_t aws_mqtt5_packet_id_t;
 
 /**
- * Message delivery quality of service
+ * MQTT Message delivery quality of service.
+ * Enum values match mqtt spec encoding values.
  *
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901234
  */
@@ -45,7 +46,8 @@ enum aws_mqtt5_qos {
 };
 
 /**
- * Server return code for CONNECT attempts
+ * Server return code for CONNECT attempts.
+ * Enum values match mqtt spec encoding values.
  *
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901079
  */
@@ -209,7 +211,8 @@ struct aws_mqtt5_connack_packet_data {
 };
 
 /**
- * Reason code inside DISCONNECT packets
+ * Reason code inside DISCONNECT packets.
+ * Enum values match mqtt spec encoding values.
  *
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901208
  */
@@ -298,7 +301,8 @@ struct aws_mqtt5_disconnect_packet_data {
 };
 
 /**
- * Type of mqtt packet.  Enum value matches spec's encoding value.
+ * Type of mqtt packet.
+ * Enum values match mqtt spec encoding values.
  *
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901022
  */
@@ -449,6 +453,7 @@ typedef void(aws_mqtt5_client_connection_event_callback_fn)(struct aws_mqtt5_cli
 
 /**
  * Optional property describing a message's payload format.
+ * Enum values match mqtt spec encoding values.
  *
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901063
  */

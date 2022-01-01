@@ -168,6 +168,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONFIG_VALIDATION_PROXY_PORT_NOT_SET,
                 "Mqtt client configuration has enabled http proxy support, but does not have a valid http proxy port set."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_NO_LIFECYCLE_HANDLER_SET,
+                "Mqtt client configuration does not have a lifecycle event handler callback set."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
