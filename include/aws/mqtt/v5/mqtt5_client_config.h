@@ -18,19 +18,59 @@ struct aws_socket_options;
 struct aws_client_bootstrap;
 struct aws_byte_cursor;
 
+/*
+ * Configuration API for the mqtt5 client.
+ *
+ * Once a client is created, its configuration is fixed and immutable.  The same configuration can be used to
+ * create multiple clients with changes between calls to _new().
+ *
+ * Nothing in the configuration API is thread-safe.
+ */
+
 AWS_EXTERN_C_BEGIN
 
+/**
+ * Create a new mqtt5 client configuration structure with default values.
+ * Key "non-zero" defaults include:
+ *    MinReconnectDelay - 1000 (milliseconds)
+ *    MaxReconnectDelay - 120000 (milliseconds)
+ *    ConnectedTimeToResetReconnectDelay - 30000 (milliseconds)
+ *    KeepAliveInterval - 1200000 (milliseconds)
+ *    PingTimeout - 3000 (milliseconds)
+ *    RequestProblemInformation - true
+ *
+ * @param allocator allocator to use
+ * @return a new mqtt5 client configuration object, or NULL
+ */
 AWS_MQTT_API
 struct aws_mqtt5_client_config *aws_mqtt5_client_config_new(struct aws_allocator *allocator);
 
+/**
+ * Creates a new mqtt5 configuration object that is a clone of an existing one.
+ *
+ * @param allocator allocator to use
+ * @param from existing configuration object to clone
+ * @return a new configuration object mirroring the supplied configuration object, or NULL
+ */
 AWS_MQTT_API
 struct aws_mqtt5_client_config *aws_mqtt5_client_config_new_clone(
     struct aws_allocator *allocator,
     struct aws_mqtt5_client_config *from);
 
+/**
+ * Destroys an mqtt5 client configuration object.  Currently do not see a compelling reason to ref count these.
+ * @param config mqtt5 client configuration to destroy
+ */
 AWS_MQTT_API
 void aws_mqtt5_client_config_destroy(struct aws_mqtt5_client_config *config);
 
+/**
+ * Checks if a mqtt5 client configuration is valid.  Validity does not guarantee future success, but will catch
+ * some basic mistakes.
+ *
+ * @param config mqtt5 client configuration to check for validity
+ * @return true if the configuration is valid, false otherwise
+ */
 AWS_MQTT_API
 int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config);
 
@@ -194,8 +234,8 @@ AWS_MQTT_API int aws_mqtt5_client_config_add_connect_user_property(
 /*
  * CONNECT configuration - will properties
  *
- * ToDo: Consider moving this to whatever the Publish operation representation ends up being, likely a single function
- * taking a compound data type Caveat: there are some will-only properties here (delay)
+ * ToDo: Consider moving this to whatever the Publish operation representation ends up being.
+ * Caveat: there are some will-only properties here (delay)
  */
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_payload_format(

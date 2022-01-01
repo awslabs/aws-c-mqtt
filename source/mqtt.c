@@ -153,6 +153,21 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_QUEUE_FULL,
                 "MQTT request queue is full."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_HOST_NOT_SET,
+                "Mqtt client configuration does not have a valid host name set."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_PORT_NOT_SET,
+                "Mqtt client configuration does not have a valid port set."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_CLIENT_BOOTSTRAP_NOT_SET,
+                "Mqtt client configuration does not have a client bootstrap set."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_INVALID_SOCKET_OPTIONS,
+                "Mqtt client configuration does not have a set of valid socket options."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_PROXY_PORT_NOT_SET,
+                "Mqtt client configuration has enabled http proxy support, but does not have a valid http proxy port set."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

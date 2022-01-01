@@ -322,10 +322,11 @@ int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config) {
         return aws_raise_error(AWS_ERROR_MQTT_CONFIG_VALIDATION_INVALID_SOCKET_OPTIONS);
     }
 
-    /*
-     * no invalid proxy options possible.  If port is zero with a non-empty host, we'll use 443/80 depending on
-     * proxy tls configuration
-     */
+    if (config->http_proxy_host_name.len > 0) {
+        if (config->http_proxy_port == 0) {
+            return aws_raise_error(AWS_ERROR_MQTT_CONFIG_VALIDATION_PROXY_PORT_NOT_SET);
+        }
+    }
 
     return AWS_OP_SUCCESS;
 }
