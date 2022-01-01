@@ -8,6 +8,7 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/common/ref_count.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
@@ -111,8 +112,14 @@ struct aws_mqtt5_client_config {
 };
 
 struct aws_mqtt5_client {
+    struct aws_allocator *allocator;
+    struct aws_ref_count ref_count;
     const struct aws_mqtt5_client_config *config;
 };
+
+/*
+ * Testing only APIs
+ */
 
 AWS_EXTERN_C_BEGIN
 

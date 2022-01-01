@@ -7,8 +7,8 @@
 #include <aws/http/proxy.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_client_config.h>
-#include <aws/mqtt/v5/private/mqtt5_client_impl.h>
 
 #include <aws/testing/aws_test_harness.h>
 
