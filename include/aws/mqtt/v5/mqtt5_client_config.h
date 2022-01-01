@@ -86,42 +86,103 @@ int aws_mqtt5_client_config_validate(struct aws_mqtt5_client_config *config);
  * websocket options
  **************************************************************************/
 
+/**
+ * Sets the endpoint address to connect the mqtt client to
+ * @param config mqtt5 client configuration to update
+ * @param host_name address of the endpoint to connect to
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_host_name(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor host_name);
 
+/**
+ * Sets the endpoint port to connect the mqtt client to
+ * @param config mqtt5 client configuration to update
+ * @param port port of the endpoint to connect to
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_port(struct aws_mqtt5_client_config *config, uint16_t port);
 
+/**
+ * Sets the client bootstrap to use to build the client's network connection channels from
+ * @param config mqtt5 client configuration to update
+ * @param bootstrap client bootstrap to use
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_bootstrap(
     struct aws_mqtt5_client_config *config,
     struct aws_client_bootstrap *bootstrap);
 
+/**
+ * Sets the socket options to use when this client establishes network connections
+ * @param config mqtt5 client configuration to update
+ * @param socket_options socket options to use when establishing network connections
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_socket_options(
     struct aws_mqtt5_client_config *config,
     struct aws_socket_options *socket_options);
 
+/**
+ * Sets the tls options (relative to the endpoint) to use when this client establishes network connections
+ * @param config mqtt5 client configuration to update
+ * @param tls_options tls options that should be used when connecting to the remote endpoint
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_tls_connection_options(
     struct aws_mqtt5_client_config *config,
     struct aws_tls_connection_options *tls_options);
 
+/**
+ * Sets the http proxy endpoint to establish connections through.  A non-empty proxy host implies proxy usage.
+ * @param config mqtt5 client configuration to update
+ * @param proxy_host_name address of the http proxy to establish network connections through
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_http_proxy_host_name(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor proxy_host_name);
 
+/**
+ * Sets the http proxy port to establish connections through.  Only relevant if the proxy host name is non-empty.
+ * @param config mqtt5 client configuration to update
+ * @param port port of the http proxy to establish network connections through
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_http_proxy_port(struct aws_mqtt5_client_config *config, uint16_t port);
 
+/**
+ * Sets the tls options to use when establishing a direct connection to the http proxy.
+ * @param config mqtt5 client configuration to update
+ * @param tls_options tls options that should be used when connecting to the proxy
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_http_proxy_tls_connection_options(
     struct aws_mqtt5_client_config *config,
     struct aws_tls_connection_options *tls_options);
 
+/**
+ * Sets the http proxy authentication strategy to use when connecting to an http proxy
+ * @param config mqtt5 client configuration to update
+ * @param strategy
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_http_proxy_strategy(
     struct aws_mqtt5_client_config *config,
     struct aws_http_proxy_strategy *strategy);
 
+/**
+ * Sets the websocket handshake transformation function to use.  Setting this to a non-null value implies the usage
+ * of mqtt-over-websockets.  Setting it to null implies a direct mqtt connection.
+ * @param config mqtt5 client configuration to update
+ * @param transform websocket handshake transformation function to use
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_websocket_transform(
     struct aws_mqtt5_client_config *config,
     aws_mqtt5_transform_websocket_handshake_fn *transform);
 
+/**
+ * Sets the websocket handshake transformation function user data.  Only used if the transform is non-null.  This data
+ * is passed to the transform function every time a websocket handshake is performed.
+ * @param config mqtt5 client configuration to update
+ * @param user_data websocket handshake transformation user data to use
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_websocket_transform_user_data(
     struct aws_mqtt5_client_config *config,
     void *user_data);
@@ -134,15 +195,35 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_websocket_transform_user_data(
  * reconnect delay reset interval
  */
 
+/**
+ * Sets the client's reconnect behavior
+ * @param config mqtt5 client configuration to update
+ * @param reconnect_behavior reconnect behavior to use
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_behavior(
     struct aws_mqtt5_client_config *config,
     enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior);
 
+/**
+ * Sets the min and max possible delays for reconnect behavior.  Reconnect will do a simple exponential (doubling)
+ * backoff from the min up to the max as failures accumulate.
+ * @param config mqtt5 client configuration to update
+ * @param min_reconnect_delay_ms minimum time, in milliseconds, between reconnect attempts
+ * @param max_reconnect_delay_ms maximum time, in milliseconds, between reconnect attempts
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_delay_ms(
     struct aws_mqtt5_client_config *config,
     uint64_t min_reconnect_delay_ms,
     uint64_t max_reconnect_delay_ms);
 
+/**
+ * Sets the the length of time a new connection must stay valid before we reset the reconnect delay.  This is useful
+ * to avoid fast reconnect storms when there are post-connect issues forcing rapid disconnects, like a permissions
+ * problem.
+ * @param config mqtt5 client configuration to update
+ * @param min_connected_time_to_reset_reconnect_delay_ms minimum time, in milliseconds, a network connection must
+ * be good for before the client resets its reconnection delay back to the minimum.
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_delay_reset_interval_ms(
     struct aws_mqtt5_client_config *config,
     uint64_t min_connected_time_to_reset_reconnect_delay_ms);
@@ -154,10 +235,20 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_reconnect_delay_reset_interval_ms(
  * ping timeout
  */
 
+/**
+ * Sets the time between mqtt keep alive PINGs
+ * @param config mqtt5 client configuration to update
+ * @param keep_alive_interval_ms time, in milliseconds, between PINGs sent out by the client
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_keep_alive_interval_ms(
     struct aws_mqtt5_client_config *config,
     uint32_t keep_alive_interval_ms);
 
+/**
+ * Sets the time, in milliseconds, the client will wait for a PINGRESP before a ping is considered lost
+ * @param config mqtt5 client configuration to update
+ * @param ping_timeout_ms time interval, in milliseconds, for the client to wait for a PINGRESP to a PING
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_ping_timeout_ms(
     struct aws_mqtt5_client_config *config,
     uint32_t ping_timeout_ms);
@@ -238,6 +329,12 @@ AWS_MQTT_API int aws_mqtt5_client_config_add_connect_user_property(
  * Caveat: there are some will-only properties here (delay)
  */
 
+AWS_MQTT_API int aws_mqtt5_client_config_set_will(
+    struct aws_mqtt5_client_config *config,
+    struct aws_byte_cursor topic,
+    struct aws_byte_cursor payload,
+    enum aws_mqtt5_qos qos);
+
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_payload_format(
     struct aws_mqtt5_client_config *config,
     enum aws_mqtt5_payload_format_indicator payload_format);
@@ -261,12 +358,6 @@ AWS_MQTT_API int aws_mqtt5_client_config_set_will_correlation_data(
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_delay(
     struct aws_mqtt5_client_config *config,
     uint32_t will_delay_seconds);
-
-AWS_MQTT_API int aws_mqtt5_client_config_set_will(
-    struct aws_mqtt5_client_config *config,
-    struct aws_byte_cursor topic,
-    struct aws_byte_cursor payload,
-    enum aws_mqtt5_qos qos);
 
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_retained(struct aws_mqtt5_client_config *config, bool retained);
 

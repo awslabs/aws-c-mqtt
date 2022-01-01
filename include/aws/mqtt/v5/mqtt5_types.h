@@ -451,6 +451,10 @@ struct aws_mqtt5_client_lifecycle_event {
      * indicates which union member contains valid data.
      */
     enum aws_mqtt5_packet_type packet_type;
+
+    /**
+     * Packet data associated with the event
+     */
     union {
         struct aws_mqtt5_connack_packet_data connack_data;
         struct aws_mqtt5_disconnect_packet_data disconnect_data;
