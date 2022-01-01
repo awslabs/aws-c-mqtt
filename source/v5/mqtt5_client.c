@@ -16,6 +16,7 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     }
 
     aws_mqtt5_client_config_destroy((struct aws_mqtt5_client_config *)client->config);
+    aws_mutex_clean_up(&client->lock);
 
     aws_mem_release(client->allocator, client);
 }
@@ -52,6 +53,10 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(struct aws_allocator *allocator, s
     /* all client activity will take place on this event loop, serializing things like reconnect, ping, etc... */
     client->loop = aws_event_loop_group_get_next_loop(config->bootstrap->event_loop_group);
     if (client->loop == NULL) {
+        goto on_error;
+    }
+
+    if (aws_mutex_init(&client->lock)) {
         goto on_error;
     }
 

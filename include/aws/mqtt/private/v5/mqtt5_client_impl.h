@@ -8,6 +8,7 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
@@ -118,6 +119,12 @@ struct aws_mqtt5_client {
     const struct aws_mqtt5_client_config *config;
 
     struct aws_event_loop *loop;
+
+    struct aws_mutex lock;
+
+    struct {
+        aws_mqtt5_event_id_t next_event_id;
+    } shared_data;
 };
 
 /*
