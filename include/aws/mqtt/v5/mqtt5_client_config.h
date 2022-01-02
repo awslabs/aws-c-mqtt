@@ -270,54 +270,150 @@ AWS_MQTT_API void aws_mqtt5_client_config_set_ping_timeout_ms(
  * maximum packet size
  */
 
+/**
+ * Sets the mqtt client id to use when connecting.  Can be left empty to ask the server to assign a client id.  If left
+ * empty, followup reconnect attempts will use the server-assigned client id rather than request a new one via an empty
+ * client id.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param client_id client identifier to use when connecting
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_client_id(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor client_id);
 
+/**
+ * Sets the user name to use when connecting.  By default, no username is used unless this function is
+ * called.  It is valid to call this function with an empty cursor.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param username user name to use when connecting
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_connect_username(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor username);
 
+/**
+ * Sets the password to use when connecting.  By default, no password is used unless this function is
+ * called.  It is valid to call this function with an empty cursor.
+ *
+ * ToDo: like authentication method/data, consider if this needs to be dynamic over time (i.e. a callback)
+ *
+ * @param config mqtt5 client configuration to update
+ * @param password password to use when connecting
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_connect_password(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor password);
 
+/**
+ * Sets the requested session expiry interval (in seconds).  The server is free to return a different value in the
+ * CONNACK.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param session_expiry_interval_seconds session expiry interval in seconds
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_session_expiry_interval_seconds(
     struct aws_mqtt5_client_config *config,
     uint32_t session_expiry_interval_seconds);
 
+/**
+ * Sets the desired session behavior for the mqtt client.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param session_behavior session behavior that the client should use
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_session_behavior(
     struct aws_mqtt5_client_config *config,
     enum aws_mqtt5_client_session_behavior_type session_behavior);
 
+/**
+ * Sets the authentication method property for the CONNECT packets sent by the client.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param authentication_method desired authentication method
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_connect_authentication_method(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor authentication_method);
 
+/**
+ * Sets the authentication data property for the CONNECT packets sent by the client.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param authentication_data desired authentication data
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ *
+ * ToDo: Consider making this a callback function instead, allowing dynamic auth data generation.  Perhaps even
+ * make both authentication properties dynamic.  Perhaps remove these APIs completely until a decision is made.
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_connect_authentication_data(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor authentication_data);
 
+/**
+ * Sets whether or not the client wishes to receive request-response information in the CONNACK packet.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param request_response_information whether or not the client wishes to receive CONNACK request-response information
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_request_response_information(
     struct aws_mqtt5_client_config *config,
     bool request_response_information);
 
+/**
+ * Sets whether or not the client wishes to receive diagnostic reason strings or user properties in appropriate packets.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param request_problem_information whether or not the client wishes to receive reason strings or user properties in
+ * appropriate packets
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_request_problem_information(
     struct aws_mqtt5_client_config *config,
     bool request_problem_information);
 
+/**
+ * Sets the client's desired maximum number of incomplete non-qos-0 operations.  The client will not exceed the
+ * negotiated value under any circumstances.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param receive_maximum maximum number of incomplete non-qos-0 operations
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_receive_maximum(
     struct aws_mqtt5_client_config *config,
     uint16_t receive_maximum);
 
+/**
+ * Sets the client's desired maximum number of topic aliases.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param topic_alias_maximum the client's desired maximum number of topic aliases
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_topic_alias_maximum(
     struct aws_mqtt5_client_config *config,
     uint16_t topic_alias_maximum);
 
+/**
+ * Sets the client's desired maximum packet size, in bytes.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param maximum_packet_size_bytes the client's desired maximum packet size, in bytes
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_connect_maximum_packet_size(
     struct aws_mqtt5_client_config *config,
     uint32_t maximum_packet_size_bytes);
 
+/**
+ * Adds a user property to the set of user properties to be sent with each CONNECT packet
+ *
+ * @param config mqtt5 client configuration to update
+ * @param property user property to include in each CONNECT packet
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_add_connect_user_property(
     struct aws_mqtt5_client_config *config,
     struct aws_mqtt5_user_property *property);
@@ -329,38 +425,100 @@ AWS_MQTT_API int aws_mqtt5_client_config_add_connect_user_property(
  * Caveat: there are some will-only properties here (delay)
  */
 
+/**
+ * Sets the basic properties of the will message to include in the CONNECT packet.  Calling this with an empty
+ * topic will disable will configuration.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param topic topic that the will message should be sent to
+ * @param payload bytewise payload of the will message
+ * @param qos quality of service to send the will message with
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_will(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor topic,
     struct aws_byte_cursor payload,
     enum aws_mqtt5_qos qos);
 
+/**
+ * Sets the payload format indicator of the will message
+ *
+ * @param config mqtt5 client configuration to update
+ * @param payload_format payload format indicator for the will message
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_payload_format(
     struct aws_mqtt5_client_config *config,
     enum aws_mqtt5_payload_format_indicator payload_format);
 
+/**
+ * Sets the will message expiry, in seconds
+ *
+ * @param config mqtt5 client configuration to update
+ * @param message_expiry_seconds the will message expiry, in seconds
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_message_expiry(
     struct aws_mqtt5_client_config *config,
     uint32_t message_expiry_seconds);
 
+/**
+ * Sets the content type property of the will message
+ *
+ * @param config mqtt5 client configuration to update
+ * @param content_type the will message content type property value
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_will_content_type(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor content_type);
 
+/**
+ * Sets the response topic property value for the will message.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param response_topic response topic property value
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_will_response_topic(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor response_topic);
 
+/**
+ * Sets the (request-response) correlation data property value for the will message.
+ * @param config mqtt5 client configuration to update
+ * @param correlation_data correlation data property value
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_set_will_correlation_data(
     struct aws_mqtt5_client_config *config,
     struct aws_byte_cursor correlation_data);
 
+/**
+ * Sets the desired delay, in seconds, before the will message send should be triggered on the server.  If the client
+ * successfully reconnects before this time, the will should not be sent.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param will_delay_seconds delay, in seconds, between a client disconnect and triggering a will message send
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_delay(
     struct aws_mqtt5_client_config *config,
     uint32_t will_delay_seconds);
 
+/**
+ * Sets whether or not the will message should be a retained message.
+ *
+ * @param config mqtt5 client configuration to update
+ * @param retained whether or not the will message should be a retained message
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_will_retained(struct aws_mqtt5_client_config *config, bool retained);
 
+/**
+ * Adds a user property to the set of user properties in the will message
+ *
+ * @param config mqtt5 client configuration to update
+ * @param property user property to include in the will message
+ * @return AWS_OP_SUCCESS or AWS_OP_ERR
+ */
 AWS_MQTT_API int aws_mqtt5_client_config_add_will_user_property(
     struct aws_mqtt5_client_config *config,
     struct aws_mqtt5_user_property *property);
@@ -368,10 +526,21 @@ AWS_MQTT_API int aws_mqtt5_client_config_add_will_user_property(
 /*
  * Lifecycle event handling configuration
  */
+
+/**
+ * Sets the lifecycle event callback that the client should invoke every time a lifecycle event occurs
+ * @param config mqtt5 client configuration to update
+ * @param lifecycle_event_handler lifecycle event callback that the client should use
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_lifecycle_event_handler(
     struct aws_mqtt5_client_config *config,
     aws_mqtt5_client_connection_event_callback_fn *lifecycle_event_handler);
 
+/**
+ * Sets the user data to use with the client's lifecycle event callback
+ * @param config mqtt5 client configuration to update
+ * @param user_data user data value to include with all lifecycle event callback invocations
+ */
 AWS_MQTT_API void aws_mqtt5_client_config_set_lifecycle_event_handler_user_data(
     struct aws_mqtt5_client_config *config,
     void *user_data);
