@@ -8,12 +8,15 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
+#include <aws/mqtt/private/topic_tree.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
+struct aws_channel;
 struct aws_client_bootstrap;
 struct aws_event_loop;
 
@@ -113,18 +116,49 @@ struct aws_mqtt5_client_config {
     void *lifecycle_event_handler_user_data;
 };
 
+enum aws_mqtt5_client_state {
+    AWS_MCS_STOPPED,
+    AWS_MCS_CONNECTING,
+    AWS_MCS_MQTT_CONNECT,
+    AWS_MCS_RESUBSCRIBING,
+    AWS_MCS_CONNECTED,
+    AWS_MCS_DISCONNECTING,
+    AWS_MCS_PENDING_RECONNECT,
+    AWS_MCS_DESTROYING,
+};
+
 struct aws_mqtt5_client {
+    struct aws_task service_task;
+    uint64_t next_service_task_run_time;
+
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
     const struct aws_mqtt5_client_config *config;
 
     struct aws_event_loop *loop;
+    struct aws_channel *channel;
 
-    struct aws_mutex lock;
+    enum aws_mqtt5_client_state desired_state;
+    enum aws_mqtt5_client_state current_state;
+
+    struct aws_atomic_var next_event_id;
+    struct aws_linked_list queued_operations;
+    aws_mqtt5_packet_id_t next_mqtt_packet_id;
+    struct aws_hash_table outstanding_requests_table;
+    struct aws_mqtt_topic_tree subscriptions;
 
     struct {
-        aws_mqtt5_event_id_t next_event_id;
-    } shared_data;
+        struct aws_atomic_var total_pending_operations;
+        struct aws_atomic_var total_pending_payload_bytes;
+        struct aws_atomic_var incomplete_operations;
+        struct aws_atomic_var incomplete_payload_bytes;
+    } statistics;
+
+    uint64_t next_ping_time;
+    uint64_t next_ping_timeout_time;
+
+    uint64_t next_reconnect_time;
+    uint64_t current_reconnect_delay_interval_ms;
 };
 
 /*

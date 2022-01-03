@@ -23,7 +23,7 @@ struct aws_http_message;
  *   incoming acks: puback, suback, unsuback
  *   lifecycle events
  */
-typedef uint64_t aws_mqtt5_event_id_t;
+typedef size_t aws_mqtt5_event_id_t;
 
 /**
  * Over-the-wire packet id as defined in the mqtt spec.  Allocated at the point in time when the packet is

@@ -24,10 +24,10 @@ AWS_MQTT_API
 void aws_mqtt5_client_release(struct aws_mqtt5_client *client);
 
 AWS_MQTT_API
-void aws_mqtt5_client_start(struct aws_mqtt5_client *client);
+int aws_mqtt5_client_start(struct aws_mqtt5_client *client);
 
 AWS_MQTT_API
-void aws_mqtt5_client_stop(struct aws_mqtt5_client *client);
+int aws_mqtt5_client_stop(struct aws_mqtt5_client *client);
 
 AWS_EXTERN_C_END
 
