@@ -26,6 +26,9 @@ void aws_mqtt5_client_release(struct aws_mqtt5_client *client);
 AWS_MQTT_API
 int aws_mqtt5_client_start(struct aws_mqtt5_client *client);
 
+/*
+ * ToDo: optional disconnect parameters for soft disconnect
+ */
 AWS_MQTT_API
 int aws_mqtt5_client_stop(struct aws_mqtt5_client *client);
 

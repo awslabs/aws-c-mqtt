@@ -120,11 +120,11 @@ enum aws_mqtt5_client_state {
     AWS_MCS_STOPPED,
     AWS_MCS_CONNECTING,
     AWS_MCS_MQTT_CONNECT,
-    AWS_MCS_RESUBSCRIBING,
     AWS_MCS_CONNECTED,
-    AWS_MCS_DISCONNECTING,
+    AWS_MCS_CLEAN_DISCONNECT,
+    AWS_MCS_CHANNEL_SHUTDOWN,
     AWS_MCS_PENDING_RECONNECT,
-    AWS_MCS_DESTROYING,
+    AWS_MCS_TERMINATED,
 };
 
 struct aws_mqtt5_client {
@@ -142,9 +142,34 @@ struct aws_mqtt5_client {
     enum aws_mqtt5_client_state current_state;
 
     struct aws_atomic_var next_event_id;
-    struct aws_linked_list queued_operations;
     aws_mqtt5_packet_id_t next_mqtt_packet_id;
-    struct aws_hash_table outstanding_requests_table;
+
+    /*
+     * operation flow:
+     *   (qos 0)
+     *      queued_operations -> (on front of queue)
+     *      current_operation -> (on completely encoded and passed to next handler)
+     *      write_completion_operations -> (on socket write complete)
+     *      release
+     *
+     *   (qos 1+)
+     *      queued_operations -> (on front of queue)
+     *      current_operation -> (on completely encoded and passed to next handler)
+     *      unacked_operations && unacked_operations_table -> (on ack received)
+     *      release
+     *
+     *   On disconnect:
+     *      Fail and release all QoS0 operations in queued_operations, current_operation, write_completion_operations
+     *      If current_operation is QoS1+, move to tail of unacked_operations
+     *      Append unacked_operations to the head of queued_operations
+     *      Clear unacked_operations_table
+     */
+    struct aws_linked_list queued_operations;
+    struct aws_mqtt5_operation *current_operation;
+    struct aws_hash_table unacked_operations_table;
+    struct aws_linked_list unacked_operations;
+    struct aws_linked_list write_completion_operations;
+
     struct aws_mqtt_topic_tree subscriptions;
 
     struct {
@@ -154,11 +179,15 @@ struct aws_mqtt5_client {
         struct aws_atomic_var incomplete_payload_bytes;
     } statistics;
 
+    /* next event times and related data */
     uint64_t next_ping_time;
     uint64_t next_ping_timeout_time;
 
     uint64_t next_reconnect_time;
     uint64_t current_reconnect_delay_interval_ms;
+    uint64_t next_reconnect_delay_interval_reset_time;
+
+    uint64_t next_mqtt_connect_packet_timeout_time;
 };
 
 /*
