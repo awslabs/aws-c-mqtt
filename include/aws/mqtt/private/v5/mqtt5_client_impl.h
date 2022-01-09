@@ -19,6 +19,8 @@
 struct aws_channel;
 struct aws_client_bootstrap;
 struct aws_event_loop;
+struct aws_http_message;
+struct aws_mqtt5_operation;
 
 #define AWS_MQTT5_DEFAULT_MIN_RECONNECT_DELAY_MS 1000
 #define AWS_MQTT5_DEFAULT_MAX_RECONNECT_DELAY_MS 120000
@@ -38,7 +40,7 @@ struct aws_mqtt5_name_value_pair {
 struct aws_mqtt5_client_config {
     struct aws_allocator *allocator;
 
-    struct aws_byte_buf host_name;
+    struct aws_string *host_name;
     uint16_t port;
     struct aws_client_bootstrap *bootstrap;
     struct aws_socket_options socket_options;
@@ -46,7 +48,7 @@ struct aws_mqtt5_client_config {
     struct aws_tls_connection_options tls_options;
     struct aws_tls_connection_options *tls_options_ptr;
 
-    struct aws_byte_buf http_proxy_host_name;
+    struct aws_string *http_proxy_host_name;
     uint16_t http_proxy_port;
     struct aws_tls_connection_options http_proxy_tls_options;
     struct aws_tls_connection_options *http_proxy_tls_options_ptr;

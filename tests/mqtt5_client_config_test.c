@@ -22,11 +22,11 @@ static int s_mqtt5_client_config_new_destroy_fn(struct aws_allocator *allocator,
     ASSERT_FAILS(aws_mqtt5_client_config_validate(config));
 
     /* check defaults */
-    ASSERT_UINT_EQUALS(0, config->host_name.len);
+    ASSERT_NULL(config->host_name);
     ASSERT_UINT_EQUALS(0, config->port);
     ASSERT_NULL(config->bootstrap);
     ASSERT_NULL(config->tls_options_ptr);
-    ASSERT_UINT_EQUALS(0, config->http_proxy_host_name.len);
+    ASSERT_NULL(config->http_proxy_host_name);
     ASSERT_UINT_EQUALS(0, config->http_proxy_port);
     ASSERT_NULL(config->http_proxy_tls_options_ptr);
     ASSERT_NULL(config->http_proxy_strategy);
@@ -192,7 +192,7 @@ static void s_lifecycle_event_handler(struct aws_mqtt5_client_lifecycle_event *e
     (void)event;
 }
 
-static const char *HOST_NAME = "hello-world.com";
+AWS_STATIC_STRING_FROM_LITERAL(HOST_NAME, "hello-world.com");
 static const uint16_t PORT = 8883;
 static struct aws_socket_options SOCKET_OPTIONS = {
     .type = AWS_SOCKET_STREAM,
@@ -204,7 +204,7 @@ static struct aws_socket_options SOCKET_OPTIONS = {
     .keepalive = true,
 };
 static const char *ALPN_LIST = "mqtt";
-static const char *PROXY_HOST_NAME = "imaproxy.org";
+AWS_STATIC_STRING_FROM_LITERAL(PROXY_HOST_NAME, "imaproxy.org");
 static const uint16_t PROXY_PORT = 8080;
 static const char *PROXY_ALPN_LIST = "http";
 static void *WEBSOCKET_TRANSFORM_USER_DATA = (void *)1;
@@ -249,7 +249,7 @@ static const char *WILL_PAYLOAD = "SomePayload";
 
 static int s_set_config(struct aws_mqtt5_client_config *config) {
 
-    ASSERT_SUCCESS(aws_mqtt5_client_config_set_host_name(config, aws_byte_cursor_from_c_str(HOST_NAME)));
+    ASSERT_SUCCESS(aws_mqtt5_client_config_set_host_name(config, aws_byte_cursor_from_string(HOST_NAME)));
     aws_mqtt5_client_config_set_port(config, PORT);
 
     struct aws_client_bootstrap *bootstrap = s_new_bootstrap(config->allocator);
@@ -260,18 +260,19 @@ static int s_set_config(struct aws_mqtt5_client_config *config) {
 
     struct aws_tls_connection_options tls_conn_options;
     AWS_ZERO_STRUCT(tls_conn_options);
-    ASSERT_SUCCESS(s_init_tls_options(config->allocator, HOST_NAME, ALPN_LIST, &tls_conn_options));
+    ASSERT_SUCCESS(s_init_tls_options(config->allocator, aws_string_c_str(HOST_NAME), ALPN_LIST, &tls_conn_options));
 
     ASSERT_SUCCESS(aws_mqtt5_client_config_set_tls_connection_options(config, &tls_conn_options));
     aws_tls_connection_options_clean_up(&tls_conn_options);
 
     ASSERT_SUCCESS(
-        aws_mqtt5_client_config_set_http_proxy_host_name(config, aws_byte_cursor_from_c_str(PROXY_HOST_NAME)));
+        aws_mqtt5_client_config_set_http_proxy_host_name(config, aws_byte_cursor_from_string(PROXY_HOST_NAME)));
     aws_mqtt5_client_config_set_http_proxy_port(config, PROXY_PORT);
 
     struct aws_tls_connection_options proxy_tls_conn_options;
     AWS_ZERO_STRUCT(proxy_tls_conn_options);
-    ASSERT_SUCCESS(s_init_tls_options(config->allocator, PROXY_HOST_NAME, PROXY_ALPN_LIST, &proxy_tls_conn_options));
+    ASSERT_SUCCESS(s_init_tls_options(
+        config->allocator, aws_string_c_str(PROXY_HOST_NAME), PROXY_ALPN_LIST, &proxy_tls_conn_options));
 
     ASSERT_SUCCESS(aws_mqtt5_client_config_set_http_proxy_tls_connection_options(config, &proxy_tls_conn_options));
     aws_tls_connection_options_clean_up(&proxy_tls_conn_options);
@@ -377,18 +378,19 @@ static int s_verify_string_contains_exactly_c_str(struct aws_string *string, con
 }
 
 static int s_verify_set_config(struct aws_mqtt5_client_config *config) {
-    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->host_name, HOST_NAME));
+    ASSERT_TRUE(aws_string_eq(config->host_name, HOST_NAME));
     ASSERT_UINT_EQUALS(PORT, config->port);
     ASSERT_SUCCESS(s_verify_socket_options(&SOCKET_OPTIONS, &config->socket_options));
 
-    ASSERT_SUCCESS(s_verify_string_contains_exactly_c_str(config->tls_options_ptr->server_name, HOST_NAME));
+    ASSERT_SUCCESS(
+        s_verify_string_contains_exactly_c_str(config->tls_options_ptr->server_name, aws_string_c_str(HOST_NAME)));
     ASSERT_SUCCESS(s_verify_string_contains_exactly_c_str(config->tls_options_ptr->alpn_list, ALPN_LIST));
 
-    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->http_proxy_host_name, PROXY_HOST_NAME));
+    ASSERT_TRUE(aws_string_eq(config->http_proxy_host_name, PROXY_HOST_NAME));
     ASSERT_UINT_EQUALS(PROXY_PORT, config->http_proxy_port);
     ASSERT_NOT_NULL(config->http_proxy_tls_options_ptr);
-    ASSERT_SUCCESS(
-        s_verify_string_contains_exactly_c_str(config->http_proxy_tls_options_ptr->server_name, PROXY_HOST_NAME));
+    ASSERT_SUCCESS(s_verify_string_contains_exactly_c_str(
+        config->http_proxy_tls_options_ptr->server_name, aws_string_c_str(PROXY_HOST_NAME)));
     ASSERT_SUCCESS(
         s_verify_string_contains_exactly_c_str(config->http_proxy_tls_options_ptr->alpn_list, PROXY_ALPN_LIST));
     ASSERT_NOT_NULL(config->http_proxy_strategy);
@@ -448,7 +450,7 @@ static void s_alt_lifecycle_event_handler(struct aws_mqtt5_client_lifecycle_even
     (void)event;
 }
 
-static const char *ALT_HOST_NAME = "alt-hello.org";
+AWS_STATIC_STRING_FROM_LITERAL(ALT_HOST_NAME, "alt-hello.org");
 static const uint16_t ALT_PORT = 1883;
 static struct aws_socket_options ALT_SOCKET_OPTIONS = {
     .type = AWS_SOCKET_STREAM,
@@ -459,7 +461,7 @@ static struct aws_socket_options ALT_SOCKET_OPTIONS = {
     .keep_alive_max_failed_probes = 4,
     .keepalive = true,
 };
-static const char *ALT_PROXY_HOST_NAME = "anotherproxy.org";
+AWS_STATIC_STRING_FROM_LITERAL(ALT_PROXY_HOST_NAME, "anotherproxy.org");
 static const uint16_t ALT_PROXY_PORT = 8081;
 static const uint64_t ALT_RECONNECT_DELAY_MIN = 600;
 static const uint64_t ALT_RECONNECT_DELAY_MAX = 1100000;
@@ -489,7 +491,7 @@ static const char *ALT_WILL_PAYLOAD = "DifferentPayload";
 
 static int s_set_config_alt(struct aws_mqtt5_client_config *config) {
 
-    ASSERT_SUCCESS(aws_mqtt5_client_config_set_host_name(config, aws_byte_cursor_from_c_str(ALT_HOST_NAME)));
+    ASSERT_SUCCESS(aws_mqtt5_client_config_set_host_name(config, aws_byte_cursor_from_string(ALT_HOST_NAME)));
     aws_mqtt5_client_config_set_port(config, ALT_PORT);
 
     struct aws_client_bootstrap *bootstrap = s_new_bootstrap(config->allocator);
@@ -501,7 +503,7 @@ static int s_set_config_alt(struct aws_mqtt5_client_config *config) {
     ASSERT_SUCCESS(aws_mqtt5_client_config_set_tls_connection_options(config, NULL));
 
     ASSERT_SUCCESS(
-        aws_mqtt5_client_config_set_http_proxy_host_name(config, aws_byte_cursor_from_c_str(ALT_PROXY_HOST_NAME)));
+        aws_mqtt5_client_config_set_http_proxy_host_name(config, aws_byte_cursor_from_string(ALT_PROXY_HOST_NAME)));
     aws_mqtt5_client_config_set_http_proxy_port(config, ALT_PROXY_PORT);
     aws_mqtt5_client_config_set_http_proxy_strategy(config, NULL);
 
@@ -566,13 +568,13 @@ static int s_set_config_alt(struct aws_mqtt5_client_config *config) {
 
 static int s_verify_set_config_alt(struct aws_mqtt5_client_config *config) {
 
-    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->host_name, ALT_HOST_NAME));
+    ASSERT_TRUE(aws_string_eq(config->host_name, ALT_HOST_NAME));
     ASSERT_UINT_EQUALS(ALT_PORT, config->port);
     ASSERT_SUCCESS(s_verify_socket_options(&ALT_SOCKET_OPTIONS, &config->socket_options));
 
     ASSERT_NULL(config->tls_options_ptr);
 
-    ASSERT_SUCCESS(s_verify_buffer_contains_exactly_c_str(&config->http_proxy_host_name, ALT_PROXY_HOST_NAME));
+    ASSERT_TRUE(aws_string_eq(config->http_proxy_host_name, ALT_PROXY_HOST_NAME));
     ASSERT_UINT_EQUALS(ALT_PROXY_PORT, config->http_proxy_port);
 
     ASSERT_NULL(config->http_proxy_tls_options_ptr);

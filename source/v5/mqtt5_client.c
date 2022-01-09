@@ -6,9 +6,13 @@
 #include <aws/mqtt/v5/mqtt5_client.h>
 
 #include <aws/common/clock.h>
+#include <aws/http/proxy.h>
+#include <aws/http/request_response.h>
+#include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
+#include <aws/mqtt/private/v5/mqtt5_operation.h>
 #include <aws/mqtt/v5/mqtt5_client_config.h>
 
 static int s_aws_mqtt5_client_change_desired_state(
@@ -23,6 +27,28 @@ static bool s_uint16_t_eq(const void *a, const void *b) {
     return *(uint16_t *)a == *(uint16_t *)b;
 }
 
+static void s_mqtt5_client_fail_and_cleanup_operation_list(struct aws_linked_list *operation_list) {
+    struct aws_linked_list_node *node = aws_linked_list_begin(operation_list);
+    while (node != aws_linked_list_end(operation_list)) {
+        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
+
+        /*
+         * TODO: rather than just cleaning these up, they should generate failed completion callbacks
+         *
+         * Open Q: we can pass errors but what about situations where we want to pass auxiliary data like an
+         * ack's properties?
+         *
+         * Perhaps we can have generic error sets on the mqtt operation as a vtable, but then operation-specific
+         * properties get set during decode and the like and invoking callback just takes what it's been given
+         * up to that point.
+         */
+
+        aws_mqtt5_operation_release(operation);
+
+        node = aws_linked_list_next(node);
+    }
+}
+
 static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     if (client == NULL) {
         return;
@@ -30,14 +56,14 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 
     aws_mqtt_topic_tree_clean_up(&client->subscriptions);
 
-    // TODO: outstanding requests table entries (should be empty)
+    AWS_ASSERT(aws_hash_table_get_entry_count(&client->unacked_operations_table) == 0);
     aws_hash_table_clean_up(&client->unacked_operations_table);
 
-    // TODO: queued operations list elements (can be non-empty)
+    s_mqtt5_client_fail_and_cleanup_operation_list(&client->queued_operations);
 
-    // TODO: current operation (should never actually be NULL)
+    AWS_ASSERT(client->current_operation == NULL);
 
-    // TODO: write completion list elements (should be empty)
+    s_mqtt5_client_fail_and_cleanup_operation_list(&client->write_completion_operations);
 
     aws_mqtt5_client_config_destroy((struct aws_mqtt5_client_config *)client->config);
 
@@ -75,6 +101,16 @@ static uint64_t s_compute_next_service_time_client_connecting(struct aws_mqtt5_c
 static uint64_t s_compute_next_service_time_client_mqtt_connect(struct aws_mqtt5_client *client, uint64_t now) {
     /* This state is interruptible by a stop/terminate */
     if (client->desired_state != AWS_MCS_CONNECTED) {
+        return now;
+    }
+
+    /*
+     * The transition to MQTT_CONNECT just makes the CONNECT operation and assigns it to current_operation.
+     * It's up to the service task to actually encode and push it down the handler chain.
+     *
+     * Note: no flow control on this.
+     */
+    if (client->current_operation != NULL) {
         return now;
     }
 
@@ -183,27 +219,373 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
     client->next_service_task_run_time = next_service_time;
 }
 
+static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqtt5_client_state next_state);
+
 static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
-    (void)client;
     AWS_ASSERT(
         client->current_state == AWS_MCS_DISCONNECTING || client->current_state == AWS_MCS_PENDING_RECONNECT ||
         client->current_state == AWS_MCS_CONNECTING);
 
-    /* TODO: Emit stopped lifecycle event */
+    if (client->config->lifecycle_event_handler != NULL) {
+        struct aws_mqtt5_client_lifecycle_event event;
+        AWS_ZERO_STRUCT(event);
+
+        event.id = aws_atomic_fetch_add(&client->next_event_id, 1);
+        event.event_type = AWS_MQTT5_CLET_STOPPED;
+        event.user_data = client->config->lifecycle_event_handler_user_data;
+
+        (client->config->lifecycle_event_handler)(&event);
+    }
+}
+
+struct aws_mqtt5_websocket_transform_complete_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt5_client *client;
+    int error_code;
+    struct aws_http_message *handshake;
+};
+
+#ifdef NEVER
+
+static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {
+    struct aws_mqtt_client_connection *connection = user_data;
+
+    struct aws_channel *channel = connection->slot ? connection->slot->channel : NULL;
+
+    s_mqtt_client_shutdown(connection->client->bootstrap, error_code, channel, connection);
+
+    if (websocket) {
+        aws_websocket_release(websocket);
+    }
+}
+
+static void s_on_websocket_setup(
+    struct aws_websocket *websocket,
+    int error_code,
+    int handshake_response_status,
+    const struct aws_http_header *handshake_response_header_array,
+    size_t num_handshake_response_headers,
+    void *user_data) {
+
+    (void)handshake_response_status;
+
+    /* Setup callback contract is: if error_code is non-zero then websocket is NULL. */
+    AWS_FATAL_ASSERT((error_code != 0) == (websocket == NULL));
+
+    struct aws_mqtt_client_connection *connection = user_data;
+    struct aws_channel *channel = NULL;
+
+    if (connection->websocket.handshake_request) {
+        aws_http_message_release(connection->websocket.handshake_request);
+        connection->websocket.handshake_request = NULL;
+    }
+
+    if (websocket) {
+        channel = aws_websocket_get_channel(websocket);
+        AWS_ASSERT(channel);
+
+        /* Websocket must be "converted" before the MQTT handler can be installed next to it. */
+        if (aws_websocket_convert_to_midchannel_handler(websocket)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Failed converting websocket, error %d (%s)",
+                (void *)connection,
+                aws_last_error(),
+                aws_error_name(aws_last_error()));
+
+            aws_channel_shutdown(channel, aws_last_error());
+            return;
+        }
+
+        /* If validation callback is set, let the user accept/reject the handshake */
+        if (connection->websocket.handshake_validator) {
+            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Validating websocket handshake response.", (void *)connection);
+
+            if (connection->websocket.handshake_validator(
+                    connection,
+                    handshake_response_header_array,
+                    num_handshake_response_headers,
+                    connection->websocket.handshake_validator_ud)) {
+
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Failure reported by websocket handshake validator callback, error %d (%s)",
+                    (void *)connection,
+                    aws_last_error(),
+                    aws_error_name(aws_last_error()));
+
+                aws_channel_shutdown(channel, aws_last_error());
+                return;
+            }
+
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT, "id=%p: Done validating websocket handshake response.", (void *)connection);
+        }
+    }
+
+    /* Call into the channel-setup callback, the rest of the logic is the same. */
+    s_mqtt_client_init(connection->client->bootstrap, error_code, channel, connection);
+}
+
+#endif /* NEVER */
+
+static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {
+    (void)websocket;
+    (void)error_code;
+    (void)user_data;
+
+    /* TODO: impl */
+}
+
+static void s_on_websocket_setup(
+    struct aws_websocket *websocket,
+    int error_code,
+    int handshake_response_status,
+    const struct aws_http_header *handshake_response_header_array,
+    size_t num_handshake_response_headers,
+    void *user_data) {
+
+    (void)websocket;
+    (void)error_code;
+    (void)handshake_response_status;
+    (void)handshake_response_header_array;
+    (void)num_handshake_response_headers;
+    (void)user_data;
+
+    /* TODO: impl */
+}
+
+static void s_init_http_proxy_options(
+    struct aws_http_proxy_options *proxy_options,
+    const struct aws_mqtt5_client_config *config) {
+    AWS_ZERO_STRUCT(*proxy_options);
+
+    proxy_options->connection_type = AWS_HPCT_HTTP_TUNNEL;
+    proxy_options->host = aws_byte_cursor_from_string(config->http_proxy_host_name);
+    proxy_options->port = config->http_proxy_port;
+    proxy_options->proxy_strategy = config->http_proxy_strategy;
+    proxy_options->tls_options = config->http_proxy_tls_options_ptr;
+}
+
+void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt5_websocket_transform_complete_task *websocket_transform_complete_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    struct aws_mqtt5_client *client = websocket_transform_complete_task->client;
+    int error_code = websocket_transform_complete_task->error_code;
+
+    /*
+     * TODO: for now there is no timeout that will change state out of CONNECTING, so assume we're still in it.
+     * Since we haven't kicked off channel creation yet, we could (and probably should) add one.
+     */
+    AWS_ASSERT(client->current_state == AWS_MCS_CONNECTING);
+    if (error_code == 0 && client->desired_state == AWS_MCS_CONNECTED) {
+
+        struct aws_websocket_client_connection_options websocket_options = {
+            .allocator = client->allocator,
+            .bootstrap = client->config->bootstrap,
+            .socket_options = &client->config->socket_options,
+            .tls_options = client->config->tls_options_ptr,
+            .host = aws_byte_cursor_from_string(client->config->host_name),
+            .port = client->config->port,
+            .handshake_request = websocket_transform_complete_task->handshake,
+            .initial_window_size = 0, /* Prevent websocket data from arriving before the MQTT handler is installed */
+            .user_data = client,
+            .on_connection_setup = s_on_websocket_setup,
+            .on_connection_shutdown = s_on_websocket_shutdown,
+        };
+
+        struct aws_http_proxy_options proxy_options;
+        AWS_ZERO_STRUCT(proxy_options);
+        if (client->config->http_proxy_host_name != NULL) {
+            s_init_http_proxy_options(&proxy_options, client->config);
+            websocket_options.proxy_options = &proxy_options;
+        }
+
+        if (aws_websocket_client_connect(&websocket_options)) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Failed to initiate websocket connection.", (void *)client);
+            error_code = aws_last_error();
+            goto error;
+        }
+
+        goto done;
+
+    } else {
+        aws_http_message_release(websocket_transform_complete_task->handshake);
+        if (error_code == AWS_ERROR_SUCCESS) {
+            AWS_ASSERT(client->desired_state != AWS_MCS_CONNECTED);
+            error_code = AWS_ERROR_MQTT_USER_REQUESTED_STOP;
+        }
+    }
+
+error:
+
+    s_on_websocket_setup(NULL, error_code, -1, NULL, 0, client);
+
+done:
+
+    aws_mqtt5_client_release(websocket_transform_complete_task->client);
+
+    aws_mem_release(websocket_transform_complete_task->allocator, websocket_transform_complete_task);
+}
+
+static void s_websocket_handshake_transform_complete(
+    struct aws_http_message *handshake_request,
+    int error_code,
+    void *complete_ctx) {
+
+    struct aws_mqtt5_client *client = complete_ctx;
+
+    struct aws_mqtt5_websocket_transform_complete_task *task =
+        aws_mem_calloc(client->allocator, 1, sizeof(struct aws_mqtt5_websocket_transform_complete_task));
+    if (task == NULL) {
+        /* TODO: This is essentially a fatal error.  The client will be permanently locked in the CONNECTING state.
+         * There currently is not a timeout that can interrupt here. */
+        aws_http_message_release(handshake_request);
+        goto done;
+    }
+
+    aws_task_init(
+        &task->task, s_websocket_transform_complete_task_fn, (void *)task, "WebsocketHandshakeTransformComplete");
+
+    task->allocator = client->allocator;
+    task->client = aws_mqtt5_client_acquire(client);
+    task->error_code = error_code;
+    task->handshake = handshake_request;
+
+    aws_event_loop_schedule_task_now(client->loop, &task->task);
+
+done:
+
+    aws_mqtt5_client_release(client);
+}
+
+static int s_websocket_connect(struct aws_mqtt5_client *client) {
+    AWS_ASSERT(client);
+    AWS_ASSERT(client->config->websocket_handshake_transform);
+
+    /* These defaults were chosen because they're commmon in other MQTT libraries.
+     * The user can modify the request in their transform callback if they need to. */
+    /* TODO: share these with the mqtt3.1 impl in client.c */
+    const struct aws_byte_cursor default_path = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("/mqtt");
+    const struct aws_http_header default_protocol_header = {
+        .name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("Sec-WebSocket-Protocol"),
+        .value = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("mqtt"),
+    };
+
+    /* Build websocket handshake request */
+    struct aws_http_message *handshake = aws_http_message_new_websocket_handshake_request(
+        client->allocator, default_path, aws_byte_cursor_from_string(client->config->host_name));
+
+    if (handshake == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Failed to generate websocket handshake request", (void *)client);
+        return AWS_OP_ERR;
+    }
+
+    if (aws_http_message_add_header(handshake, default_protocol_header)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT, "id=%p: Failed to add default header to websocket handshake request", (void *)client);
+        goto on_error;
+    }
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: Transforming websocket handshake request.", (void *)client);
+
+    aws_mqtt5_client_acquire(client);
+    client->config->websocket_handshake_transform(
+        handshake,
+        client->config->websocket_handshake_transform_user_data,
+        s_websocket_handshake_transform_complete,
+        client);
+
+    return AWS_OP_SUCCESS;
+
+on_error:
+
+    aws_http_message_release(handshake);
+
+    return AWS_OP_ERR;
+}
+
+static void s_mqtt5_client_setup(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
+    (void)user_data;
+
+    /* TODO: implement */
+}
+
+static void s_mqtt5_client_shutdown(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
+    (void)user_data;
+
+    /* TODO: implement */
 }
 
 static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client) {
     (void)client;
     AWS_ASSERT(client->current_state == AWS_MCS_STOPPED || client->current_state == AWS_MCS_PENDING_RECONNECT);
 
-    /* TODO: Kick off channel setup, sync failure => LifecycleEvent(ConnFailure), EnterState(PENDING_RECONNECT) */
+    int result = 0;
+    if (client->config->websocket_handshake_transform != NULL) {
+        result = s_websocket_connect(client);
+    } else {
+        struct aws_socket_channel_bootstrap_options channel_options;
+        AWS_ZERO_STRUCT(channel_options);
+        channel_options.bootstrap = client->config->bootstrap;
+        channel_options.host_name = aws_string_c_str(client->config->host_name);
+        channel_options.port = client->config->port;
+        channel_options.socket_options = &client->config->socket_options;
+        channel_options.tls_options = client->config->tls_options_ptr;
+        channel_options.setup_callback = &s_mqtt5_client_setup;
+        channel_options.shutdown_callback = &s_mqtt5_client_shutdown;
+        channel_options.user_data = client;
+
+        if (client->config->http_proxy_host_name == NULL) {
+            result = aws_client_bootstrap_new_socket_channel(&channel_options);
+        } else {
+            struct aws_http_proxy_options proxy_options;
+            s_init_http_proxy_options(&proxy_options, client->config);
+
+            result = aws_http_proxy_new_socket_channel(&channel_options, &proxy_options);
+        }
+    }
+
+    if (result) {
+        AWS_ASSERT(client->desired_state == AWS_MCS_CONNECTED);
+
+        /* TODO: lifecycle event (CONN_FAILURE) */
+
+        s_change_current_state(client, AWS_MCS_PENDING_RECONNECT);
+    }
 }
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {
     (void)client;
     AWS_ASSERT(client->current_state == AWS_MCS_CONNECTING);
+    AWS_ASSERT(client->current_operation == NULL);
 
-    /* TODO: Send CONNECT packet, sync failure => LifecycleEvent(ConnFailure), EnterState(CHANNEL_SHUTDOWN) */
+    /*
+     * TODO: Make CONNECT packet and assign to current_operation,
+     * sync failure => LifecycleEvent(ConnFailure), EnterState(CHANNEL_SHUTDOWN)
+     */
 
     /* TODO: set mqtt CONNACK timeout */
 }
@@ -253,9 +635,13 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
         current_state == AWS_MCS_MQTT_CONNECT || current_state == AWS_MCS_CONNECTING ||
         current_state == AWS_MCS_CONNECTED || current_state == AWS_MCS_CLEAN_DISCONNECT);
 
-    if (current_state == AWS_MCS_CONNECTED) {
-        /* TODO: fail and release all QoS0 operations in queued_operations, current_operation, and
-         * write_completion_operations */
+    if (current_state == AWS_MCS_CONNECTED || current_state == AWS_MCS_CLEAN_DISCONNECT) {
+        /*
+         * TODO: fail and release all QoS0 operations in queued_operations, current_operation, and
+         * write_completion_operations
+         *
+         * Consider not failing QoS0 in queued_operations as a config policy?
+         */
 
         /* TODO: move all unacked (QoS1+) operations in {current_operation, unacked_operations} back into
          * queued_operations, preserving order */
@@ -362,7 +748,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
     if (desired_state != AWS_MCS_CONNECTED) {
         /* TODO: emit lifecycle event ConnFailure(user requested, no packet data) */
 
-        /* TODO: init DISCONNECT packet */
+        /* TODO: init DISCONNECT packet (normal or send-will) */
 
         s_change_current_state(client, AWS_MCS_CLEAN_DISCONNECT);
         return;
@@ -371,7 +757,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
     if (now >= client->next_ping_timeout_time) {
         /* TODO: emit lifecycle event ConnFailure(keep alive timeout, no packet data) */
 
-        /* TODO: init DISCONNECT packet */
+        /* TODO: init DISCONNECT packet (keep alive timeout) */
 
         s_change_current_state(client, AWS_MCS_CLEAN_DISCONNECT);
         return;
@@ -458,7 +844,7 @@ static void s_mqtt5_service_task_fn(struct aws_task *task, void *arg, enum aws_t
 
     /*
      * We can only enter the terminated state from stopped.  If we do so, the client memory is now freed and we
-     * need to not access anything anymore.
+     * will crash if we access anything anymore.
      */
     if (terminated) {
         return;
