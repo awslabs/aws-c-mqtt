@@ -14,10 +14,12 @@
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_operation.h>
 #include <aws/mqtt/v5/mqtt5_client_config.h>
+#include <aws/mqtt/v5/operations/mqtt5_operation_disconnect.h>
 
 static int s_aws_mqtt5_client_change_desired_state(
     struct aws_mqtt5_client *client,
-    enum aws_mqtt5_client_state desired_state);
+    enum aws_mqtt5_client_state desired_state,
+    struct aws_mqtt5_operation_disconnect *disconnect_operation);
 
 static uint64_t s_hash_uint16_t(const void *item) {
     return *(uint16_t *)item;
@@ -67,13 +69,15 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 
     aws_mqtt5_client_config_destroy((struct aws_mqtt5_client_config *)client->config);
 
+    aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
+
     aws_mem_release(client->allocator, client);
 }
 
 static void s_on_mqtt5_client_zero_ref_count(void *user_data) {
     struct aws_mqtt5_client *client = user_data;
 
-    s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_TERMINATED);
+    s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_TERMINATED, NULL);
 }
 
 /*
@@ -444,8 +448,15 @@ static void s_websocket_handshake_transform_complete(
     struct aws_mqtt5_websocket_transform_complete_task *task =
         aws_mem_calloc(client->allocator, 1, sizeof(struct aws_mqtt5_websocket_transform_complete_task));
     if (task == NULL) {
-        /* TODO: This is essentially a fatal error.  The client will be permanently locked in the CONNECTING state.
-         * There currently is not a timeout that can interrupt here. */
+        /*
+         * TODO: This is essentially a fatal error.  The client will be permanently locked in the CONNECTING state.
+         * There currently is not a timeout that can interrupt here. We can add one but it will complicate
+         * the completion callback.  Most worryingly, we could be back in the same state on a future connect which
+         * would be a complete disaster.
+         *
+         * Alternatively this task could be a by-value member of the client, already initialized, and invariants
+         * guarantee we never multi-schedule it.  Then there's no failure path.
+         */
         aws_http_message_release(handshake_request);
         goto done;
     }
@@ -542,6 +553,8 @@ static void s_mqtt5_client_shutdown(
 static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client) {
     (void)client;
     AWS_ASSERT(client->current_state == AWS_MCS_STOPPED || client->current_state == AWS_MCS_PENDING_RECONNECT);
+
+    client->disconnect_operation = aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
 
     int result = 0;
     if (client->config->websocket_handshake_transform != NULL) {
@@ -945,6 +958,7 @@ struct aws_mqtt_change_desired_state_task {
     struct aws_allocator *allocator;
     struct aws_mqtt5_client *client;
     enum aws_mqtt5_client_state desired_state;
+    struct aws_mqtt5_operation_disconnect *disconnect_operation;
 };
 
 void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -960,12 +974,16 @@ void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_stat
 
     if (client->desired_state != desired_state) {
         client->desired_state = desired_state;
+        aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
+        client->disconnect_operation = aws_mqtt5_operation_disconnect_acquire(change_state_task->disconnect_operation);
+
         s_reevaluate_service_task(client);
     }
 
 done:
 
     aws_mqtt5_client_release(change_state_task->client);
+    aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
 
     aws_mem_release(change_state_task->allocator, change_state_task);
 }
@@ -973,7 +991,8 @@ done:
 static struct aws_mqtt_change_desired_state_task *s_aws_mqtt_change_desired_state_task_new(
     struct aws_allocator *allocator,
     struct aws_mqtt5_client *client,
-    enum aws_mqtt5_client_state desired_state) {
+    enum aws_mqtt5_client_state desired_state,
+    struct aws_mqtt5_operation_disconnect *disconnect_operation) {
 
     struct aws_mqtt_change_desired_state_task *change_state_task =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_change_desired_state_task));
@@ -986,6 +1005,7 @@ static struct aws_mqtt_change_desired_state_task *s_aws_mqtt_change_desired_stat
     change_state_task->allocator = client->allocator;
     change_state_task->client = aws_mqtt5_client_acquire(client);
     change_state_task->desired_state = desired_state;
+    change_state_task->disconnect_operation = aws_mqtt5_operation_disconnect_acquire(disconnect_operation);
 
     return change_state_task;
 }
@@ -1004,16 +1024,18 @@ static bool s_is_valid_desired_state(enum aws_mqtt5_client_state desired_state) 
 
 static int s_aws_mqtt5_client_change_desired_state(
     struct aws_mqtt5_client *client,
-    enum aws_mqtt5_client_state desired_state) {
+    enum aws_mqtt5_client_state desired_state,
+    struct aws_mqtt5_operation_disconnect *disconnect_operation) {
     AWS_FATAL_ASSERT(client != NULL);
     AWS_FATAL_ASSERT(client->loop != NULL);
+    AWS_FATAL_ASSERT(disconnect_operation == NULL || desired_state == AWS_MCS_STOPPED);
 
     if (!s_is_valid_desired_state(desired_state)) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
     struct aws_mqtt_change_desired_state_task *task =
-        s_aws_mqtt_change_desired_state_task_new(client->allocator, client, desired_state);
+        s_aws_mqtt_change_desired_state_task_new(client->allocator, client, desired_state, disconnect_operation);
     if (task == NULL) {
         return AWS_OP_ERR;
     }
@@ -1024,9 +1046,14 @@ static int s_aws_mqtt5_client_change_desired_state(
 }
 
 int aws_mqtt5_client_start(struct aws_mqtt5_client *client) {
-    return s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_CONNECTED);
+    return s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_CONNECTED, NULL);
 }
 
-int aws_mqtt5_client_stop(struct aws_mqtt5_client *client) {
-    return s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_STOPPED);
+int aws_mqtt5_client_stop(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation_disconnect *disconnect_operation) {
+    /* TODO: pass disconnect operation through */
+    (void)disconnect_operation;
+
+    return s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_STOPPED, disconnect_operation);
 }

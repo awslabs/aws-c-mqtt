@@ -215,3 +215,16 @@ const char *aws_mqtt5_payload_format_indicator_to_c_string(enum aws_mqtt5_payloa
 
     return "Unknown Payload Format";
 }
+
+const char *aws_mqtt5_retain_handling_type_to_c_string(enum aws_mqtt5_retain_handling_type retain_handling_type) {
+    switch (retain_handling_type) {
+        case AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE:
+            return "Send retained on any subscribe";
+        case AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE_IF_NEW:
+            return "Send retained on subscribe if not already subscribed";
+        case AWS_MQTT5_RHT_DONT_SEND:
+            return "Dont send retained at all";
+    }
+
+    return "Unknown Retain Handling Type";
+}

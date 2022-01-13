@@ -190,6 +190,7 @@ static struct aws_error_info_list s_error_list = {
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_TOPIC_TREE, "mqtt-topic-tree", "MQTT subscription tree"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CLIENT, "mqtt5-client", "MQTT5 client"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CONFIG, "mqtt5-config", "MQTT5 configuration"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_OPERATION, "mqtt5-operaation", "MQTT5 operations"),
         };
 /* clang-format on */
 

@@ -479,6 +479,20 @@ enum aws_mqtt5_payload_format_indicator {
     AWS_MQTT5_PFI_UTF8 = 1,
 };
 
+enum aws_mqtt5_retain_handling_type {
+    AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE = 0x00,
+    AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE_IF_NEW = 0x01,
+    AWS_MQTT5_RHT_DONT_SEND = 0x02,
+};
+
+struct aws_mqtt5_subscripion_view {
+    struct aws_byte_cursor topic;
+    enum aws_mqtt5_qos qos;
+    bool no_local;
+    bool retain_as_published;
+    enum aws_mqtt5_retain_handling_type retain_handling_type;
+};
+
 AWS_EXTERN_C_BEGIN
 
 /**
@@ -533,6 +547,15 @@ AWS_MQTT_API const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
  */
 AWS_MQTT_API const char *aws_mqtt5_payload_format_indicator_to_c_string(
     enum aws_mqtt5_payload_format_indicator format_indicator);
+
+/**
+ * Converts a retain handling type value to a readable description.
+ *
+ * @param retain_handling_type type of retain handling
+ * @return short string describing the retain handling type
+ */
+AWS_MQTT_API const char *aws_mqtt5_retain_handling_type_to_c_string(
+    enum aws_mqtt5_retain_handling_type retain_handling_type);
 
 AWS_EXTERN_C_END
 
