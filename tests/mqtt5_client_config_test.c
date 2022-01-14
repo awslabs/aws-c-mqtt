@@ -3,15 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/common/string.h>
-#include <aws/http/proxy.h>
-#include <aws/io/channel_bootstrap.h>
-#include <aws/io/event_loop.h>
-#include <aws/mqtt/private/v5/mqtt5_client_impl.h>
-#include <aws/mqtt/private/v5/mqtt5_utils.h>
-#include <aws/mqtt/v5/mqtt5_client_config.h>
+#ifdef REDO
 
-#include <aws/testing/aws_test_harness.h>
+#    include <aws/common/string.h>
+#    include <aws/http/proxy.h>
+#    include <aws/io/channel_bootstrap.h>
+#    include <aws/io/event_loop.h>
+#    include <aws/mqtt/private/v5/mqtt5_client_impl.h>
+#    include <aws/mqtt/private/v5/mqtt5_utils.h>
+#    include <aws/mqtt/v5/mqtt5_client_config.h>
+
+#    include <aws/testing/aws_test_harness.h>
 
 static int s_mqtt5_client_config_new_destroy_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -717,3 +719,5 @@ static int s_mqtt5_client_config_clone_fn(struct aws_allocator *allocator, void 
 }
 
 AWS_TEST_CASE(mqtt5_client_config_clone, s_mqtt5_client_config_clone_fn)
+
+#endif /* REDO */

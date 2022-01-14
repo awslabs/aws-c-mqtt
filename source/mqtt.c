@@ -172,6 +172,15 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_CONFIG_VALIDATION_NO_LIFECYCLE_HANDLER_SET,
                 "Mqtt client configuration does not have a lifecycle event handler callback set."),
             AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_PROXY_HOST_NOT_SET,
+                "Mqtt client configuration has proxy options but proxy port has not been set."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_CONNECT_OPTIONS_NOT_SET,
+                "Mqtt client configuration does not have connect options set."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONFIG_VALIDATION_INVALID_WILL_TOPIC,
+                "Mqtt5 client configuration has invalid will topic."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_USER_REQUESTED_STOP,
                 "Mqtt5 client connection interrupted by user request."),
         };

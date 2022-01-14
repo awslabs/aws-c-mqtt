@@ -14,18 +14,6 @@
 struct aws_http_message;
 
 /**
- * Unique id associated with every outbound mqtt operation and incoming event.  Useful for logging/correlation as well
- * as a potential cancellation handle in the future for outbound events.
- *
- * Events include:
- *   outbound user-requested publish, subscribe, unsubscribe, disconnect
- *   outbound internal-requested subscribe
- *   incoming acks: puback, suback, unsuback
- *   lifecycle events
- */
-typedef size_t aws_mqtt5_event_id_t;
-
-/**
  * Over-the-wire packet id as defined in the mqtt spec.  Allocated at the point in time when the packet is
  * is next to go down the channel and about to be encoded into a io message buffer.
  *
@@ -427,11 +415,6 @@ enum aws_mqtt5_client_lifecycle_event_type {
  */
 struct aws_mqtt5_client_lifecycle_event {
     /**
-     * Unique id for this event
-     */
-    aws_mqtt5_event_id_t id;
-
-    /**
      * Type of event this is.
      */
     enum aws_mqtt5_client_lifecycle_event_type event_type;
@@ -483,14 +466,6 @@ enum aws_mqtt5_retain_handling_type {
     AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE = 0x00,
     AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE_IF_NEW = 0x01,
     AWS_MQTT5_RHT_DONT_SEND = 0x02,
-};
-
-struct aws_mqtt5_subscripion_view {
-    struct aws_byte_cursor topic;
-    enum aws_mqtt5_qos qos;
-    bool no_local;
-    bool retain_as_published;
-    enum aws_mqtt5_retain_handling_type retain_handling_type;
 };
 
 AWS_EXTERN_C_BEGIN

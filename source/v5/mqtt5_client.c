@@ -12,9 +12,7 @@
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
-#include <aws/mqtt/private/v5/mqtt5_operation.h>
-#include <aws/mqtt/v5/mqtt5_client_config.h>
-#include <aws/mqtt/v5/operations/mqtt5_operation_disconnect.h>
+#include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 
 static int s_aws_mqtt5_client_change_desired_state(
     struct aws_mqtt5_client *client,
@@ -67,7 +65,7 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 
     s_mqtt5_client_fail_and_cleanup_operation_list(&client->write_completion_operations);
 
-    aws_mqtt5_client_config_destroy((struct aws_mqtt5_client_config *)client->config);
+    aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
 
     aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
 
@@ -103,7 +101,7 @@ static uint64_t s_compute_next_service_time_client_connecting(struct aws_mqtt5_c
 }
 
 static uint64_t s_compute_next_service_time_client_mqtt_connect(struct aws_mqtt5_client *client, uint64_t now) {
-    /* This state is interruptible by a stop/terminate */
+    /* This state is interruptable by a stop/terminate */
     if (client->desired_state != AWS_MCS_CONNECTED) {
         return now;
     }
@@ -234,7 +232,6 @@ static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
         struct aws_mqtt5_client_lifecycle_event event;
         AWS_ZERO_STRUCT(event);
 
-        event.id = aws_atomic_fetch_add(&client->next_event_id, 1);
         event.event_type = AWS_MQTT5_CLET_STOPPED;
         event.user_data = client->config->lifecycle_event_handler_user_data;
 
@@ -360,18 +357,6 @@ static void s_on_websocket_setup(
     /* TODO: impl */
 }
 
-static void s_init_http_proxy_options(
-    struct aws_http_proxy_options *proxy_options,
-    const struct aws_mqtt5_client_config *config) {
-    AWS_ZERO_STRUCT(*proxy_options);
-
-    proxy_options->connection_type = AWS_HPCT_HTTP_TUNNEL;
-    proxy_options->host = aws_byte_cursor_from_string(config->http_proxy_host_name);
-    proxy_options->port = config->http_proxy_port;
-    proxy_options->proxy_strategy = config->http_proxy_strategy;
-    proxy_options->tls_options = config->http_proxy_tls_options_ptr;
-}
-
 void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
@@ -404,11 +389,8 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
             .on_connection_shutdown = s_on_websocket_shutdown,
         };
 
-        struct aws_http_proxy_options proxy_options;
-        AWS_ZERO_STRUCT(proxy_options);
-        if (client->config->http_proxy_host_name != NULL) {
-            s_init_http_proxy_options(&proxy_options, client->config);
-            websocket_options.proxy_options = &proxy_options;
+        if (client->config->http_proxy_config != NULL) {
+            websocket_options.proxy_options = &client->config->http_proxy_options;
         }
 
         if (aws_websocket_client_connect(&websocket_options)) {
@@ -571,13 +553,10 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
         channel_options.shutdown_callback = &s_mqtt5_client_shutdown;
         channel_options.user_data = client;
 
-        if (client->config->http_proxy_host_name == NULL) {
+        if (client->config->http_proxy_config == NULL) {
             result = aws_client_bootstrap_new_socket_channel(&channel_options);
         } else {
-            struct aws_http_proxy_options proxy_options;
-            s_init_http_proxy_options(&proxy_options, client->config);
-
-            result = aws_http_proxy_new_socket_channel(&channel_options, &proxy_options);
+            result = aws_http_proxy_new_socket_channel(&channel_options, &client->config->http_proxy_options);
         }
     }
 
@@ -607,8 +586,8 @@ static void s_reset_ping(struct aws_mqtt5_client *client) {
     uint64_t now = 0;
     aws_high_res_clock_get_ticks(&now);
 
-    uint64_t keep_alive_interval_nanos =
-        aws_timestamp_convert(client->config->keep_alive_interval_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    uint64_t keep_alive_interval_nanos = aws_timestamp_convert(
+        client->config->connect->keep_alive_interval_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     client->next_ping_time = aws_add_u64_saturating(now, keep_alive_interval_nanos);
 
     uint64_t pint_timeout_nanos =
@@ -868,13 +847,11 @@ static void s_mqtt5_service_task_fn(struct aws_task *task, void *arg, enum aws_t
     s_reevaluate_service_task(client);
 }
 
-struct aws_mqtt5_client *aws_mqtt5_client_new(struct aws_allocator *allocator, struct aws_mqtt5_client_config *config) {
+struct aws_mqtt5_client *aws_mqtt5_client_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_client_options *options) {
     AWS_FATAL_ASSERT(allocator != NULL);
-    AWS_FATAL_ASSERT(config != NULL);
-
-    if (aws_mqtt5_client_config_validate(config)) {
-        return NULL;
-    }
+    AWS_FATAL_ASSERT(options != NULL);
 
     struct aws_mqtt5_client *client = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_client));
     if (client == NULL) {
@@ -887,13 +864,13 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(struct aws_allocator *allocator, s
 
     aws_ref_count_init(&client->ref_count, client, s_on_mqtt5_client_zero_ref_count);
 
-    client->config = aws_mqtt5_client_config_new_clone(allocator, config);
+    client->config = aws_mqtt5_client_options_storage_new(allocator, options);
     if (client->config == NULL) {
         goto on_error;
     }
 
     /* all client activity will take place on this event loop, serializing things like reconnect, ping, etc... */
-    client->loop = aws_event_loop_group_get_next_loop(config->bootstrap->event_loop_group);
+    client->loop = aws_event_loop_group_get_next_loop(client->config->bootstrap->event_loop_group);
     if (client->loop == NULL) {
         goto on_error;
     }
@@ -901,7 +878,6 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(struct aws_allocator *allocator, s
     client->desired_state = AWS_MCS_STOPPED;
     client->current_state = AWS_MCS_STOPPED;
 
-    aws_atomic_init_int(&client->next_event_id, 0);
     client->next_mqtt_packet_id = 1;
 
     aws_linked_list_init(&client->queued_operations);
@@ -922,12 +898,7 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(struct aws_allocator *allocator, s
         goto on_error;
     }
 
-    aws_atomic_init_int(&client->statistics.total_pending_operations, 0);
-    aws_atomic_init_int(&client->statistics.total_pending_payload_bytes, 0);
-    aws_atomic_init_int(&client->statistics.incomplete_operations, 0);
-    aws_atomic_init_int(&client->statistics.incomplete_payload_bytes, 0);
-
-    client->current_reconnect_delay_interval_ms = config->min_reconnect_delay_ms;
+    client->current_reconnect_delay_interval_ms = client->config->min_reconnect_delay_ms;
 
     return client;
 
@@ -1049,11 +1020,48 @@ int aws_mqtt5_client_start(struct aws_mqtt5_client *client) {
     return s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_CONNECTED, NULL);
 }
 
-int aws_mqtt5_client_stop(
-    struct aws_mqtt5_client *client,
-    struct aws_mqtt5_operation_disconnect *disconnect_operation) {
-    /* TODO: pass disconnect operation through */
-    (void)disconnect_operation;
+int aws_mqtt5_client_stop(struct aws_mqtt5_client *client, struct aws_mqtt5_operation_disconnect_options *options) {
 
-    return s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_STOPPED, disconnect_operation);
+    struct aws_mqtt5_operation_disconnect *disconnect_op = NULL;
+    if (options != NULL) {
+        disconnect_op = aws_mqtt5_operation_disconnect_new(client->allocator, options);
+    }
+
+    int result = s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_STOPPED, disconnect_op);
+
+    aws_mqtt5_operation_disconnect_release(disconnect_op);
+
+    return result;
+}
+
+int aws_mqtt5_client_publish(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation_publish_options *publish_options) {
+    (void)client;
+    (void)publish_options;
+
+    /* TODO: impl */
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+int aws_mqtt5_client_subscribe(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation_subscribe_options *subscribe_options) {
+
+    (void)client;
+    (void)subscribe_options;
+
+    /* TODO: impl */
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+int aws_mqtt5_client_unsubscribe(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation_unsubscribe_options *unsubscribe_options) {
+
+    (void)client;
+    (void)unsubscribe_options;
+
+    /* TODO: impl */
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }

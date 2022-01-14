@@ -62,11 +62,11 @@ add_test_case(mqtt_connection_publish_QoS1_timeout)
 add_test_case(mqtt_connection_unsub_timeout)
 add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
 
-add_test_case(mqtt5_client_config_new_destroy)
-add_test_case(mqtt5_client_config_set_all_once)
-add_test_case(mqtt5_client_config_set_all_twice)
-add_test_case(mqtt5_client_config_overwrite)
-add_test_case(mqtt5_client_config_clone)
+#add_test_case(mqtt5_client_config_new_destroy)
+#add_test_case(mqtt5_client_config_set_all_once)
+#add_test_case(mqtt5_client_config_set_all_twice)
+#add_test_case(mqtt5_client_config_overwrite)
+#add_test_case(mqtt5_client_config_clone)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
