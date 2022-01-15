@@ -9,10 +9,10 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/common/ref_count.h>
+#include <aws/io/channel.h>
 #include <aws/mqtt/private/topic_tree.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
-struct aws_channel;
 struct aws_event_loop;
 struct aws_http_message;
 struct aws_mqtt5_client_options_storage;
@@ -38,12 +38,24 @@ struct aws_mqtt5_client {
     const struct aws_mqtt5_client_options_storage *config;
 
     struct aws_event_loop *loop;
-    struct aws_channel *channel;
+
+    /* Channel handler information */
+    struct aws_channel_handler handler;
+    struct aws_channel_slot *slot;
 
     enum aws_mqtt5_client_state desired_state;
     enum aws_mqtt5_client_state current_state;
 
+    /*
+     * Temporary state-related data.
+     *
+     * disconnect_operation exists from Stop invocation until clean disconnect completes or is skipped/failed.
+     *
+     * handshake exists on websocket-configured clients between the transform completion timepoint and the
+     * websocket setup callback.
+     */
     struct aws_mqtt5_operation_disconnect *disconnect_operation;
+    struct aws_http_message *handshake;
 
     aws_mqtt5_packet_id_t next_mqtt_packet_id;
 

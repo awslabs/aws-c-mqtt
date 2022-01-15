@@ -372,14 +372,7 @@ enum aws_mqtt5_client_session_behavior_type {
      */
     AWS_MQTT5_CSBT_REJOIN,
 
-    /**
-     * Attempt to rejoin an existing session.  If rejoining fails, manually resubscribe to all topics in the
-     * topic tree before entering the connected state that begins processing queued operations.  Connect
-     * lifecycle event is delayed until resubscribe succeeds, implying a need to buffer the CONNACK data until
-     * that time.  Also implies a need to filter SUBACKs that come from resub attempts (don't send to user).
-     * Publishes arriving during resub state still get forwarded to the user as usual.
-     */
-    AWS_MQTT5_CSBT_REJOIN_AND_RESUB_ON_CLEAN,
+    /* TODO: rejoin and resub support */
 };
 
 /**

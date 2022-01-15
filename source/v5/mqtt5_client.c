@@ -68,6 +68,7 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
 
     aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
+    aws_http_message_release(client->handshake);
 
     aws_mem_release(client->allocator, client);
 }
@@ -76,6 +77,12 @@ static void s_on_mqtt5_client_zero_ref_count(void *user_data) {
     struct aws_mqtt5_client *client = user_data;
 
     s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_TERMINATED, NULL);
+}
+
+static void s_enqueue_operation(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+    /* TODO: when statistics are added, we'll need to update them here */
+
+    aws_linked_list_push_back(&client->queued_operations, &operation->node);
 }
 
 /*
@@ -239,22 +246,40 @@ static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
     }
 }
 
-struct aws_mqtt5_websocket_transform_complete_task {
-    struct aws_task task;
-    struct aws_allocator *allocator;
-    struct aws_mqtt5_client *client;
-    int error_code;
-    struct aws_http_message *handshake;
-};
+static void s_mqtt5_client_setup(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
 
-#ifdef NEVER
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
+    (void)user_data;
+
+    /* TODO: implement */
+}
+
+static void s_mqtt5_client_shutdown(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
+    (void)user_data;
+
+    /* TODO: implement */
+}
 
 static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {
-    struct aws_mqtt_client_connection *connection = user_data;
+    struct aws_mqtt5_client *client = user_data;
 
-    struct aws_channel *channel = connection->slot ? connection->slot->channel : NULL;
+    struct aws_channel *channel = client->slot ? client->slot->channel : NULL;
 
-    s_mqtt_client_shutdown(connection->client->bootstrap, error_code, channel, connection);
+    s_mqtt5_client_shutdown(client->config->bootstrap, error_code, channel, client);
 
     if (websocket) {
         aws_websocket_release(websocket);
@@ -270,17 +295,16 @@ static void s_on_websocket_setup(
     void *user_data) {
 
     (void)handshake_response_status;
+    (void)handshake_response_header_array;
+    (void)num_handshake_response_headers;
+
+    struct aws_mqtt5_client *client = user_data;
+    client->handshake = aws_http_message_release(client->handshake);
 
     /* Setup callback contract is: if error_code is non-zero then websocket is NULL. */
     AWS_FATAL_ASSERT((error_code != 0) == (websocket == NULL));
 
-    struct aws_mqtt_client_connection *connection = user_data;
     struct aws_channel *channel = NULL;
-
-    if (connection->websocket.handshake_request) {
-        aws_http_message_release(connection->websocket.handshake_request);
-        connection->websocket.handshake_request = NULL;
-    }
 
     if (websocket) {
         channel = aws_websocket_get_channel(websocket);
@@ -289,73 +313,28 @@ static void s_on_websocket_setup(
         /* Websocket must be "converted" before the MQTT handler can be installed next to it. */
         if (aws_websocket_convert_to_midchannel_handler(websocket)) {
             AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT,
+                AWS_LS_MQTT5_CLIENT,
                 "id=%p: Failed converting websocket, error %d (%s)",
-                (void *)connection,
+                (void *)client,
                 aws_last_error(),
                 aws_error_name(aws_last_error()));
 
             aws_channel_shutdown(channel, aws_last_error());
             return;
         }
-
-        /* If validation callback is set, let the user accept/reject the handshake */
-        if (connection->websocket.handshake_validator) {
-            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Validating websocket handshake response.", (void *)connection);
-
-            if (connection->websocket.handshake_validator(
-                    connection,
-                    handshake_response_header_array,
-                    num_handshake_response_headers,
-                    connection->websocket.handshake_validator_ud)) {
-
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT_CLIENT,
-                    "id=%p: Failure reported by websocket handshake validator callback, error %d (%s)",
-                    (void *)connection,
-                    aws_last_error(),
-                    aws_error_name(aws_last_error()));
-
-                aws_channel_shutdown(channel, aws_last_error());
-                return;
-            }
-
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT, "id=%p: Done validating websocket handshake response.", (void *)connection);
-        }
     }
 
     /* Call into the channel-setup callback, the rest of the logic is the same. */
-    s_mqtt_client_init(connection->client->bootstrap, error_code, channel, connection);
+    s_mqtt5_client_setup(client->config->bootstrap, error_code, channel, client);
 }
 
-#endif /* NEVER */
-
-static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {
-    (void)websocket;
-    (void)error_code;
-    (void)user_data;
-
-    /* TODO: impl */
-}
-
-static void s_on_websocket_setup(
-    struct aws_websocket *websocket,
-    int error_code,
-    int handshake_response_status,
-    const struct aws_http_header *handshake_response_header_array,
-    size_t num_handshake_response_headers,
-    void *user_data) {
-
-    (void)websocket;
-    (void)error_code;
-    (void)handshake_response_status;
-    (void)handshake_response_header_array;
-    (void)num_handshake_response_headers;
-    (void)user_data;
-
-    /* TODO: impl */
-}
+struct aws_mqtt5_websocket_transform_complete_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt5_client *client;
+    int error_code;
+    struct aws_http_message *handshake;
+};
 
 void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
@@ -366,6 +345,10 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
     }
 
     struct aws_mqtt5_client *client = websocket_transform_complete_task->client;
+
+    aws_http_message_release(client->handshake);
+    client->handshake = aws_http_message_acquire(websocket_transform_complete_task->handshake);
+
     int error_code = websocket_transform_complete_task->error_code;
 
     /*
@@ -402,7 +385,6 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
         goto done;
 
     } else {
-        aws_http_message_release(websocket_transform_complete_task->handshake);
         if (error_code == AWS_ERROR_SUCCESS) {
             AWS_ASSERT(client->desired_state != AWS_MCS_CONNECTED);
             error_code = AWS_ERROR_MQTT_USER_REQUESTED_STOP;
@@ -415,6 +397,7 @@ error:
 
 done:
 
+    aws_http_message_release(websocket_transform_complete_task->handshake);
     aws_mqtt5_client_release(websocket_transform_complete_task->client);
 
     aws_mem_release(websocket_transform_complete_task->allocator, websocket_transform_complete_task);
@@ -502,34 +485,6 @@ on_error:
     aws_http_message_release(handshake);
 
     return AWS_OP_ERR;
-}
-
-static void s_mqtt5_client_setup(
-    struct aws_client_bootstrap *bootstrap,
-    int error_code,
-    struct aws_channel *channel,
-    void *user_data) {
-
-    (void)bootstrap;
-    (void)error_code;
-    (void)channel;
-    (void)user_data;
-
-    /* TODO: implement */
-}
-
-static void s_mqtt5_client_shutdown(
-    struct aws_client_bootstrap *bootstrap,
-    int error_code,
-    struct aws_channel *channel,
-    void *user_data) {
-
-    (void)bootstrap;
-    (void)error_code;
-    (void)channel;
-    (void)user_data;
-
-    /* TODO: implement */
 }
 
 static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client) {
@@ -932,7 +887,7 @@ struct aws_mqtt_change_desired_state_task {
     struct aws_mqtt5_operation_disconnect *disconnect_operation;
 };
 
-void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
     struct aws_mqtt_change_desired_state_task *change_state_task = arg;
@@ -954,7 +909,7 @@ void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_stat
 done:
 
     aws_mqtt5_client_release(change_state_task->client);
-    aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
+    aws_mqtt5_operation_disconnect_release(change_state_task->disconnect_operation);
 
     aws_mem_release(change_state_task->allocator, change_state_task);
 }
@@ -1021,7 +976,6 @@ int aws_mqtt5_client_start(struct aws_mqtt5_client *client) {
 }
 
 int aws_mqtt5_client_stop(struct aws_mqtt5_client *client, struct aws_mqtt5_operation_disconnect_options *options) {
-
     struct aws_mqtt5_operation_disconnect *disconnect_op = NULL;
     if (options != NULL) {
         disconnect_op = aws_mqtt5_operation_disconnect_new(client->allocator, options);
@@ -1034,34 +988,130 @@ int aws_mqtt5_client_stop(struct aws_mqtt5_client *client, struct aws_mqtt5_oper
     return result;
 }
 
+struct aws_mqtt5_submit_operation_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt5_client *client;
+    struct aws_mqtt5_operation *operation;
+};
+
+static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt5_submit_operation_task *submit_operation_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto error;
+    }
+
+    aws_mqtt5_operation_acquire(submit_operation_task->operation);
+    s_enqueue_operation(submit_operation_task->client, submit_operation_task->operation);
+
+    goto done;
+
+error:
+
+    /* TODO: any failure or cancel should also result in errored completion callback on the operation */
+    ;
+
+done:
+
+    aws_mqtt5_operation_release(submit_operation_task->operation);
+    aws_mqtt5_client_release(submit_operation_task->client);
+
+    aws_mem_release(submit_operation_task->allocator, submit_operation_task);
+}
+
+static int s_submit_operation(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_submit_operation_task *submit_task =
+        aws_mem_calloc(client->allocator, 1, sizeof(struct aws_mqtt5_submit_operation_task));
+    if (submit_task == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    aws_task_init(&submit_task->task, s_mqtt5_submit_operation_task_fn, submit_task, "Mqtt5SubmitOperation");
+    submit_task->allocator = client->allocator;
+    submit_task->client = aws_mqtt5_client_acquire(client);
+    submit_task->operation = operation;
+
+    aws_event_loop_schedule_task_now(client->loop, &submit_task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_mqtt5_client_publish(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation_publish_options *publish_options) {
-    (void)client;
-    (void)publish_options;
 
-    /* TODO: impl */
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    AWS_PRECONDITION(client != NULL);
+    AWS_PRECONDITION(publish_options != NULL);
+
+    struct aws_mqtt5_operation_publish *publish_op =
+        aws_mqtt5_operation_publish_new(client->allocator, publish_options);
+    if (publish_op == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    if (s_submit_operation(client, &publish_op->base)) {
+        goto error;
+    }
+
+    return AWS_OP_SUCCESS;
+
+error:
+
+    aws_mqtt5_operation_release(&publish_op->base);
+
+    return AWS_OP_ERR;
 }
 
 int aws_mqtt5_client_subscribe(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation_subscribe_options *subscribe_options) {
 
-    (void)client;
-    (void)subscribe_options;
+    AWS_PRECONDITION(client != NULL);
+    AWS_PRECONDITION(subscribe_options != NULL);
 
-    /* TODO: impl */
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    struct aws_mqtt5_operation_subscribe *subscribe_op =
+        aws_mqtt5_operation_subscribe_new(client->allocator, subscribe_options);
+    if (subscribe_op == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    if (s_submit_operation(client, &subscribe_op->base)) {
+        goto error;
+    }
+
+    return AWS_OP_SUCCESS;
+
+error:
+
+    aws_mqtt5_operation_release(&subscribe_op->base);
+
+    return AWS_OP_ERR;
 }
 
 int aws_mqtt5_client_unsubscribe(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation_unsubscribe_options *unsubscribe_options) {
 
-    (void)client;
-    (void)unsubscribe_options;
+    AWS_PRECONDITION(client != NULL);
+    AWS_PRECONDITION(unsubscribe_options != NULL);
 
-    /* TODO: impl */
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
+        aws_mqtt5_operation_unsubscribe_new(client->allocator, unsubscribe_options);
+    if (unsubscribe_op == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    if (s_submit_operation(client, &unsubscribe_op->base)) {
+        goto error;
+    }
+
+    return AWS_OP_SUCCESS;
+
+error:
+
+    aws_mqtt5_operation_release(&unsubscribe_op->base);
+
+    return AWS_OP_ERR;
 }
