@@ -15,7 +15,7 @@ struct aws_http_message;
 
 /**
  * Over-the-wire packet id as defined in the mqtt spec.  Allocated at the point in time when the packet is
- * is next to go down the channel and about to be encoded into a io message buffer.
+ * is next to go down the channel and about to be encoded into an io message buffer.
  *
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901026
  */
@@ -71,140 +71,6 @@ enum aws_mqtt5_connect_reason_code {
 };
 
 /**
- * Flags for properties allowed in a CONNACK packet.  A set flag implies the property
- * is valid in the corresponding packet property struct.
- */
-enum aws_mqtt5_client_connack_property_flags {
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901082 */
-    AWS_MQTT5_CCAPF_SESSION_EXPIRY_INTERVAL = 1 << 0,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901087 */
-    AWS_MQTT5_CCAPF_ASSIGNED_CLIENT_IDENTIFIER = 1 << 1,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901094 */
-    AWS_MQTT5_CCAPF_SERVER_KEEP_ALIVE = 1 << 2,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901097 */
-    AWS_MQTT5_CCAPF_AUTHENTICATION_METHOD = 1 << 3,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901098 */
-    AWS_MQTT5_CCAPF_AUTHENTICATION_DATA = 1 << 4,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901095 */
-    AWS_MQTT5_CCAPF_RESPONSE_INFORMATION = 1 << 5,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901096 */
-    AWS_MQTT5_CCAPF_SERVER_REFERENCE = 1 << 6,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901089 */
-    AWS_MQTT5_CCAPF_REASON_STRING = 1 << 7,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901083 */
-    AWS_MQTT5_CCAPF_RECEIVE_MAXIMUM = 1 << 8,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901088 */
-    AWS_MQTT5_CCAPF_TOPIC_ALIAS_MAXIMUM = 1 << 9,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901084 */
-    AWS_MQTT5_CCAPF_MAXIMUM_QOS = 1 << 10,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901085 */
-    AWS_MQTT5_CCAPF_RETAIN_AVAILABLE = 1 << 11,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901086 */
-    AWS_MQTT5_CCAPF_MAXIMUM_PACKET_SIZE = 1 << 12,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901091 */
-    AWS_MQTT5_CCAPF_WILDCARD_SUBSCRIPTION_AVAILABLE = 1 << 13,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901092 */
-    AWS_MQTT5_CCAPF_SUBSCRIPTION_IDENTIFIERS_AVAILABLE = 1 << 14,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901093 */
-    AWS_MQTT5_CCAPF_SHARED_SUBSCRIPTION_AVAILABLE = 1 << 15,
-};
-
-/**
- * Holds all non-user properties of a CONNACK packet
- *
- * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901080
- */
-struct aws_mqtt5_client_connack_property_set {
-
-    /**
-     * Bitfield telling which property members in this structure contain valid data.
-     */
-    enum aws_mqtt5_client_connack_property_flags valid_properties;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901082 */
-    uint32_t session_expiry_interval; /* 17 */
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901087 */
-    struct aws_byte_cursor assigned_client_identifier;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901094 */
-    uint16_t server_keep_alive; // 19
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901097 */
-    struct aws_byte_cursor authentication_method; // 21
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901098 */
-    struct aws_byte_cursor authentication_data; // 22
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901095 */
-    struct aws_byte_cursor response_information; // 26;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901096 */
-    struct aws_byte_cursor server_reference; // 28;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901089 */
-    struct aws_byte_cursor reason_string; // 31;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901083 */
-    uint16_t receive_maximum; // 33
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901088 */
-    uint16_t topic_alias_maximum; // 34
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901084 */
-    enum aws_mqtt5_qos maximum_qos; // 36
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901085 */
-    bool retain_available; // 37
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901086 */
-    uint32_t maximum_packet_size; // 39
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901091 */
-    bool wildcard_subscription_available; // 41
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901092 */
-    bool subscription_identifiers_available; // 42
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901093 */
-    bool shared_subscription_available; // 43
-};
-
-/**
- * Non-persistent view of all data in a CONNACK packet.
- * Cursors are backed by the raw packet data that will exist for the duration of the callback only.
- */
-struct aws_mqtt5_connack_packet_data {
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901078 */
-    bool session_present;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901079 */
-    enum aws_mqtt5_connect_reason_code reason_code;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901080 */
-    struct aws_mqtt5_client_connack_property_set properties;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901090 */
-    struct aws_array_list user_properties;
-};
-
-/**
  * Reason code inside DISCONNECT packets.
  * Enum values match mqtt spec encoding values.
  *
@@ -243,55 +109,58 @@ enum aws_mqtt5_disconnect_reason_code {
 };
 
 /**
- * Flags for properties allowed in a DISCONNECT packet.  A set flag implies the property
- * is valid in the corresponding packet property struct.
- */
-enum aws_mqtt5_client_disconnect_property_flags {
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901211 */
-    AWS_MQTT5_CDPF_SESSION_EXPIRY_INTERVAL = 1 << 0,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901214 */
-    AWS_MQTT5_CDPF_SERVER_REFERENCE = 1 << 1,
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901212 */
-    AWS_MQTT5_CDPF_REASON_STRING = 1 << 2,
-};
-
-/**
- * Holds all non-user properties of a DISCONNECT packet
+ * Reason code inside PUBACK packets.
+ * Enum values match mqtt spec encoding values.
  *
- * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901209
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901124
  */
-struct aws_mqtt5_client_disconnect_property_set {
-
-    /**
-     * Bitfield telling which property members in this structure contain valid data.
-     */
-    enum aws_mqtt5_client_disconnect_property_flags valid_properties;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901211 */
-    uint32_t session_expiry_interval; /* 17 */
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901214 */
-    struct aws_byte_cursor server_reference; /* 28 */
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901212 */
-    struct aws_byte_cursor reason_string; /* 31 */
+enum aws_mqtt5_puback_reason_code {
+    AWS_MQTT5_PARC_SUCCESS = 0,
+    AWS_MQTT5_PARC_NO_MATCHING_SUSCRIBERS = 16,
+    AWS_MQTT5_PARC_UNSPECIFIED_ERROR = 128,
+    AWS_MQTT5_PARC_IMPLEMENTATION_SPECIFIC_ERROR = 131,
+    AWS_MQTT5_PARC_NOT_AUTHORIZED = 135,
+    AWS_MQTT5_PARC_TOPIC_NAME_INVALID = 144,
+    AWS_MQTT5_PARC_PACKET_IDENTIFIER_IN_USE = 145,
+    AWS_MQTT5_PARC_QUOTA_EXCEEDED = 151,
+    AWS_MQTT5_PARC_PAYLOAD_FORMAT_INVALID = 153,
 };
 
 /**
- * Non-persistent view of the data in a DISCONNECT packet.
- * Cursors are backed by the raw packet data that will exist for the duration of the callback only.
+ * Reason code inside SUBACK packet payloads.
+ * Enum values match mqtt spec encoding values.
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901178
  */
-struct aws_mqtt5_disconnect_packet_data {
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901208 */
-    enum aws_mqtt5_disconnect_reason_code reason_code;
+enum aws_mqtt5_suback_reason_code {
+    AWS_MQTT5_SARC_GRANTED_QOS_0 = 0,
+    AWS_MQTT5_SARC_GRANTED_QOS_1 = 1,
+    AWS_MQTT5_SARC_GRANTED_QOS_2 = 2,
+    AWS_MQTT5_SARC_UNSPECIFIED_ERROR = 128,
+    AWS_MQTT5_SARC_IMPLEMENTATION_SPECIFIC_ERROR = 131,
+    AWS_MQTT5_SARC_NOT_AUTHORIZED = 135,
+    AWS_MQTT5_SARC_TOPIC_FILTER_INVALID = 143,
+    AWS_MQTT5_SARC_PACKET_IDENTIFIER_IN_USE = 145,
+    AWS_MQTT5_SARC_QUOTA_EXCEEDED = 151,
+    AWS_MQTT5_SARC_SHARED_SUBSCRIPTIONS_NOT_SUPPORTED = 158,
+    AWS_MQTT5_SARC_SUBSCRIPTION_IDENTIFIERS_NOT_SUPPORTED = 161,
+    AWS_MQTT5_SARC_WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED = 162,
+};
 
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901209 */
-    struct aws_mqtt5_client_disconnect_property_set properties;
-
-    /** https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901213 */
-    struct aws_array_list user_properties;
+/**
+ * Reason code inside UNSUBACK packet payloads.
+ * Enum values match mqtt spec encoding values.
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901194
+ */
+enum aws_mqtt5_unsuback_reason_code {
+    AWS_MQTT5_UARC_SUCCESS = 0,
+    AWS_MQTT5_UARC_NO_SUBSCRIPTION_EXISTED = 17,
+    AWS_MQTT5_UARC_UNSPECIFIED_ERROR = 128,
+    AWS_MQTT5_UARC_IMPLEMENTATION_SPECIFIC_ERROR = 131,
+    AWS_MQTT5_UARC_NOT_AUTHORIZED = 135,
+    AWS_MQTT5_UARC_TOPIC_NAME_INVALID = 144,
+    AWS_MQTT5_UARC_PACKET_IDENTIFIER_IN_USE = 145,
 };
 
 /**
@@ -354,6 +223,7 @@ enum aws_mqtt5_client_reconnect_behavior_type {
 
     /**
      * Never attempt to reconnect, just go into the stopped state.
+     * TODO: does this have any value whatsoever?
      */
     AWS_MQTT5_CRBT_RECONNECT_NEVER,
 };
@@ -381,6 +251,203 @@ enum aws_mqtt5_client_session_behavior_type {
 struct aws_mqtt5_user_property {
     struct aws_byte_cursor name;
     struct aws_byte_cursor value;
+};
+
+/**
+ * Optional property describing a message's payload format.
+ * Enum values match mqtt spec encoding values.
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901063
+ */
+enum aws_mqtt5_payload_format_indicator {
+    /* not in the spec, indicates no value supplied */
+    AWS_MQTT5_PFI_NOT_SET = -1,
+    AWS_MQTT5_PFI_BYTES = 0,
+    AWS_MQTT5_PFI_UTF8 = 1,
+};
+
+enum aws_mqtt5_retain_handling_type {
+    AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE = 0x00,
+    AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE_IF_NEW = 0x01,
+    AWS_MQTT5_RHT_DONT_SEND = 0x02,
+};
+
+struct aws_mqtt5_subscription_view {
+    struct aws_byte_cursor topic;
+    enum aws_mqtt5_qos qos;
+    bool no_local;
+    bool retain_as_published;
+    enum aws_mqtt5_retain_handling_type retain_handling_type;
+};
+
+struct aws_mqtt5_packet_disconnect_view {
+    enum aws_mqtt5_disconnect_reason_code reason_code;
+    uint32_t *session_expiry_interval_seconds;
+    struct aws_byte_cursor *reason_string;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+};
+
+struct aws_mqtt5_packet_subscribe_view {
+    size_t subscription_count;
+    struct aws_mqtt5_subscription_view *subscriptions;
+
+    uint32_t *subscription_identifier;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+};
+
+struct aws_mqtt5_packet_unsubscribe_view {
+    size_t topic_count;
+    struct aws_byte_cursor *topics;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+};
+
+struct aws_mqtt5_packet_publish_view {
+    struct aws_byte_cursor payload; /* possibly an input stream in the future */
+
+    enum aws_mqtt5_qos qos;
+    bool retain;
+    struct aws_byte_cursor topic;
+    enum aws_mqtt5_payload_format_indicator payload_format;
+    uint32_t *message_expiry_interval_seconds;
+    uint16_t *topic_alias;
+    struct aws_byte_cursor *response_topic;
+    struct aws_byte_cursor *correlation_data;
+    uint32_t *subscription_identifier;
+    struct aws_byte_cursor *content_type;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+};
+
+struct aws_mqtt5_packet_connect_view {
+    uint32_t keep_alive_interval_seconds;
+
+    struct aws_byte_cursor client_id;
+
+    struct aws_byte_cursor *username;
+    struct aws_byte_cursor *password;
+
+    uint32_t session_expiry_interval_seconds;
+    enum aws_mqtt5_client_session_behavior_type session_behavior;
+
+    bool request_response_information;
+    bool request_problem_information;
+    uint16_t receive_maximum;
+    uint16_t topic_alias_maximum;
+    uint32_t maximum_packet_size_bytes;
+
+    uint32_t will_delay_interval_seconds;
+    struct aws_mqtt5_packet_publish_view *will;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+};
+
+/*
+ * Important Note: The connack view is *NOT* guaranteed to be the negotiated settings that the client connection
+ * will be using (due to implicit defaults and optional properties).  The negotiated settings are communicated in
+ * a separate structure.
+ */
+struct aws_mqtt5_packet_connack_view {
+    bool session_present;
+    enum aws_mqtt5_connect_reason_code reason_code;
+
+    uint32_t *session_expiry_interval;
+    uint16_t *receive_maximum;
+    enum aws_mqtt5_qos *maximum_qos;
+    bool *retain_available;
+    uint32_t *maximum_packet_size;
+    struct aws_byte_cursor *assigned_client_identifier;
+    uint16_t *topic_alias_maximum;
+    struct aws_byte_cursor *reason_string;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+
+    bool *wildcard_subscriptions_available;
+    bool *subscription_identifiers_available;
+    bool *shared_subscriptions_available;
+
+    uint16_t *server_keep_alive;
+    struct aws_byte_cursor *response_information;
+    struct aws_byte_cursor *server_reference;
+    struct aws_byte_cursor *authentication_method;
+    struct aws_byte_cursor *authentication_data;
+};
+
+struct aws_mqtt5_packet_puback_view {
+    enum aws_mqtt5_puback_reason_code reason_code;
+    struct aws_byte_cursor *reason_string;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+};
+
+struct aws_mqtt5_packet_suback_view {
+    struct aws_byte_cursor *reason_string;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+
+    size_t reason_code_count;
+    enum aws_mqtt5_suback_reason_code *reason_codes;
+};
+
+struct aws_mqtt5_packet_unsuback_view {
+    struct aws_byte_cursor *reason_string;
+
+    size_t user_property_count;
+    struct aws_mqtt5_user_property *user_properties;
+
+    size_t reason_code_count;
+    enum aws_mqtt5_unsuback_reason_code *reason_codes;
+};
+
+typedef void(
+    aws_mqtt5_publish_complete_fn)(struct aws_mqtt5_packet_puback_view *puback, int error_code, void *complete_ctx);
+
+typedef void(
+    aws_mqtt5_subscribe_complete_fn)(struct aws_mqtt5_packet_suback_view *suback, int error_code, void *complete_ctx);
+
+typedef void(aws_mqtt5_unsubscribe_complete_fn)(
+    struct aws_mqtt5_packet_unsuback_view *unsuback,
+    int error_code,
+    void *complete_ctx);
+
+struct aws_mqtt5_publish_completion_options {
+    aws_mqtt5_publish_complete_fn *completion_callback;
+    void *completion_user_data;
+};
+
+struct aws_mqtt5_subscribe_completion_options {
+    aws_mqtt5_subscribe_complete_fn *completion_callback;
+    void *completion_user_data;
+};
+
+struct aws_mqtt5_unsubscribe_completion_options {
+    aws_mqtt5_unsubscribe_complete_fn *completion_callback;
+    void *completion_user_data;
+};
+
+struct aws_mqtt5_negotiated_settings {
+    enum aws_mqtt5_qos maximum_qos;
+
+    uint32_t session_expiry_interval;
+    uint16_t receive_maximum;
+    uint32_t maximum_packet_size;
+    uint16_t topic_alias_maximum;
+    uint16_t server_keep_alive;
+
+    bool retain_available;
+    bool wildcard_subscriptions_available;
+    bool subscription_identifiers_available;
+    bool shared_subscriptions_available;
 };
 
 /**
@@ -422,44 +489,20 @@ struct aws_mqtt5_client_lifecycle_event {
      */
     void *user_data;
 
-    /**
-     * 0-valued if no packet data is associated with the event, otherwise either a 2 (CONNACK) or a 14 (DISCONNECT)
-     * indicates which union member contains valid data.
-     */
-    enum aws_mqtt5_packet_type packet_type;
+    /* If this event was caused by receiving a CONNACK, this will be set */
+    struct aws_mqtt5_packet_connack_view *connack_data;
 
-    /**
-     * Packet data associated with the event
-     */
-    union {
-        struct aws_mqtt5_connack_packet_data connack_data;
-        struct aws_mqtt5_disconnect_packet_data disconnect_data;
-    } packet_data;
+    /* If this is a successful connection establishment, this will be set */
+    struct aws_mqtt5_negotiated_settings *settings;
+
+    /* If this event was caused by receiving a DISCONNECT, this will be set */
+    struct aws_mqtt5_packet_disconnect_view *disconnect_data;
 };
 
 /**
  * Callback signature for mqtt5 client lifecycle events.
  */
 typedef void(aws_mqtt5_client_connection_event_callback_fn)(struct aws_mqtt5_client_lifecycle_event *event);
-
-/**
- * Optional property describing a message's payload format.
- * Enum values match mqtt spec encoding values.
- *
- * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901063
- */
-enum aws_mqtt5_payload_format_indicator {
-    /* not in the spec, indicates no value supplied */
-    AWS_MQTT5_PFI_NOT_SET = -1,
-    AWS_MQTT5_PFI_BYTES = 0,
-    AWS_MQTT5_PFI_UTF8 = 1,
-};
-
-enum aws_mqtt5_retain_handling_type {
-    AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE = 0x00,
-    AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE_IF_NEW = 0x01,
-    AWS_MQTT5_RHT_DONT_SEND = 0x02,
-};
 
 AWS_EXTERN_C_BEGIN
 
@@ -479,6 +522,30 @@ AWS_MQTT_API const char *aws_mqtt5_disconnect_reason_code_to_c_string(
  * @return name associated with the reason code
  */
 AWS_MQTT_API const char *aws_mqtt5_connect_reason_code_to_c_string(enum aws_mqtt5_connect_reason_code reason_code);
+
+/**
+ * Converts a publish reason code into the Reason Code Name, as it appears in the mqtt5 spec.
+ *
+ * @param reason_code a publish reason code
+ * @return name associated with the reason code
+ */
+AWS_MQTT_API const char *aws_mqtt5_puback_reason_code_to_c_string(enum aws_mqtt5_puback_reason_code reason_code);
+
+/**
+ * Converts a subscribe reason code into the Reason Code Name, as it appears in the mqtt5 spec.
+ *
+ * @param reason_code a subscribe reason code
+ * @return name associated with the reason code
+ */
+AWS_MQTT_API const char *aws_mqtt5_suback_reason_code_to_c_string(enum aws_mqtt5_suback_reason_code reason_code);
+
+/**
+ * Converts a unsubscribe reason code into the Reason Code Name, as it appears in the mqtt5 spec.
+ *
+ * @param reason_code an unsubscribe reason code
+ * @return name associated with the reason code
+ */
+AWS_MQTT_API const char *aws_mqtt5_unsuback_reason_code_to_c_string(enum aws_mqtt5_unsuback_reason_code reason_code);
 
 /**
  * Converts a reconnect behavior type value to a readable description.

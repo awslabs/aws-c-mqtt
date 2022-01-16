@@ -247,7 +247,7 @@ static void s_destroy_operation_connect(void *object) {
 
 struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_connect_options *connect_options) {
+    const struct aws_mqtt5_packet_connect_view *connect_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(connect_options != NULL);
 
@@ -291,7 +291,7 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     connect_op->maximum_packet_size_bytes = connect_options->maximum_packet_size_bytes;
 
     if (connect_options->will != NULL) {
-        connect_op->will = aws_mqtt5_operation_publish_new(allocator, connect_options->will);
+        connect_op->will = aws_mqtt5_operation_publish_new(allocator, connect_options->will, NULL);
         if (connect_options->will != NULL && connect_op->will == NULL) {
             goto error;
         }
@@ -306,11 +306,6 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
             connect_options->user_properties)) {
         goto error;
     }
-
-    /* non-zero defaults */
-    connect_op->keep_alive_interval_seconds = AWS_MQTT5_DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS;
-    connect_op->request_problem_information = true;
-    connect_op->session_expiry_interval_seconds = AWS_MQTT5_DEFAULT_SESSION_EXPIRY_INTERVAL_SECONDS;
 
     s_aws_mqtt5_operation_connect_log(connect_op);
 
@@ -376,7 +371,7 @@ static void s_destroy_operation_disconnect(void *object) {
 
 struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_disconnect_options *disconnect_options) {
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_options) {
     AWS_PRECONDITION(allocator != NULL);
 
     struct aws_mqtt5_operation_disconnect *disconnect_op =
@@ -529,7 +524,7 @@ static void s_destroy_operation_publish(void *object) {
     aws_mem_release(publish_op->allocator, publish_op);
 }
 
-static int s_validate_publish_view(const struct aws_mqtt5_operation_publish_options *publish_view) {
+static int s_validate_publish_view(const struct aws_mqtt5_packet_publish_view *publish_view) {
     if (publish_view->subscription_identifier != NULL) {
         if (*publish_view->subscription_identifier > AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER) {
             return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
@@ -541,7 +536,8 @@ static int s_validate_publish_view(const struct aws_mqtt5_operation_publish_opti
 
 struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_publish_options *publish_options) {
+    const struct aws_mqtt5_packet_publish_view *publish_options,
+    const struct aws_mqtt5_publish_completion_options *completion_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(publish_options != NULL);
 
@@ -620,6 +616,10 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
         goto error;
     }
 
+    if (completion_options != NULL) {
+        publish_op->completion_options = *completion_options;
+    }
+
     s_aws_mqtt5_operation_publish_log(publish_op);
 
     return publish_op;
@@ -677,7 +677,7 @@ static void s_destroy_operation_unsubscribe(void *object) {
     aws_mem_release(unsubscribe_op->allocator, unsubscribe_op);
 }
 
-static int s_validate_unsubscribe_view(const struct aws_mqtt5_operation_unsubscribe_options *unsubscribe_view) {
+static int s_validate_unsubscribe_view(const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view) {
     if (unsubscribe_view->topic_count == 0) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
@@ -722,7 +722,8 @@ static int s_aws_mqtt5_operation_unsubscribe_build_topic_list(
 
 struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_unsubscribe_options *unsubscribe_options) {
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
+    const struct aws_mqtt5_unsubscribe_completion_options *completion_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(unsubscribe_options != NULL);
 
@@ -754,6 +755,10 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
         goto error;
     }
 
+    if (completion_options != NULL) {
+        unsubscribe_op->completion_options = *completion_options;
+    }
+
     s_aws_mqtt5_operation_unsubscribe_log(unsubscribe_op);
 
     return unsubscribe_op;
@@ -779,7 +784,7 @@ static void s_aws_mqtt5_operation_subscribe_log(struct aws_mqtt5_operation_subsc
 
     size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
     for (size_t i = 0; i < subscription_count; ++i) {
-        struct aws_mqtt5_subscription_options *view = NULL;
+        struct aws_mqtt5_subscription_view *view = NULL;
         if (aws_array_list_get_at_ptr(&subscribe_op->subscriptions, (void **)&view, i)) {
             continue;
         }
@@ -825,7 +830,7 @@ static void s_destroy_operation_subscribe(void *object) {
     aws_mem_release(subscribe_op->allocator, subscribe_op);
 }
 
-static int s_validate_subscribe_view(const struct aws_mqtt5_operation_subscribe_options *subscribe_view) {
+static int s_validate_subscribe_view(const struct aws_mqtt5_packet_subscribe_view *subscribe_view) {
     if (subscribe_view->subscription_count == 0) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
@@ -842,11 +847,11 @@ static int s_validate_subscribe_view(const struct aws_mqtt5_operation_subscribe_
 static int s_aws_mqtt5_operation_subscribe_init_subscriptions(
     struct aws_mqtt5_operation_subscribe *subscribe_op,
     size_t subscription_count,
-    const struct aws_mqtt5_subscription_options *subscriptions) {
+    const struct aws_mqtt5_subscription_view *subscriptions) {
 
     size_t total_topic_length = 0;
     for (size_t i = 0; i < subscription_count; ++i) {
-        const struct aws_mqtt5_subscription_options *view = &subscriptions[i];
+        const struct aws_mqtt5_subscription_view *view = &subscriptions[i];
         total_topic_length += view->topic.len;
     }
 
@@ -858,13 +863,13 @@ static int s_aws_mqtt5_operation_subscribe_init_subscriptions(
             &subscribe_op->subscriptions,
             subscribe_op->allocator,
             subscription_count,
-            sizeof(struct aws_mqtt5_subscription_options))) {
+            sizeof(struct aws_mqtt5_subscription_view))) {
         return AWS_OP_ERR;
     }
 
     for (size_t i = 0; i < subscription_count; ++i) {
-        const struct aws_mqtt5_subscription_options *source = &subscriptions[i];
-        struct aws_mqtt5_subscription_options copy = *source;
+        const struct aws_mqtt5_subscription_view *source = &subscriptions[i];
+        struct aws_mqtt5_subscription_view copy = *source;
 
         if (aws_byte_buf_append_and_update(&subscribe_op->topic_storage, &copy.topic)) {
             return AWS_OP_ERR;
@@ -880,7 +885,8 @@ static int s_aws_mqtt5_operation_subscribe_init_subscriptions(
 
 struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_subscribe_options *subscribe_options) {
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
+    const struct aws_mqtt5_subscribe_completion_options *completion_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(subscribe_options != NULL);
 
@@ -915,6 +921,10 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
             subscribe_options->user_property_count,
             subscribe_options->user_properties)) {
         goto error;
+    }
+
+    if (completion_options != NULL) {
+        subscribe_op->completion_options = *completion_options;
     }
 
     s_aws_mqtt5_operation_subscribe_log(subscribe_op);

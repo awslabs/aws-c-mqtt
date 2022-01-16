@@ -35,8 +35,6 @@ static const char *s_connection_rate_exceeded = "Connection Rate Exceeded";
 static const char *s_maximum_connect_time = "Maximum Connect Time";
 static const char *s_subscription_identifiers_not_supported = "Subscription Identifiers Not Supported";
 static const char *s_wildcard_subscriptions_not_supported = "Wildcard Subscriptions Not Supported";
-
-/* connect reason code only */
 static const char *s_success = "Success";
 static const char *s_unsupported_protocol_version = "Unsupported Protocol Version";
 static const char *s_client_identifier_not_valid = "Client Identifier Not Valid";
@@ -44,6 +42,13 @@ static const char *s_bad_username_or_password = "Bad Username Or Password";
 static const char *s_server_unavailable = "Server Unavailable";
 static const char *s_banned = "Banned";
 static const char *s_bad_authentication_method = "Bad Authentication Method";
+static const char *s_unknown_reason = "Unknown Reason";
+static const char *s_no_subscription_existed = "No Subscription Existed";
+static const char *s_packet_identifier_in_use = "Packet Identifier In Use";
+static const char *s_granted_qos_0 = "Granted QoS 0";
+static const char *s_granted_qos_1 = "Granted QoS 1";
+static const char *s_granted_qos_2 = "Granted QoS 2";
+static const char *s_no_matching_subscribers = "No Matching Subscribers";
 
 const char *aws_mqtt5_connect_reason_code_to_c_string(enum aws_mqtt5_connect_reason_code reason_code) {
     switch (reason_code) {
@@ -93,7 +98,7 @@ const char *aws_mqtt5_connect_reason_code_to_c_string(enum aws_mqtt5_connect_rea
             return s_connection_rate_exceeded;
     }
 
-    return "Unknown Reason";
+    return s_unknown_reason;
 }
 
 const char *aws_mqtt5_disconnect_reason_code_to_c_string(enum aws_mqtt5_disconnect_reason_code reason_code) {
@@ -158,7 +163,84 @@ const char *aws_mqtt5_disconnect_reason_code_to_c_string(enum aws_mqtt5_disconne
             return s_wildcard_subscriptions_not_supported;
     }
 
-    return "Unknown Reason";
+    return s_unknown_reason;
+}
+
+const char *aws_mqtt5_puback_reason_code_to_c_string(enum aws_mqtt5_puback_reason_code reason_code) {
+    switch (reason_code) {
+        case AWS_MQTT5_PARC_SUCCESS:
+            return s_success;
+        case AWS_MQTT5_PARC_NO_MATCHING_SUSCRIBERS:
+            return s_no_matching_subscribers;
+        case AWS_MQTT5_PARC_UNSPECIFIED_ERROR:
+            return s_unspecified_error;
+        case AWS_MQTT5_PARC_IMPLEMENTATION_SPECIFIC_ERROR:
+            return s_implementation_specific_error;
+        case AWS_MQTT5_PARC_NOT_AUTHORIZED:
+            return s_not_authorized;
+        case AWS_MQTT5_PARC_TOPIC_NAME_INVALID:
+            return s_topic_name_invalid;
+        case AWS_MQTT5_PARC_PACKET_IDENTIFIER_IN_USE:
+            return s_packet_identifier_in_use;
+        case AWS_MQTT5_PARC_QUOTA_EXCEEDED:
+            return s_quota_exceeded;
+        case AWS_MQTT5_PARC_PAYLOAD_FORMAT_INVALID:
+            return s_payload_format_invalid;
+    }
+
+    return s_unknown_reason;
+}
+
+const char *aws_mqtt5_suback_reason_code_to_c_string(enum aws_mqtt5_suback_reason_code reason_code) {
+    switch (reason_code) {
+        case AWS_MQTT5_SARC_GRANTED_QOS_0:
+            return s_granted_qos_0;
+        case AWS_MQTT5_SARC_GRANTED_QOS_1:
+            return s_granted_qos_1;
+        case AWS_MQTT5_SARC_GRANTED_QOS_2:
+            return s_granted_qos_2;
+        case AWS_MQTT5_SARC_UNSPECIFIED_ERROR:
+            return s_unspecified_error;
+        case AWS_MQTT5_SARC_IMPLEMENTATION_SPECIFIC_ERROR:
+            return s_implementation_specific_error;
+        case AWS_MQTT5_SARC_NOT_AUTHORIZED:
+            return s_not_authorized;
+        case AWS_MQTT5_SARC_TOPIC_FILTER_INVALID:
+            return s_topic_filter_invalid;
+        case AWS_MQTT5_SARC_PACKET_IDENTIFIER_IN_USE:
+            return s_packet_identifier_in_use;
+        case AWS_MQTT5_SARC_QUOTA_EXCEEDED:
+            return s_quota_exceeded;
+        case AWS_MQTT5_SARC_SHARED_SUBSCRIPTIONS_NOT_SUPPORTED:
+            return s_shared_subscriptions_not_supported;
+        case AWS_MQTT5_SARC_SUBSCRIPTION_IDENTIFIERS_NOT_SUPPORTED:
+            return s_subscription_identifiers_not_supported;
+        case AWS_MQTT5_SARC_WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED:
+            return s_wildcard_subscriptions_not_supported;
+    }
+
+    return s_unknown_reason;
+}
+
+const char *aws_mqtt5_unsuback_reason_code_to_c_string(enum aws_mqtt5_unsuback_reason_code reason_code) {
+    switch (reason_code) {
+        case AWS_MQTT5_UARC_SUCCESS:
+            return s_success;
+        case AWS_MQTT5_UARC_NO_SUBSCRIPTION_EXISTED:
+            return s_no_subscription_existed;
+        case AWS_MQTT5_UARC_UNSPECIFIED_ERROR:
+            return s_unspecified_error;
+        case AWS_MQTT5_UARC_IMPLEMENTATION_SPECIFIC_ERROR:
+            return s_implementation_specific_error;
+        case AWS_MQTT5_UARC_NOT_AUTHORIZED:
+            return s_not_authorized;
+        case AWS_MQTT5_UARC_TOPIC_NAME_INVALID:
+            return s_topic_name_invalid;
+        case AWS_MQTT5_UARC_PACKET_IDENTIFIER_IN_USE:
+            return s_packet_identifier_in_use;
+    }
+
+    return s_unknown_reason;
 }
 
 const char *aws_mqtt5_client_reconnect_behavior_type_to_c_string(

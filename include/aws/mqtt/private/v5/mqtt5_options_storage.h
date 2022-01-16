@@ -18,11 +18,6 @@
 struct aws_client_bootstrap;
 struct aws_mqtt5_client_options;
 struct aws_mqtt5_operation;
-struct aws_mqtt5_operation_connect_options;
-struct aws_mqtt5_operation_disconnect_options;
-struct aws_mqtt5_operation_publish_options;
-struct aws_mqtt5_operation_subscribe_options;
-struct aws_mqtt5_operation_unsubscribe_options;
 struct aws_string;
 
 struct aws_mqtt5_user_property_set {
@@ -135,6 +130,8 @@ struct aws_mqtt5_operation_publish {
     struct aws_string *content_type;
 
     struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_mqtt5_publish_completion_options completion_options;
 };
 
 struct aws_mqtt5_operation_disconnect {
@@ -160,6 +157,8 @@ struct aws_mqtt5_operation_subscribe {
     struct aws_byte_buf topic_storage;
 
     struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_mqtt5_subscribe_completion_options completion_options;
 };
 
 struct aws_mqtt5_operation_unsubscribe {
@@ -170,6 +169,8 @@ struct aws_mqtt5_operation_unsubscribe {
     struct aws_byte_buf topic_storage;
 
     struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_mqtt5_unsubscribe_completion_options completion_options;
 };
 
 #define AWS_MQTT5_DEFAULT_MIN_RECONNECT_DELAY_MS 1000
@@ -230,23 +231,26 @@ AWS_MQTT_API struct aws_mqtt5_operation *aws_mqtt5_operation_release(struct aws_
 
 AWS_MQTT_API struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_connect_options *connect_options);
+    const struct aws_mqtt5_packet_connect_view *connect_options);
 
 AWS_MQTT_API struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_disconnect_options *disconnect_options);
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_options);
 
 AWS_MQTT_API struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_publish_options *publish_options);
+    const struct aws_mqtt5_packet_publish_view *publish_options,
+    const struct aws_mqtt5_publish_completion_options *completion_options);
 
 AWS_MQTT_API struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_subscribe_options *subscribe_options);
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
+    const struct aws_mqtt5_subscribe_completion_options *completion_options);
 
 AWS_MQTT_API struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_operation_unsubscribe_options *unsubscribe_options);
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
+    const struct aws_mqtt5_unsubscribe_completion_options *completion_options);
 
 AWS_MQTT_API
 struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(

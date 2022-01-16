@@ -35,7 +35,15 @@ struct aws_mqtt5_client {
 
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
+
     const struct aws_mqtt5_client_options_storage *config;
+
+    /*
+     * TODO: negotiated settings struct/system with APIs for:
+     *      reset (defaults)
+     *      apply CONNECT
+     *      apply CONNACK
+     */
 
     struct aws_event_loop *loop;
 
@@ -94,9 +102,9 @@ struct aws_mqtt5_client {
 
     struct aws_mqtt_topic_tree subscriptions;
 
-    /* 
+    /*
      *TODO: topic alias mappings, from-server and to-server have independent mappings
-     * 
+     *
      * From-server requires a single table
      * To-server requires both a table and a list (for LRU)
      */
