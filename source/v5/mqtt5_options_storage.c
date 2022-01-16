@@ -353,6 +353,14 @@ static void s_aws_mqtt5_operation_disconnect_log(struct aws_mqtt5_operation_disc
             aws_string_c_str(disconnect_op->reason_string));
     }
 
+    if (disconnect_op->server_reference != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_OPERATION,
+            "(%p) aws_mqtt5_operation_disconnect server reference set to \"%s\"",
+            (void *)disconnect_op,
+            aws_string_c_str(disconnect_op->server_reference));
+    }
+
     s_aws_mqtt5_user_property_set_log(&disconnect_op->user_properties, disconnect_op, "aws_mqtt5_operation_disconnect");
 }
 
@@ -365,6 +373,7 @@ static void s_destroy_operation_disconnect(void *object) {
 
     aws_string_destroy(disconnect_op->reason_string);
     aws_mqtt5_user_property_set_clean_up(&disconnect_op->user_properties);
+    aws_string_destroy(disconnect_op->server_reference);
 
     aws_mem_release(disconnect_op->allocator, disconnect_op);
 }
@@ -404,6 +413,13 @@ struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
             disconnect_options->user_property_count,
             disconnect_options->user_properties)) {
         goto error;
+    }
+
+    if (disconnect_options->server_reference != NULL) {
+        disconnect_op->server_reference = aws_string_new_from_cursor(allocator, disconnect_options->server_reference);
+        if (disconnect_op->server_reference == NULL) {
+            goto error;
+        }
     }
 
     s_aws_mqtt5_operation_disconnect_log(disconnect_op);

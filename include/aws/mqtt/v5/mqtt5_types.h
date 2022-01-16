@@ -306,6 +306,8 @@ struct aws_mqtt5_packet_disconnect_view {
 
     size_t user_property_count;
     const struct aws_mqtt5_user_property *user_properties;
+
+    const struct aws_byte_cursor *server_reference;
 };
 
 struct aws_mqtt5_packet_subscribe_view {

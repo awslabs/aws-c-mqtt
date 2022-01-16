@@ -144,6 +144,8 @@ struct aws_mqtt5_operation_disconnect {
     struct aws_string *reason_string;
 
     struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_string *server_reference;
 };
 
 struct aws_mqtt5_operation_subscribe {
