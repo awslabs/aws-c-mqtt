@@ -94,7 +94,12 @@ struct aws_mqtt5_client {
 
     struct aws_mqtt_topic_tree subscriptions;
 
-    /* TODO: topic alias mapping, perhaps a structure, perhaps just a hash table */
+    /* 
+     *TODO: topic alias mappings, from-server and to-server have independent mappings
+     * 
+     * From-server requires a single table
+     * To-server requires both a table and a list (for LRU)
+     */
 
     /* TODO: statistics that use atomics because we don't care about consistency/isolation */
 
