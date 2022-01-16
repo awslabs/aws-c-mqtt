@@ -4,7 +4,7 @@ include(AwsLibFuzzer)
 enable_testing()
 
 file(GLOB TEST_HDRS "*.h")
-set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_client_config_test.c)
+set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_operation_test.c)
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
@@ -62,11 +62,9 @@ add_test_case(mqtt_connection_publish_QoS1_timeout)
 add_test_case(mqtt_connection_unsub_timeout)
 add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
 
-#add_test_case(mqtt5_client_config_new_destroy)
-#add_test_case(mqtt5_client_config_set_all_once)
-#add_test_case(mqtt5_client_config_set_all_twice)
-#add_test_case(mqtt5_client_config_overwrite)
-#add_test_case(mqtt5_client_config_clone)
+add_test_case(mqtt5_publish_operation_new_set_no_optional)
+add_test_case(mqtt5_publish_operation_new_set_all)
+
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

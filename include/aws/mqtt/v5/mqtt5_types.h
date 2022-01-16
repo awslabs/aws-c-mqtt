@@ -301,29 +301,29 @@ struct aws_mqtt5_subscription_view {
 
 struct aws_mqtt5_packet_disconnect_view {
     enum aws_mqtt5_disconnect_reason_code reason_code;
-    uint32_t *session_expiry_interval_seconds;
-    struct aws_byte_cursor *reason_string;
+    const uint32_t *session_expiry_interval_seconds;
+    const struct aws_byte_cursor *reason_string;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 };
 
 struct aws_mqtt5_packet_subscribe_view {
     size_t subscription_count;
-    struct aws_mqtt5_subscription_view *subscriptions;
+    const struct aws_mqtt5_subscription_view *subscriptions;
 
-    uint32_t *subscription_identifier;
+    const uint32_t *subscription_identifier;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 };
 
 struct aws_mqtt5_packet_unsubscribe_view {
     size_t topic_count;
-    struct aws_byte_cursor *topics;
+    const struct aws_byte_cursor *topics;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 };
 
 struct aws_mqtt5_packet_publish_view {
@@ -333,15 +333,15 @@ struct aws_mqtt5_packet_publish_view {
     bool retain;
     struct aws_byte_cursor topic;
     enum aws_mqtt5_payload_format_indicator payload_format;
-    uint32_t *message_expiry_interval_seconds;
-    uint16_t *topic_alias;
-    struct aws_byte_cursor *response_topic;
-    struct aws_byte_cursor *correlation_data;
-    uint32_t *subscription_identifier;
-    struct aws_byte_cursor *content_type;
+    const uint32_t *message_expiry_interval_seconds;
+    const uint16_t *topic_alias;
+    const struct aws_byte_cursor *response_topic;
+    const struct aws_byte_cursor *correlation_data;
+    const uint32_t *subscription_identifier;
+    const struct aws_byte_cursor *content_type;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 };
 
 struct aws_mqtt5_packet_connect_view {
@@ -349,8 +349,8 @@ struct aws_mqtt5_packet_connect_view {
 
     struct aws_byte_cursor client_id;
 
-    struct aws_byte_cursor *username;
-    struct aws_byte_cursor *password;
+    const struct aws_byte_cursor *username;
+    const struct aws_byte_cursor *password;
 
     uint32_t session_expiry_interval_seconds;
     enum aws_mqtt5_client_session_behavior_type session_behavior;
@@ -362,10 +362,10 @@ struct aws_mqtt5_packet_connect_view {
     uint32_t maximum_packet_size_bytes;
 
     uint32_t will_delay_interval_seconds;
-    struct aws_mqtt5_packet_publish_view *will;
+    const struct aws_mqtt5_packet_publish_view *will;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 };
 
 /*
@@ -377,65 +377,69 @@ struct aws_mqtt5_packet_connack_view {
     bool session_present;
     enum aws_mqtt5_connect_reason_code reason_code;
 
-    uint32_t *session_expiry_interval;
-    uint16_t *receive_maximum;
-    enum aws_mqtt5_qos *maximum_qos;
-    bool *retain_available;
-    uint32_t *maximum_packet_size;
-    struct aws_byte_cursor *assigned_client_identifier;
-    uint16_t *topic_alias_maximum;
-    struct aws_byte_cursor *reason_string;
+    const uint32_t *session_expiry_interval;
+    const uint16_t *receive_maximum;
+    const enum aws_mqtt5_qos *maximum_qos;
+    const bool *retain_available;
+    const uint32_t *maximum_packet_size;
+    const struct aws_byte_cursor *assigned_client_identifier;
+    const uint16_t *topic_alias_maximum;
+    const struct aws_byte_cursor *reason_string;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 
-    bool *wildcard_subscriptions_available;
-    bool *subscription_identifiers_available;
-    bool *shared_subscriptions_available;
+    const bool *wildcard_subscriptions_available;
+    const bool *subscription_identifiers_available;
+    const bool *shared_subscriptions_available;
 
-    uint16_t *server_keep_alive;
-    struct aws_byte_cursor *response_information;
-    struct aws_byte_cursor *server_reference;
-    struct aws_byte_cursor *authentication_method;
-    struct aws_byte_cursor *authentication_data;
+    const uint16_t *server_keep_alive;
+    const struct aws_byte_cursor *response_information;
+    const struct aws_byte_cursor *server_reference;
+    const struct aws_byte_cursor *authentication_method;
+    const struct aws_byte_cursor *authentication_data;
 };
 
 struct aws_mqtt5_packet_puback_view {
     enum aws_mqtt5_puback_reason_code reason_code;
-    struct aws_byte_cursor *reason_string;
+    const struct aws_byte_cursor *reason_string;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 };
 
 struct aws_mqtt5_packet_suback_view {
-    struct aws_byte_cursor *reason_string;
+    const struct aws_byte_cursor *reason_string;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 
     size_t reason_code_count;
-    enum aws_mqtt5_suback_reason_code *reason_codes;
+    const enum aws_mqtt5_suback_reason_code *reason_codes;
 };
 
 struct aws_mqtt5_packet_unsuback_view {
-    struct aws_byte_cursor *reason_string;
+    const struct aws_byte_cursor *reason_string;
 
     size_t user_property_count;
-    struct aws_mqtt5_user_property *user_properties;
+    const struct aws_mqtt5_user_property *user_properties;
 
     size_t reason_code_count;
-    enum aws_mqtt5_unsuback_reason_code *reason_codes;
+    const enum aws_mqtt5_unsuback_reason_code *reason_codes;
 };
 
-typedef void(
-    aws_mqtt5_publish_complete_fn)(struct aws_mqtt5_packet_puback_view *puback, int error_code, void *complete_ctx);
+typedef void(aws_mqtt5_publish_complete_fn)(
+    const struct aws_mqtt5_packet_puback_view *puback,
+    int error_code,
+    void *complete_ctx);
 
-typedef void(
-    aws_mqtt5_subscribe_complete_fn)(struct aws_mqtt5_packet_suback_view *suback, int error_code, void *complete_ctx);
+typedef void(aws_mqtt5_subscribe_complete_fn)(
+    const struct aws_mqtt5_packet_suback_view *suback,
+    int error_code,
+    void *complete_ctx);
 
 typedef void(aws_mqtt5_unsubscribe_complete_fn)(
-    struct aws_mqtt5_packet_unsuback_view *unsuback,
+    const struct aws_mqtt5_packet_unsuback_view *unsuback,
     int error_code,
     void *complete_ctx);
 
@@ -509,19 +513,19 @@ struct aws_mqtt5_client_lifecycle_event {
     void *user_data;
 
     /* If this event was caused by receiving a CONNACK, this will be set */
-    struct aws_mqtt5_packet_connack_view *connack_data;
+    const struct aws_mqtt5_packet_connack_view *connack_data;
 
     /* If this is a successful connection establishment, this will be set */
-    struct aws_mqtt5_negotiated_settings *settings;
+    const struct aws_mqtt5_negotiated_settings *settings;
 
     /* If this event was caused by receiving a DISCONNECT, this will be set */
-    struct aws_mqtt5_packet_disconnect_view *disconnect_data;
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_data;
 };
 
 /**
  * Callback signature for mqtt5 client lifecycle events.
  */
-typedef void(aws_mqtt5_client_connection_event_callback_fn)(struct aws_mqtt5_client_lifecycle_event *event);
+typedef void(aws_mqtt5_client_connection_event_callback_fn)(const struct aws_mqtt5_client_lifecycle_event *event);
 
 AWS_EXTERN_C_BEGIN
 

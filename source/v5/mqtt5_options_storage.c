@@ -688,10 +688,10 @@ static int s_validate_unsubscribe_view(const struct aws_mqtt5_packet_unsubscribe
 static int s_aws_mqtt5_operation_unsubscribe_build_topic_list(
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op,
     size_t topic_count,
-    struct aws_byte_cursor *topics) {
+    const struct aws_byte_cursor *topics) {
     size_t topic_total_length = 0;
     for (size_t i = 0; i < topic_count; ++i) {
-        struct aws_byte_cursor *topic_cursor = &topics[i];
+        const struct aws_byte_cursor *topic_cursor = &topics[i];
         topic_total_length += topic_cursor->len;
     }
 
@@ -705,7 +705,7 @@ static int s_aws_mqtt5_operation_unsubscribe_build_topic_list(
     }
 
     for (size_t i = 0; i < topic_count; ++i) {
-        struct aws_byte_cursor *topic_cursor_ptr = &topics[i];
+        const struct aws_byte_cursor *topic_cursor_ptr = &topics[i];
         struct aws_byte_cursor topic_cursor = *topic_cursor_ptr;
 
         if (aws_byte_buf_append_and_update(&unsubscribe_op->topic_storage, &topic_cursor)) {
