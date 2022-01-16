@@ -1090,6 +1090,13 @@ static void s_aws_mqtt5_client_options_storage_log(struct aws_mqtt5_client_optio
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
+        "(%p) mqtt5_client_options_storage outbound topic aliasing behavior set to %d(%s)",
+        (void *)options_storage,
+        (int)options_storage->outbound_topic_aliasing_behavior,
+        aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(options_storage->outbound_topic_aliasing_behavior));
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CONFIG,
         "(%p) mqtt5_client_options_storage reconnect behavior set to %d(%s)",
         (void *)options_storage,
         (int)options_storage->reconnect_behavior,
@@ -1239,6 +1246,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
 
     options_storage->websocket_handshake_transform = options->websocket_handshake_transform;
     options_storage->websocket_handshake_transform_user_data = options->websocket_handshake_transform_user_data;
+
+    options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
 
     options_storage->reconnect_behavior = options->reconnect_behavior;
     options_storage->min_reconnect_delay_ms = options->min_reconnect_delay_ms;

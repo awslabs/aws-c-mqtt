@@ -195,6 +195,8 @@ struct aws_mqtt5_client_options_storage {
     aws_mqtt5_transform_websocket_handshake_fn *websocket_handshake_transform;
     void *websocket_handshake_transform_user_data;
 
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
+
     enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior;
     uint64_t min_reconnect_delay_ms;
     uint64_t max_reconnect_delay_ms;

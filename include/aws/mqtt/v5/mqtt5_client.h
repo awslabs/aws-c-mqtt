@@ -31,6 +31,8 @@ struct aws_mqtt5_client_options {
 
     struct aws_mqtt5_packet_connect_view *connect_options;
 
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
+
     enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior;
     uint64_t min_reconnect_delay_ms;
     uint64_t max_reconnect_delay_ms;

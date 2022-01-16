@@ -269,6 +269,18 @@ const char *aws_mqtt5_client_session_behavior_type_to_c_string(
     return "Unknown session behavior";
 }
 
+const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior) {
+    switch (outbound_aliasing_behavior) {
+        case AWS_MQTT5_COTABT_DUMB:
+            return "Dumb outbound topic aliasing behavior";
+        case AWS_MQTT5_COTABT_LRU:
+            return "LRU caching outbound topic aliasing behavior";
+    }
+
+    return "Unknown outbound topic aliasing behavior";
+}
+
 const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
     enum aws_mqtt5_client_lifecycle_event_type lifecycle_event) {
     switch (lifecycle_event) {

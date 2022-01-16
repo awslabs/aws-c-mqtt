@@ -245,6 +245,25 @@ enum aws_mqtt5_client_session_behavior_type {
     /* TODO: rejoin and resub support */
 };
 
+/*
+ * Incoming topic aliases are handled opaquely by the client.  Alias id will appear without modification
+ * in the received publish view, but the client will always inject the correct topic.
+ *
+ * Outbound aliasing behavior is controlled by this type.
+ */
+enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
+    /*
+     * Outbound aliasing is the user's responsibility.  Client will cache and auto-use
+     * previously-established aliases.
+     */
+    AWS_MQTT5_COTABT_DUMB,
+
+    /*
+     * Client ignores any user-specified topic aliasing and acts on the outbound alias set as an LRU cache.
+     */
+    AWS_MQTT5_COTABT_LRU,
+};
+
 /**
  * Non-persistent representation of an mqtt5 user property.
  */
@@ -564,6 +583,15 @@ AWS_MQTT_API const char *aws_mqtt5_client_reconnect_behavior_type_to_c_string(
  */
 AWS_MQTT_API const char *aws_mqtt5_client_session_behavior_type_to_c_string(
     enum aws_mqtt5_client_session_behavior_type session_behavior);
+
+/**
+ * Converts an outbound topic aliasing behavior type value to a readable description.
+ *
+ * @param session_behavior type of outbound topic aliasing behavior
+ * @return short string describing the outbound topic aliasing behavior
+ */
+AWS_MQTT_API const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior);
 
 /**
  * Converts a lifecycle event type value to a readable description.
