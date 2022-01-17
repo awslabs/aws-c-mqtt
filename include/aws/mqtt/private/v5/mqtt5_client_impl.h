@@ -39,11 +39,12 @@ struct aws_mqtt5_client {
     const struct aws_mqtt5_client_options_storage *config;
 
     /*
-     * TODO: negotiated settings struct/system with APIs for:
+     * TODO: negotiated settings system with APIs for:
      *      reset (defaults)
      *      apply CONNECT
      *      apply CONNACK
      */
+    struct aws_mqtt5_negotiated_settings negotiated_settings;
 
     struct aws_event_loop *loop;
 
@@ -71,14 +72,14 @@ struct aws_mqtt5_client {
      * Operation-related state
      *
      * operation flow:
-     *   (qos 0)
+     *   (qos 0 publish, disconnect)
      *      user (via cross thread task) ->
      *      queued_operations -> (on front of queue)
      *      current_operation -> (on completely encoded and passed to next handler)
      *      write_completion_operations -> (on socket write complete)
      *      release
      *
-     *   (qos 1+)
+     *   (qos 1+ publish, sub/unsub)
      *      user (via cross thread task) ->
      *      queued_operations -> (on front of queue)
      *      current_operation -> (on completely encoded and passed to next handler)
@@ -89,10 +90,9 @@ struct aws_mqtt5_client {
      *      mqtt packet id and in-order re-queueing in the case of a disconnection (required by spec)
      *
      *   On disconnect:
-     *      Fail and release all QoS0 operations in queued_operations, current_operation, write_completion_operations
-     *      If current_operation is QoS1+, move to tail of unacked_operations
-     *      Append unacked_operations to the head of queued_operations
-     *      Clear unacked_operations_table
+     *      Fail and release all non-QoS-1+-publish operations in unacked_operations, current_operation,
+     * write_completion_operations If current_operation is QoS1+ publish, move to tail of unacked_operations Append
+     * unacked_operations to the head of queued_operations Clear unacked_operations_table
      */
     struct aws_linked_list queued_operations;
     struct aws_mqtt5_operation *current_operation;
@@ -103,13 +103,19 @@ struct aws_mqtt5_client {
     struct aws_mqtt_topic_tree subscriptions;
 
     /*
-     *TODO: topic alias mappings, from-server and to-server have independent mappings
+     * TODO: topic alias mappings, from-server and to-server have independent mappings
      *
      * From-server requires a single table
      * To-server requires both a table and a list (for LRU)
      */
 
     /* TODO: statistics that use atomics because we don't care about consistency/isolation */
+
+    /*
+     * TODO: flow control system.  Initial requires only a count of # of unacked QoS1+ publishes.
+     * Followup will support per-op-type token-bucket rate controls against fixed IoT Core limits as an opt-in option,
+     * as well as throughput throttles and any other modellable IoT Core limit.
+     */
 
     /* next event times and related data */
     uint64_t next_ping_time;

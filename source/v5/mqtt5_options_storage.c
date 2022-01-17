@@ -291,7 +291,9 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     connect_op->maximum_packet_size_bytes = connect_options->maximum_packet_size_bytes;
 
     if (connect_options->will != NULL) {
-        connect_op->will = aws_mqtt5_operation_publish_new(allocator, connect_options->will, NULL);
+        connect_op->will_payload = connect_options->will_payload; /* TODO ref count */
+        connect_op->will =
+            aws_mqtt5_operation_publish_new(allocator, connect_options->will, connect_op->will_payload, NULL);
         if (connect_options->will != NULL && connect_op->will == NULL) {
             goto error;
         }
@@ -503,14 +505,6 @@ static void s_aws_mqtt5_operation_publish_log(struct aws_mqtt5_operation_publish
             AWS_LS_MQTT5_CONFIG, "(%p) aws_mqtt5_operation_publish - set correlation data", (void *)publish_op);
     }
 
-    if (publish_op->subscription_identifier_ptr != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_publish subscription identifier set to %" PRIu32,
-            (void *)publish_op,
-            publish_op->subscription_identifier);
-    }
-
     if (publish_op->content_type != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
@@ -529,7 +523,8 @@ static void s_destroy_operation_publish(void *object) {
 
     struct aws_mqtt5_operation_publish *publish_op = object;
 
-    aws_byte_buf_clean_up(&publish_op->payload);
+    /* TODO: payload release */
+
     aws_string_destroy(publish_op->topic);
     aws_string_destroy(publish_op->response_topic);
     aws_byte_buf_clean_up(&publish_op->correlation_data);
@@ -540,26 +535,13 @@ static void s_destroy_operation_publish(void *object) {
     aws_mem_release(publish_op->allocator, publish_op);
 }
 
-static int s_validate_publish_view(const struct aws_mqtt5_packet_publish_view *publish_view) {
-    if (publish_view->subscription_identifier != NULL) {
-        if (*publish_view->subscription_identifier > AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER) {
-            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        }
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
 struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_publish_view *publish_options,
+    struct aws_input_stream *payload,
     const struct aws_mqtt5_publish_completion_options *completion_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(publish_options != NULL);
-
-    if (s_validate_publish_view(publish_options)) {
-        return NULL;
-    }
 
     struct aws_mqtt5_operation_publish *publish_op =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_publish));
@@ -572,9 +554,7 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     aws_ref_count_init(&publish_op->base.ref_count, publish_op, s_destroy_operation_publish);
     publish_op->base.impl = publish_op;
 
-    if (aws_byte_buf_init_copy_from_cursor(&publish_op->payload, allocator, publish_options->payload)) {
-        goto error;
-    }
+    publish_op->payload = payload; /* TODO: ref count */
 
     publish_op->qos = publish_options->qos;
     publish_op->retain = publish_options->retain;
@@ -610,11 +590,6 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
         }
 
         publish_op->correlation_data_ptr = &publish_op->correlation_data;
-    }
-
-    if (publish_options->subscription_identifier != NULL) {
-        publish_op->subscription_identifier = *publish_options->subscription_identifier;
-        publish_op->subscription_identifier_ptr = &publish_op->subscription_identifier;
     }
 
     if (publish_options->content_type != NULL) {

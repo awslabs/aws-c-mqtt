@@ -329,8 +329,6 @@ struct aws_mqtt5_packet_unsubscribe_view {
 };
 
 struct aws_mqtt5_packet_publish_view {
-    struct aws_byte_cursor payload; /* possibly an input stream in the future */
-
     enum aws_mqtt5_qos qos;
     bool retain;
     struct aws_byte_cursor topic;
@@ -339,7 +337,11 @@ struct aws_mqtt5_packet_publish_view {
     const uint16_t *topic_alias;
     const struct aws_byte_cursor *response_topic;
     const struct aws_byte_cursor *correlation_data;
-    const uint32_t *subscription_identifier;
+
+    /* These are ignored when building publish operations */
+    size_t subscription_identifier_count;
+    const uint32_t *subscription_identifiers;
+
     const struct aws_byte_cursor *content_type;
 
     size_t user_property_count;
@@ -365,6 +367,7 @@ struct aws_mqtt5_packet_connect_view {
 
     uint32_t will_delay_interval_seconds;
     const struct aws_mqtt5_packet_publish_view *will;
+    struct aws_input_stream *will_payload;
 
     size_t user_property_count;
     const struct aws_mqtt5_user_property *user_properties;
@@ -528,6 +531,52 @@ struct aws_mqtt5_client_lifecycle_event {
  * Callback signature for mqtt5 client lifecycle events.
  */
 typedef void(aws_mqtt5_client_connection_event_callback_fn)(const struct aws_mqtt5_client_lifecycle_event *event);
+
+/*
+ * Message delivery types
+ */
+
+/*
+ * We include the message view on the payload callbacks to let the bindings avoid having to persist the message view
+ * when they want to deliver the payload in a single buffer.  This implies we need to persist the view and its backing
+ * contents in the client/decoder until the message has been fully processed.
+ */
+typedef int(aws_mqtt5_payload_delivery_on_stream_data_callback_fn)(
+    struct aws_mqtt5_packet_publish_view *message_view,
+    struct aws_byte_cursor payload_data,
+    void *user_data);
+typedef void(aws_mqtt5_payload_delivery_on_stream_complete_callback_fn)(
+    struct aws_mqtt5_packet_publish_view *message_view,
+    void *user_data);
+typedef void(aws_mqtt5_payload_delivery_on_stream_error_callback_fn)(
+    struct aws_mqtt5_packet_publish_view *message_view,
+    int error_code,
+    void *user_data);
+
+struct aws_mqtt5_publish_payload_delivery_options {
+    aws_mqtt5_payload_delivery_on_stream_data_callback_fn *on_data;
+    aws_mqtt5_payload_delivery_on_stream_complete_callback_fn *on_complete;
+    aws_mqtt5_payload_delivery_on_stream_error_callback_fn *on_error;
+    void *user_data;
+};
+
+/*
+ * Fundamental message delivery user callback.  Receiver must set delivery_options_out members in order to receive
+ * the payload.
+ */
+typedef int(aws_mqtt5_on_message_received_callback_fn)(
+    struct aws_mqtt5_packet_publish_view *message_view,
+    struct aws_mqtt5_publish_payload_delivery_options *delivery_options_out,
+    void *user_data);
+
+/*
+ * TODO: Associate with subscribe.  Should this be per-subscription (struct aws_mqtt5_subscription) or
+ * per-subscribe-call (add to aws_mqtt5_client_subscribe, operation, etc...)?
+ */
+struct aws_mqtt5_message_receive_options {
+    aws_mqtt5_on_message_received_callback_fn *on_received_fn;
+    void *user_data;
+};
 
 AWS_EXTERN_C_BEGIN
 

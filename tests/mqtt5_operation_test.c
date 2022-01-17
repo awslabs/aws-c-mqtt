@@ -5,6 +5,7 @@
 
 #include <aws/common/string.h>
 
+#include <aws/io/stream.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
@@ -49,7 +50,6 @@ static const char *PUBLISH_TOPIC = "greetings/friendly";
 
 static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator *allocator, void *ctx) {
     struct aws_mqtt5_packet_publish_view publish_options = {
-        .payload = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD),
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
         .retain = true,
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
@@ -58,16 +58,17 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
         .topic_alias = NULL,
         .response_topic = NULL,
         .correlation_data = NULL,
-        .subscription_identifier = NULL,
+        .subscription_identifier_count = 0,
+        .subscription_identifiers = NULL,
         .content_type = NULL,
         .user_property_count = 0,
         .user_properties = NULL,
     };
 
-    struct aws_mqtt5_operation_publish *publish_op = aws_mqtt5_operation_publish_new(allocator, &publish_options, NULL);
+    struct aws_mqtt5_operation_publish *publish_op =
+        aws_mqtt5_operation_publish_new(allocator, &publish_options, NULL, NULL);
 
-    ASSERT_BIN_ARRAYS_EQUALS(
-        publish_options.payload.ptr, publish_options.payload.len, publish_op->payload.buffer, publish_op->payload.len);
+    ASSERT_NULL(publish_op->payload);
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_op->qos);
     ASSERT_TRUE(publish_op->retain);
     ASSERT_NOT_NULL(publish_op->topic);
@@ -78,7 +79,6 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     ASSERT_NULL(publish_op->topic_alias_ptr);
     ASSERT_NULL(publish_op->response_topic);
     ASSERT_NULL(publish_op->correlation_data_ptr);
-    ASSERT_NULL(publish_op->subscription_identifier_ptr);
     ASSERT_NULL(publish_op->content_type);
     ASSERT_SUCCESS(s_verify_user_properties(&publish_op->user_properties, 0, NULL));
     ASSERT_NULL(publish_op->completion_options.completion_callback);
@@ -95,7 +95,6 @@ static const uint32_t s_message_expiry_interval_seconds = 60;
 static const uint16_t s_topic_alias = 2;
 static const char *s_response_topic = "A-response-topic";
 static const char *s_correlation_data = "CorrelationData";
-static const uint32_t s_subcription_identifier = 5;
 static const char *s_content_type = "JSON";
 
 static char s_user_prop1_name[] = "Property1";
@@ -144,7 +143,6 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     struct aws_byte_cursor content_type = aws_byte_cursor_from_c_str(s_content_type);
 
     struct aws_mqtt5_packet_publish_view publish_options = {
-        .payload = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD),
         .qos = AWS_MQTT5_QOS_EXACTLY_ONCE,
         .retain = false,
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
@@ -153,7 +151,8 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
         .topic_alias = &s_topic_alias,
         .response_topic = &response_topic,
         .correlation_data = &correlation_data,
-        .subscription_identifier = &s_subcription_identifier,
+        .subscription_identifier_count = 0,
+        .subscription_identifiers = NULL,
         .content_type = &content_type,
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = s_user_properties,
@@ -164,11 +163,13 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
         .completion_user_data = (void *)0xFFFF,
     };
 
-    struct aws_mqtt5_operation_publish *publish_op =
-        aws_mqtt5_operation_publish_new(allocator, &publish_options, &completion_options);
+    struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD);
+    struct aws_input_stream *payload_stream = aws_input_stream_new_from_cursor(allocator, &payload_cursor);
 
-    ASSERT_BIN_ARRAYS_EQUALS(
-        publish_options.payload.ptr, publish_options.payload.len, publish_op->payload.buffer, publish_op->payload.len);
+    struct aws_mqtt5_operation_publish *publish_op =
+        aws_mqtt5_operation_publish_new(allocator, &publish_options, payload_stream, &completion_options);
+
+    ASSERT_PTR_EQUALS(payload_stream, publish_op->payload);
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_op->qos);
     ASSERT_FALSE(publish_op->retain);
     ASSERT_NOT_NULL(publish_op->topic);
@@ -197,9 +198,6 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
         publish_op->correlation_data.buffer,
         publish_op->correlation_data.len);
 
-    ASSERT_PTR_EQUALS(&publish_op->subscription_identifier, publish_op->subscription_identifier_ptr);
-    ASSERT_UINT_EQUALS(*publish_options.subscription_identifier, publish_op->subscription_identifier);
-
     ASSERT_FALSE(publish_options.content_type->ptr == publish_op->content_type->bytes);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.content_type->ptr,
@@ -214,6 +212,8 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     ASSERT_PTR_EQUALS(completion_options.completion_user_data, publish_op->completion_options.completion_user_data);
 
     aws_mqtt5_operation_release(&publish_op->base);
+
+    aws_input_stream_destroy(payload_stream);
 
     return AWS_OP_SUCCESS;
 }

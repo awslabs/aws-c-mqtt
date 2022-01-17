@@ -13,7 +13,7 @@
 struct aws_allocator;
 struct aws_byte_cursor;
 struct aws_client_bootstrap;
-struct aws_http_proxy_strategy;
+struct aws_input_stream;
 struct aws_mqtt5_client;
 struct aws_tls_connection_options;
 struct aws_socket_options;
@@ -69,6 +69,7 @@ AWS_MQTT_API
 int aws_mqtt5_client_publish(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_publish_view *publish_options,
+    struct aws_input_stream *payload,
     const struct aws_mqtt5_publish_completion_options *completion_options);
 
 AWS_MQTT_API

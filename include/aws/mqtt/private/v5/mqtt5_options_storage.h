@@ -16,6 +16,7 @@
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_client_bootstrap;
+struct aws_input_stream;
 struct aws_mqtt5_client_options;
 struct aws_mqtt5_operation;
 struct aws_string;
@@ -104,6 +105,7 @@ struct aws_mqtt5_operation_connect {
 
     struct aws_mqtt5_operation_publish *will;
     uint32_t will_delay_interval_seconds;
+    struct aws_input_stream *will_payload;
 
     struct aws_mqtt5_user_property_set user_properties;
 };
@@ -112,8 +114,9 @@ struct aws_mqtt5_operation_publish {
     struct aws_mqtt5_operation base;
     struct aws_allocator *allocator;
 
-    struct aws_byte_buf payload; /* possibly an input stream in the future */
+    struct aws_input_stream *payload;
 
+    bool dup;
     enum aws_mqtt5_qos qos;
     bool retain;
     struct aws_string *topic;
@@ -125,8 +128,6 @@ struct aws_mqtt5_operation_publish {
     struct aws_string *response_topic;
     struct aws_byte_buf correlation_data;
     struct aws_byte_buf *correlation_data_ptr;
-    uint32_t subscription_identifier;
-    uint32_t *subscription_identifier_ptr;
     struct aws_string *content_type;
 
     struct aws_mqtt5_user_property_set user_properties;
@@ -244,6 +245,7 @@ AWS_MQTT_API struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconne
 AWS_MQTT_API struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_publish_view *publish_options,
+    struct aws_input_stream *payload,
     const struct aws_mqtt5_publish_completion_options *completion_options);
 
 AWS_MQTT_API struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
