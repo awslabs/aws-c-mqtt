@@ -661,18 +661,35 @@ typedef void(aws_mqtt5_client_connection_event_callback_fn)(const struct aws_mqt
  * when they want to deliver the payload in a single buffer.  This implies we need to persist the view and its backing
  * contents in the client/decoder until the message has been fully processed.
  */
+
+/**
+ * Invoked by the client when there is additional payload data ready to be read by the receiver.
+ */
 typedef int(aws_mqtt5_payload_delivery_on_stream_data_callback_fn)(
     struct aws_mqtt5_packet_publish_view *message_view,
     struct aws_byte_cursor payload_data,
     void *user_data);
+
+/**
+ * Invoked by the client when the message payload has been completely streamed.  Message delivery is considered
+ * successful and finished at this point.
+ */
 typedef void(aws_mqtt5_payload_delivery_on_stream_complete_callback_fn)(
     struct aws_mqtt5_packet_publish_view *message_view,
     void *user_data);
+
+/**
+ * Invoked by the client when there's an error during payload stream processing.  User should consider delivery to
+ * have failed and a failing PUBACK will be sent to the server if the connection is still good.
+ */
 typedef void(aws_mqtt5_payload_delivery_on_stream_error_callback_fn)(
     struct aws_mqtt5_packet_publish_view *message_view,
     int error_code,
     void *user_data);
 
+/**
+ * Configuration options for streaming delivery of an mqtt message payload
+ */
 struct aws_mqtt5_publish_payload_delivery_options {
     aws_mqtt5_payload_delivery_on_stream_data_callback_fn *on_data;
     aws_mqtt5_payload_delivery_on_stream_complete_callback_fn *on_complete;
@@ -680,7 +697,7 @@ struct aws_mqtt5_publish_payload_delivery_options {
     void *user_data;
 };
 
-/*
+/**
  * Fundamental message delivery user callback.
  *
  * Receiver must set all delivery_options_out callback members in order to receive the payload.
@@ -690,7 +707,9 @@ typedef int(aws_mqtt5_on_message_received_callback_fn)(
     struct aws_mqtt5_publish_payload_delivery_options *delivery_options_out,
     void *user_data);
 
-/*
+/**
+ * Configuration options for incoming message delivery.
+ *
  * TODO: Associate with subscribe.  Should this be per-subscription (struct aws_mqtt5_subscription) or
  * per-subscribe-call (add to aws_mqtt5_client_subscribe, operation, etc...)?
  */
