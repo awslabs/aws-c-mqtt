@@ -157,7 +157,7 @@ struct aws_mqtt5_operation_subscribe {
     uint32_t *subscription_identifier_ptr;
 
     struct aws_array_list subscriptions;
-    struct aws_byte_buf topic_storage;
+    struct aws_byte_buf topic_filter_storage;
 
     struct aws_mqtt5_user_property_set user_properties;
 

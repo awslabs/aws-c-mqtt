@@ -782,12 +782,12 @@ static void s_aws_mqtt5_operation_subscribe_log(struct aws_mqtt5_operation_subsc
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_subscribe subscription %zu: topic \"" PRInSTR
+            "(%p) aws_mqtt5_operation_subscribe subscription %zu: topic filter \"" PRInSTR
             "\", qos %d, no local %d, retain as "
             "published %d, retain handling %d(%s)",
             (void *)subscribe_op,
             i,
-            AWS_BYTE_CURSOR_PRI(view->topic),
+            AWS_BYTE_CURSOR_PRI(view->topic_filter),
             (int)view->qos,
             (int)view->no_local,
             (int)view->retain_as_published,
@@ -813,7 +813,7 @@ static void s_destroy_operation_subscribe(void *object) {
 
     struct aws_mqtt5_operation_subscribe *subscribe_op = object;
 
-    aws_byte_buf_clean_up(&subscribe_op->topic_storage);
+    aws_byte_buf_clean_up(&subscribe_op->topic_filter_storage);
     aws_array_list_clean_up(&subscribe_op->subscriptions);
 
     aws_mqtt5_user_property_set_clean_up(&subscribe_op->user_properties);
@@ -840,13 +840,13 @@ static int s_aws_mqtt5_operation_subscribe_init_subscriptions(
     size_t subscription_count,
     const struct aws_mqtt5_subscription_view *subscriptions) {
 
-    size_t total_topic_length = 0;
+    size_t total_topic_filter_length = 0;
     for (size_t i = 0; i < subscription_count; ++i) {
         const struct aws_mqtt5_subscription_view *view = &subscriptions[i];
-        total_topic_length += view->topic.len;
+        total_topic_filter_length += view->topic_filter.len;
     }
 
-    if (aws_byte_buf_init(&subscribe_op->topic_storage, subscribe_op->allocator, total_topic_length)) {
+    if (aws_byte_buf_init(&subscribe_op->topic_filter_storage, subscribe_op->allocator, total_topic_filter_length)) {
         return AWS_OP_ERR;
     }
 
@@ -862,7 +862,7 @@ static int s_aws_mqtt5_operation_subscribe_init_subscriptions(
         const struct aws_mqtt5_subscription_view *source = &subscriptions[i];
         struct aws_mqtt5_subscription_view copy = *source;
 
-        if (aws_byte_buf_append_and_update(&subscribe_op->topic_storage, &copy.topic)) {
+        if (aws_byte_buf_append_and_update(&subscribe_op->topic_filter_storage, &copy.topic_filter)) {
             return AWS_OP_ERR;
         }
 

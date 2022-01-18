@@ -170,7 +170,7 @@ enum aws_mqtt5_unsuback_reason_code {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901022
  */
 enum aws_mqtt5_packet_type {
-    /** algebraic unions of packet data structs use this value to indicate no data */
+    /** algebraic unions of packet data structs may use this value (0) to indicate no data */
     AWS_MQTT5_PT_RESERVED = 0,
     AWS_MQTT5_PT_CONNECT = 1,
     AWS_MQTT5_PT_CONNACK = 2,
@@ -246,10 +246,13 @@ enum aws_mqtt5_client_session_behavior_type {
 };
 
 /*
+ * Outbound aliasing behavior is controlled by this type.
+ *
+ * Topic alias behavior is described in https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901113
+ *
  * Incoming topic aliases are handled opaquely by the client.  Alias id will appear without modification
  * in the received publish view, but the client will always inject the correct topic.
  *
- * Outbound aliasing behavior is controlled by this type.
  */
 enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
     /*
@@ -285,20 +288,66 @@ enum aws_mqtt5_payload_format_indicator {
     AWS_MQTT5_PFI_UTF8 = 1,
 };
 
+/**
+ * Configures how retained messages should be handled when subscribing with a topic filter that matches topics with
+ * associated retained messages.
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901169
+ */
 enum aws_mqtt5_retain_handling_type {
+
+    /**
+     * Server should send all retained messages on topics that match the subscription's filter.
+     */
     AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE = 0x00,
+
+    /**
+     * Server should send all retained messages on topics that match the subscription's filter, where this is the
+     * first (relative to connection) subscription filter that matches the topic with a retained message.
+     */
     AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE_IF_NEW = 0x01,
+
+    /**
+     * Subscribe must not trigger any retained message publishes from the server.
+     */
     AWS_MQTT5_RHT_DONT_SEND = 0x02,
 };
 
+/**
+ * Configures a single subscription within a Subscribe operation
+ */
 struct aws_mqtt5_subscription_view {
-    struct aws_byte_cursor topic;
+    /**
+     * Topic filter to subscribe to
+     */
+    struct aws_byte_cursor topic_filter;
+
+    /**
+     * Maximum QOS that the subscriber will accept messages for.  Negotiated QoS may be different.
+     */
     enum aws_mqtt5_qos qos;
+
+    /**
+     * Should the server not send publishes to a client when that client was the one who sent the publish?
+     */
     bool no_local;
+
+    /**
+     * Should messages sent due to this subscription keep the retain flag preserved on the message?
+     */
     bool retain_as_published;
+
+    /**
+     * Should retained messages on matching topics be sent in reaction to this subscription?
+     */
     enum aws_mqtt5_retain_handling_type retain_handling_type;
 };
 
+/**
+ * Read-only snapshot of a DISCONNECT packet
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205
+ */
 struct aws_mqtt5_packet_disconnect_view {
     enum aws_mqtt5_disconnect_reason_code reason_code;
     const uint32_t *session_expiry_interval_seconds;
@@ -310,6 +359,11 @@ struct aws_mqtt5_packet_disconnect_view {
     const struct aws_byte_cursor *server_reference;
 };
 
+/**
+ * Read-only snapshot of a SUBSCRIBE packet
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
+ */
 struct aws_mqtt5_packet_subscribe_view {
     size_t subscription_count;
     const struct aws_mqtt5_subscription_view *subscriptions;
@@ -320,6 +374,11 @@ struct aws_mqtt5_packet_subscribe_view {
     const struct aws_mqtt5_user_property *user_properties;
 };
 
+/**
+ * Read-only snapshot of an UNSUBSCRIBE packet
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
+ */
 struct aws_mqtt5_packet_unsubscribe_view {
     size_t topic_count;
     const struct aws_byte_cursor *topics;
@@ -328,6 +387,12 @@ struct aws_mqtt5_packet_unsubscribe_view {
     const struct aws_mqtt5_user_property *user_properties;
 };
 
+/**
+ * Read-only snapshot of a PUBLISH packet.  Used both in configuration of a publish operation and callback
+ * data in message receipt.
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
+ */
 struct aws_mqtt5_packet_publish_view {
     enum aws_mqtt5_qos qos;
     bool retain;
@@ -348,6 +413,11 @@ struct aws_mqtt5_packet_publish_view {
     const struct aws_mqtt5_user_property *user_properties;
 };
 
+/**
+ * Read-only snapshot of a CONNECT packet
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033
+ */
 struct aws_mqtt5_packet_connect_view {
     uint32_t keep_alive_interval_seconds;
 
@@ -373,10 +443,14 @@ struct aws_mqtt5_packet_connect_view {
     const struct aws_mqtt5_user_property *user_properties;
 };
 
-/*
- * Important Note: The connack view is *NOT* guaranteed to be the negotiated settings that the client connection
+/**
+ * Read-only snapshot of a CONNACK packet.
+ *
+ * Important Note: The CONNACK view is *NOT* guaranteed to be the negotiated settings that the client connection
  * will be using (due to implicit defaults and optional properties).  The negotiated settings are communicated in
  * a separate structure.
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074
  */
 struct aws_mqtt5_packet_connack_view {
     bool session_present;
@@ -405,6 +479,11 @@ struct aws_mqtt5_packet_connack_view {
     const struct aws_byte_cursor *authentication_data;
 };
 
+/**
+ * Read-only snapshot of a PUBACK packet
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901121
+ */
 struct aws_mqtt5_packet_puback_view {
     enum aws_mqtt5_puback_reason_code reason_code;
     const struct aws_byte_cursor *reason_string;
@@ -413,6 +492,11 @@ struct aws_mqtt5_packet_puback_view {
     const struct aws_mqtt5_user_property *user_properties;
 };
 
+/**
+ * Read-only snapshot of a SUBACK packet
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171
+ */
 struct aws_mqtt5_packet_suback_view {
     const struct aws_byte_cursor *reason_string;
 
@@ -423,6 +507,11 @@ struct aws_mqtt5_packet_suback_view {
     const enum aws_mqtt5_suback_reason_code *reason_codes;
 };
 
+/**
+ * Read-only snapshot of an UNSUBACK packet
+ *
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
+ */
 struct aws_mqtt5_packet_unsuback_view {
     const struct aws_byte_cursor *reason_string;
 
@@ -433,36 +522,61 @@ struct aws_mqtt5_packet_unsuback_view {
     const enum aws_mqtt5_unsuback_reason_code *reason_codes;
 };
 
+/*
+ * Types related to client operation completion
+ */
+
+/**
+ * Signature of callback to invoke on Publish success/failure.
+ */
 typedef void(aws_mqtt5_publish_complete_fn)(
     const struct aws_mqtt5_packet_puback_view *puback,
     int error_code,
     void *complete_ctx);
 
+/**
+ * Signature of callback to invoke on Subscribe success/failure.
+ */
 typedef void(aws_mqtt5_subscribe_complete_fn)(
     const struct aws_mqtt5_packet_suback_view *suback,
     int error_code,
     void *complete_ctx);
 
+/**
+ * Signature of callback to invoke on Unsubscribe success/failure.
+ */
 typedef void(aws_mqtt5_unsubscribe_complete_fn)(
     const struct aws_mqtt5_packet_unsuback_view *unsuback,
     int error_code,
     void *complete_ctx);
 
+/**
+ * Completion callback options for the Publish operation
+ */
 struct aws_mqtt5_publish_completion_options {
     aws_mqtt5_publish_complete_fn *completion_callback;
     void *completion_user_data;
 };
 
+/**
+ * Completion callback options for the Subscribe operation
+ */
 struct aws_mqtt5_subscribe_completion_options {
     aws_mqtt5_subscribe_complete_fn *completion_callback;
     void *completion_user_data;
 };
 
+/**
+ * Completion callback options for the Unsubscribe operation
+ */
 struct aws_mqtt5_unsubscribe_completion_options {
     aws_mqtt5_unsubscribe_complete_fn *completion_callback;
     void *completion_user_data;
 };
 
+/**
+ * Mqtt behavior settings that are dynamically negotiated as part of the CONNECT/CONNACK exchange.
+ */
 struct aws_mqtt5_negotiated_settings {
     enum aws_mqtt5_qos maximum_qos;
 
@@ -479,16 +593,17 @@ struct aws_mqtt5_negotiated_settings {
 };
 
 /**
- * Type of a lifecycle event
+ * Type of a client lifecycle event
  */
 enum aws_mqtt5_client_lifecycle_event_type {
     /**
-     * Lifecycle event containing the result of a connection attempt
+     * Lifecycle event containing the result (success/failure) of a connection attempt.
      */
     AWS_MQTT5_CLET_CONNECTION_RESULT,
 
     /**
-     * Lifecycle event containing information about a disconnect
+     * Lifecycle event containing information about a disconnect.  Emitted at most once relative to a single
+     * previous successful connection event.
      */
     AWS_MQTT5_CLET_DISCONNECTION,
 
@@ -502,6 +617,7 @@ enum aws_mqtt5_client_lifecycle_event_type {
  * Details about a client lifecycle event.
  */
 struct aws_mqtt5_client_lifecycle_event {
+
     /**
      * Type of event this is.
      */
@@ -513,17 +629,23 @@ struct aws_mqtt5_client_lifecycle_event {
     int aws_error_code;
 
     /**
-     * User data associated with the client's lifecycle event handler.  Set during configuration.
+     * User data associated with the client's lifecycle event handler.  Set with client configuration.
      */
     void *user_data;
 
-    /* If this event was caused by receiving a CONNACK, this will be set */
+    /**
+     * If this event was caused by receiving a CONNACK, this will be a view of that packet.
+     */
     const struct aws_mqtt5_packet_connack_view *connack_data;
 
-    /* If this is a successful connection establishment, this will be set */
+    /**
+     * If this is a successful connection establishment, this will contain the negotiated mqtt5 behavioral settings
+     */
     const struct aws_mqtt5_negotiated_settings *settings;
 
-    /* If this event was caused by receiving a DISCONNECT, this will be set */
+    /**
+     * If this event was caused by receiving a DISCONNECT, this will be a view of that packet.
+     */
     const struct aws_mqtt5_packet_disconnect_view *disconnect_data;
 };
 
@@ -533,10 +655,8 @@ struct aws_mqtt5_client_lifecycle_event {
 typedef void(aws_mqtt5_client_connection_event_callback_fn)(const struct aws_mqtt5_client_lifecycle_event *event);
 
 /*
- * Message delivery types
- */
-
-/*
+ * Types related to incoming message delivery.
+ *
  * We include the message view on the payload callbacks to let the bindings avoid having to persist the message view
  * when they want to deliver the payload in a single buffer.  This implies we need to persist the view and its backing
  * contents in the client/decoder until the message has been fully processed.
@@ -561,8 +681,9 @@ struct aws_mqtt5_publish_payload_delivery_options {
 };
 
 /*
- * Fundamental message delivery user callback.  Receiver must set delivery_options_out members in order to receive
- * the payload.
+ * Fundamental message delivery user callback.
+ *
+ * Receiver must set all delivery_options_out callback members in order to receive the payload.
  */
 typedef int(aws_mqtt5_on_message_received_callback_fn)(
     struct aws_mqtt5_packet_publish_view *message_view,
