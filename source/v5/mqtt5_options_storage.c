@@ -145,86 +145,86 @@ static void s_aws_mqtt5_packet_connect_storage_log(struct aws_mqtt5_packet_conne
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect keep alive interval set to %" PRIu32,
+        "(%p) aws_mqtt5_packet_connect_storage keep alive interval set to %" PRIu32,
         (void *)connect_storage,
         connect_storage->keep_alive_interval_seconds);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect client id set to \"%s\"",
+        "(%p) aws_mqtt5_packet_connect_storage client id set to \"%s\"",
         (void *)connect_storage,
         aws_string_c_str(connect_storage->client_id));
 
     if (connect_storage->username != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_connect username set to \"%s\"",
+            "(%p) aws_mqtt5_packet_connect_storage username set to \"%s\"",
             (void *)connect_storage,
             aws_string_c_str(connect_storage->username));
     }
 
     if (connect_storage->password_ptr != NULL) {
         AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_OPERATION, "(%p) aws_mqtt5_operation_connect password set", (void *)connect_storage);
+            AWS_LS_MQTT5_OPERATION, "(%p) aws_mqtt5_packet_connect_storage password set", (void *)connect_storage);
     }
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect session expiry interval set to %" PRIu32,
+        "(%p) aws_mqtt5_packet_connect_storage session expiry interval set to %" PRIu32,
         (void *)connect_storage,
         connect_storage->session_expiry_interval_seconds);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect session behavior set to %d(%s)",
+        "(%p) aws_mqtt5_packet_connect_storage session behavior set to %d(%s)",
         (void *)connect_storage,
         (int)connect_storage->session_behavior,
         aws_mqtt5_client_session_behavior_type_to_c_string(connect_storage->session_behavior));
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect request response information set to %d",
+        "(%p) aws_mqtt5_packet_connect_storage request response information set to %d",
         (void *)connect_storage,
         (int)connect_storage->request_response_information);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect request problem information set to %d",
+        "(%p) aws_mqtt5_packet_connect_storage request problem information set to %d",
         (void *)connect_storage,
         (int)connect_storage->request_problem_information);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect receive maximum set to %" PRIu16,
+        "(%p) aws_mqtt5_packet_connect_storage receive maximum set to %" PRIu16,
         (void *)connect_storage,
         connect_storage->receive_maximum);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect topic alias maximum set to %" PRIu16,
+        "(%p) aws_mqtt5_packet_connect_storage topic alias maximum set to %" PRIu16,
         (void *)connect_storage,
         connect_storage->topic_alias_maximum);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect maximum packet size set to %" PRIu32,
+        "(%p) aws_mqtt5_packet_connect_storage maximum packet size set to %" PRIu32,
         (void *)connect_storage,
         connect_storage->maximum_packet_size_bytes);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect set will to (%p)",
+        "(%p) aws_mqtt5_packet_connect_storage set will to (%p)",
         (void *)connect_storage,
         (void *)connect_storage->will);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_connect will delay interval set to %" PRIu32,
+        "(%p) aws_mqtt5_packet_connect_storage will delay interval set to %" PRIu32,
         (void *)connect_storage,
         connect_storage->will_delay_interval_seconds);
 
     s_aws_mqtt5_user_property_set_log(
-        &connect_storage->user_properties, connect_storage, "aws_mqtt5_operation_connect");
+        &connect_storage->user_properties, connect_storage, "aws_mqtt5_packet_connect_storage");
 }
 
 void aws_mqtt5_packet_storage_connect_clean_up(struct aws_mqtt5_packet_connect_storage *storage) {
@@ -351,7 +351,7 @@ static void s_aws_mqtt5_packet_disconnect_storage_log(struct aws_mqtt5_packet_di
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_disconnect reason code set to %d(%s)",
+        "(%p) aws_mqtt5_packet_disconnect_storage reason code set to %d(%s)",
         (void *)disconnect_storage,
         (int)disconnect_storage->reason_code,
         aws_mqtt5_disconnect_reason_code_to_c_string(disconnect_storage->reason_code));
@@ -359,7 +359,7 @@ static void s_aws_mqtt5_packet_disconnect_storage_log(struct aws_mqtt5_packet_di
     if (disconnect_storage->session_expiry_interval_seconds_ptr != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_disconnect session expiry interval set to %" PRIu32,
+            "(%p) aws_mqtt5_packet_disconnect_storage session expiry interval set to %" PRIu32,
             (void *)disconnect_storage,
             disconnect_storage->session_expiry_interval_seconds);
     }
@@ -367,7 +367,7 @@ static void s_aws_mqtt5_packet_disconnect_storage_log(struct aws_mqtt5_packet_di
     if (disconnect_storage->reason_string != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_disconnect reason string set to \"%s\"",
+            "(%p) aws_mqtt5_packet_disconnect_storage reason string set to \"%s\"",
             (void *)disconnect_storage,
             aws_string_c_str(disconnect_storage->reason_string));
     }
@@ -375,13 +375,13 @@ static void s_aws_mqtt5_packet_disconnect_storage_log(struct aws_mqtt5_packet_di
     if (disconnect_storage->server_reference != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_disconnect server reference set to \"%s\"",
+            "(%p) aws_mqtt5_packet_disconnect_storage server reference set to \"%s\"",
             (void *)disconnect_storage,
             aws_string_c_str(disconnect_storage->server_reference));
     }
 
     s_aws_mqtt5_user_property_set_log(
-        &disconnect_storage->user_properties, disconnect_storage, "aws_mqtt5_operation_disconnect");
+        &disconnect_storage->user_properties, disconnect_storage, "aws_mqtt5_packet_disconnect_storage");
 }
 
 void aws_aws_mqtt5_packet_disconnect_storage_clean_up(struct aws_mqtt5_packet_disconnect_storage *disconnect_storage) {
@@ -487,26 +487,26 @@ static void s_aws_mqtt5_packet_publish_storage_log(struct aws_mqtt5_packet_publi
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) aws_mqtt5_operation_publish qos set to %d",
+        "(%p) aws_mqtt5_packet_publish_storage qos set to %d",
         (void *)publish_storage,
         (int)publish_storage->qos);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) aws_mqtt5_operation_publish retain set to %d",
+        "(%p) aws_mqtt5_packet_publish_storage retain set to %d",
         (void *)publish_storage,
         (int)publish_storage->retain);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_OPERATION,
-        "(%p) aws_mqtt5_operation_publish topic set to \"%s\"",
+        "(%p) aws_mqtt5_packet_publish_storage topic set to \"%s\"",
         (void *)publish_storage,
         aws_string_c_str(publish_storage->topic));
 
     if (publish_storage->payload_format != AWS_MQTT5_PFI_NOT_SET) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_publish payload format indicator set to %d(%s)",
+            "(%p) aws_mqtt5_packet_publish_storage payload format indicator set to %d(%s)",
             (void *)publish_storage,
             (int)publish_storage->payload_format,
             aws_mqtt5_payload_format_indicator_to_c_string(publish_storage->payload_format));
@@ -515,7 +515,7 @@ static void s_aws_mqtt5_packet_publish_storage_log(struct aws_mqtt5_packet_publi
     if (publish_storage->message_expiry_interval_seconds_ptr != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_publish message expiry interval set to %" PRIu32,
+            "(%p) aws_mqtt5_packet_publish_storage message expiry interval set to %" PRIu32,
             (void *)publish_storage,
             publish_storage->message_expiry_interval_seconds);
     }
@@ -523,7 +523,7 @@ static void s_aws_mqtt5_packet_publish_storage_log(struct aws_mqtt5_packet_publi
     if (publish_storage->topic_alias_ptr != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_publish topic alias set to %" PRIu16,
+            "(%p) aws_mqtt5_packet_publish_storage topic alias set to %" PRIu16,
             (void *)publish_storage,
             publish_storage->topic_alias);
     }
@@ -531,26 +531,28 @@ static void s_aws_mqtt5_packet_publish_storage_log(struct aws_mqtt5_packet_publi
     if (publish_storage->response_topic != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_publish response topic set to \"%s\"",
+            "(%p) aws_mqtt5_packet_publish_storage response topic set to \"%s\"",
             (void *)publish_storage,
             aws_string_c_str(publish_storage->response_topic));
     }
 
     if (publish_storage->correlation_data_ptr != NULL) {
         AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_CONFIG, "(%p) aws_mqtt5_operation_publish - set correlation data", (void *)publish_storage);
+            AWS_LS_MQTT5_CONFIG,
+            "(%p) aws_mqtt5_packet_publish_storage - set correlation data",
+            (void *)publish_storage);
     }
 
     if (publish_storage->content_type != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_publish content type set to \"%s\"",
+            "(%p) aws_mqtt5_packet_publish_storage content type set to \"%s\"",
             (void *)publish_storage,
             aws_string_c_str(publish_storage->content_type));
     }
 
     s_aws_mqtt5_user_property_set_log(
-        &publish_storage->user_properties, publish_storage, "aws_mqtt5_operation_publish");
+        &publish_storage->user_properties, publish_storage, "aws_mqtt5_packet_publish_storage");
 }
 
 int aws_mqtt5_packet_publish_storage_init(
@@ -697,14 +699,14 @@ static void s_aws_mqtt5_packet_unsubscribe_storage_log(
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_unsubscribe topic %zu: \"" PRInSTR "\"",
+            "(%p) aws_mqtt5_packet_unsubscribe_storage topic %zu: \"" PRInSTR "\"",
             (void *)unsubscribe_storage,
             i,
             AWS_BYTE_CURSOR_PRI(topic_cursor));
     }
 
     s_aws_mqtt5_user_property_set_log(
-        &unsubscribe_storage->user_properties, unsubscribe_storage, "aws_mqtt5_operation_unsubscribe");
+        &unsubscribe_storage->user_properties, unsubscribe_storage, "aws_mqtt5_packet_unsubscribe_storage");
 }
 
 void aws_mqtt5_packet_unsubscribe_storage_clean_up(struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage) {
@@ -856,7 +858,7 @@ static void s_aws_mqtt5_packet_subscribe_storage_log(struct aws_mqtt5_packet_sub
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_subscribe subscription %zu: topic filter \"" PRInSTR
+            "(%p) aws_mqtt5_packet_subscribe_storage subscription %zu: topic filter \"" PRInSTR
             "\", qos %d, no local %d, retain as "
             "published %d, retain handling %d(%s)",
             (void *)subscribe_storage,
@@ -872,13 +874,13 @@ static void s_aws_mqtt5_packet_subscribe_storage_log(struct aws_mqtt5_packet_sub
     if (subscribe_storage->subscription_identifier_ptr != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_OPERATION,
-            "(%p) aws_mqtt5_operation_subscribe subscription identifier set to %" PRIu32,
+            "(%p) aws_mqtt5_packet_subscribe_storage subscription identifier set to %" PRIu32,
             (void *)subscribe_storage,
             subscribe_storage->subscription_identifier);
     }
 
     s_aws_mqtt5_user_property_set_log(
-        &subscribe_storage->user_properties, subscribe_storage, "aws_mqtt5_operation_subscribe");
+        &subscribe_storage->user_properties, subscribe_storage, "aws_mqtt5_packet_subscribe_storage");
 }
 
 void aws_mqtt5_packet_subscribe_storage_clean_up(struct aws_mqtt5_packet_subscribe_storage *subscribe_storage) {
@@ -1034,20 +1036,20 @@ static void s_log_tls_connection_options(
     const char *log_text) {
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage %s tls options set:",
+        "(%p) aws_mqtt5_client_options_storage %s tls options set:",
         (void *)options_storage,
         log_text);
     if (tls_options->advertise_alpn_message && tls_options->alpn_list) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CONFIG,
-            "(%p) mqtt5_client_options_storage %s tls options alpn protocol list set to \"%s\"",
+            "(%p) aws_mqtt5_client_options_storage %s tls options alpn protocol list set to \"%s\"",
             (void *)options_storage,
             log_text,
             aws_string_c_str(tls_options->alpn_list));
     } else {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CONFIG,
-            "(%p) mqtt5_client_options_storage %s tls options alpn not used",
+            "(%p) aws_mqtt5_client_options_storage %s tls options alpn not used",
             (void *)options_storage,
             log_text);
     }
@@ -1055,27 +1057,27 @@ static void s_log_tls_connection_options(
     if (tls_options->server_name) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CONFIG,
-            "(%p) mqtt5_client_options_storage %s tls options SNI value set to \"%s\"",
+            "(%p) aws_mqtt5_client_options_storage %s tls options SNI value set to \"%s\"",
             (void *)options_storage,
             log_text,
             aws_string_c_str(tls_options->server_name));
     } else {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CONFIG,
-            "(%p) mqtt5_client_options_storage %s tls options SNI not used",
+            "(%p) aws_mqtt5_client_options_storage %s tls options SNI not used",
             (void *)options_storage,
             log_text);
     }
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage %s tls options tls context set to (%p)",
+        "(%p) aws_mqtt5_client_options_storage %s tls options tls context set to (%p)",
         (void *)options_storage,
         log_text,
         (void *)(tls_options->ctx));
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage %s tls options handshake timeout set to %" PRIu32,
+        "(%p) aws_mqtt5_client_options_storage %s tls options handshake timeout set to %" PRIu32,
         (void *)options_storage,
         log_text,
         tls_options->timeout_ms);
@@ -1091,24 +1093,24 @@ static void s_aws_mqtt5_client_options_storage_log(struct aws_mqtt5_client_optio
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage host name set to %s",
+        "(%p) aws_mqtt5_client_options_storage host name set to %s",
         (void *)options_storage,
         aws_string_c_str(options_storage->host_name));
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage port set to %" PRIu16,
+        "(%p) aws_mqtt5_client_options_storage port set to %" PRIu16,
         (void *)options_storage,
         options_storage->port);
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage client bootstrap set to (%p)",
+        "(%p) aws_mqtt5_client_options_storage client bootstrap set to (%p)",
         (void *)options_storage,
         (void *)options_storage->bootstrap);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage socket options set to: type = %d, domain = %d, connect_timeout_ms = "
+        "(%p) aws_mqtt5_client_options_storage socket options set to: type = %d, domain = %d, connect_timeout_ms = "
         "%" PRIu32,
         (void *)options_storage,
         (int)options_storage->socket_options.type,
@@ -1117,7 +1119,8 @@ static void s_aws_mqtt5_client_options_storage_log(struct aws_mqtt5_client_optio
     if (options_storage->socket_options.keepalive) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CONFIG,
-            "(%p) mqtt5_client_options_storage socket keepalive options set to: keep_alive_interval_sec = %" PRIu16 ", "
+            "(%p) aws_mqtt5_client_options_storage socket keepalive options set to: keep_alive_interval_sec = %" PRIu16
+            ", "
             "keep_alive_timeout_sec = %" PRIu16 ", keep_alive_max_failed_probes = %" PRIu16,
             (void *)options_storage,
             options_storage->socket_options.keep_alive_interval_sec,
@@ -1132,17 +1135,17 @@ static void s_aws_mqtt5_client_options_storage_log(struct aws_mqtt5_client_optio
     if (options_storage->http_proxy_config != NULL) {
 
         AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_CONFIG, "(%p) mqtt5_client_options_storage using http proxy:", (void *)options_storage);
+            AWS_LS_MQTT5_CONFIG, "(%p) aws_mqtt5_client_options_storage using http proxy:", (void *)options_storage);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CONFIG,
-            "(%p) mqtt5_client_options_storage http proxy host name set to " PRInSTR,
+            "(%p) aws_mqtt5_client_options_storage http proxy host name set to " PRInSTR,
             (void *)options_storage,
             AWS_BYTE_CURSOR_PRI(options_storage->http_proxy_options.host));
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CONFIG,
-            "(%p) mqtt5_client_options_storage http proxy port set to %" PRIu16,
+            "(%p) aws_mqtt5_client_options_storage http proxy port set to %" PRIu16,
             (void *)options_storage,
             options_storage->http_proxy_options.port);
 
@@ -1154,7 +1157,7 @@ static void s_aws_mqtt5_client_options_storage_log(struct aws_mqtt5_client_optio
         if (options_storage->http_proxy_options.proxy_strategy != NULL) {
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT5_CONFIG,
-                "(%p) mqtt5_client_options_storage http proxy strategy set to (%p)",
+                "(%p) aws_mqtt5_client_options_storage http proxy strategy set to (%p)",
                 (void *)options_storage,
                 (void *)options_storage->http_proxy_options.proxy_strategy);
         }
@@ -1162,11 +1165,11 @@ static void s_aws_mqtt5_client_options_storage_log(struct aws_mqtt5_client_optio
 
     if (options_storage->websocket_handshake_transform != NULL) {
         AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_CONFIG, "(%p) mqtt5_client_options_storage enabling websockets", (void *)options_storage);
+            AWS_LS_MQTT5_CONFIG, "(%p) aws_mqtt5_client_options_storage enabling websockets", (void *)options_storage);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CONFIG,
-            "(%p) mqtt5_client_options_storage websocket handshake transform user data set to (%p)",
+            "(%p) aws_mqtt5_client_options_storage websocket handshake transform user data set to (%p)",
             (void *)options_storage,
             options_storage->websocket_handshake_transform_user_data);
     } else {
@@ -1176,14 +1179,14 @@ static void s_aws_mqtt5_client_options_storage_log(struct aws_mqtt5_client_optio
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage outbound topic aliasing behavior set to %d(%s)",
+        "(%p) aws_mqtt5_client_options_storage outbound topic aliasing behavior set to %d(%s)",
         (void *)options_storage,
         (int)options_storage->outbound_topic_aliasing_behavior,
         aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(options_storage->outbound_topic_aliasing_behavior));
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage reconnect behavior set to %d(%s)",
+        "(%p) aws_mqtt5_client_options_storage reconnect behavior set to %d(%s)",
         (void *)options_storage,
         (int)options_storage->reconnect_behavior,
         aws_mqtt5_client_reconnect_behavior_type_to_c_string(options_storage->reconnect_behavior));
@@ -1197,26 +1200,27 @@ static void s_aws_mqtt5_client_options_storage_log(struct aws_mqtt5_client_optio
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage minimum necessary connection time in order to reset the reconnect delay set "
+        "(%p) aws_mqtt5_client_options_storage minimum necessary connection time in order to reset the reconnect delay "
+        "set "
         "to %" PRIu64 " ms",
         (void *)options_storage,
         options_storage->min_connected_time_to_reset_reconnect_delay_ms);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage ping timeout interval set to %" PRIu32 " ms",
+        "(%p) aws_mqtt5_client_options_storage ping timeout interval set to %" PRIu32 " ms",
         (void *)options_storage,
         options_storage->ping_timeout_ms);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage connect data set to (%p)",
+        "(%p) aws_mqtt5_client_options_storage connect data set to (%p)",
         (void *)options_storage,
         (void *)options_storage->connect);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CONFIG,
-        "(%p) mqtt5_client_options_storage lifecycle event handler user data set to (%p)",
+        "(%p) aws_mqtt5_client_options_storage lifecycle event handler user data set to (%p)",
         (void *)options_storage,
         options_storage->lifecycle_event_handler_user_data);
 }
