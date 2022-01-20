@@ -69,18 +69,25 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
         aws_mqtt5_operation_publish_new(allocator, &publish_options, NULL, NULL);
 
     ASSERT_NULL(publish_op->payload);
-    ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_op->qos);
-    ASSERT_TRUE(publish_op->retain);
-    ASSERT_NOT_NULL(publish_op->topic);
+
+    struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
+
+    ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_storage->qos);
+    ASSERT_TRUE(publish_storage->retain);
+    ASSERT_NOT_NULL(publish_storage->topic);
     ASSERT_BIN_ARRAYS_EQUALS(
-        publish_options.topic.ptr, publish_options.topic.len, publish_op->topic->bytes, publish_op->topic->len);
-    ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)publish_op->payload_format);
-    ASSERT_NULL(publish_op->message_expiry_interval_seconds_ptr);
-    ASSERT_NULL(publish_op->topic_alias_ptr);
-    ASSERT_NULL(publish_op->response_topic);
-    ASSERT_NULL(publish_op->correlation_data_ptr);
-    ASSERT_NULL(publish_op->content_type);
-    ASSERT_SUCCESS(s_verify_user_properties(&publish_op->user_properties, 0, NULL));
+        publish_options.topic.ptr,
+        publish_options.topic.len,
+        publish_storage->topic->bytes,
+        publish_storage->topic->len);
+    ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)publish_storage->payload_format);
+    ASSERT_NULL(publish_storage->message_expiry_interval_seconds_ptr);
+    ASSERT_NULL(publish_storage->topic_alias_ptr);
+    ASSERT_NULL(publish_storage->response_topic);
+    ASSERT_NULL(publish_storage->correlation_data_ptr);
+    ASSERT_NULL(publish_storage->content_type);
+    ASSERT_SUCCESS(s_verify_user_properties(&publish_storage->user_properties, 0, NULL));
+
     ASSERT_NULL(publish_op->completion_options.completion_callback);
     ASSERT_NULL(publish_op->completion_options.completion_user_data);
 
@@ -170,43 +177,51 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
         aws_mqtt5_operation_publish_new(allocator, &publish_options, payload_stream, &completion_options);
 
     ASSERT_PTR_EQUALS(payload_stream, publish_op->payload);
-    ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_op->qos);
-    ASSERT_FALSE(publish_op->retain);
-    ASSERT_NOT_NULL(publish_op->topic);
+
+    struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
+
+    ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_storage->qos);
+    ASSERT_FALSE(publish_storage->retain);
+    ASSERT_NOT_NULL(publish_storage->topic);
     ASSERT_BIN_ARRAYS_EQUALS(
-        publish_options.topic.ptr, publish_options.topic.len, publish_op->topic->bytes, publish_op->topic->len);
-    ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)publish_op->payload_format);
+        publish_options.topic.ptr,
+        publish_options.topic.len,
+        publish_storage->topic->bytes,
+        publish_storage->topic->len);
+    ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)publish_storage->payload_format);
 
-    ASSERT_PTR_EQUALS(&publish_op->message_expiry_interval_seconds, publish_op->message_expiry_interval_seconds_ptr);
-    ASSERT_UINT_EQUALS(*publish_options.message_expiry_interval_seconds, publish_op->message_expiry_interval_seconds);
+    ASSERT_PTR_EQUALS(
+        &publish_storage->message_expiry_interval_seconds, publish_storage->message_expiry_interval_seconds_ptr);
+    ASSERT_UINT_EQUALS(
+        *publish_options.message_expiry_interval_seconds, publish_storage->message_expiry_interval_seconds);
 
-    ASSERT_PTR_EQUALS(&publish_op->topic_alias, publish_op->topic_alias_ptr);
-    ASSERT_UINT_EQUALS(*publish_options.topic_alias, publish_op->topic_alias);
+    ASSERT_PTR_EQUALS(&publish_storage->topic_alias, publish_storage->topic_alias_ptr);
+    ASSERT_UINT_EQUALS(*publish_options.topic_alias, publish_storage->topic_alias);
 
-    ASSERT_FALSE(publish_options.response_topic->ptr == publish_op->response_topic->bytes);
+    ASSERT_FALSE(publish_options.response_topic->ptr == publish_storage->response_topic->bytes);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.response_topic->ptr,
         publish_options.response_topic->len,
-        publish_op->response_topic->bytes,
-        publish_op->response_topic->len);
+        publish_storage->response_topic->bytes,
+        publish_storage->response_topic->len);
 
-    ASSERT_FALSE(publish_options.correlation_data->ptr == publish_op->correlation_data_ptr->buffer);
-    ASSERT_PTR_EQUALS(&publish_op->correlation_data, publish_op->correlation_data_ptr);
+    ASSERT_FALSE(publish_options.correlation_data->ptr == publish_storage->correlation_data_ptr->buffer);
+    ASSERT_PTR_EQUALS(&publish_storage->correlation_data, publish_storage->correlation_data_ptr);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.correlation_data->ptr,
         publish_options.correlation_data->len,
-        publish_op->correlation_data.buffer,
-        publish_op->correlation_data.len);
+        publish_storage->correlation_data.buffer,
+        publish_storage->correlation_data.len);
 
-    ASSERT_FALSE(publish_options.content_type->ptr == publish_op->content_type->bytes);
+    ASSERT_FALSE(publish_options.content_type->ptr == publish_storage->content_type->bytes);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.content_type->ptr,
         publish_options.content_type->len,
-        publish_op->content_type->bytes,
-        publish_op->content_type->len);
+        publish_storage->content_type->bytes,
+        publish_storage->content_type->len);
 
-    ASSERT_SUCCESS(
-        s_verify_user_properties(&publish_op->user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));
+    ASSERT_SUCCESS(s_verify_user_properties(
+        &publish_storage->user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));
 
     ASSERT_PTR_EQUALS(completion_options.completion_callback, publish_op->completion_options.completion_callback);
     ASSERT_PTR_EQUALS(completion_options.completion_user_data, publish_op->completion_options.completion_user_data);

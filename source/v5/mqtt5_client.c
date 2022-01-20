@@ -542,7 +542,10 @@ static void s_reset_ping(struct aws_mqtt5_client *client) {
     aws_high_res_clock_get_ticks(&now);
 
     uint64_t keep_alive_interval_nanos = aws_timestamp_convert(
-        client->config->connect->keep_alive_interval_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        client->config->connect->options_storage.keep_alive_interval_seconds,
+        AWS_TIMESTAMP_SECS,
+        AWS_TIMESTAMP_NANOS,
+        NULL);
     client->next_ping_time = aws_add_u64_saturating(now, keep_alive_interval_nanos);
 
     uint64_t pint_timeout_nanos =
