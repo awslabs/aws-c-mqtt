@@ -238,7 +238,7 @@ enum aws_mqtt5_client_session_behavior_type {
     AWS_MQTT5_CSBT_CLEAN,
 
     /**
-     * Attempt to rejoin an existing session.  If rejoining fails, do nothing else.
+     * Attempt to rejoin an existing session.
      */
     AWS_MQTT5_CSBT_REJOIN,
 
@@ -421,7 +421,7 @@ struct aws_mqtt5_packet_publish_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033
  */
 struct aws_mqtt5_packet_connect_view {
-    uint32_t keep_alive_interval_seconds;
+    uint16_t keep_alive_interval_seconds;
 
     struct aws_byte_cursor client_id;
 
@@ -433,15 +433,15 @@ struct aws_mqtt5_packet_connect_view {
      * a setting on the client itself, and there is no real need to have a perfect view of a connect packet.
      */
 
-    uint32_t *session_expiry_interval_seconds;
+    const uint32_t *session_expiry_interval_seconds;
 
-    bool *request_response_information;
-    bool *request_problem_information;
-    uint16_t *receive_maximum;
-    uint16_t *topic_alias_maximum;
-    uint32_t *maximum_packet_size_bytes;
+    const bool *request_response_information;
+    const bool *request_problem_information;
+    const uint16_t *receive_maximum;
+    const uint16_t *topic_alias_maximum;
+    const uint32_t *maximum_packet_size_bytes;
 
-    uint32_t *will_delay_interval_seconds;
+    const uint32_t *will_delay_interval_seconds;
     const struct aws_mqtt5_packet_publish_view *will;
     struct aws_input_stream *will_payload;
 

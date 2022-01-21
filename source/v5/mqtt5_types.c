@@ -101,7 +101,13 @@ const char *aws_mqtt5_connect_reason_code_to_c_string(enum aws_mqtt5_connect_rea
     return s_unknown_reason;
 }
 
-const char *aws_mqtt5_disconnect_reason_code_to_c_string(enum aws_mqtt5_disconnect_reason_code reason_code) {
+const char *aws_mqtt5_disconnect_reason_code_to_c_string(
+    enum aws_mqtt5_disconnect_reason_code reason_code,
+    bool *is_valid) {
+    if (is_valid != NULL) {
+        *is_valid = true;
+    }
+
     switch (reason_code) {
         case AWS_MQTT5_DRC_NORMAL_DISCONNECTION:
             return s_normal_disconnection;
@@ -161,6 +167,10 @@ const char *aws_mqtt5_disconnect_reason_code_to_c_string(enum aws_mqtt5_disconne
             return s_subscription_identifiers_not_supported;
         case AWS_MQTT5_DRC_WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED:
             return s_wildcard_subscriptions_not_supported;
+    }
+
+    if (is_valid != NULL) {
+        *is_valid = false;
     }
 
     return s_unknown_reason;

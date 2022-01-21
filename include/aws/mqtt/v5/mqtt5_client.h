@@ -43,17 +43,17 @@ struct aws_mqtt5_client_options {
     /**
      * Socket options to use whenever this client establishes a connection
      */
-    struct aws_socket_options *socket_options;
+    const struct aws_socket_options *socket_options;
 
     /**
      * (Optional) Tls options to use whenever this client establishes a connection
      */
-    struct aws_tls_connection_options *tls_options;
+    const struct aws_tls_connection_options *tls_options;
 
     /**
      * (Optional) Http proxy options to use whenever this client establishes a connection
      */
-    struct aws_http_proxy_options *http_proxy_options;
+    const struct aws_http_proxy_options *http_proxy_options;
 
     /**
      * (Optional) Websocket handshake transformation function and user data.  Websockets are used if the
@@ -65,7 +65,7 @@ struct aws_mqtt5_client_options {
     /**
      * All CONNECT-related options, includes the will configuration, if desired
      */
-    struct aws_mqtt5_packet_connect_view *connect_options;
+    const struct aws_mqtt5_packet_connect_view *connect_options;
 
     /**
      * Controls session rejoin behavior

@@ -25,7 +25,8 @@ int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t 
  * @return name associated with the reason code
  */
 AWS_MQTT_API const char *aws_mqtt5_disconnect_reason_code_to_c_string(
-    enum aws_mqtt5_disconnect_reason_code reason_code);
+    enum aws_mqtt5_disconnect_reason_code reason_code,
+    bool *is_valid);
 
 /**
  * Converts a connect reason code into the Reason Code Name, as it appears in the mqtt5 spec.
