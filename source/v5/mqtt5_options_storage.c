@@ -135,6 +135,32 @@ struct aws_mqtt5_operation *aws_mqtt5_operation_release(struct aws_mqtt5_operati
  * Connect
  ********************************************************************************************************************/
 
+int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect_view *connect_options, struct aws_mqtt5_client *client) {
+    if (connect_options == NULL) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    if (connect_options->receive_maximum != NULL) {
+        if (*connect_options->receive_maximum == 0) {
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+    }
+
+    if (connect_options->maximum_packet_size_bytes != NULL) {
+        if (*connect_options->maximum_packet_size_bytes == 0) {
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+    }
+
+    if (connect_options->will != NULL) {
+        if (aws_mqtt5_packet_publish_view_validate(connect_options->will, client)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static void s_aws_mqtt5_packet_connect_storage_log(struct aws_mqtt5_packet_connect_storage *connect_storage) {
     struct aws_logger *logger = aws_logger_get();
     if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_OPERATION) < AWS_LL_DEBUG) {
@@ -1337,6 +1363,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->websocket_handshake_transform = options->websocket_handshake_transform;
     options_storage->websocket_handshake_transform_user_data = options->websocket_handshake_transform_user_data;
 
+    options_storage->session_behavior = options->session_behavior;
     options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
 
     options_storage->reconnect_behavior = options->reconnect_behavior;

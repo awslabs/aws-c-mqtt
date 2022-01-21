@@ -232,7 +232,7 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
 
 static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
     AWS_ASSERT(
-        client->current_state == AWS_MCS_DISCONNECTING || client->current_state == AWS_MCS_PENDING_RECONNECT ||
+        client->current_state == AWS_MCS_CHANNEL_SHUTDOWN || client->current_state == AWS_MCS_PENDING_RECONNECT ||
         client->current_state == AWS_MCS_CONNECTING);
 
     if (client->config->lifecycle_event_handler != NULL) {

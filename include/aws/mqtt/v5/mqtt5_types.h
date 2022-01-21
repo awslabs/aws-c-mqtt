@@ -116,7 +116,7 @@ enum aws_mqtt5_disconnect_reason_code {
  */
 enum aws_mqtt5_puback_reason_code {
     AWS_MQTT5_PARC_SUCCESS = 0,
-    AWS_MQTT5_PARC_NO_MATCHING_SUSCRIBERS = 16,
+    AWS_MQTT5_PARC_NO_MATCHING_SUBSCRIBERS = 16,
     AWS_MQTT5_PARC_UNSPECIFIED_ERROR = 128,
     AWS_MQTT5_PARC_IMPLEMENTATION_SPECIFIC_ERROR = 131,
     AWS_MQTT5_PARC_NOT_AUTHORIZED = 135,
@@ -253,11 +253,13 @@ enum aws_mqtt5_client_session_behavior_type {
  * Incoming topic aliases are handled opaquely by the client.  Alias id will appear without modification
  * in the received publish view, but the client will always inject the correct topic.
  *
+ * If topic aliasing is not supported by the server, this setting has no affect and any attempts to directly
+ * manipulate the topic alias id in outbound publishes will be ignored.
  */
 enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
     /*
      * Outbound aliasing is the user's responsibility.  Client will cache and auto-use
-     * previously-established aliases.
+     * previously-established aliases if they fall within the negotiated limits of the connection.
      */
     AWS_MQTT5_COTABT_DUMB,
 
@@ -426,16 +428,20 @@ struct aws_mqtt5_packet_connect_view {
     const struct aws_byte_cursor *username;
     const struct aws_byte_cursor *password;
 
-    uint32_t session_expiry_interval_seconds;
-    enum aws_mqtt5_client_session_behavior_type session_behavior;
+    /*
+     * We intentionally omit the clean start field from the connect view.  Session resumption is controlled by
+     * a setting on the client itself, and there is no real need to have a perfect view of a connect packet.
+     */
 
-    bool request_response_information;
-    bool request_problem_information;
-    uint16_t receive_maximum;
-    uint16_t topic_alias_maximum;
-    uint32_t maximum_packet_size_bytes;
+    uint32_t *session_expiry_interval_seconds;
 
-    uint32_t will_delay_interval_seconds;
+    bool *request_response_information;
+    bool *request_problem_information;
+    uint16_t *receive_maximum;
+    uint16_t *topic_alias_maximum;
+    uint32_t *maximum_packet_size_bytes;
+
+    uint32_t *will_delay_interval_seconds;
     const struct aws_mqtt5_packet_publish_view *will;
     struct aws_input_stream *will_payload;
 

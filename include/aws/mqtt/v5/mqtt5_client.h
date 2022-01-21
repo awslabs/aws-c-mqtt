@@ -68,6 +68,11 @@ struct aws_mqtt5_client_options {
     struct aws_mqtt5_packet_connect_view *connect_options;
 
     /**
+     * Controls session rejoin behavior
+     */
+    enum aws_mqtt5_client_session_behavior_type session_behavior;
+
+    /**
      * Controls how the client uses mqtt5 topic aliasing when processing outbound PUBLISH packets
      */
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
@@ -101,6 +106,7 @@ struct aws_mqtt5_client_options {
      *    ConnectionSuccess
      *    ConnectionFailure,
      *    Disconnect
+     *    (client) Stopped
      *
      *  Disconnect lifecycle events are 1-1 with -- strictly after -- ConnectionSuccess events.
      */
@@ -132,7 +138,8 @@ AWS_MQTT_API
 struct aws_mqtt5_client *aws_mqtt5_client_acquire(struct aws_mqtt5_client *client);
 
 /**
- * Release a reference to an mqtt5 client
+ * Release a reference to an mqtt5 client.  When the client ref count drops to zero, the client will automatically
+ * trigger a stop and once the stop completes, the client will delete itself.
  *
  * @param client client to release a reference to.  May be NULL.
  * @return NULL

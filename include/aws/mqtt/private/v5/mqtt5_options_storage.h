@@ -17,6 +17,7 @@
 
 struct aws_client_bootstrap;
 struct aws_input_stream;
+struct aws_mqtt5_client;
 struct aws_mqtt5_client_options;
 struct aws_mqtt5_operation;
 struct aws_string;
@@ -27,27 +28,13 @@ struct aws_mqtt5_user_property_set {
 };
 
 /*
- * Some data binding rules of thumb:
- *
- * name-value pair - pair of cursors + aws_byte_buf
- * Required binary data - aws_byte_buf
- * Optional binary data - aws_byte_buf and aws_byte_buf *
- * UTF-8 String - aws_string * (NULL implies not present)
- * Required variable length integer - uint32_t
- * Optional variable length integer - uint32_t, uint32_t *
- * Require fixed-size integer = uint.._t
- * Optional fixed_size integer = uint.._t, uint.._t *
- *
- * Optional enum values may use the (value, value *) pattern but some enums have a value that indicates no-value.
- */
-
-/*
  * At its core, an operation is anything you want to tell the mqtt5 client to do.
  *
  * This is intentionally different and *not* in sync with aws_mqtt5_packet_type
  *
  * Current thinking is that user-facing packets are operations, but we reserve the right to make additional
- * operations that may represent compound (sub-pub-unsub for example) or external concepts
+ * operations that may represent compound (sub-pub-unsub for example) or external concepts (control, client
+ * state manipulation, queries, etc...)
  *
  * We must be careful to make the functional interface for operations not assume a 1-1 with MQTT packets
  */
@@ -60,7 +47,7 @@ enum aws_mqtt5_operation_type {
 };
 
 /**
- * This is the base structure for all mqtt operations.  It includes the type, a ref count, vtable and list
+ * This is the base structure for all mqtt operations.  It includes the type, a ref count, and list
  * management.
  */
 struct aws_mqtt5_operation {
@@ -71,6 +58,8 @@ struct aws_mqtt5_operation {
 };
 
 struct aws_mqtt5_packet_connect_storage {
+    struct aws_mqtt5_packet_connect_view storage_view;
+
     uint32_t keep_alive_interval_seconds;
 
     struct aws_string *client_id;
@@ -81,7 +70,6 @@ struct aws_mqtt5_packet_connect_storage {
     struct aws_byte_buf *password_ptr;
 
     uint32_t session_expiry_interval_seconds;
-    enum aws_mqtt5_client_session_behavior_type session_behavior;
 
     bool request_response_information;
     bool request_problem_information;
@@ -104,6 +92,8 @@ struct aws_mqtt5_operation_connect {
 };
 
 struct aws_mqtt5_packet_publish_storage {
+    struct aws_mqtt5_packet_publish_view storage_view;
+
     bool dup;
     enum aws_mqtt5_qos qos;
     bool retain;
@@ -133,6 +123,8 @@ struct aws_mqtt5_operation_publish {
 };
 
 struct aws_mqtt5_packet_disconnect_storage {
+    struct aws_mqtt5_packet_disconnect_view storage_view;
+
     enum aws_mqtt5_disconnect_reason_code reason_code;
     uint32_t session_expiry_interval_seconds;
     uint32_t *session_expiry_interval_seconds_ptr;
@@ -151,6 +143,8 @@ struct aws_mqtt5_operation_disconnect {
 };
 
 struct aws_mqtt5_packet_subscribe_storage {
+    struct aws_mqtt5_packet_subscribe_view storage_view;
+
     uint32_t subscription_identifier;
     uint32_t *subscription_identifier_ptr;
 
@@ -170,6 +164,8 @@ struct aws_mqtt5_operation_subscribe {
 };
 
 struct aws_mqtt5_packet_unsubscribe_storage {
+    struct aws_mqtt5_packet_unsubscribe_view storage_view;
+
     struct aws_array_list topics;
     struct aws_byte_buf topic_storage;
 
@@ -207,6 +203,7 @@ struct aws_mqtt5_client_options_storage {
     aws_mqtt5_transform_websocket_handshake_fn *websocket_handshake_transform;
     void *websocket_handshake_transform_user_data;
 
+    enum aws_mqtt5_client_session_behavior_type session_behavior;
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
 
     enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior;
@@ -260,6 +257,8 @@ AWS_MQTT_API int aws_mqtt5_packet_connect_storage_init(
 
 AWS_MQTT_API void aws_mqtt5_packet_connect_storage_clean_up(struct aws_mqtt5_packet_connect_storage *connect_storage);
 
+AWS_MQTT_API int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect_view *connect_options, struct aws_mqtt5_client *client);
+
 /* Disconnect */
 
 AWS_MQTT_API struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
@@ -294,6 +293,8 @@ AWS_MQTT_API int aws_mqtt5_packet_publish_storage_init(
     const struct aws_mqtt5_packet_publish_view *publish_options);
 
 AWS_MQTT_API void aws_mqtt5_packet_publish_storage_clean_up(struct aws_mqtt5_packet_publish_storage *publish_storage);
+
+AWS_MQTT_API int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish_view *publish_options, struct aws_mqtt5_client *client);
 
 /* Subscribe */
 

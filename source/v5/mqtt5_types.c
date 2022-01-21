@@ -170,7 +170,7 @@ const char *aws_mqtt5_puback_reason_code_to_c_string(enum aws_mqtt5_puback_reaso
     switch (reason_code) {
         case AWS_MQTT5_PARC_SUCCESS:
             return s_success;
-        case AWS_MQTT5_PARC_NO_MATCHING_SUSCRIBERS:
+        case AWS_MQTT5_PARC_NO_MATCHING_SUBSCRIBERS:
             return s_no_matching_subscribers;
         case AWS_MQTT5_PARC_UNSPECIFIED_ERROR:
             return s_unspecified_error;
