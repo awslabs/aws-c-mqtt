@@ -43,17 +43,17 @@ struct aws_mqtt5_client_options {
     /**
      * Socket options to use whenever this client establishes a connection
      */
-    struct aws_socket_options *socket_options;
+    const struct aws_socket_options *socket_options;
 
     /**
      * (Optional) Tls options to use whenever this client establishes a connection
      */
-    struct aws_tls_connection_options *tls_options;
+    const struct aws_tls_connection_options *tls_options;
 
     /**
      * (Optional) Http proxy options to use whenever this client establishes a connection
      */
-    struct aws_http_proxy_options *http_proxy_options;
+    const struct aws_http_proxy_options *http_proxy_options;
 
     /**
      * (Optional) Websocket handshake transformation function and user data.  Websockets are used if the
@@ -65,7 +65,12 @@ struct aws_mqtt5_client_options {
     /**
      * All CONNECT-related options, includes the will configuration, if desired
      */
-    struct aws_mqtt5_packet_connect_view *connect_options;
+    const struct aws_mqtt5_packet_connect_view *connect_options;
+
+    /**
+     * Controls session rejoin behavior
+     */
+    enum aws_mqtt5_client_session_behavior_type session_behavior;
 
     /**
      * Controls how the client uses mqtt5 topic aliasing when processing outbound PUBLISH packets
@@ -101,6 +106,7 @@ struct aws_mqtt5_client_options {
      *    ConnectionSuccess
      *    ConnectionFailure,
      *    Disconnect
+     *    (client) Stopped
      *
      *  Disconnect lifecycle events are 1-1 with -- strictly after -- ConnectionSuccess events.
      */
@@ -132,7 +138,8 @@ AWS_MQTT_API
 struct aws_mqtt5_client *aws_mqtt5_client_acquire(struct aws_mqtt5_client *client);
 
 /**
- * Release a reference to an mqtt5 client
+ * Release a reference to an mqtt5 client.  When the client ref count drops to zero, the client will automatically
+ * trigger a stop and once the stop completes, the client will delete itself.
  *
  * @param client client to release a reference to.  May be NULL.
  * @return NULL

@@ -154,34 +154,25 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_QUEUE_FULL,
                 "MQTT request queue is full."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_HOST_NOT_SET,
-                "Mqtt client configuration does not have a valid host name set."),
+                AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION,
+                "Invalid mqtt5 client options value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_PORT_NOT_SET,
-                "Mqtt client configuration does not have a valid port set."),
+                AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION,
+                "Invalid mqtt5 connect packet options value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_CLIENT_BOOTSTRAP_NOT_SET,
-                "Mqtt client configuration does not have a client bootstrap set."),
+                AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION,
+                "Invalid mqtt5 disconnect packet options value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_INVALID_SOCKET_OPTIONS,
-                "Mqtt client configuration does not have a set of valid socket options."),
+                AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION,
+                "Invalid mqtt5 publish packet options value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_PROXY_PORT_NOT_SET,
-                "Mqtt client configuration has enabled http proxy support, but does not have a valid http proxy port set."),
+                AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION,
+                "Invalid mqtt5 subscribe packet options value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_NO_LIFECYCLE_HANDLER_SET,
-                "Mqtt client configuration does not have a lifecycle event handler callback set."),
+                AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION,
+                "Invalid mqtt5 unsubscribe packet options value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_PROXY_HOST_NOT_SET,
-                "Mqtt client configuration has proxy options but proxy port has not been set."),
-            AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_CONNECT_OPTIONS_NOT_SET,
-                "Mqtt client configuration does not have connect options set."),
-            AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_CONFIG_VALIDATION_INVALID_WILL_TOPIC,
-                "Mqtt5 client configuration has invalid will topic."),
-            AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT_USER_REQUESTED_STOP,
+                AWS_ERROR_MQTT5_USER_REQUESTED_STOP,
                 "Mqtt5 client connection interrupted by user request."),
         };
 /* clang-format on */
@@ -197,9 +188,8 @@ static struct aws_error_info_list s_error_list = {
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_GENERAL, "mqtt", "Misc MQTT logging"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_CLIENT, "mqtt-client", "MQTT client and connections"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_TOPIC_TREE, "mqtt-topic-tree", "MQTT subscription tree"),
-            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CLIENT, "mqtt5-client", "MQTT5 client"),
-            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CONFIG, "mqtt5-config", "MQTT5 configuration"),
-            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_OPERATION, "mqtt5-operaation", "MQTT5 operations"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_GENERAL, "mqtt5-general", "Misc MQTT5 logging"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CLIENT, "mqtt5-client", "MQTT5 client and connections"),
         };
 /* clang-format on */
 

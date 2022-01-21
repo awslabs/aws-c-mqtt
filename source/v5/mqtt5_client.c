@@ -387,7 +387,7 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
     } else {
         if (error_code == AWS_ERROR_SUCCESS) {
             AWS_ASSERT(client->desired_state != AWS_MCS_CONNECTED);
-            error_code = AWS_ERROR_MQTT_USER_REQUESTED_STOP;
+            error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP;
         }
     }
 
@@ -542,10 +542,7 @@ static void s_reset_ping(struct aws_mqtt5_client *client) {
     aws_high_res_clock_get_ticks(&now);
 
     uint64_t keep_alive_interval_nanos = aws_timestamp_convert(
-        client->config->connect->options_storage.keep_alive_interval_seconds,
-        AWS_TIMESTAMP_SECS,
-        AWS_TIMESTAMP_NANOS,
-        NULL);
+        client->negotiated_settings.server_keep_alive, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     client->next_ping_time = aws_add_u64_saturating(now, keep_alive_interval_nanos);
 
     uint64_t pint_timeout_nanos =
@@ -587,6 +584,8 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
 
     if (current_state == AWS_MCS_CONNECTED || current_state == AWS_MCS_CLEAN_DISCONNECT) {
         /*
+         * TODO TODO: actually this operation migration should happen in the transition from MQTT_CONNECT -> CONNECTED
+         *
          * TODO: fail and release all QoS0 operations in queued_operations, current_operation, and
          * write_completion_operations
          *
