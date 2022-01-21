@@ -126,6 +126,8 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     ASSERT_NULL(publish_op->completion_options.completion_callback);
     ASSERT_NULL(publish_op->completion_options.completion_user_data);
 
+    aws_mqtt5_packet_publish_view_log(stored_view, AWS_LL_DEBUG);
+
     aws_mqtt5_operation_release(&publish_op->base);
 
     return AWS_OP_SUCCESS;
@@ -295,6 +297,8 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
 
     ASSERT_PTR_EQUALS(completion_options.completion_callback, publish_op->completion_options.completion_callback);
     ASSERT_PTR_EQUALS(completion_options.completion_user_data, publish_op->completion_options.completion_user_data);
+
+    aws_mqtt5_packet_publish_view_log(stored_view, AWS_LL_DEBUG);
 
     aws_mqtt5_operation_release(&publish_op->base);
 

@@ -387,7 +387,7 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
     } else {
         if (error_code == AWS_ERROR_SUCCESS) {
             AWS_ASSERT(client->desired_state != AWS_MCS_CONNECTED);
-            error_code = AWS_ERROR_MQTT_USER_REQUESTED_STOP;
+            error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP;
         }
     }
 
