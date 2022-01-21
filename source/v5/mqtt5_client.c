@@ -232,7 +232,7 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
 
 static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
     AWS_ASSERT(
-        client->current_state == AWS_MCS_DISCONNECTING || client->current_state == AWS_MCS_PENDING_RECONNECT ||
+        client->current_state == AWS_MCS_CHANNEL_SHUTDOWN || client->current_state == AWS_MCS_PENDING_RECONNECT ||
         client->current_state == AWS_MCS_CONNECTING);
 
     if (client->config->lifecycle_event_handler != NULL) {
@@ -603,7 +603,7 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
 }
 
 static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client *client) {
-    AWS_ASSERT(client->current_state == AWS_MCS_MQTT_CONNECTING || client->current_state == AWS_MCS_CHANNEL_SHUTDOWN);
+    AWS_ASSERT(client->current_state == AWS_MCS_CONNECTING || client->current_state == AWS_MCS_CHANNEL_SHUTDOWN);
 
     uint64_t now = 0;
     aws_high_res_clock_get_ticks(&now);
