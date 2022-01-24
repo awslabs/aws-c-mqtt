@@ -68,6 +68,11 @@ struct aws_mqtt5_client_options {
     const struct aws_mqtt5_packet_connect_view *connect_options;
 
     /**
+     * Will payload stream, if the will is set in the connect options
+     */
+    struct aws_input_stream *will_payload;
+
+    /**
      * Controls session rejoin behavior
      */
     enum aws_mqtt5_client_session_behavior_type session_behavior;

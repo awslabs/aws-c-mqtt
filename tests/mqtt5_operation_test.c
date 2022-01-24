@@ -56,6 +56,18 @@ static int s_verify_user_properties(
         expected_properties);
 }
 
+static bool s_is_cursor_in_buffer(const struct aws_byte_buf *buffer, struct aws_byte_cursor cursor) {
+    if (cursor.ptr < buffer->buffer) {
+        return false;
+    }
+
+    if (cursor.ptr + cursor.len > buffer->buffer + buffer->len) {
+        return false;
+    }
+
+    return true;
+}
+
 static const char *PUBLISH_PAYLOAD = "hello-world";
 static const char *PUBLISH_TOPIC = "greetings/friendly";
 
@@ -92,14 +104,13 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     ASSERT_TRUE(publish_storage->retain);
     ASSERT_TRUE(stored_view->retain);
 
-    ASSERT_NOT_NULL(publish_storage->topic);
+    ASSERT_NOT_NULL(publish_storage->topic.ptr);
     ASSERT_BIN_ARRAYS_EQUALS(
-        publish_options.topic.ptr,
-        publish_options.topic.len,
-        publish_storage->topic->bytes,
-        publish_storage->topic->len);
+        publish_options.topic.ptr, publish_options.topic.len, publish_storage->topic.ptr, publish_storage->topic.len);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.topic.ptr, publish_options.topic.len, stored_view->topic.ptr, stored_view->topic.len);
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, publish_storage->topic));
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, stored_view->topic));
 
     ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)publish_storage->payload_format);
     ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)stored_view->payload_format);
@@ -110,13 +121,13 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     ASSERT_NULL(publish_storage->topic_alias_ptr);
     ASSERT_NULL(stored_view->topic_alias);
 
-    ASSERT_NULL(publish_storage->response_topic);
+    ASSERT_NULL(publish_storage->response_topic_ptr);
     ASSERT_NULL(stored_view->response_topic);
 
-    ASSERT_NULL(publish_storage->correlation_data_cursor.ptr);
+    ASSERT_NULL(publish_storage->correlation_data_ptr);
     ASSERT_NULL(stored_view->correlation_data);
 
-    ASSERT_NULL(publish_storage->content_type);
+    ASSERT_NULL(publish_storage->content_type_ptr);
     ASSERT_NULL(stored_view->content_type);
 
     ASSERT_SUCCESS(s_verify_user_properties(&publish_storage->user_properties, 0, NULL));
@@ -224,14 +235,13 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     ASSERT_FALSE(publish_storage->retain);
     ASSERT_FALSE(stored_view->retain);
 
-    ASSERT_NOT_NULL(publish_storage->topic);
+    ASSERT_NOT_NULL(publish_storage->topic.ptr);
     ASSERT_BIN_ARRAYS_EQUALS(
-        publish_options.topic.ptr,
-        publish_options.topic.len,
-        publish_storage->topic->bytes,
-        publish_storage->topic->len);
+        publish_options.topic.ptr, publish_options.topic.len, publish_storage->topic.ptr, publish_storage->topic.len);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.topic.ptr, publish_options.topic.len, stored_view->topic.ptr, stored_view->topic.len);
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, publish_storage->topic));
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, stored_view->topic));
 
     ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)publish_storage->payload_format);
     ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)stored_view->payload_format);
@@ -247,45 +257,52 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     ASSERT_UINT_EQUALS(*publish_options.topic_alias, publish_storage->topic_alias);
     ASSERT_PTR_EQUALS(stored_view->topic_alias, publish_storage->topic_alias_ptr);
 
-    ASSERT_FALSE(publish_options.response_topic->ptr == publish_storage->response_topic->bytes);
+    ASSERT_FALSE(publish_options.response_topic->ptr == publish_storage->response_topic.ptr);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.response_topic->ptr,
         publish_options.response_topic->len,
-        publish_storage->response_topic->bytes,
-        publish_storage->response_topic->len);
-    ASSERT_PTR_EQUALS(stored_view->response_topic, &publish_storage->response_topic_cursor);
+        publish_storage->response_topic.ptr,
+        publish_storage->response_topic.len);
+    ASSERT_PTR_EQUALS(stored_view->response_topic, &publish_storage->response_topic);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.response_topic->ptr,
         publish_options.response_topic->len,
         stored_view->response_topic->ptr,
         stored_view->response_topic->len);
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, publish_storage->response_topic));
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, *stored_view->response_topic));
 
-    ASSERT_FALSE(publish_options.correlation_data->ptr == publish_storage->correlation_data_cursor.ptr);
-    ASSERT_PTR_EQUALS(publish_storage->correlation_data.buffer, publish_storage->correlation_data_cursor.ptr);
+    ASSERT_FALSE(publish_options.correlation_data->ptr == publish_storage->correlation_data.ptr);
+    ASSERT_PTR_EQUALS(publish_storage->correlation_data_ptr, &publish_storage->correlation_data);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.correlation_data->ptr,
         publish_options.correlation_data->len,
-        publish_storage->correlation_data.buffer,
+        publish_storage->correlation_data.ptr,
         publish_storage->correlation_data.len);
-    ASSERT_PTR_EQUALS(stored_view->correlation_data, &publish_storage->correlation_data_cursor);
+    ASSERT_PTR_EQUALS(stored_view->correlation_data, publish_storage->correlation_data_ptr);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.correlation_data->ptr,
         publish_options.correlation_data->len,
         stored_view->correlation_data->ptr,
         stored_view->correlation_data->len);
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, publish_storage->correlation_data));
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, *stored_view->correlation_data));
 
-    ASSERT_FALSE(publish_options.content_type->ptr == publish_storage->content_type->bytes);
+    ASSERT_FALSE(publish_options.content_type->ptr == publish_storage->content_type.ptr);
+    ASSERT_PTR_EQUALS(publish_storage->content_type_ptr, &publish_storage->content_type);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.content_type->ptr,
         publish_options.content_type->len,
-        publish_storage->content_type->bytes,
-        publish_storage->content_type->len);
-    ASSERT_PTR_EQUALS(stored_view->content_type, &publish_storage->content_type_cursor);
+        publish_storage->content_type.ptr,
+        publish_storage->content_type.len);
+    ASSERT_PTR_EQUALS(stored_view->content_type, publish_storage->content_type_ptr);
     ASSERT_BIN_ARRAYS_EQUALS(
         publish_options.content_type->ptr,
         publish_options.content_type->len,
         stored_view->content_type->ptr,
         stored_view->content_type->len);
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, publish_storage->content_type));
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, *stored_view->content_type));
 
     ASSERT_SUCCESS(s_verify_user_properties(
         &publish_storage->user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));

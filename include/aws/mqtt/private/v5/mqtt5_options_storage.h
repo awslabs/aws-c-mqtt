@@ -25,7 +25,6 @@ struct aws_string;
 
 struct aws_mqtt5_user_property_set {
     struct aws_array_list properties;
-    struct aws_byte_buf property_storage;
 };
 
 /*
@@ -65,13 +64,13 @@ struct aws_mqtt5_packet_connect_storage {
 
     uint16_t keep_alive_interval_seconds;
 
-    struct aws_string *client_id;
+    struct aws_byte_cursor client_id;
 
-    struct aws_string *username;
-    struct aws_byte_cursor username_cursor;
+    struct aws_byte_cursor username;
+    struct aws_byte_cursor *username_ptr;
 
-    struct aws_byte_buf password;
-    struct aws_byte_cursor password_cursor;
+    struct aws_byte_cursor password;
+    struct aws_byte_cursor *password_ptr;
 
     uint32_t session_expiry_interval_seconds;
     uint32_t *session_expiry_interval_seconds_ptr;
@@ -92,11 +91,13 @@ struct aws_mqtt5_packet_connect_storage {
     uint32_t *maximum_packet_size_bytes_ptr;
 
     struct aws_mqtt5_packet_publish_storage *will;
-    struct aws_input_stream *will_payload;
+
     uint32_t will_delay_interval_seconds;
     uint32_t *will_delay_interval_seconds_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_byte_buf storage;
 };
 
 struct aws_mqtt5_operation_connect {
@@ -104,6 +105,8 @@ struct aws_mqtt5_operation_connect {
     struct aws_allocator *allocator;
 
     struct aws_mqtt5_packet_connect_storage options_storage;
+
+    struct aws_input_stream *will_payload;
 };
 
 struct aws_mqtt5_packet_publish_storage {
@@ -112,7 +115,7 @@ struct aws_mqtt5_packet_publish_storage {
     bool dup;
     enum aws_mqtt5_qos qos;
     bool retain;
-    struct aws_string *topic;
+    struct aws_byte_cursor topic;
     enum aws_mqtt5_payload_format_indicator payload_format;
 
     uint32_t message_expiry_interval_seconds;
@@ -121,16 +124,18 @@ struct aws_mqtt5_packet_publish_storage {
     uint16_t topic_alias;
     uint16_t *topic_alias_ptr;
 
-    struct aws_string *response_topic;
-    struct aws_byte_cursor response_topic_cursor;
+    struct aws_byte_cursor response_topic;
+    struct aws_byte_cursor *response_topic_ptr;
 
-    struct aws_byte_buf correlation_data;
-    struct aws_byte_cursor correlation_data_cursor;
+    struct aws_byte_cursor correlation_data;
+    struct aws_byte_cursor *correlation_data_ptr;
 
-    struct aws_string *content_type;
-    struct aws_byte_cursor content_type_cursor;
+    struct aws_byte_cursor content_type;
+    struct aws_byte_cursor *content_type_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_byte_buf storage;
 };
 
 struct aws_mqtt5_operation_publish {
@@ -152,13 +157,15 @@ struct aws_mqtt5_packet_disconnect_storage {
     uint32_t session_expiry_interval_seconds;
     uint32_t *session_expiry_interval_seconds_ptr;
 
-    struct aws_string *reason_string;
-    struct aws_byte_cursor reason_string_cursor;
+    struct aws_byte_cursor reason_string;
+    struct aws_byte_cursor *reason_string_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
 
-    struct aws_string *server_reference;
-    struct aws_byte_cursor server_reference_cursor;
+    struct aws_byte_cursor server_reference;
+    struct aws_byte_cursor *server_reference_ptr;
+
+    struct aws_byte_buf storage;
 };
 
 struct aws_mqtt5_operation_disconnect {
@@ -175,9 +182,10 @@ struct aws_mqtt5_packet_subscribe_storage {
     uint32_t *subscription_identifier_ptr;
 
     struct aws_array_list subscriptions;
-    struct aws_byte_buf topic_filter_storage;
 
     struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_byte_buf storage;
 };
 
 struct aws_mqtt5_operation_subscribe {
@@ -193,9 +201,10 @@ struct aws_mqtt5_packet_unsubscribe_storage {
     struct aws_mqtt5_packet_unsubscribe_view storage_view;
 
     struct aws_array_list topics;
-    struct aws_byte_buf topic_storage;
 
     struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_byte_buf storage;
 };
 
 struct aws_mqtt5_operation_unsubscribe {
@@ -244,9 +253,10 @@ AWS_EXTERN_C_BEGIN
 
 /* User properties */
 
-AWS_MQTT_API int aws_mqtt5_user_property_set_init(
+AWS_MQTT_API int aws_mqtt5_user_property_set_init_with_storage(
     struct aws_mqtt5_user_property_set *property_set,
     struct aws_allocator *allocator,
+    struct aws_byte_buf *storage_buffer,
     size_t property_count,
     const struct aws_mqtt5_user_property *properties);
 
@@ -258,6 +268,10 @@ AWS_MQTT_API int aws_mqtt5_user_property_set_get_property(
     const struct aws_mqtt5_user_property_set *property_set,
     size_t index,
     struct aws_mqtt5_user_property *property_out);
+
+AWS_MQTT_API int aws_mqtt5_user_property_set_add_stored_property(
+    struct aws_mqtt5_user_property_set *property_set,
+    struct aws_mqtt5_user_property *property);
 
 /* Operation base */
 

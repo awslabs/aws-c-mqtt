@@ -443,7 +443,6 @@ struct aws_mqtt5_packet_connect_view {
 
     const uint32_t *will_delay_interval_seconds;
     const struct aws_mqtt5_packet_publish_view *will;
-    struct aws_input_stream *will_payload;
 
     size_t user_property_count;
     const struct aws_mqtt5_user_property *user_properties;
