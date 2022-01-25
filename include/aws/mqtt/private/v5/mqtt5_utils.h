@@ -18,6 +18,8 @@ AWS_EXTERN_C_BEGIN
 
 int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value);
 
+int aws_mqtt5_get_variable_length_encode_size(uint32_t value, uint32_t *encode_size);
+
 /**
  * Converts a disconnect reason code into the Reason Code Name, as it appears in the mqtt5 spec.
  *

@@ -22,3 +22,21 @@ int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t 
 
     return AWS_OP_SUCCESS;
 }
+
+int aws_mqtt5_get_variable_length_encode_size(uint32_t value, uint32_t *encode_size) {
+    if (value > AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER) {
+        return AWS_OP_ERR;
+    }
+
+    if (value < 128) {
+        *encode_size = 1;
+    } else if (value < 16384) {
+        *encode_size = 2;
+    } else if (value < 2097152) {
+        *encode_size = 3;
+    } else {
+        *encode_size = 4;
+    }
+
+    return AWS_OP_SUCCESS;
+}

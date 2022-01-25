@@ -75,11 +75,11 @@ struct aws_mqtt5_packet_connect_storage {
     uint32_t session_expiry_interval_seconds;
     uint32_t *session_expiry_interval_seconds_ptr;
 
-    bool request_response_information;
-    bool *request_response_information_ptr;
+    uint8_t request_response_information;
+    uint8_t *request_response_information_ptr;
 
-    bool request_problem_information;
-    bool *request_problem_information_ptr;
+    uint8_t request_problem_information;
+    uint8_t *request_problem_information_ptr;
 
     uint16_t receive_maximum;
     uint16_t *receive_maximum_ptr;
@@ -116,7 +116,9 @@ struct aws_mqtt5_packet_publish_storage {
     enum aws_mqtt5_qos qos;
     bool retain;
     struct aws_byte_cursor topic;
+
     enum aws_mqtt5_payload_format_indicator payload_format;
+    enum aws_mqtt5_payload_format_indicator *payload_format_ptr;
 
     uint32_t message_expiry_interval_seconds;
     uint32_t *message_expiry_interval_seconds_ptr;

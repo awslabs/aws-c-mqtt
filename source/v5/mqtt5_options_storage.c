@@ -169,6 +169,20 @@ int aws_mqtt5_packet_connect_view_validate(
         }
     }
 
+    if (connect_options->request_problem_information != NULL) {
+        if (*connect_options->request_problem_information > 1) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "CONNECT packet request problem information has invalid value");
+            return AWS_OP_ERR;
+        }
+    }
+
+    if (connect_options->request_response_information != NULL) {
+        if (*connect_options->request_response_information > 1) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "CONNECT packet request response information has invalid value");
+            return AWS_OP_ERR;
+        }
+    }
+
     return AWS_OP_SUCCESS;
 }
 
@@ -726,12 +740,14 @@ int aws_mqtt5_packet_publish_view_validate(
         return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
     }
 
-    if (publish_view->payload_format < AWS_MQTT5_PFI_NOT_SET || publish_view->payload_format > AWS_MQTT5_PFI_UTF8) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "invalid payload format value in PUBLISH packet options: %d",
-            (int)publish_view->payload_format);
-        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+    if (publish_view->payload_format != NULL) {
+        if (*publish_view->payload_format < AWS_MQTT5_PFI_BYTES || *publish_view->payload_format > AWS_MQTT5_PFI_UTF8) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "invalid payload format value in PUBLISH packet options: %d",
+                (int)*publish_view->payload_format);
+            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        }
     }
 
     /*
@@ -784,13 +800,13 @@ void aws_mqtt5_packet_publish_view_log(
         (void *)publish_view,
         AWS_BYTE_CURSOR_PRI(publish_view->topic));
 
-    if (publish_view->payload_format != AWS_MQTT5_PFI_NOT_SET) {
+    if (publish_view->payload_format != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_GENERAL,
             "(%p) aws_mqtt5_packet_publish_view payload format indicator set to %d(%s)",
             (void *)publish_view,
-            (int)publish_view->payload_format,
-            aws_mqtt5_payload_format_indicator_to_c_string(publish_view->payload_format));
+            (int)*publish_view->payload_format,
+            aws_mqtt5_payload_format_indicator_to_c_string(*publish_view->payload_format));
     }
 
     if (publish_view->message_expiry_interval_seconds != NULL) {
@@ -845,7 +861,7 @@ void aws_mqtt5_packet_publish_view_init_from_storage(
     publish_view->qos = publish_storage->qos;
     publish_view->retain = publish_storage->retain;
     publish_view->topic = publish_storage->topic;
-    publish_view->payload_format = publish_storage->payload_format;
+    publish_view->payload_format = publish_storage->payload_format_ptr;
     publish_view->message_expiry_interval_seconds = publish_storage->message_expiry_interval_seconds_ptr;
     publish_view->topic_alias = publish_storage->topic_alias_ptr;
     publish_view->response_topic = publish_storage->response_topic_ptr;
@@ -895,7 +911,10 @@ int aws_mqtt5_packet_publish_storage_init(
         return AWS_OP_ERR;
     }
 
-    publish_storage->payload_format = publish_options->payload_format;
+    if (publish_options->payload_format != NULL) {
+        publish_storage->payload_format = *publish_options->payload_format;
+        publish_storage->payload_format_ptr = &publish_storage->payload_format;
+    }
 
     if (publish_options->message_expiry_interval_seconds != NULL) {
         publish_storage->message_expiry_interval_seconds = *publish_options->message_expiry_interval_seconds;

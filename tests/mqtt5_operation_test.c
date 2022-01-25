@@ -76,7 +76,7 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
         .retain = true,
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
-        .payload_format = AWS_MQTT5_PFI_NOT_SET,
+        .payload_format = NULL,
         .message_expiry_interval_seconds = NULL,
         .topic_alias = NULL,
         .response_topic = NULL,
@@ -112,8 +112,8 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, publish_storage->topic));
     ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, stored_view->topic));
 
-    ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)publish_storage->payload_format);
-    ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)stored_view->payload_format);
+    ASSERT_NULL(publish_storage->payload_format_ptr);
+    ASSERT_NULL(stored_view->payload_format);
 
     ASSERT_NULL(publish_storage->message_expiry_interval_seconds_ptr);
     ASSERT_NULL(stored_view->message_expiry_interval_seconds);
@@ -196,12 +196,13 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     struct aws_byte_cursor response_topic = aws_byte_cursor_from_c_str(s_response_topic);
     struct aws_byte_cursor correlation_data = aws_byte_cursor_from_c_str(s_correlation_data);
     struct aws_byte_cursor content_type = aws_byte_cursor_from_c_str(s_content_type);
+    enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
 
     struct aws_mqtt5_packet_publish_view publish_options = {
         .qos = AWS_MQTT5_QOS_EXACTLY_ONCE,
         .retain = false,
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
-        .payload_format = AWS_MQTT5_PFI_UTF8,
+        .payload_format = &payload_format,
         .message_expiry_interval_seconds = &s_message_expiry_interval_seconds,
         .topic_alias = &s_topic_alias,
         .response_topic = &response_topic,
@@ -243,8 +244,9 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, publish_storage->topic));
     ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, stored_view->topic));
 
-    ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)publish_storage->payload_format);
-    ASSERT_UINT_EQUALS((uint32_t)publish_options.payload_format, (uint32_t)stored_view->payload_format);
+    ASSERT_PTR_EQUALS(&publish_storage->payload_format, publish_storage->payload_format_ptr);
+    ASSERT_UINT_EQUALS(*publish_options.payload_format, publish_storage->payload_format);
+    ASSERT_PTR_EQUALS(stored_view->payload_format, publish_storage->payload_format_ptr);
 
     ASSERT_PTR_EQUALS(
         &publish_storage->message_expiry_interval_seconds, publish_storage->message_expiry_interval_seconds_ptr);

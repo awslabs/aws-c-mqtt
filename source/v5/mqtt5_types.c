@@ -307,8 +307,6 @@ const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
 
 const char *aws_mqtt5_payload_format_indicator_to_c_string(enum aws_mqtt5_payload_format_indicator format_indicator) {
     switch (format_indicator) {
-        case AWS_MQTT5_PFI_NOT_SET:
-            return "Not Set";
         case AWS_MQTT5_PFI_BYTES:
             return "Bytes";
         case AWS_MQTT5_PFI_UTF8:

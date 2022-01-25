@@ -284,8 +284,6 @@ struct aws_mqtt5_user_property {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901063
  */
 enum aws_mqtt5_payload_format_indicator {
-    /* not in the spec, indicates no value supplied */
-    AWS_MQTT5_PFI_NOT_SET = -1,
     AWS_MQTT5_PFI_BYTES = 0,
     AWS_MQTT5_PFI_UTF8 = 1,
 };
@@ -399,7 +397,7 @@ struct aws_mqtt5_packet_publish_view {
     enum aws_mqtt5_qos qos;
     bool retain;
     struct aws_byte_cursor topic;
-    enum aws_mqtt5_payload_format_indicator payload_format;
+    enum aws_mqtt5_payload_format_indicator *payload_format;
     const uint32_t *message_expiry_interval_seconds;
     const uint16_t *topic_alias;
     const struct aws_byte_cursor *response_topic;
@@ -435,8 +433,8 @@ struct aws_mqtt5_packet_connect_view {
 
     const uint32_t *session_expiry_interval_seconds;
 
-    const bool *request_response_information;
-    const bool *request_problem_information;
+    const uint8_t *request_response_information;
+    const uint8_t *request_problem_information;
     const uint16_t *receive_maximum;
     const uint16_t *topic_alias_maximum;
     const uint32_t *maximum_packet_size_bytes;
