@@ -72,6 +72,8 @@ struct aws_mqtt5_packet_connect_storage {
     struct aws_byte_cursor password;
     struct aws_byte_cursor *password_ptr;
 
+    bool clean_start;
+
     uint32_t session_expiry_interval_seconds;
     uint32_t *session_expiry_interval_seconds_ptr;
 
@@ -105,12 +107,13 @@ struct aws_mqtt5_operation_connect {
     struct aws_allocator *allocator;
 
     struct aws_mqtt5_packet_connect_storage options_storage;
-
-    struct aws_input_stream *will_payload;
 };
 
 struct aws_mqtt5_packet_publish_storage {
     struct aws_mqtt5_packet_publish_view storage_view;
+
+    /* This field is always NULL on received messages */
+    struct aws_input_stream *payload;
 
     bool dup;
     enum aws_mqtt5_qos qos;
@@ -145,8 +148,6 @@ struct aws_mqtt5_operation_publish {
     struct aws_allocator *allocator;
 
     struct aws_mqtt5_packet_publish_storage options_storage;
-
-    struct aws_input_stream *payload;
 
     struct aws_mqtt5_publish_completion_options completion_options;
 };
@@ -343,7 +344,6 @@ AWS_MQTT_API void aws_mqtt5_packet_disconnect_view_init_from_storage(
 AWS_MQTT_API struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_publish_view *publish_options,
-    struct aws_input_stream *payload,
     const struct aws_mqtt5_publish_completion_options *completion_options);
 
 AWS_MQTT_API int aws_mqtt5_packet_publish_storage_init(

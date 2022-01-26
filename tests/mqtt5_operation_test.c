@@ -73,6 +73,7 @@ static const char *PUBLISH_TOPIC = "greetings/friendly";
 
 static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator *allocator, void *ctx) {
     struct aws_mqtt5_packet_publish_view publish_options = {
+        .payload = NULL,
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
         .retain = true,
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
@@ -88,15 +89,16 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
         .user_properties = NULL,
     };
 
-    struct aws_mqtt5_operation_publish *publish_op =
-        aws_mqtt5_operation_publish_new(allocator, &publish_options, NULL, NULL);
+    struct aws_mqtt5_operation_publish *publish_op = aws_mqtt5_operation_publish_new(allocator, &publish_options, NULL);
 
     ASSERT_NOT_NULL(publish_op);
-    ASSERT_NULL(publish_op->payload);
 
     /* This test will check both the values in storage as well as the embedded view.  They should be in sync. */
     struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
     struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage->storage_view;
+
+    ASSERT_NULL(publish_storage->payload);
+    ASSERT_NULL(stored_view->payload);
 
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_storage->qos);
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)stored_view->qos);
@@ -197,9 +199,12 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     struct aws_byte_cursor correlation_data = aws_byte_cursor_from_c_str(s_correlation_data);
     struct aws_byte_cursor content_type = aws_byte_cursor_from_c_str(s_content_type);
     enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
+    struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD);
+    struct aws_input_stream *payload_stream = aws_input_stream_new_from_cursor(allocator, &payload_cursor);
 
     struct aws_mqtt5_packet_publish_view publish_options = {
-        .qos = AWS_MQTT5_QOS_EXACTLY_ONCE,
+        .payload = payload_stream,
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
         .retain = false,
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
         .payload_format = &payload_format,
@@ -219,16 +224,16 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
         .completion_user_data = (void *)0xFFFF,
     };
 
-    struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD);
-    struct aws_input_stream *payload_stream = aws_input_stream_new_from_cursor(allocator, &payload_cursor);
-
     struct aws_mqtt5_operation_publish *publish_op =
-        aws_mqtt5_operation_publish_new(allocator, &publish_options, payload_stream, &completion_options);
+        aws_mqtt5_operation_publish_new(allocator, &publish_options, &completion_options);
 
-    ASSERT_PTR_EQUALS(payload_stream, publish_op->payload);
+    ASSERT_NOT_NULL(publish_op);
 
     struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
     struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage->storage_view;
+
+    ASSERT_PTR_EQUALS(payload_stream, publish_storage->payload);
+    ASSERT_PTR_EQUALS(payload_stream, stored_view->payload);
 
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_storage->qos);
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)stored_view->qos);

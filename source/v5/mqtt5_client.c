@@ -1045,14 +1045,13 @@ static int s_submit_operation(struct aws_mqtt5_client *client, struct aws_mqtt5_
 int aws_mqtt5_client_publish(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_publish_view *publish_options,
-    struct aws_input_stream *payload,
     const struct aws_mqtt5_publish_completion_options *completion_options) {
 
     AWS_PRECONDITION(client != NULL);
     AWS_PRECONDITION(publish_options != NULL);
 
     struct aws_mqtt5_operation_publish *publish_op =
-        aws_mqtt5_operation_publish_new(client->allocator, publish_options, payload, completion_options);
+        aws_mqtt5_operation_publish_new(client->allocator, publish_options, completion_options);
     if (publish_op == NULL) {
         return AWS_OP_ERR;
     }

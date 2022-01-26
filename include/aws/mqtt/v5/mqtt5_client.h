@@ -180,7 +180,6 @@ int aws_mqtt5_client_stop(
  *
  * @param client mqtt5 client to queue a Publish for
  * @param publish_options configuration options for the Publish operation
- * @param payload (optional) stream to read the payload from.  Must stay alive until completion callback is invoked.
  * @param completion_options completion callback configuration.  QoS 0 publishes invoke the callback when the
  * data has been written to the socket.  QoS1+ publishes invoke the callback when the corresponding ack is received.
  * @return success/failure in the synchronous logic that kicks off the publish operation
@@ -189,7 +188,6 @@ AWS_MQTT_API
 int aws_mqtt5_client_publish(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_publish_view *publish_options,
-    struct aws_input_stream *payload,
     const struct aws_mqtt5_publish_completion_options *completion_options);
 
 /**

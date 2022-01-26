@@ -14,6 +14,19 @@
 struct aws_http_message;
 
 /**
+ * Some artificial (non-MQTT spec specified) limits that we place on input packets (publish, subscribe, unsubscibe)
+ * which lets us safely do the various packet size calculations with a bare minimum of checked arithmetic.
+ *
+ * I don't see any conceivable use cases why you'd want more than this, but they are relaxable to some degree.
+ *
+ * TODO: Add some static assert calculations that verify that we can't possibly overflow against the maximum value
+ * of a variable length integer for relevant packet size encodings that are absolute worst-case against these limits.
+ */
+#define AWS_MQTT5_CLIENT_MAXIMUM_USER_PROPERTIES 1024
+#define AWS_MQTT5_CLIENT_MAXIMUM_SUBSCRIPTIONS_PER_SUBSCRIBE 1024
+#define AWS_MQTT5_CLIENT_MAXIMUM_TOPICS_PER_UNSUBSCRIBE 1024
+
+/**
  * Over-the-wire packet id as defined in the mqtt spec.  Allocated at the point in time when the packet is
  * is next to go down the channel and about to be encoded into an io message buffer.
  *
@@ -394,6 +407,9 @@ struct aws_mqtt5_packet_unsubscribe_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
  */
 struct aws_mqtt5_packet_publish_view {
+    /* This field is always NULL on received messages */
+    struct aws_input_stream *payload;
+
     enum aws_mqtt5_qos qos;
     bool retain;
     struct aws_byte_cursor topic;
@@ -426,10 +442,7 @@ struct aws_mqtt5_packet_connect_view {
     const struct aws_byte_cursor *username;
     const struct aws_byte_cursor *password;
 
-    /*
-     * We intentionally omit the clean start field from the connect view.  Session resumption is controlled by
-     * a setting on the client itself, and there is no real need to have a perfect view of a connect packet.
-     */
+    bool clean_start;
 
     const uint32_t *session_expiry_interval_seconds;
 
