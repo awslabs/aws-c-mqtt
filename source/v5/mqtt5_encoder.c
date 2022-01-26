@@ -527,9 +527,36 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
 
             return (step->value.value_cursor.len == 0) ? AWS_MQTT5_ER_FINISHED : AWS_MQTT5_ER_OUT_OF_ROOM;
 
-        case AWS_MQTT5_EST_STREAM:
-            /* TODO */
+        case AWS_MQTT5_EST_STREAM: {
+            if (buffer_room < 1) {
+                return AWS_MQTT5_ER_OUT_OF_ROOM;
+            }
+
+            bool stream_finished = false;
+            int result = AWS_OP_SUCCESS;
+            do {
+                result = aws_input_stream_read(step->value.value_stream, buffer);
+                if (result == AWS_OP_SUCCESS) {
+                    struct aws_stream_status status;
+                    if (aws_input_stream_get_status(step->value.value_stream, &status)) {
+                        return AWS_MQTT5_ER_ERROR;
+                    }
+
+                    stream_finished = status.is_end_of_stream;
+                }
+            } while (buffer->len < buffer->capacity && !stream_finished && result == AWS_OP_SUCCESS);
+
+            if (stream_finished) {
+                return AWS_MQTT5_ER_FINISHED;
+            } else if (result != AWS_OP_SUCCESS) {
+                return AWS_MQTT5_ER_ERROR;
+            } else if (buffer->len == buffer->capacity) {
+                return AWS_MQTT5_ER_OUT_OF_ROOM;
+            }
+
+            /* shouldn't be reachable */
             return AWS_MQTT5_ER_ERROR;
+        }
     }
 
     return AWS_MQTT5_ER_ERROR;
