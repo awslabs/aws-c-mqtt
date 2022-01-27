@@ -43,6 +43,8 @@ void aws_mqtt5_encoder_clean_up(struct aws_mqtt5_encoder *encoder) {
     aws_array_list_clean_up(&encoder->encoding_steps);
 }
 
+/* helper functions that add a single type of encoding step to the list of steps in an encoder */
+
 static int s_aws_mqtt5_encoder_push_step_u8(struct aws_mqtt5_encoder *encoder, uint8_t value) {
     struct aws_mqtt5_encoding_step step;
     AWS_ZERO_STRUCT(step);
@@ -52,11 +54,6 @@ static int s_aws_mqtt5_encoder_push_step_u8(struct aws_mqtt5_encoder *encoder, u
 
     return aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
-
-#define ADD_ENCODE_STEP_U8(encoder, value)                                                                             \
-    if (s_aws_mqtt5_encoder_push_step_u8(encoder, (value))) {                                                          \
-        return AWS_OP_ERR;                                                                                             \
-    }
 
 static int s_aws_mqtt5_encoder_push_step_u16(struct aws_mqtt5_encoder *encoder, uint16_t value) {
     struct aws_mqtt5_encoding_step step;
@@ -68,11 +65,6 @@ static int s_aws_mqtt5_encoder_push_step_u16(struct aws_mqtt5_encoder *encoder, 
     return aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
 
-#define ADD_ENCODE_STEP_U16(encoder, value)                                                                            \
-    if (s_aws_mqtt5_encoder_push_step_u16(encoder, (value))) {                                                         \
-        return AWS_OP_ERR;                                                                                             \
-    }
-
 static int s_aws_mqtt5_encoder_push_step_u32(struct aws_mqtt5_encoder *encoder, uint32_t value) {
     struct aws_mqtt5_encoding_step step;
     AWS_ZERO_STRUCT(step);
@@ -82,11 +74,6 @@ static int s_aws_mqtt5_encoder_push_step_u32(struct aws_mqtt5_encoder *encoder, 
 
     return aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
-
-#define ADD_ENCODE_STEP_U32(encoder, value)                                                                            \
-    if (s_aws_mqtt5_encoder_push_step_u32(encoder, (value))) {                                                         \
-        return AWS_OP_ERR;                                                                                             \
-    }
 
 static int s_aws_mqtt5_encoder_push_step_vli(struct aws_mqtt5_encoder *encoder, uint32_t value) {
     struct aws_mqtt5_encoding_step step;
@@ -98,11 +85,6 @@ static int s_aws_mqtt5_encoder_push_step_vli(struct aws_mqtt5_encoder *encoder, 
     return aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
 
-#define ADD_ENCODE_STEP_VLI(encoder, value)                                                                            \
-    if (s_aws_mqtt5_encoder_push_step_vli(encoder, (value))) {                                                         \
-        return AWS_OP_ERR;                                                                                             \
-    }
-
 static int s_aws_mqtt5_encoder_push_step_cursor(struct aws_mqtt5_encoder *encoder, struct aws_byte_cursor value) {
     struct aws_mqtt5_encoding_step step;
     AWS_ZERO_STRUCT(step);
@@ -112,6 +94,43 @@ static int s_aws_mqtt5_encoder_push_step_cursor(struct aws_mqtt5_encoder *encode
 
     return aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
+
+static int s_aws_mqtt5_encoder_push_step_stream(struct aws_mqtt5_encoder *encoder, struct aws_input_stream *value) {
+    struct aws_mqtt5_encoding_step step;
+    AWS_ZERO_STRUCT(step);
+
+    step.type = AWS_MQTT5_EST_STREAM;
+    step.value.value_stream = value;
+
+    return aws_array_list_push_back(&encoder->encoding_steps, &step);
+}
+
+/* macros to simplify encoding step list construction */
+
+#define ADD_ENCODE_STEP_U8(encoder, value)                                                                             \
+    if (s_aws_mqtt5_encoder_push_step_u8(encoder, (value))) {                                                          \
+        return AWS_OP_ERR;                                                                                             \
+    }
+
+#define ADD_ENCODE_STEP_U16(encoder, value)                                                                            \
+    if (s_aws_mqtt5_encoder_push_step_u16(encoder, (value))) {                                                         \
+        return AWS_OP_ERR;                                                                                             \
+    }
+
+#define ADD_ENCODE_STEP_U32(encoder, value)                                                                            \
+    if (s_aws_mqtt5_encoder_push_step_u32(encoder, (value))) {                                                         \
+        return AWS_OP_ERR;                                                                                             \
+    }
+
+#define ADD_ENCODE_STEP_VLI(encoder, value)                                                                            \
+    if (s_aws_mqtt5_encoder_push_step_vli(encoder, (value))) {                                                         \
+        return AWS_OP_ERR;                                                                                             \
+    }
+
+#define ADD_ENCODE_STEP_STREAM(encoder, value)                                                                         \
+    if (s_aws_mqtt5_encoder_push_step_stream(encoder, (value))) {                                                      \
+        return AWS_OP_ERR;                                                                                             \
+    }
 
 #define ADD_ENCODE_STEP_CURSOR(encoder, cursor)                                                                        \
     if (s_aws_mqtt5_encoder_push_step_cursor(encoder, (cursor))) {                                                     \
@@ -132,22 +151,37 @@ static int s_aws_mqtt5_encoder_push_step_cursor(struct aws_mqtt5_encoder *encode
         }                                                                                                              \
     }
 
-static int s_aws_mqtt5_encoder_push_step_stream(struct aws_mqtt5_encoder *encoder, struct aws_input_stream *value) {
-    struct aws_mqtt5_encoding_step step;
-    AWS_ZERO_STRUCT(step);
+/* Property-oriented macros for encode steps.  Properties have an additional prefix byte saying what their type is. */
 
-    step.type = AWS_MQTT5_EST_STREAM;
-    step.value.value_stream = value;
-
-    return aws_array_list_push_back(&encoder->encoding_steps, &step);
-}
-
-#define ADD_ENCODE_STEP_STREAM(encoder, value)                                                                         \
-    if (s_aws_mqtt5_encoder_push_step_stream(encoder, (value))) {                                                      \
-        return AWS_OP_ERR;                                                                                             \
+#define ADD_ENCODE_STEP_OPTIONAL_U8_PROPERTY(encoder, property_value, value_ptr)                                       \
+    if ((value_ptr) != NULL) {                                                                                         \
+        ADD_ENCODE_STEP_U8(encoder, property_value);                                                                   \
+        ADD_ENCODE_STEP_U8(encoder, *(value_ptr));                                                                     \
     }
 
-/* optional properties complicate packet size calculations.  Add some macros that simplify */
+#define ADD_ENCODE_STEP_OPTIONAL_U16_PROPERTY(encoder, property_value, value_ptr)                                      \
+    if ((value_ptr) != NULL) {                                                                                         \
+        ADD_ENCODE_STEP_U8(encoder, property_value);                                                                   \
+        ADD_ENCODE_STEP_U16(encoder, *(value_ptr));                                                                    \
+    }
+
+#define ADD_ENCODE_STEP_OPTIONAL_U32_PROPERTY(encoder, property_value, value_ptr)                                      \
+    if ((value_ptr) != NULL) {                                                                                         \
+        ADD_ENCODE_STEP_U8(encoder, property_value);                                                                   \
+        ADD_ENCODE_STEP_U32(encoder, *(value_ptr));                                                                    \
+    }
+
+#define ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(encoder, property_type, cursor_ptr)                                   \
+    if ((cursor_ptr) != NULL) {                                                                                        \
+        ADD_ENCODE_STEP_U8(encoder, property_type);                                                                    \
+        ADD_ENCODE_STEP_U16(encoder, (cursor_ptr)->len);                                                               \
+        ADD_ENCODE_STEP_CURSOR(encoder, *(cursor_ptr));                                                                \
+    }
+
+/*
+ * Macros to simplify packet size calculations, which are significantly complicated by mqtt5's many optional
+ * properties.
+ */
 
 #define ADD_OPTIONAL_U8_PROPERTY_LENGTH(property_ptr, length)                                                          \
     if ((property_ptr) != NULL) {                                                                                      \
@@ -169,31 +203,16 @@ static int s_aws_mqtt5_encoder_push_step_stream(struct aws_mqtt5_encoder *encode
         (length) += 3 + ((property_ptr)->len);                                                                         \
     }
 
-#define ADD_ENCODE_STEP_OPTIONAL_U8_PROPERTY(encoder, property_value, value_ptr)                                       \
-    if ((value_ptr) != NULL) {                                                                                         \
-        ADD_ENCODE_STEP_U8(encoder, property_value);                                                                   \
-        ADD_ENCODE_STEP_U8(encoder, *(value_ptr));                                                                     \
-    }
-
-#define ADD_ENCODE_STEP_OPTIONAL_U16_PROPERTY(encoder, property_value, value_ptr)                                      \
-    if ((value_ptr) != NULL) {                                                                                         \
-        ADD_ENCODE_STEP_U8(encoder, property_value);                                                                   \
-        ADD_ENCODE_STEP_U16(encoder, *(value_ptr));                                                                    \
-    }
-
-#define ADD_ENCODE_STEP_OPTIONAL_U32_PROPERTY(encoder, property_value, value_ptr)                                      \
-    if ((value_ptr) != NULL) {                                                                                         \
-        ADD_ENCODE_STEP_U8(encoder, property_value);                                                                   \
-        ADD_ENCODE_STEP_U32(encoder, *(value_ptr));                                                                    \
-    }
-
-#define ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(encoder, property_value, cursor_ptr)                                  \
-    if ((cursor_ptr) != NULL) {                                                                                        \
-        ADD_ENCODE_STEP_U8(encoder, property_value);                                                                   \
-        ADD_ENCODE_STEP_U16(encoder, (cursor_ptr)->len);                                                               \
-        ADD_ENCODE_STEP_CURSOR(encoder, *(cursor_ptr));                                                                \
-    }
-
+/*
+ * All size calculations are done with size_t.  We assume that view validation will catch and fail all packets
+ * that violate length constraints either from the MQTT5 spec or additional constraints that we impose on packets
+ * to ensure that the size calculations do not need to perform checked arithmetic.  The only place where we need
+ * to use checked arithmetic is a PUBLISH packet when combining the payload size and "sizeof everything else"
+ *
+ * The additional beyond-spec constraints we apply to view validation ensure our results actually fit in 32 bits.
+ *
+ * TODO: view validation does not currently check the total length of the packet.
+ */
 static size_t s_compute_user_property_encode_length(
     const struct aws_mqtt5_user_property *properties,
     size_t user_property_count) {
@@ -222,6 +241,7 @@ static int s_add_user_property_encoding_steps(
     for (size_t i = 0; i < user_property_count; ++i) {
         const struct aws_mqtt5_user_property *property = &user_properties[i];
 
+        /* https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901054 */
         ADD_ENCODE_STEP_U8(encoder, AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY);
         ADD_ENCODE_STEP_U16(encoder, (uint16_t)property->name.len);
         ADD_ENCODE_STEP_CURSOR(encoder, property->name);
@@ -305,6 +325,7 @@ static int s_compute_connect_variable_length_fields(
     size_t *total_remaining_length,
     size_t *connect_property_length,
     size_t *will_property_length) {
+
     size_t connect_property_section_length =
         s_compute_user_property_encode_length(connect_view->user_properties, connect_view->user_property_count);
 
@@ -337,7 +358,6 @@ static int s_compute_connect_variable_length_fields(
 
         *will_property_length =
             s_compute_user_property_encode_length(publish_view->user_properties, publish_view->user_property_count);
-        ;
 
         ADD_OPTIONAL_U32_PROPERTY_LENGTH(connect_view->will_delay_interval_seconds, *will_property_length);
         ADD_OPTIONAL_U8_PROPERTY_LENGTH(publish_view->payload_format, *will_property_length);
