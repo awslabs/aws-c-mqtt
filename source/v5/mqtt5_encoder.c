@@ -118,9 +118,18 @@ static int s_aws_mqtt5_encoder_push_step_cursor(struct aws_mqtt5_encoder *encode
         return AWS_OP_ERR;                                                                                             \
     }
 
-#define ADD_ENCODE_STEP_OPTIONAL_CURSOR(encoder, cursor_ptr)                                                           \
-    if (cursor_ptr != NULL && s_aws_mqtt5_encoder_push_step_cursor(encoder, (*cursor_ptr))) {                          \
+#define ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, cursor)                                                        \
+    if (s_aws_mqtt5_encoder_push_step_u16(encoder, (cursor).len) ||                                                    \
+        s_aws_mqtt5_encoder_push_step_cursor(encoder, (cursor))) {                                                     \
         return AWS_OP_ERR;                                                                                             \
+    }
+
+#define ADD_ENCODE_STEP_OPTIONAL_LENGTH_PREFIXED_CURSOR(encoder, cursor_ptr)                                           \
+    if (cursor_ptr != NULL) {                                                                                          \
+        if (s_aws_mqtt5_encoder_push_step_u16(encoder, (cursor_ptr)->len) ||                                           \
+            s_aws_mqtt5_encoder_push_step_cursor(encoder, (*cursor_ptr))) {                                            \
+            return AWS_OP_ERR;                                                                                         \
+        }                                                                                                              \
     }
 
 static int s_aws_mqtt5_encoder_push_step_stream(struct aws_mqtt5_encoder *encoder, struct aws_input_stream *value) {
@@ -292,6 +301,7 @@ int aws_mqtt5_encoder_begin_disconnect(
 
 static int s_compute_connect_variable_length_fields(
     struct aws_mqtt5_packet_connect_view *connect_view,
+    size_t will_payload_length,
     size_t *total_remaining_length,
     size_t *connect_property_length,
     size_t *will_property_length) {
@@ -310,7 +320,7 @@ static int s_compute_connect_variable_length_fields(
     /* variable header length =
      *    10 bytes (6 for mqtt string, 1 for protocol version, 1 for flags, 2 for keep alive)
      *  + # bytes(variable_length_encoding(connect_property_section_length))
-     *  + property_section_length
+     *  + connect_property_section_length
      */
     size_t variable_header_length = 0;
     if (aws_mqtt5_get_variable_length_encode_size(connect_property_section_length, &variable_header_length)) {
@@ -346,12 +356,7 @@ static int s_compute_connect_variable_length_fields(
         payload_length += will_properties_length_encode_size;
 
         payload_length += 2 + publish_view->topic.len;
-
-        int64_t payload_length = 0;
-        if (publish_view->payload != NULL && aws_input_stream_get_length(publish_view->payload, &payload_length)) {
-            return AWS_OP_ERR;
-        }
-        payload_length += 2 + (size_t)payload_length; /* will payload length */
+        payload_length += 2 + will_payload_length;
     }
 
     /* Can't use the optional property macros because these don't have a leading property type byte */
@@ -407,11 +412,28 @@ static struct aws_byte_cursor s_variable_header_prefix_cursor = {
 int aws_mqtt5_encoder_begin_connect(
     struct aws_mqtt5_encoder *encoder,
     struct aws_mqtt5_packet_connect_view *connect_view) {
+
+    const struct aws_mqtt5_packet_publish_view *will = connect_view->will;
+    int64_t will_payload_length = 0;
+    if (will != NULL && will->payload != NULL) {
+        if (aws_input_stream_seek(will->payload, AWS_SSB_BEGIN, 0)) {
+            return AWS_OP_ERR;
+        }
+
+        if (aws_input_stream_get_length(will->payload, &will_payload_length)) {
+            return AWS_OP_ERR;
+        }
+    }
+
     size_t total_remaining_length = 0;
     size_t connect_property_length = 0;
     size_t will_property_length = 0;
     if (s_compute_connect_variable_length_fields(
-            connect_view, &total_remaining_length, &connect_property_length, &will_property_length)) {
+            connect_view,
+            (size_t)will_payload_length,
+            &total_remaining_length,
+            &connect_property_length,
+            &will_property_length)) {
         return AWS_OP_ERR;
     }
 
@@ -443,9 +465,8 @@ int aws_mqtt5_encoder_begin_connect(
         return AWS_OP_ERR;
     }
 
-    ADD_ENCODE_STEP_CURSOR(encoder, connect_view->client_id);
+    ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, connect_view->client_id);
 
-    const struct aws_mqtt5_packet_publish_view *will = connect_view->will;
     if (will != NULL) {
         ADD_ENCODE_STEP_VLI(encoder, will_property_length_u32);
         ADD_ENCODE_STEP_OPTIONAL_U32_PROPERTY(
@@ -463,20 +484,15 @@ int aws_mqtt5_encoder_begin_connect(
             return AWS_OP_ERR;
         }
 
-        ADD_ENCODE_STEP_CURSOR(encoder, will->topic);
+        ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, will->topic);
+        ADD_ENCODE_STEP_U16(encoder, (uint16_t)will_payload_length);
         ADD_ENCODE_STEP_STREAM(encoder, will->payload);
-
-        if (will->payload != NULL) {
-            if (aws_input_stream_seek(will->payload, AWS_SSB_BEGIN, 0)) {
-                return AWS_OP_ERR;
-            }
-        }
     }
 
-    ADD_ENCODE_STEP_OPTIONAL_CURSOR(encoder, connect_view->username);
-    ADD_ENCODE_STEP_OPTIONAL_CURSOR(encoder, connect_view->password);
+    ADD_ENCODE_STEP_OPTIONAL_LENGTH_PREFIXED_CURSOR(encoder, connect_view->username);
+    ADD_ENCODE_STEP_OPTIONAL_LENGTH_PREFIXED_CURSOR(encoder, connect_view->password);
 
-    return AWS_OP_ERR;
+    return AWS_OP_SUCCESS;
 }
 
 static enum aws_mqtt5_encoding_result s_execute_encode_step(
