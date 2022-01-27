@@ -88,6 +88,8 @@ enum aws_mqtt5_encoding_result {
      *   (3) System error when reading from a stream that is more than just a memory buffer
      *
      *  Regardless of the origin, the connection is in an unusable state once this happens.
+     *
+     *  If the encode function returns this value, aws last error will have an error value in it
      */
     AWS_MQTT5_ER_ERROR,
 
@@ -134,7 +136,7 @@ AWS_MQTT_API void aws_mqtt5_encoder_clean_up(struct aws_mqtt5_encoder *encoder);
  *
  * @param encoder encoder to do the encoding
  * @param buffer where to encode into
- * @return result of the encoding process
+ * @return result of the encoding process.  aws last error will be set appropriately.
  */
 AWS_MQTT_API enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
     struct aws_mqtt5_encoder *encoder,
