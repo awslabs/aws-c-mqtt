@@ -1,3 +1,8 @@
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
+
 #ifndef AWS_MQTT_MQTT5_ENCODER_H
 #define AWS_MQTT_MQTT5_ENCODER_H
 
@@ -6,20 +11,26 @@
 #include <aws/common/array_list.h>
 #include <aws/common/byte_buf.h>
 
-/**
- * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0.
- */
-
 struct aws_mqtt5_packet_connect_view;
 struct aws_mqtt5_packet_disconnect_view;
 
 enum aws_mqtt5_encoding_step_type {
+    /* encode a single byte */
     AWS_MQTT5_EST_U8,
+
+    /* encode a 16 bit unsigned integer in network order */
     AWS_MQTT5_EST_U16,
+
+    /* encode a 32 bit unsigned integer in network order */
     AWS_MQTT5_EST_U32,
+
+    /* encode a 32 bit unsigned integer using variable length encoding */
     AWS_MQTT5_EST_VLI,
+
+    /* encode an array of bytes as referenced by a cursor */
     AWS_MQTT5_EST_CURSOR,
+
+    /* encode a stream of bytes */
     AWS_MQTT5_EST_STREAM,
 };
 
@@ -35,7 +46,6 @@ struct aws_mqtt5_encoding_step {
 };
 
 struct aws_mqtt5_encoder {
-    void *current_view;
     struct aws_array_list encoding_steps;
     size_t current_encoding_step_index;
 };

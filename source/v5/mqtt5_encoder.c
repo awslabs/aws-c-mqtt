@@ -11,7 +11,26 @@
 
 #define INITIAL_ENCODING_STEP_COUNT 64
 
+/* TODO: move to shared private header as decoder will need too */
+#define AWS_MQTT5_PROPERTY_TYPE_PAYLOAD_FORMAT_INDICATOR ((uint8_t)1)
+#define AWS_MQTT5_PROPERTY_TYPE_MESSAGE_EXPIRY_INTERVAL ((uint8_t)2)
+#define AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE ((uint8_t)3)
+#define AWS_MQTT5_PROPERTY_TYPE_RESPONSE_TOPIC ((uint8_t)8)
+#define AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA ((uint8_t)9)
+#define AWS_MQTT5_PROPERTY_TYPE_SESSION_EXPIRY_INTERVAL ((uint8_t)17)
+#define AWS_MQTT5_PROPERTY_TYPE_REQUEST_PROBLEM_INFORMATION ((uint8_t)23)
+#define AWS_MQTT5_PROPERTY_TYPE_WILL_DELAY_INTERVAL ((uint8_t)24)
+#define AWS_MQTT5_PROPERTY_TYPE_REQUEST_RESPONSE_INFORMATION ((uint8_t)25)
+#define AWS_MQTT5_PROPERTY_TYPE_SERVER_REFERENCE ((uint8_t)28)
+#define AWS_MQTT5_PROPERTY_TYPE_REASON_STRING ((uint8_t)31)
+#define AWS_MQTT5_PROPERTY_TYPE_RECEIVE_MAXIMUM ((uint8_t)33)
+#define AWS_MQTT5_PROPERTY_TYPE_TOPIC_ALIAS_MAXIMUM ((uint8_t)34)
+#define AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY ((uint8_t)38)
+#define AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_PACKET_SIZE ((uint8_t)39)
+
 int aws_mqtt5_encoder_init(struct aws_mqtt5_encoder *encoder, struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*encoder);
+
     if (aws_array_list_init_dynamic(
             &encoder->encoding_steps, allocator, INITIAL_ENCODING_STEP_COUNT, sizeof(struct aws_mqtt5_encoding_step))) {
         return AWS_OP_ERR;
@@ -94,8 +113,13 @@ static int s_aws_mqtt5_encoder_push_step_cursor(struct aws_mqtt5_encoder *encode
     return aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
 
-#define ADD_ENCODE_STEP_CURSOR(encoder, value)                                                                         \
-    if (s_aws_mqtt5_encoder_push_step_cursor(encoder, (value))) {                                                      \
+#define ADD_ENCODE_STEP_CURSOR(encoder, cursor)                                                                        \
+    if (s_aws_mqtt5_encoder_push_step_cursor(encoder, (cursor))) {                                                     \
+        return AWS_OP_ERR;                                                                                             \
+    }
+
+#define ADD_ENCODE_STEP_OPTIONAL_CURSOR(encoder, cursor_ptr)                                                           \
+    if (cursor_ptr != NULL && s_aws_mqtt5_encoder_push_step_cursor(encoder, (*cursor_ptr))) {                          \
         return AWS_OP_ERR;                                                                                             \
     }
 
@@ -114,17 +138,7 @@ static int s_aws_mqtt5_encoder_push_step_stream(struct aws_mqtt5_encoder *encode
         return AWS_OP_ERR;                                                                                             \
     }
 
-int aws_mqtt5_encoder_begin_ping(struct aws_mqtt5_encoder *encoder) {
-    /* A ping is just a fixed header with a 0-valued remaining length which we encode as a 0 u8 rather than a 0 vli */
-    ADD_ENCODE_STEP_U8(encoder, 12 << 4);
-    ADD_ENCODE_STEP_U8(encoder, 0);
-
-    return AWS_OP_SUCCESS;
-}
-
-static uint8_t s_aws_mqtt5_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags) {
-    return flags | ((uint8_t)packet_type << 4);
-}
+/* optional properties complicate packet size calculations.  Add some macros that simplify */
 
 #define ADD_OPTIONAL_U8_PROPERTY_LENGTH(property_ptr, length)                                                          \
     if ((property_ptr) != NULL) {                                                                                      \
@@ -192,7 +206,36 @@ static size_t s_compute_user_property_encode_length(
     return length;
 }
 
-static int s_compute_disconnect_remaining_lengths(
+static int s_add_user_property_encoding_steps(
+    struct aws_mqtt5_encoder *encoder,
+    const struct aws_mqtt5_user_property *user_properties,
+    size_t user_property_count) {
+    for (size_t i = 0; i < user_property_count; ++i) {
+        const struct aws_mqtt5_user_property *property = &user_properties[i];
+
+        ADD_ENCODE_STEP_U8(encoder, AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY);
+        ADD_ENCODE_STEP_U16(encoder, (uint16_t)property->name.len);
+        ADD_ENCODE_STEP_CURSOR(encoder, property->name);
+        ADD_ENCODE_STEP_U16(encoder, (uint16_t)property->value.len);
+        ADD_ENCODE_STEP_CURSOR(encoder, property->value);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static uint8_t s_aws_mqtt5_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags) {
+    return flags | ((uint8_t)packet_type << 4);
+}
+
+int aws_mqtt5_encoder_begin_ping(struct aws_mqtt5_encoder *encoder) {
+    /* A ping is just a fixed header with a 0-valued remaining length which we encode as a 0 u8 rather than a 0 vli */
+    ADD_ENCODE_STEP_U8(encoder, s_aws_mqtt5_fixed_header_byte1(AWS_MQTT5_PT_PINGREQ, 0));
+    ADD_ENCODE_STEP_U8(encoder, 0);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_compute_disconnect_variable_length_fields(
     struct aws_mqtt5_packet_disconnect_view *disconnect_view,
     uint32_t *total_remaining_length,
     uint32_t *property_length) {
@@ -216,55 +259,21 @@ static int s_compute_disconnect_remaining_lengths(
     return AWS_OP_SUCCESS;
 }
 
-/* TODO: move to shared private header as decoder will need too */
-#define AWS_MQTT5_PROPERTY_TYPE_PAYLOAD_FORMAT_INDICATOR ((uint8_t)1)
-#define AWS_MQTT5_PROPERTY_TYPE_MESSAGE_EXPIRY_INTERVAL ((uint8_t)2)
-#define AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE ((uint8_t)3)
-#define AWS_MQTT5_PROPERTY_TYPE_RESPONSE_TOPIC ((uint8_t)8)
-#define AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA ((uint8_t)9)
-#define AWS_MQTT5_PROPERTY_TYPE_SESSION_EXPIRY_INTERVAL ((uint8_t)17)
-#define AWS_MQTT5_PROPERTY_TYPE_REQUEST_PROBLEM_INFORMATION ((uint8_t)23)
-#define AWS_MQTT5_PROPERTY_TYPE_WILL_DELAY_INTERVAL ((uint8_t)24)
-#define AWS_MQTT5_PROPERTY_TYPE_REQUEST_RESPONSE_INFORMATION ((uint8_t)25)
-#define AWS_MQTT5_PROPERTY_TYPE_SERVER_REFERENCE ((uint8_t)28)
-#define AWS_MQTT5_PROPERTY_TYPE_REASON_STRING ((uint8_t)31)
-#define AWS_MQTT5_PROPERTY_TYPE_RECEIVE_MAXIMUM ((uint8_t)33)
-#define AWS_MQTT5_PROPERTY_TYPE_TOPIC_ALIAS_MAXIMUM ((uint8_t)34)
-#define AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY ((uint8_t)38)
-#define AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_PACKET_SIZE ((uint8_t)39)
-
-static int s_add_user_property_encoding_steps(
-    struct aws_mqtt5_encoder *encoder,
-    const struct aws_mqtt5_user_property *user_properties,
-    size_t user_property_count) {
-    for (size_t i = 0; i < user_property_count; ++i) {
-        const struct aws_mqtt5_user_property *property = &user_properties[i];
-
-        ADD_ENCODE_STEP_U8(encoder, AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY);
-        ADD_ENCODE_STEP_U16(encoder, (uint16_t)property->name.len);
-        ADD_ENCODE_STEP_CURSOR(encoder, property->name);
-        ADD_ENCODE_STEP_U16(encoder, (uint16_t)property->value.len);
-        ADD_ENCODE_STEP_CURSOR(encoder, property->value);
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
 int aws_mqtt5_encoder_begin_disconnect(
     struct aws_mqtt5_encoder *encoder,
     struct aws_mqtt5_packet_disconnect_view *disconnect_view) {
     uint32_t total_remaining_length = 0;
     uint32_t property_length = 0;
-    if (s_compute_disconnect_remaining_lengths(disconnect_view, &total_remaining_length, &property_length)) {
+    if (s_compute_disconnect_variable_length_fields(disconnect_view, &total_remaining_length, &property_length)) {
         return AWS_OP_ERR;
     }
 
     ADD_ENCODE_STEP_U8(encoder, s_aws_mqtt5_fixed_header_byte1(AWS_MQTT5_PT_DISCONNECT, 0));
     ADD_ENCODE_STEP_VLI(encoder, total_remaining_length);
     ADD_ENCODE_STEP_U8(encoder, (uint8_t)disconnect_view->reason_code);
+    ADD_ENCODE_STEP_VLI(encoder, property_length);
 
     if (property_length > 0) {
-        ADD_ENCODE_STEP_VLI(encoder, property_length);
         ADD_ENCODE_STEP_OPTIONAL_U32_PROPERTY(
             encoder, AWS_MQTT5_PROPERTY_TYPE_SESSION_EXPIRY_INTERVAL, disconnect_view->session_expiry_interval_seconds);
         ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
@@ -456,13 +465,16 @@ int aws_mqtt5_encoder_begin_connect(
 
         ADD_ENCODE_STEP_CURSOR(encoder, will->topic);
         ADD_ENCODE_STEP_STREAM(encoder, will->payload);
-        if (connect_view->username != NULL) {
-            ADD_ENCODE_STEP_CURSOR(encoder, *connect_view->username);
-        }
-        if (connect_view->password != NULL) {
-            ADD_ENCODE_STEP_CURSOR(encoder, *connect_view->password);
+
+        if (will->payload != NULL) {
+            if (aws_input_stream_seek(will->payload, AWS_SSB_BEGIN, 0)) {
+                return AWS_OP_ERR;
+            }
         }
     }
+
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR(encoder, connect_view->username);
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR(encoder, connect_view->password);
 
     return AWS_OP_ERR;
 }
@@ -478,7 +490,7 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
                 return AWS_MQTT5_ER_OUT_OF_ROOM;
             }
 
-            if (aws_byte_buf_write_u8(buffer, step->value.value_u8)) {
+            if (!aws_byte_buf_write_u8(buffer, step->value.value_u8)) {
                 return AWS_MQTT5_ER_ERROR;
             }
 
@@ -489,7 +501,7 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
                 return AWS_MQTT5_ER_OUT_OF_ROOM;
             }
 
-            if (aws_byte_buf_write_be16(buffer, step->value.value_u16)) {
+            if (!aws_byte_buf_write_be16(buffer, step->value.value_u16)) {
                 return AWS_MQTT5_ER_ERROR;
             }
 
@@ -500,7 +512,7 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
                 return AWS_MQTT5_ER_OUT_OF_ROOM;
             }
 
-            if (aws_byte_buf_write_be32(buffer, step->value.value_u32)) {
+            if (!aws_byte_buf_write_be32(buffer, step->value.value_u32)) {
                 return AWS_MQTT5_ER_ERROR;
             }
 
@@ -578,6 +590,11 @@ enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
         if (result == AWS_MQTT5_ER_FINISHED) {
             encoder->current_encoding_step_index++;
         }
+    }
+
+    if (result == AWS_MQTT5_ER_FINISHED) {
+        aws_array_list_clear(&encoder->encoding_steps);
+        encoder->current_encoding_step_index = 0;
     }
 
     return result;
