@@ -20,7 +20,7 @@ static int s_mqtt5_packet_ping_encode_fn(struct aws_allocator *allocator, void *
     struct aws_mqtt5_encoder encoder;
     ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator));
 
-    ASSERT_SUCCESS(aws_mqtt5_encoder_begin_ping(&encoder));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_begin_pingreq(&encoder));
     enum aws_mqtt5_encoding_result result = aws_mqtt5_encoder_encode_to_buffer(&encoder, &dest);
 
     ASSERT_INT_EQUALS(AWS_MQTT5_ER_FINISHED, result);

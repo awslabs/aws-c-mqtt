@@ -236,7 +236,7 @@ static uint8_t s_aws_mqtt5_fixed_header_byte1(enum aws_mqtt5_packet_type packet_
     return flags | ((uint8_t)packet_type << 4);
 }
 
-int aws_mqtt5_encoder_begin_ping(struct aws_mqtt5_encoder *encoder) {
+int aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder) {
     /* A ping is just a fixed header with a 0-valued remaining length which we encode as a 0 u8 rather than a 0 vli */
     ADD_ENCODE_STEP_U8(encoder, s_aws_mqtt5_fixed_header_byte1(AWS_MQTT5_PT_PINGREQ, 0));
     ADD_ENCODE_STEP_U8(encoder, 0);
