@@ -18,7 +18,7 @@ static int s_mqtt5_packet_ping_encode_fn(struct aws_allocator *allocator, void *
     aws_byte_buf_init(&dest, allocator, 256);
 
     struct aws_mqtt5_encoder encoder;
-    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, NULL));
 
     ASSERT_SUCCESS(aws_mqtt5_encoder_begin_pingreq(&encoder));
     enum aws_mqtt5_encoding_result result = aws_mqtt5_encoder_encode_to_buffer(&encoder, &dest);
@@ -43,7 +43,7 @@ static int s_mqtt5_packet_disconnect_encode_minimal_fn(struct aws_allocator *all
     aws_byte_buf_init(&dest, allocator, 256);
 
     struct aws_mqtt5_encoder encoder;
-    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, NULL));
 
     struct aws_mqtt5_packet_disconnect_view disconnect_view = {
         .reason_code = AWS_MQTT5_DRC_IMPLEMENTATION_SPECIFIC_ERROR,
@@ -107,7 +107,7 @@ static int s_mqtt5_packet_disconnect_encode_all_fn(struct aws_allocator *allocat
     aws_byte_buf_init(&dest, allocator, 512);
 
     struct aws_mqtt5_encoder encoder;
-    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, NULL));
 
     uint32_t session_expiry_interval_seconds = 333;
     struct aws_byte_cursor reason_string_cursor = aws_byte_cursor_from_c_str(s_reason_string);
@@ -141,7 +141,7 @@ static int s_mqtt5_packet_connect_encode_minimal_fn(struct aws_allocator *alloca
     aws_byte_buf_init(&dest, allocator, 256);
 
     struct aws_mqtt5_encoder encoder;
-    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, NULL));
 
     struct aws_mqtt5_packet_connect_view connect_view = {
         .keep_alive_interval_seconds = 1200,
@@ -175,7 +175,7 @@ static int s_mqtt5_packet_connect_encode_all_fn(struct aws_allocator *allocator,
     aws_byte_buf_init(&dest, allocator, 1024);
 
     struct aws_mqtt5_encoder encoder;
-    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, NULL));
 
     struct aws_byte_cursor will_payload_cursor = aws_byte_cursor_from_c_str(s_will_payload);
     struct aws_input_stream *will_payload = aws_input_stream_new_from_cursor(allocator, &will_payload_cursor);

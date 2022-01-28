@@ -11,6 +11,7 @@
 #include <aws/common/array_list.h>
 #include <aws/common/byte_buf.h>
 
+struct aws_mqtt5_client;
 struct aws_mqtt5_packet_connect_view;
 struct aws_mqtt5_packet_disconnect_view;
 
@@ -68,6 +69,7 @@ struct aws_mqtt5_encoding_step {
  * An encoder is just a list of steps and a current location for the encoding process within that list.
  */
 struct aws_mqtt5_encoder {
+    struct aws_mqtt5_client *client;
     struct aws_array_list encoding_steps;
     size_t current_encoding_step_index;
 };
@@ -111,9 +113,13 @@ AWS_EXTERN_C_BEGIN
  *
  * @param encoder encoder to initialize
  * @param allocator allocator to use for all memory allocation
+ * @param client mqtt5 client this decoder belongs to.  Needed for logging.
  * @return
  */
-AWS_MQTT_API int aws_mqtt5_encoder_init(struct aws_mqtt5_encoder *encoder, struct aws_allocator *allocator);
+AWS_MQTT_API int aws_mqtt5_encoder_init(
+    struct aws_mqtt5_encoder *encoder,
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_client *client);
 
 /**
  * Cleans up an mqtt5 encoder
@@ -121,6 +127,15 @@ AWS_MQTT_API int aws_mqtt5_encoder_init(struct aws_mqtt5_encoder *encoder, struc
  * @param encoder encoder to free up all resources for
  */
 AWS_MQTT_API void aws_mqtt5_encoder_clean_up(struct aws_mqtt5_encoder *encoder);
+
+/**
+ * Resets the state on an mqtt5 encoder.  Ok to call after a failure to a packet _begin_packet() function.  Not ok to
+ * call after a failed call to aws_mqtt5_encoder_encode_to_buffer()
+ *
+ * @param encoder encoder to reset
+ * @return
+ */
+AWS_MQTT_API void aws_mqtt5_encoder_reset(struct aws_mqtt5_encoder *encoder);
 
 /*
  * We intend that the client implementation only submits one packet at a time to the encoder, corresponding to the

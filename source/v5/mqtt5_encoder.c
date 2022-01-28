@@ -9,6 +9,8 @@
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
+#include <inttypes.h>
+
 #define INITIAL_ENCODING_STEP_COUNT 64
 
 /* TODO: move to shared private header as decoder will need too */
@@ -28,8 +30,13 @@
 #define AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY ((uint8_t)38)
 #define AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_PACKET_SIZE ((uint8_t)39)
 
-int aws_mqtt5_encoder_init(struct aws_mqtt5_encoder *encoder, struct aws_allocator *allocator) {
+int aws_mqtt5_encoder_init(
+    struct aws_mqtt5_encoder *encoder,
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_client *client) {
     AWS_ZERO_STRUCT(*encoder);
+
+    encoder->client = client;
 
     if (aws_array_list_init_dynamic(
             &encoder->encoding_steps, allocator, INITIAL_ENCODING_STEP_COUNT, sizeof(struct aws_mqtt5_encoding_step))) {
@@ -41,6 +48,11 @@ int aws_mqtt5_encoder_init(struct aws_mqtt5_encoder *encoder, struct aws_allocat
 
 void aws_mqtt5_encoder_clean_up(struct aws_mqtt5_encoder *encoder) {
     aws_array_list_clean_up(&encoder->encoding_steps);
+}
+
+void aws_mqtt5_encoder_reset(struct aws_mqtt5_encoder *encoder) {
+    aws_array_list_clear(&encoder->encoding_steps);
+    encoder->current_encoding_step_index = 0;
 }
 
 /* helper functions that add a single type of encoding step to the list of steps in an encoder */
@@ -75,7 +87,11 @@ static void s_aws_mqtt5_encoder_push_step_u32(struct aws_mqtt5_encoder *encoder,
     aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
 
-static void s_aws_mqtt5_encoder_push_step_vli(struct aws_mqtt5_encoder *encoder, uint32_t value) {
+static int s_aws_mqtt5_encoder_push_step_vli(struct aws_mqtt5_encoder *encoder, uint32_t value) {
+    if (value > AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER) {
+        return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_INVALID_VARIABLE_LENGTH_INTEGER);
+    }
+
     struct aws_mqtt5_encoding_step step;
     AWS_ZERO_STRUCT(step);
 
@@ -83,6 +99,8 @@ static void s_aws_mqtt5_encoder_push_step_vli(struct aws_mqtt5_encoder *encoder,
     step.value.value_u32 = value;
 
     aws_array_list_push_back(&encoder->encoding_steps, &step);
+
+    return AWS_OP_SUCCESS;
 }
 
 static void s_aws_mqtt5_encoder_push_step_cursor(struct aws_mqtt5_encoder *encoder, struct aws_byte_cursor value) {
@@ -110,9 +128,13 @@ static void s_aws_mqtt5_encoder_push_step_stream(struct aws_mqtt5_encoder *encod
 #define ADD_ENCODE_STEP_U8(encoder, value) s_aws_mqtt5_encoder_push_step_u8(encoder, (value))
 #define ADD_ENCODE_STEP_U16(encoder, value) s_aws_mqtt5_encoder_push_step_u16(encoder, (value))
 #define ADD_ENCODE_STEP_U32(encoder, value) s_aws_mqtt5_encoder_push_step_u32(encoder, (value))
-#define ADD_ENCODE_STEP_VLI(encoder, value) s_aws_mqtt5_encoder_push_step_vli(encoder, (value))
 #define ADD_ENCODE_STEP_STREAM(encoder, value) s_aws_mqtt5_encoder_push_step_stream(encoder, (value))
 #define ADD_ENCODE_STEP_CURSOR(encoder, cursor) s_aws_mqtt5_encoder_push_step_cursor(encoder, (cursor))
+
+#define ADD_ENCODE_STEP_VLI(encoder, value)                                                                            \
+    if (s_aws_mqtt5_encoder_push_step_vli(encoder, (value))) {                                                         \
+        return AWS_OP_ERR;                                                                                             \
+    }
 
 #define ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, cursor)                                                        \
     {                                                                                                                  \
@@ -229,6 +251,11 @@ static uint8_t s_aws_mqtt5_fixed_header_byte1(enum aws_mqtt5_packet_type packet_
 }
 
 int aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder) {
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) mqtt5 client encoder - setting up encode for a PINGREQ packet",
+        (void *)encoder->client);
+
     /* A ping is just a fixed header with a 0-valued remaining length which we encode as a 0 u8 rather than a 0 vli */
     ADD_ENCODE_STEP_U8(encoder, s_aws_mqtt5_fixed_header_byte1(AWS_MQTT5_PT_PINGREQ, 0));
     ADD_ENCODE_STEP_U8(encoder, 0);
@@ -266,8 +293,22 @@ int aws_mqtt5_encoder_begin_disconnect(
     uint32_t total_remaining_length = 0;
     uint32_t property_length = 0;
     if (s_compute_disconnect_variable_length_fields(disconnect_view, &total_remaining_length, &property_length)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) mqtt5 client encoder - failed to compute variable length values for DISCONNECT packet with error "
+            "%d(%s)",
+            (void *)encoder->client,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) mqtt5 client encoder - setting up encode for a DISCONNECT packet with remaining length %" PRIu32,
+        (void *)encoder->client,
+        total_remaining_length);
 
     ADD_ENCODE_STEP_U8(encoder, s_aws_mqtt5_fixed_header_byte1(AWS_MQTT5_PT_DISCONNECT, 0));
     ADD_ENCODE_STEP_VLI(encoder, total_remaining_length);
@@ -407,10 +448,24 @@ int aws_mqtt5_encoder_begin_connect(
     int64_t will_payload_length = 0;
     if (will != NULL && will->payload != NULL) {
         if (aws_input_stream_seek(will->payload, AWS_SSB_BEGIN, 0)) {
+            int error_code = aws_last_error();
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "(%p) mqtt5 client encoder - failed to seek-to-beginning stream with error %d(%s)",
+                (void *)encoder->client,
+                error_code,
+                aws_error_debug_str(error_code));
             return AWS_OP_ERR;
         }
 
         if (aws_input_stream_get_length(will->payload, &will_payload_length)) {
+            int error_code = aws_last_error();
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "(%p) mqtt5 client encoder - failed to query stream length with error %d(%s)",
+                (void *)encoder->client,
+                error_code,
+                aws_error_debug_str(error_code));
             return AWS_OP_ERR;
         }
     }
@@ -424,8 +479,21 @@ int aws_mqtt5_encoder_begin_connect(
             &total_remaining_length,
             &connect_property_length,
             &will_property_length)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) mqtt5 client encoder - failed to compute variable length values for CONNECT packet with error %d(%s)",
+            (void *)encoder->client,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) mqtt5 client encoder - setting up encode for a CONNECT packet with remaining length %zu",
+        (void *)encoder->client,
+        total_remaining_length);
 
     uint32_t total_remaining_length_u32 = (uint32_t)total_remaining_length;
     uint32_t connect_property_length_u32 = (uint32_t)connect_property_length;
@@ -482,6 +550,7 @@ int aws_mqtt5_encoder_begin_connect(
 }
 
 static enum aws_mqtt5_encoding_result s_execute_encode_step(
+    struct aws_mqtt5_encoder *encoder,
     struct aws_mqtt5_encoding_step *step,
     struct aws_byte_buf *buffer) {
     size_t buffer_room = buffer->capacity - buffer->len;
@@ -520,10 +589,8 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
                 return AWS_MQTT5_ER_OUT_OF_ROOM;
             }
 
-            if (aws_mqtt5_encode_variable_length_integer(buffer, step->value.value_u32)) {
-                aws_raise_error(AWS_ERROR_MQTT5_ENCODE_INVALID_VARIABLE_LENGTH_INTEGER);
-                return AWS_MQTT5_ER_ERROR;
-            }
+            /* This can't fail.  We've already validated the vli value when we made the step */
+            aws_mqtt5_encode_variable_length_integer(buffer, step->value.value_u32);
 
             return AWS_MQTT5_ER_FINISHED;
 
@@ -539,11 +606,25 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
         case AWS_MQTT5_EST_STREAM:
             while (buffer->len < buffer->capacity) {
                 if (aws_input_stream_read(step->value.value_stream, buffer)) {
+                    int error_code = aws_last_error();
+                    AWS_LOGF_ERROR(
+                        AWS_LS_MQTT5_GENERAL,
+                        "(%p) mqtt5 client encoder - failed to read from stream with error %d(%s)",
+                        (void *)encoder->client,
+                        error_code,
+                        aws_error_debug_str(error_code));
                     return AWS_MQTT5_ER_ERROR;
                 }
 
                 struct aws_stream_status status;
                 if (aws_input_stream_get_status(step->value.value_stream, &status)) {
+                    int error_code = aws_last_error();
+                    AWS_LOGF_ERROR(
+                        AWS_LS_MQTT5_GENERAL,
+                        "(%p) mqtt5 client encoder - failed to query stream status with error %d(%s)",
+                        (void *)encoder->client,
+                        error_code,
+                        aws_error_debug_str(error_code));
                     return AWS_MQTT5_ER_ERROR;
                 }
 
@@ -556,11 +637,13 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
                 return AWS_MQTT5_ER_OUT_OF_ROOM;
             }
 
-            /* shouldn't be reachable */
-            aws_raise_error(AWS_ERROR_INVALID_STATE);
-            return AWS_MQTT5_ER_ERROR;
+            /* fall through intentional */
     }
 
+    /* shouldn't be reachable */
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT5_GENERAL, "(%p) mqtt5 client encoder - reached an unreachable state", (void *)encoder->client);
+    aws_raise_error(AWS_ERROR_INVALID_STATE);
     return AWS_MQTT5_ER_ERROR;
 }
 
@@ -572,19 +655,18 @@ enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
     size_t step_count = aws_array_list_length(&encoder->encoding_steps);
     while (result == AWS_MQTT5_ER_FINISHED && encoder->current_encoding_step_index < step_count) {
         struct aws_mqtt5_encoding_step *step = NULL;
-        if (aws_array_list_get_at_ptr(&encoder->encoding_steps, (void **)&step, encoder->current_encoding_step_index)) {
-            return AWS_MQTT5_ER_ERROR;
-        }
+        aws_array_list_get_at_ptr(&encoder->encoding_steps, (void **)&step, encoder->current_encoding_step_index);
 
-        result = s_execute_encode_step(step, buffer);
+        result = s_execute_encode_step(encoder, step, buffer);
         if (result == AWS_MQTT5_ER_FINISHED) {
             encoder->current_encoding_step_index++;
         }
     }
 
     if (result == AWS_MQTT5_ER_FINISHED) {
-        aws_array_list_clear(&encoder->encoding_steps);
-        encoder->current_encoding_step_index = 0;
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_GENERAL, "(%p) mqtt5 client encoder - finished encoding packet", (void *)encoder->client);
+        aws_mqtt5_encoder_reset(encoder);
     }
 
     return result;
