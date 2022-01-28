@@ -665,7 +665,9 @@ enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
 
     if (result == AWS_MQTT5_ER_FINISHED) {
         AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_GENERAL, "(%p) mqtt5 client encoder - finished encoding packet", (void *)encoder->client);
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) mqtt5 client encoder - finished encoding current operation",
+            (void *)encoder->client);
         aws_mqtt5_encoder_reset(encoder);
     }
 
