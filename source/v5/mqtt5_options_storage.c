@@ -261,24 +261,13 @@ int aws_mqtt5_packet_connect_view_validate(
             return AWS_OP_ERR;
         }
 
-        if (will_options->payload != NULL) {
-            int64_t will_payload_length = 0;
-            if (aws_input_stream_get_length(will_options->payload, &will_payload_length)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "(%p) aws_mqtt5_packet_connect_view - will payload has undefined length",
-                    (void *)connect_options);
-                return AWS_OP_ERR;
-            }
-
-            if (will_payload_length > UINT16_MAX) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "(%p) aws_mqtt5_packet_connect_view - will payload larger than %d",
-                    (void *)connect_options,
-                    (int)UINT16_MAX);
-                return AWS_OP_ERR;
-            }
+        if (will_options->payload.len > UINT16_MAX) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "(%p) aws_mqtt5_packet_connect_view - will payload larger than %d",
+                (void *)connect_options,
+                (int)UINT16_MAX);
+            return AWS_OP_ERR;
         }
     }
 
@@ -1025,22 +1014,12 @@ void aws_mqtt5_packet_publish_view_log(
 
     /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
 
-    if (publish_view->payload != NULL) {
-        int64_t length = 0;
-        aws_input_stream_get_length(publish_view->payload, &length);
-        AWS_LOGF(
-            level,
-            AWS_LS_MQTT5_GENERAL,
-            "(%p) aws_mqtt5_packet_publish_view payload set containing %" PRId64 " bytes",
-            (void *)publish_view,
-            length);
-    } else {
-        AWS_LOGF(
-            level,
-            AWS_LS_MQTT5_GENERAL,
-            "(%p) aws_mqtt5_packet_publish_view payload set as empty",
-            (void *)publish_view);
-    }
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_packet_publish_view payload set containing %zu bytes",
+        (void *)publish_view,
+        publish_view->payload.len);
 
     AWS_LOGF(
         level,
@@ -1139,6 +1118,7 @@ static size_t s_aws_mqtt5_packet_publish_compute_storage_size(
         publish_view->user_properties, publish_view->user_property_count);
 
     storage_size += publish_view->topic.len;
+    storage_size += publish_view->payload.len;
 
     if (publish_view->response_topic != NULL) {
         storage_size += publish_view->response_topic->len;
@@ -1165,8 +1145,10 @@ int aws_mqtt5_packet_publish_storage_init(
         return AWS_OP_ERR;
     }
 
-    /* TODO: acquire payload ref */
     publish_storage->payload = publish_options->payload;
+    if (aws_byte_buf_append_and_update(&publish_storage->storage, &publish_storage->payload)) {
+        return AWS_OP_ERR;
+    }
 
     publish_storage->qos = publish_options->qos;
     publish_storage->retain = publish_options->retain;
@@ -1233,9 +1215,6 @@ int aws_mqtt5_packet_publish_storage_init(
 }
 
 void aws_mqtt5_packet_publish_storage_clean_up(struct aws_mqtt5_packet_publish_storage *publish_storage) {
-
-    /* TODO: payload release */
-
     aws_mqtt5_user_property_set_clean_up(&publish_storage->user_properties);
     aws_byte_buf_clean_up(&publish_storage->storage);
 }

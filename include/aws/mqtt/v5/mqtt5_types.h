@@ -407,8 +407,8 @@ struct aws_mqtt5_packet_unsubscribe_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
  */
 struct aws_mqtt5_packet_publish_view {
-    /* This field is always NULL on received messages */
-    struct aws_input_stream *payload;
+    /* This field is always empty on received messages */
+    struct aws_byte_cursor payload;
 
     enum aws_mqtt5_qos qos;
     bool retain;
