@@ -8,6 +8,7 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_mqtt5_client;
@@ -17,12 +18,16 @@ enum aws_mqtt5_decoder_state {
     AWS_MQTT5_DS_READ_REMAINING_LENGTH,
     AWS_MQTT5_DS_READ_PACKET,
     AWS_MQTT5_DS_DECODE_PACKET,
+
+    /* not yet supported */
+    AWS_MQTT5_DS_READ_PUBLISH_VARIABLE_LENGTH_HEADER,
 };
 
 struct aws_mqtt5_decoder_packet_state {
     enum aws_mqtt5_packet_type type;
     size_t total_length;
     size_t remaining_length;
+    struct aws_mqtt5_packet_publish_storage publish_storage;
 };
 
 typedef int(
@@ -51,9 +56,14 @@ struct aws_mqtt5_decoder {
 
 AWS_EXTERN_C_BEGIN
 
-AWS_MQTT_API int aws_mqtt5_decoder_init(struct aws_mqtt5_decoder *decoder, struct aws_allocator *allocator, struct aws_mqtt5_decoder_options *options);
+AWS_MQTT_API int aws_mqtt5_decoder_init(
+    struct aws_mqtt5_decoder *decoder,
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_decoder_options *options);
 
 AWS_MQTT_API void aws_mqtt5_decoder_clean_up(struct aws_mqtt5_decoder *decoder);
+
+AWS_MQTT_API int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct aws_byte_cursor data);
 
 AWS_EXTERN_C_END
 
