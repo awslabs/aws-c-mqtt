@@ -112,8 +112,8 @@ struct aws_mqtt5_operation_connect {
 struct aws_mqtt5_packet_publish_storage {
     struct aws_mqtt5_packet_publish_view storage_view;
 
-    /* This field is always NULL on received messages */
-    struct aws_input_stream *payload;
+    /* This field is always empty on received messages */
+    struct aws_byte_cursor payload;
 
     bool dup;
     enum aws_mqtt5_qos qos;
