@@ -113,6 +113,7 @@ static void s_aws_mqtt5_encoder_push_step_cursor(struct aws_mqtt5_encoder *encod
     aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
 
+#ifdef TODO
 static void s_aws_mqtt5_encoder_push_step_stream(struct aws_mqtt5_encoder *encoder, struct aws_input_stream *value) {
     struct aws_mqtt5_encoding_step step;
     AWS_ZERO_STRUCT(step);
@@ -122,6 +123,7 @@ static void s_aws_mqtt5_encoder_push_step_stream(struct aws_mqtt5_encoder *encod
 
     aws_array_list_push_back(&encoder->encoding_steps, &step);
 }
+#endif
 
 /* macros to simplify encoding step list construction */
 
@@ -332,7 +334,6 @@ int aws_mqtt5_encoder_begin_disconnect(
 
 static int s_compute_connect_variable_length_fields(
     struct aws_mqtt5_packet_connect_view *connect_view,
-    size_t will_payload_length,
     size_t *total_remaining_length,
     size_t *connect_property_length,
     size_t *will_property_length) {
@@ -387,7 +388,7 @@ static int s_compute_connect_variable_length_fields(
         payload_length += will_properties_length_encode_size;
 
         payload_length += 2 + publish_view->topic.len;
-        payload_length += 2 + will_payload_length;
+        payload_length += 2 + publish_view->payload.len;
     }
 
     /* Can't use the optional property macros because these don't have a leading property type byte */
@@ -445,40 +446,12 @@ int aws_mqtt5_encoder_begin_connect(
     struct aws_mqtt5_packet_connect_view *connect_view) {
 
     const struct aws_mqtt5_packet_publish_view *will = connect_view->will;
-    int64_t will_payload_length = 0;
-    if (will != NULL && will->payload != NULL) {
-        if (aws_input_stream_seek(will->payload, AWS_SSB_BEGIN, 0)) {
-            int error_code = aws_last_error();
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) mqtt5 client encoder - failed to seek-to-beginning stream with error %d(%s)",
-                (void *)encoder->client,
-                error_code,
-                aws_error_debug_str(error_code));
-            return AWS_OP_ERR;
-        }
-
-        if (aws_input_stream_get_length(will->payload, &will_payload_length)) {
-            int error_code = aws_last_error();
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) mqtt5 client encoder - failed to query stream length with error %d(%s)",
-                (void *)encoder->client,
-                error_code,
-                aws_error_debug_str(error_code));
-            return AWS_OP_ERR;
-        }
-    }
 
     size_t total_remaining_length = 0;
     size_t connect_property_length = 0;
     size_t will_property_length = 0;
     if (s_compute_connect_variable_length_fields(
-            connect_view,
-            (size_t)will_payload_length,
-            &total_remaining_length,
-            &connect_property_length,
-            &will_property_length)) {
+            connect_view, &total_remaining_length, &connect_property_length, &will_property_length)) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL,
@@ -539,8 +512,8 @@ int aws_mqtt5_encoder_begin_connect(
         s_add_user_property_encoding_steps(encoder, will->user_properties, will->user_property_count);
 
         ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, will->topic);
-        ADD_ENCODE_STEP_U16(encoder, (uint16_t)will_payload_length);
-        ADD_ENCODE_STEP_STREAM(encoder, will->payload);
+        ADD_ENCODE_STEP_U16(encoder, (uint16_t)will->payload.len);
+        ADD_ENCODE_STEP_CURSOR(encoder, will->payload);
     }
 
     ADD_ENCODE_STEP_OPTIONAL_LENGTH_PREFIXED_CURSOR(encoder, connect_view->username);

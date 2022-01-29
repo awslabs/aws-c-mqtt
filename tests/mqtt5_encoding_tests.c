@@ -178,7 +178,6 @@ static int s_mqtt5_packet_connect_encode_all_fn(struct aws_allocator *allocator,
     ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, NULL));
 
     struct aws_byte_cursor will_payload_cursor = aws_byte_cursor_from_c_str(s_will_payload);
-    struct aws_input_stream *will_payload = aws_input_stream_new_from_cursor(allocator, &will_payload_cursor);
     enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
     uint32_t message_expiry_interval_seconds = 65537;
     uint16_t topic_alias = 1;
@@ -196,7 +195,7 @@ static int s_mqtt5_packet_connect_encode_all_fn(struct aws_allocator *allocator,
     uint32_t will_delay_interval_seconds = 30;
 
     struct aws_mqtt5_packet_publish_view will_view = {
-        .payload = will_payload,
+        .payload = will_payload_cursor,
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
         .retain = true,
         .topic = aws_byte_cursor_from_c_str(s_will_topic),
@@ -233,7 +232,6 @@ static int s_mqtt5_packet_connect_encode_all_fn(struct aws_allocator *allocator,
 
     ASSERT_INT_EQUALS(AWS_MQTT5_ER_FINISHED, result);
 
-    aws_input_stream_destroy(will_payload);
     aws_byte_buf_clean_up(&dest);
     aws_mqtt5_encoder_clean_up(&encoder);
 
