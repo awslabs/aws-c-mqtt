@@ -17,41 +17,28 @@ enum aws_mqtt5_decoder_state {
     AWS_MQTT5_DS_READ_PACKET_TYPE,
     AWS_MQTT5_DS_READ_REMAINING_LENGTH,
     AWS_MQTT5_DS_READ_PACKET,
-    AWS_MQTT5_DS_DECODE_PACKET,
-
-    /* not yet supported */
-    AWS_MQTT5_DS_READ_PUBLISH_VARIABLE_LENGTH_HEADER,
-};
-
-struct aws_mqtt5_decoder_packet_state {
-    enum aws_mqtt5_packet_type type;
-    size_t total_length;
-    size_t remaining_length;
-    struct aws_mqtt5_packet_publish_storage publish_storage;
-};
-
-typedef int(
-    mqtt5_client_packet_callback_fn)(struct aws_mqtt5_client *client, enum aws_mqtt5_packet_type, void *packet_storage);
-
-typedef int(mqtt5_client_publish_payload_callback_fn)(
-    struct aws_mqtt5_client *client,
-    struct aws_mqtt5_packet_publish_view *publish_view,
-    struct aws_byte_cursor payload_bytes);
-
-struct aws_mqtt5_decoder_options {
-    struct aws_mqtt5_client *client;
-    mqtt5_client_packet_callback_fn *packet_callback;
-    mqtt5_client_publish_payload_callback_fn *publish_payload_callback;
+    AWS_MQTT5_DS_READ_PUBLISH_TOPIC_LENGTH,
+    AWS_MQTT5_DS_READ_PUBLISH_TOPIC,
+    AWS_MQTT5_DS_READ_PUBLISH_PROPERTIES_REMAINING_LENGTH,
+    AWS_MQTT5_DS_READ_PUBLISH_PRE_PAYLOAD,
+    AWS_MQTT5_DS_READ_PUBLISH_PAYLOAD,
 };
 
 struct aws_mqtt5_decoder {
-    struct aws_mqtt5_decoder_options config;
+    struct aws_mqtt5_client *client;
 
     enum aws_mqtt5_decoder_state state;
-    struct aws_mqtt5_decoder_packet_state packet_state;
 
-    struct aws_byte_buf pre_decode_buffer;
-    struct aws_byte_cursor pre_decode_cursor;
+    /* decode output/scratch space */
+    struct aws_byte_buf scratch_space;
+    size_t current_step_scratch_offset;
+
+    enum aws_mqtt5_packet_type packet_type;
+    uint32_t total_length;
+    uint32_t remaining_length;
+    uint32_t publish_topic_length;
+    struct aws_byte_cursor publish_topic;
+    uint32_t publish_properties_remaining_length;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -59,7 +46,7 @@ AWS_EXTERN_C_BEGIN
 AWS_MQTT_API int aws_mqtt5_decoder_init(
     struct aws_mqtt5_decoder *decoder,
     struct aws_allocator *allocator,
-    struct aws_mqtt5_decoder_options *options);
+    struct aws_mqtt5_client *client);
 
 AWS_MQTT_API void aws_mqtt5_decoder_clean_up(struct aws_mqtt5_decoder *decoder);
 

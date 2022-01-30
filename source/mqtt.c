@@ -175,6 +175,15 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT5_ENCODE_INVALID_VARIABLE_LENGTH_INTEGER,
                 "Attempt to encode a variable length integer that is too large."),
             AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_DECODE_INVALID_PACKET_TYPE,
+                "Mqtt5 decoder received invalid packet type value"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_DECODE_INVALID_VARIABLE_LENGTH_INTEGER,
+                "Mqtt5 decoder received invalid variable length integer"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_DECODE_INVALID_PROPERTY,
+                "Mqtt5 decoder received invalid property type"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_USER_REQUESTED_STOP,
                 "Mqtt5 client connection interrupted by user request."),
         };
