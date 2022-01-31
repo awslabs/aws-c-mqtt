@@ -18,6 +18,18 @@
  * Property set
  ********************************************************************************************************************/
 
+int aws_mqtt5_user_property_set_init(
+    struct aws_mqtt5_user_property_set *property_set,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*property_set);
+
+    if (aws_array_list_init_dynamic(&property_set->properties, allocator, 0, sizeof(struct aws_mqtt5_user_property))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_mqtt5_user_property_set_init_with_storage(
     struct aws_mqtt5_user_property_set *property_set,
     struct aws_allocator *allocator,
@@ -755,7 +767,7 @@ void aws_mqtt5_packet_disconnect_view_log(
         "aws_mqtt5_packet_disconnect_view");
 }
 
-void aws_aws_mqtt5_packet_disconnect_storage_clean_up(struct aws_mqtt5_packet_disconnect_storage *disconnect_storage) {
+void aws_mqtt5_packet_disconnect_storage_clean_up(struct aws_mqtt5_packet_disconnect_storage *disconnect_storage) {
     if (disconnect_storage == NULL) {
         return;
     }
@@ -840,6 +852,18 @@ int aws_mqtt5_packet_disconnect_storage_init(
     return AWS_OP_SUCCESS;
 }
 
+int aws_mqtt5_packet_disconnect_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_disconnect_storage *disconnect_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*disconnect_storage);
+
+    if (aws_mqtt5_user_property_set_init(&disconnect_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static void s_destroy_operation_disconnect(void *object) {
     if (object == NULL) {
         return;
@@ -847,7 +871,7 @@ static void s_destroy_operation_disconnect(void *object) {
 
     struct aws_mqtt5_operation_disconnect *disconnect_op = object;
 
-    aws_aws_mqtt5_packet_disconnect_storage_clean_up(&disconnect_op->options_storage);
+    aws_mqtt5_packet_disconnect_storage_clean_up(&disconnect_op->options_storage);
 
     aws_mem_release(disconnect_op->allocator, disconnect_op);
 }

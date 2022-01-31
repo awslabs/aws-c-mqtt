@@ -5,6 +5,7 @@
 
 #include <aws/common/string.h>
 
+#include "mqtt5_testing_utils.h"
 #include <aws/io/stream.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
@@ -12,44 +13,12 @@
 
 #include <aws/testing/aws_test_harness.h>
 
-static int s_verify_user_properties_raw(
-    size_t property_count,
-    const struct aws_mqtt5_user_property *properties,
-    size_t expected_count,
-    const struct aws_mqtt5_user_property *expected_properties) {
-
-    ASSERT_UINT_EQUALS(expected_count, property_count);
-
-    for (size_t i = 0; i < expected_count; ++i) {
-        const struct aws_mqtt5_user_property *expected_property = &expected_properties[i];
-        struct aws_byte_cursor expected_name = expected_property->name;
-        struct aws_byte_cursor expected_value = expected_property->value;
-
-        bool found = false;
-        for (size_t j = 0; j < property_count; ++j) {
-            const struct aws_mqtt5_user_property *nv_pair = &properties[j];
-
-            if (aws_byte_cursor_compare_lexical(&expected_name, &nv_pair->name) == 0 &&
-                aws_byte_cursor_compare_lexical(&expected_value, &nv_pair->value) == 0) {
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) {
-            return AWS_OP_ERR;
-        }
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
 static int s_verify_user_properties(
     struct aws_mqtt5_user_property_set *property_set,
     size_t expected_count,
     const struct aws_mqtt5_user_property *expected_properties) {
 
-    return s_verify_user_properties_raw(
+    return aws_mqtt5_test_verify_user_properties_raw(
         aws_mqtt5_user_property_set_size(property_set),
         property_set->properties.data,
         expected_count,
@@ -132,8 +101,8 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     ASSERT_NULL(stored_view->content_type);
 
     ASSERT_SUCCESS(s_verify_user_properties(&publish_storage->user_properties, 0, NULL));
-    ASSERT_SUCCESS(
-        s_verify_user_properties_raw(stored_view->user_property_count, stored_view->user_properties, 0, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        stored_view->user_property_count, stored_view->user_properties, 0, NULL));
 
     ASSERT_NULL(publish_op->completion_options.completion_callback);
     ASSERT_NULL(publish_op->completion_options.completion_user_data);
@@ -319,7 +288,7 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
 
     ASSERT_SUCCESS(s_verify_user_properties(
         &publish_storage->user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));
-    ASSERT_SUCCESS(s_verify_user_properties_raw(
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
         stored_view->user_property_count,
         stored_view->user_properties,
         AWS_ARRAY_SIZE(s_user_properties),

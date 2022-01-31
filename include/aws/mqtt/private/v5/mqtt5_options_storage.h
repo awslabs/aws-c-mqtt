@@ -324,6 +324,10 @@ AWS_MQTT_API int aws_mqtt5_packet_disconnect_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_disconnect_view *disconnect_options);
 
+AWS_MQTT_API int aws_mqtt5_packet_disconnect_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_disconnect_storage *disconnect_storage,
+    struct aws_allocator *allocator);
+
 AWS_MQTT_API void aws_mqtt5_packet_disconnect_storage_clean_up(
     struct aws_mqtt5_packet_disconnect_storage *disconnect_storage);
 
