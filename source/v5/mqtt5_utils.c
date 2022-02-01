@@ -40,3 +40,11 @@ int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size)
 
     return AWS_OP_SUCCESS;
 }
+
+/* encodes a utf8-string (2 byte length + "MQTT") + the version value (5) */
+static uint8_t s_connect_variable_length_header_prefix[7] = {0x00, 0x04, 0x4D, 0x51, 0x54, 0x54, 0x05};
+
+struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor = {
+    .ptr = &s_connect_variable_length_header_prefix[0],
+    .len = AWS_ARRAY_SIZE(s_connect_variable_length_header_prefix),
+};

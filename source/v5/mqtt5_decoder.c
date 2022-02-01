@@ -93,13 +93,7 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     return AWS_OP_SUCCESS;
 }
 
-enum aws_mqtt5_decode_vli_result_type {
-    AWS_MQTT5_DVRT_MORE_DATA,
-    AWS_MQTT5_DVRT_SUCCESS,
-    AWS_MQTT5_DVRT_ERROR,
-};
-
-static enum aws_mqtt5_decode_vli_result_type s_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest) {
+enum aws_mqtt5_decode_vli_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest) {
     uint32_t value = 0;
     bool more_data = false;
     size_t bytes_used = 0;
@@ -150,7 +144,7 @@ static enum aws_mqtt5_decode_vli_result_type s_aws_mqtt5_decoder_read_vli_on_dat
             .len = decoder->scratch_space.len - decoder->current_step_scratch_offset,
         };
 
-        decode_vli_result = s_decode_vli(&vli_cursor, vli_dest);
+        decode_vli_result = aws_mqtt5_decode_vli(&vli_cursor, vli_dest);
     }
 
     return decode_vli_result;
@@ -179,59 +173,7 @@ static int s_aws_mqtt5_decoder_read_remaining_length_on_data(
     return AWS_OP_SUCCESS;
 }
 
-#define AWS_MQTT5_DECODE_U8(cursor_ptr, u8_ptr, error_label)                                                           \
-    if (!aws_byte_cursor_read_u8((cursor_ptr), (u8_ptr))) {                                                            \
-        goto error_label;                                                                                              \
-    }
-
-#define AWS_MQTT5_DECODE_U8_OPTIONAL(cursor_ptr, u8_ptr, u8_ptr_ptr, error_label)                                      \
-    AWS_MQTT5_DECODE_U8(cursor_ptr, u8_ptr, error_label);                                                              \
-    *(u8_ptr_ptr) = (u8_ptr);
-
-#define AWS_MQTT5_DECODE_U16(cursor_ptr, u16_ptr, error_label)                                                         \
-    if (!aws_byte_cursor_read_be16((cursor_ptr), (u16_ptr))) {                                                         \
-        goto error_label;                                                                                              \
-    }
-
-#define AWS_MQTT5_DECODE_U16_PREFIX(cursor_ptr, u16_ptr, error_label)                                                  \
-    AWS_MQTT5_DECODE_U16((cursor_ptr), (u16_ptr), error_label);                                                        \
-    if (cursor_ptr->len < *(u16_ptr)) {                                                                                \
-        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);                                                        \
-        goto error_label;                                                                                              \
-    }
-
-#define AWS_MQTT5_DECODE_U16_OPTIONAL(cursor_ptr, u16_ptr, u16_ptr_ptr, error_label)                                   \
-    AWS_MQTT5_DECODE_U16((cursor_ptr), u16_ptr, error_label);                                                          \
-    *(u16_ptr_ptr) = (u16_ptr);
-
-#define AWS_MQTT5_DECODE_U32(cursor_ptr, u32_ptr, error_label)                                                         \
-    if (!aws_byte_cursor_read_be32((cursor_ptr), (u32_ptr))) {                                                         \
-        goto error_label;                                                                                              \
-    }
-
-#define AWS_MQTT5_DECODE_U32_OPTIONAL(cursor_ptr, u32_ptr, u32_ptr_ptr, error_label)                                   \
-    AWS_MQTT5_DECODE_U32((cursor_ptr), u32_ptr, error_label);                                                          \
-    *(u32_ptr_ptr) = (u32_ptr);
-
-#define AWS_MQTT5_DECODE_VLI(cursor_ptr, u32_ptr, error_label)                                                         \
-    if (AWS_MQTT5_DVRT_SUCCESS != s_decode_vli((cursor_ptr), (u32_ptr))) {                                             \
-        goto error_label;                                                                                              \
-    }
-
-#define AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(cursor_ptr, dest_cursor_ptr, error_label)                              \
-    {                                                                                                                  \
-        uint16_t prefix_length = 0;                                                                                    \
-        AWS_MQTT5_DECODE_U16_PREFIX((cursor_ptr), &prefix_length, error_label)                                         \
-                                                                                                                       \
-        *(dest_cursor_ptr) = aws_byte_cursor_advance((cursor_ptr), prefix_length);                                     \
-    }
-
-#define AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(                                                              \
-    cursor_ptr, dest_cursor_ptr, dest_cursor_ptr_ptr, error_label)                                                     \
-    AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR((cursor_ptr), (dest_cursor_ptr), error_label)                              \
-    *(dest_cursor_ptr_ptr) = (dest_cursor_ptr);
-
-static int s_aws_mqtt5_decode_user_property(
+int aws_mqtt5_decode_user_property(
     struct aws_byte_cursor *packet_cursor,
     struct aws_mqtt5_user_property_set *properties) {
     struct aws_mqtt5_user_property property;
@@ -250,12 +192,176 @@ error:
     return AWS_OP_ERR;
 }
 
+static int s_read_connack_property(
+    struct aws_mqtt5_packet_connack_storage *storage,
+    struct aws_byte_cursor *packet_cursor) {
+    int result = AWS_OP_ERR;
+
+    uint8_t property_type = 0;
+    AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
+
+    switch (property_type) {
+        case AWS_MQTT5_PROPERTY_TYPE_SESSION_EXPIRY_INTERVAL:
+            AWS_MQTT5_DECODE_U32_OPTIONAL(
+                packet_cursor, &storage->session_expiry_interval, &storage->session_expiry_interval_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_RECEIVE_MAXIMUM:
+            AWS_MQTT5_DECODE_U16_OPTIONAL(
+                packet_cursor, &storage->receive_maximum, &storage->receive_maximum_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_QOS:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(packet_cursor, &storage->maximum_qos, &storage->maximum_qos_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_RETAIN_AVAILABLE:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(
+                packet_cursor, &storage->retain_available, &storage->retain_available_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_PACKET_SIZE:
+            AWS_MQTT5_DECODE_U32_OPTIONAL(
+                packet_cursor, &storage->maximum_packet_size, &storage->maximum_packet_size_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_ASSIGNED_CLIENT_IDENTIFIER:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->assigned_client_identifier, &storage->assigned_client_identifier_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_TOPIC_ALIAS_MAXIMUM:
+            AWS_MQTT5_DECODE_U16_OPTIONAL(
+                packet_cursor, &storage->topic_alias_maximum, &storage->topic_alias_maximum_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_REASON_STRING:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->reason_string, &storage->reason_string_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_WILDCARD_SUBSCRIPTIONS_AVAILABLE:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(
+                packet_cursor,
+                &storage->wildcard_subscriptions_available,
+                &storage->wildcard_subscriptions_available_ptr,
+                done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIERS_AVAILABLE:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(
+                packet_cursor,
+                &storage->subscription_identifiers_available,
+                &storage->subscription_identifiers_available_ptr,
+                done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_SHARED_SUBSCRIPTIONS_AVAILABLE:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(
+                packet_cursor,
+                &storage->shared_subscriptions_available,
+                &storage->shared_subscriptions_available_ptr,
+                done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_SERVER_KEEP_ALIVE:
+            AWS_MQTT5_DECODE_U16_OPTIONAL(
+                packet_cursor, &storage->server_keep_alive, &storage->server_keep_alive_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_RESPONSE_INFORMATION:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->response_information, &storage->response_information_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_SERVER_REFERENCE:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->server_reference, &storage->server_reference_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_METHOD:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->authentication_method, &storage->authentication_method_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_DATA:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->authentication_data, &storage->authentication_data_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
+            if (aws_mqtt5_decode_user_property(packet_cursor, &storage->user_properties)) {
+                goto done;
+            }
+            break;
+
+        default:
+            goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    return result;
+}
+
 static int s_aws_mqtt5_decoder_decode_connack_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
-    (void)decoder;
+    struct aws_mqtt5_packet_connack_storage storage;
+    if (aws_mqtt5_packet_connack_storage_init_from_external_storage(&storage, decoder->allocator)) {
+        return AWS_OP_ERR;
+    }
 
-    /* TODO: non-streaming top-down decode that should end exactly on scratch_space's end */
+    int result = AWS_OP_ERR;
+    struct aws_byte_cursor packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
 
-    return AWS_OP_ERR;
+    uint8_t first_byte = 0;
+    AWS_MQTT5_DECODE_U8(&packet_cursor, &first_byte, done);
+
+    /* CONNACK flags must be zero by protocol */
+    if ((first_byte & 0x0F) != 0) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        goto done;
+    }
+
+    uint32_t remaining_length = 0;
+    AWS_MQTT5_DECODE_VLI(&packet_cursor, &remaining_length, done);
+    if (remaining_length != decoder->remaining_length || remaining_length != (uint32_t)packet_cursor.len) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        goto done;
+    }
+
+    uint8_t reason_code = 0;
+    AWS_MQTT5_DECODE_U8(&packet_cursor, &reason_code, done);
+    storage.reason_code = reason_code;
+
+    uint32_t property_length = 0;
+    AWS_MQTT5_DECODE_VLI(&packet_cursor, &property_length, done);
+    if (property_length != (uint32_t)packet_cursor.len) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        goto done;
+    }
+
+    while (packet_cursor.len > 0) {
+        if (s_read_connack_property(&storage, &packet_cursor)) {
+            goto done;
+        }
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    if (result == AWS_OP_SUCCESS) {
+        if (decoder->options.on_packet_received != NULL) {
+            aws_mqtt5_packet_connack_view_init_from_storage(&storage.storage_view, &storage);
+            result = (*decoder->options.on_packet_received)(AWS_MQTT5_PT_CONNACK, &storage.storage_view);
+        }
+    }
+
+    aws_mqtt5_packet_connack_storage_clean_up(&storage);
+
+    return result;
 }
 
 static int s_read_disconnect_property(
@@ -286,7 +392,7 @@ static int s_read_disconnect_property(
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
-            if (s_aws_mqtt5_decode_user_property(packet_cursor, &storage->user_properties)) {
+            if (aws_mqtt5_decode_user_property(packet_cursor, &storage->user_properties)) {
                 goto done;
             }
             break;
@@ -366,10 +472,255 @@ done:
     return result;
 }
 
-static int s_aws_mqtt5_decoder_decode_connect_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
-    (void)decoder;
+static int s_read_connect_property(
+    struct aws_mqtt5_packet_connect_storage *storage,
+    struct aws_byte_cursor *packet_cursor) {
+    int result = AWS_OP_ERR;
 
-    /* TODO: non-streaming top-down decode that should end exactly on scratch_space's end */
+    uint8_t property_type = 0;
+    AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
+
+    switch (property_type) {
+        case AWS_MQTT5_PROPERTY_TYPE_SESSION_EXPIRY_INTERVAL:
+            AWS_MQTT5_DECODE_U32_OPTIONAL(
+                packet_cursor,
+                &storage->session_expiry_interval_seconds,
+                &storage->session_expiry_interval_seconds_ptr,
+                done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_RECEIVE_MAXIMUM:
+            AWS_MQTT5_DECODE_U16_OPTIONAL(
+                packet_cursor, &storage->receive_maximum, &storage->receive_maximum_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_PACKET_SIZE:
+            AWS_MQTT5_DECODE_U32_OPTIONAL(
+                packet_cursor, &storage->maximum_packet_size_bytes, &storage->maximum_packet_size_bytes_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_TOPIC_ALIAS_MAXIMUM:
+            AWS_MQTT5_DECODE_U16_OPTIONAL(
+                packet_cursor, &storage->topic_alias_maximum, &storage->topic_alias_maximum_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_REQUEST_RESPONSE_INFORMATION:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(
+                packet_cursor,
+                &storage->request_response_information,
+                &storage->request_response_information_ptr,
+                done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_REQUEST_PROBLEM_INFORMATION:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(
+                packet_cursor, &storage->request_problem_information, &storage->request_problem_information_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_METHOD:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->authentication_method, &storage->authentication_method_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_DATA:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->authentication_data, &storage->authentication_data_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
+            if (aws_mqtt5_decode_user_property(packet_cursor, &storage->user_properties)) {
+                goto done;
+            }
+            break;
+
+        default:
+            goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    return result;
+}
+
+static int s_read_will_property(
+    struct aws_mqtt5_packet_connect_storage *connect_storage,
+    struct aws_mqtt5_packet_publish_storage *will_storage,
+    struct aws_byte_cursor *packet_cursor) {
+    int result = AWS_OP_ERR;
+
+    uint8_t property_type = 0;
+    AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
+
+    switch (property_type) {
+        case AWS_MQTT5_PROPERTY_TYPE_WILL_DELAY_INTERVAL:
+            AWS_MQTT5_DECODE_U32_OPTIONAL(
+                packet_cursor,
+                &connect_storage->will_delay_interval_seconds,
+                &connect_storage->will_delay_interval_seconds_ptr,
+                done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_PAYLOAD_FORMAT_INDICATOR:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(
+                packet_cursor, &will_storage->payload_format, &will_storage->payload_format_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_MESSAGE_EXPIRY_INTERVAL:
+            AWS_MQTT5_DECODE_U32_OPTIONAL(
+                packet_cursor,
+                &will_storage->message_expiry_interval_seconds,
+                &will_storage->message_expiry_interval_seconds_ptr,
+                done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &will_storage->content_type, &will_storage->content_type_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_RESPONSE_TOPIC:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &will_storage->response_topic, &will_storage->response_topic_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &will_storage->correlation_data, &will_storage->correlation_data_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
+            if (aws_mqtt5_decode_user_property(packet_cursor, &will_storage->user_properties)) {
+                goto done;
+            }
+            break;
+
+        default:
+            goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    return result;
+}
+
+static int s_aws_mqtt5_decoder_decode_connect_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
+    struct aws_mqtt5_packet_connect_storage connect_storage;
+    struct aws_mqtt5_packet_publish_storage publish_storage;
+    int result = AWS_OP_ERR;
+
+    if (aws_mqtt5_packet_connect_storage_init_from_external_storage(&connect_storage, decoder->allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_mqtt5_packet_publish_storage_init_from_external_storage(&publish_storage, decoder->allocator)) {
+        goto done;
+    }
+
+    struct aws_byte_cursor packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
+    uint8_t first_byte = 0;
+    AWS_MQTT5_DECODE_U8(&packet_cursor, &first_byte, done);
+
+    /* CONNECT flags must be zero by protocol */
+    if ((first_byte & 0x0F) != 0) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        goto done;
+    }
+
+    uint32_t remaining_length = 0;
+    AWS_MQTT5_DECODE_VLI(&packet_cursor, &remaining_length, done);
+    if (remaining_length != decoder->remaining_length || remaining_length != (uint32_t)packet_cursor.len) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        goto done;
+    }
+
+    struct aws_byte_cursor protocol_cursor = aws_byte_cursor_advance(&packet_cursor, 7);
+    if (!aws_byte_cursor_eq(&protocol_cursor, &g_aws_mqtt5_connect_protocol_cursor)) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        goto done;
+    }
+
+    uint8_t connect_flags = 0;
+    AWS_MQTT5_DECODE_U8(&packet_cursor, &connect_flags, done);
+
+    connect_storage.clean_start = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_CLEAN_START_BIT) != 0;
+
+    AWS_MQTT5_DECODE_U16(&packet_cursor, &connect_storage.keep_alive_interval_seconds, done);
+
+    uint32_t connect_property_length = 0;
+    AWS_MQTT5_DECODE_VLI(&packet_cursor, &connect_property_length, done);
+    if (connect_property_length > packet_cursor.len) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        goto done;
+    }
+
+    struct aws_byte_cursor connect_property_cursor = aws_byte_cursor_advance(&packet_cursor, connect_property_length);
+    while (connect_property_cursor.len > 0) {
+        if (s_read_connect_property(&connect_storage, &connect_property_cursor)) {
+            goto done;
+        }
+    }
+
+    AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &connect_storage.client_id, done);
+
+    bool has_will = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_WILL_BIT) != 0;
+    if (has_will) {
+        uint32_t will_property_length = 0;
+        AWS_MQTT5_DECODE_VLI(&packet_cursor, &will_property_length, done);
+        if (will_property_length > packet_cursor.len) {
+            aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+            goto done;
+        }
+
+        struct aws_byte_cursor will_property_cursor = aws_byte_cursor_advance(&packet_cursor, will_property_length);
+        while (will_property_cursor.len > 0) {
+            if (s_read_will_property(&connect_storage, &publish_storage, &will_property_cursor)) {
+                goto done;
+            }
+        }
+
+        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &publish_storage.topic, done);
+        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &publish_storage.payload, done);
+
+        /* apply will flags from the connect flags to the will's storage */
+        publish_storage.qos = (enum aws_mqtt5_qos)(
+            (connect_flags >> AWS_MQTT5_CONNECT_FLAGS_WILL_QOS_BIT_POSITION) &
+            AWS_MQTT5_CONNECT_FLAGS_WILL_QOS_BIT_MASK);
+        publish_storage.retain = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_WILL_RETAIN_BIT) != 0;
+    }
+
+    if ((connect_flags & AWS_MQTT5_CONNECT_FLAGS_USER_NAME_BIT) != 0) {
+        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+            &packet_cursor, &connect_storage.username, &connect_storage.username_ptr, done);
+    }
+
+    if ((connect_flags & AWS_MQTT5_CONNECT_FLAGS_PASSWORD_BIT) != 0) {
+        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+            &packet_cursor, &connect_storage.password, &connect_storage.password_ptr, done);
+    }
+
+    if (packet_cursor.len == 0) {
+        result = AWS_OP_SUCCESS;
+    }
+
+done:
+
+    if (result == AWS_OP_SUCCESS) {
+        if (decoder->options.on_packet_received != NULL) {
+            aws_mqtt5_packet_connect_view_init_from_storage(&connect_storage.storage_view, &connect_storage);
+            if (has_will) {
+                aws_mqtt5_packet_publish_view_init_from_storage(&publish_storage.storage_view, &publish_storage);
+            }
+
+            result = (*decoder->options.on_packet_received)(AWS_MQTT5_PT_CONNECT, &connect_storage.storage_view);
+        }
+    }
+
+    aws_mqtt5_packet_publish_storage_clean_up(&publish_storage);
+    aws_mqtt5_packet_connect_storage_clean_up(&connect_storage);
 
     return AWS_OP_ERR;
 }
@@ -380,6 +731,7 @@ static int s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(struct aws_mqtt
     switch (decoder->packet_type) {
         case AWS_MQTT5_PT_PINGREQ:
         case AWS_MQTT5_PT_PINGRESP:
+            /* TODO: validate flags */
             if (decoder->remaining_length != 0) {
                 return aws_raise_error(AWS_ERROR_INVALID_STATE);
             }

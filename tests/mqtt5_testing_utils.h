@@ -9,6 +9,8 @@
 
 #include <aws/mqtt/v5/mqtt5_types.h>
 
+struct aws_mqtt5_encoder;
+
 AWS_EXTERN_C_BEGIN
 
 AWS_MQTT_API int aws_mqtt5_test_verify_user_properties_raw(
@@ -16,6 +18,14 @@ AWS_MQTT_API int aws_mqtt5_test_verify_user_properties_raw(
     const struct aws_mqtt5_user_property *properties,
     size_t expected_count,
     const struct aws_mqtt5_user_property *expected_properties);
+
+/* Testing-only encode implementations */
+
+AWS_MQTT_API int aws_mqtt5_encoder_begin_connack(
+    struct aws_mqtt5_encoder *encoder,
+    struct aws_mqtt5_packet_connack_view *connack_view);
+
+AWS_MQTT_API int aws_mqtt5_encoder_begin_pingresp(struct aws_mqtt5_encoder *encoder);
 
 AWS_EXTERN_C_END
 

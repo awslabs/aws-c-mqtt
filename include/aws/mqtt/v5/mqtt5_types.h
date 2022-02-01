@@ -457,6 +457,10 @@ struct aws_mqtt5_packet_connect_view {
 
     size_t user_property_count;
     const struct aws_mqtt5_user_property *user_properties;
+
+    /* Do not bind these.  We don't support AUTH packets yet.  For decode/encade testing purposes only. */
+    const struct aws_byte_cursor *authentication_method;
+    const struct aws_byte_cursor *authentication_data;
 };
 
 /**

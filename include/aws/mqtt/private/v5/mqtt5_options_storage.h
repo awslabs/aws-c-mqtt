@@ -99,6 +99,12 @@ struct aws_mqtt5_packet_connect_storage {
 
     struct aws_mqtt5_user_property_set user_properties;
 
+    struct aws_byte_cursor authentication_method;
+    struct aws_byte_cursor *authentication_method_ptr;
+
+    struct aws_byte_cursor authentication_data;
+    struct aws_byte_cursor *authentication_data_ptr;
+
     struct aws_byte_buf storage;
 };
 
@@ -107,6 +113,67 @@ struct aws_mqtt5_operation_connect {
     struct aws_allocator *allocator;
 
     struct aws_mqtt5_packet_connect_storage options_storage;
+};
+
+struct aws_mqtt5_packet_connack_storage {
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt5_packet_connack_view storage_view;
+
+    bool session_present;
+    enum aws_mqtt5_connect_reason_code reason_code;
+
+    uint32_t session_expiry_interval;
+    uint32_t *session_expiry_interval_ptr;
+
+    uint16_t receive_maximum;
+    uint16_t *receive_maximum_ptr;
+
+    enum aws_mqtt5_qos maximum_qos;
+    enum aws_mqtt5_qos *maximum_qos_ptr;
+
+    bool retain_available;
+    bool *retain_available_ptr;
+
+    uint32_t maximum_packet_size;
+    uint32_t *maximum_packet_size_ptr;
+
+    struct aws_byte_cursor assigned_client_identifier;
+    struct aws_byte_cursor *assigned_client_identifier_ptr;
+
+    uint16_t topic_alias_maximum;
+    uint16_t *topic_alias_maximum_ptr;
+
+    struct aws_byte_cursor reason_string;
+    struct aws_byte_cursor *reason_string_ptr;
+
+    bool wildcard_subscriptions_available;
+    bool *wildcard_subscriptions_available_ptr;
+
+    bool subscription_identifiers_available;
+    bool *subscription_identifiers_available_ptr;
+
+    bool shared_subscriptions_available;
+    bool *shared_subscriptions_available_ptr;
+
+    uint16_t server_keep_alive;
+    uint16_t *server_keep_alive_ptr;
+
+    struct aws_byte_cursor response_information;
+    struct aws_byte_cursor *response_information_ptr;
+
+    struct aws_byte_cursor server_reference;
+    struct aws_byte_cursor *server_reference_ptr;
+
+    struct aws_byte_cursor authentication_method;
+    struct aws_byte_cursor *authentication_method_ptr;
+
+    struct aws_byte_cursor authentication_data;
+    struct aws_byte_cursor *authentication_data_ptr;
+
+    struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_byte_buf storage;
 };
 
 struct aws_mqtt5_packet_publish_storage {
@@ -293,6 +360,10 @@ AWS_MQTT_API int aws_mqtt5_packet_connect_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_connect_view *connect_options);
 
+AWS_MQTT_API int aws_mqtt5_packet_connect_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_connect_storage *connect_storage,
+    struct aws_allocator *allocator);
+
 AWS_MQTT_API void aws_mqtt5_packet_connect_storage_clean_up(struct aws_mqtt5_packet_connect_storage *connect_storage);
 
 AWS_MQTT_API int aws_mqtt5_packet_connect_view_validate(
@@ -306,6 +377,22 @@ AWS_MQTT_API void aws_mqtt5_packet_connect_view_log(
 AWS_MQTT_API void aws_mqtt5_packet_connect_view_init_from_storage(
     struct aws_mqtt5_packet_connect_view *connect_view,
     const struct aws_mqtt5_packet_connect_storage *connect_storage);
+
+/* Connack */
+
+AWS_MQTT_API int aws_mqtt5_packet_connack_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_connack_storage *connack_storage,
+    struct aws_allocator *allocator);
+
+AWS_MQTT_API void aws_mqtt5_packet_connack_storage_clean_up(struct aws_mqtt5_packet_connack_storage *connack_storage);
+
+AWS_MQTT_API void aws_mqtt5_packet_connack_view_log(
+    const struct aws_mqtt5_packet_connack_view *connack_view,
+    enum aws_log_level level);
+
+AWS_MQTT_API void aws_mqtt5_packet_connack_view_init_from_storage(
+    struct aws_mqtt5_packet_connack_view *connack_view,
+    const struct aws_mqtt5_packet_connack_storage *connack_storage);
 
 /* Disconnect */
 
@@ -354,6 +441,10 @@ AWS_MQTT_API int aws_mqtt5_packet_publish_storage_init(
     struct aws_mqtt5_packet_publish_storage *publish_storage,
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_publish_view *publish_options);
+
+AWS_MQTT_API int aws_mqtt5_packet_publish_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_publish_storage *publish_storage,
+    struct aws_allocator *allocator);
 
 AWS_MQTT_API void aws_mqtt5_packet_publish_storage_clean_up(struct aws_mqtt5_packet_publish_storage *publish_storage);
 
