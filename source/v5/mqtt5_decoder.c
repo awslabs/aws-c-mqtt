@@ -76,6 +76,10 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     struct aws_mqtt5_decoder *decoder,
     struct aws_byte_cursor *data) {
 
+    if (data->len == 0) {
+        return AWS_MQTT5_DRT_MORE_DATA;
+    }
+
     uint8_t byte = *data->ptr;
     aws_byte_cursor_advance(data, 1);
     aws_byte_buf_append_byte_dynamic(&decoder->scratch_space, byte);
@@ -83,30 +87,32 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     enum aws_mqtt5_packet_type packet_type = (byte >> 4);
 
     if (!s_is_decodable_packet_type(packet_type)) {
-        return aws_raise_error(AWS_ERROR_MQTT5_DECODE_INVALID_PACKET_TYPE);
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_INVALID_PACKET_TYPE);
+        return AWS_MQTT5_DRT_ERROR;
     }
 
     decoder->packet_type = packet_type;
 
     s_enter_state(decoder, AWS_MQTT5_DS_READ_REMAINING_LENGTH);
 
-    return AWS_OP_SUCCESS;
+    return AWS_MQTT5_DRT_SUCCESS;
 }
 
-enum aws_mqtt5_decode_vli_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest) {
+enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest) {
     uint32_t value = 0;
     bool more_data = false;
     size_t bytes_used = 0;
 
+    uint32_t shift = 0;
+
     for (; bytes_used < 4; ++bytes_used) {
         if (bytes_used >= cursor->len) {
-            return AWS_MQTT5_DVRT_MORE_DATA;
+            return AWS_MQTT5_DRT_MORE_DATA;
         }
 
-        value <<= 7;
-
         uint8_t byte = *(cursor->ptr + bytes_used);
-        value |= (byte & 0x7F);
+        value |= ((byte & 0x7F) << shift);
+        shift += 7;
 
         more_data = (byte & 0x80) != 0;
         if (!more_data) {
@@ -116,23 +122,23 @@ enum aws_mqtt5_decode_vli_result_type aws_mqtt5_decode_vli(struct aws_byte_curso
 
     if (more_data) {
         /* A variable length integer with the 4th byte high bit set is not valid */
-        return AWS_MQTT5_DVRT_ERROR;
+        return AWS_MQTT5_DRT_ERROR;
     }
 
     aws_byte_cursor_advance(cursor, bytes_used + 1);
     *dest = value;
 
-    return AWS_MQTT5_DVRT_SUCCESS;
+    return AWS_MQTT5_DRT_SUCCESS;
 }
 
-static enum aws_mqtt5_decode_vli_result_type s_aws_mqtt5_decoder_read_vli_on_data(
+static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_vli_on_data(
     struct aws_mqtt5_decoder *decoder,
     uint32_t *vli_dest,
     struct aws_byte_cursor *data) {
 
-    enum aws_mqtt5_decode_vli_result_type decode_vli_result = AWS_MQTT5_DVRT_MORE_DATA;
+    enum aws_mqtt5_decode_result_type decode_vli_result = AWS_MQTT5_DRT_MORE_DATA;
 
-    while (data->len > 0 && decode_vli_result == AWS_MQTT5_DVRT_MORE_DATA) {
+    while (data->len > 0 && decode_vli_result == AWS_MQTT5_DRT_MORE_DATA) {
         struct aws_byte_cursor byte_cursor = *data;
         byte_cursor.len = 1;
 
@@ -150,27 +156,26 @@ static enum aws_mqtt5_decode_vli_result_type s_aws_mqtt5_decoder_read_vli_on_dat
     return decode_vli_result;
 }
 
-static int s_aws_mqtt5_decoder_read_remaining_length_on_data(
+static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_remaining_length_on_data(
     struct aws_mqtt5_decoder *decoder,
     struct aws_byte_cursor *data) {
 
-    enum aws_mqtt5_decode_vli_result_type result =
+    enum aws_mqtt5_decode_result_type result =
         s_aws_mqtt5_decoder_read_vli_on_data(decoder, &decoder->remaining_length, data);
 
-    if (result == AWS_MQTT5_DVRT_MORE_DATA) {
-        AWS_FATAL_ASSERT(data->len == 0);
-        return AWS_OP_SUCCESS;
+    if (result == AWS_MQTT5_DRT_ERROR) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_INVALID_VARIABLE_LENGTH_INTEGER);
     }
 
-    if (result == AWS_MQTT5_DVRT_ERROR) {
-        return aws_raise_error(AWS_ERROR_MQTT5_DECODE_INVALID_VARIABLE_LENGTH_INTEGER);
+    if (result != AWS_MQTT5_DRT_SUCCESS) {
+        return result;
     }
 
     decoder->total_length = decoder->remaining_length + decoder->scratch_space.len;
 
     s_enter_state(decoder, AWS_MQTT5_DS_READ_PACKET);
 
-    return AWS_OP_SUCCESS;
+    return AWS_MQTT5_DRT_SUCCESS;
 }
 
 int aws_mqtt5_decode_user_property(
@@ -330,6 +335,15 @@ static int s_aws_mqtt5_decoder_decode_connack_from_scratch_buffer(struct aws_mqt
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
         goto done;
     }
+
+    uint8_t connect_flags = 0;
+    AWS_MQTT5_DECODE_U8(&packet_cursor, &connect_flags, done);
+    if ((connect_flags & 0xFE) != 0) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        goto done;
+    }
+
+    storage.session_present = (connect_flags & 0x01) != 0;
 
     uint8_t reason_code = 0;
     AWS_MQTT5_DECODE_U8(&packet_cursor, &reason_code, done);
@@ -611,6 +625,7 @@ static int s_aws_mqtt5_decoder_decode_connect_from_scratch_buffer(struct aws_mqt
     struct aws_mqtt5_packet_connect_storage connect_storage;
     struct aws_mqtt5_packet_publish_storage publish_storage;
     int result = AWS_OP_ERR;
+    bool has_will = false;
 
     if (aws_mqtt5_packet_connect_storage_init_from_external_storage(&connect_storage, decoder->allocator)) {
         return AWS_OP_ERR;
@@ -666,7 +681,7 @@ static int s_aws_mqtt5_decoder_decode_connect_from_scratch_buffer(struct aws_mqt
 
     AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &connect_storage.client_id, done);
 
-    bool has_will = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_WILL_BIT) != 0;
+    has_will = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_WILL_BIT) != 0;
     if (has_will) {
         uint32_t will_property_length = 0;
         AWS_MQTT5_DECODE_VLI(&packet_cursor, &will_property_length, done);
@@ -713,6 +728,7 @@ done:
             aws_mqtt5_packet_connect_view_init_from_storage(&connect_storage.storage_view, &connect_storage);
             if (has_will) {
                 aws_mqtt5_packet_publish_view_init_from_storage(&publish_storage.storage_view, &publish_storage);
+                connect_storage.storage_view.will = &publish_storage.storage_view;
             }
 
             result = (*decoder->options.on_packet_received)(AWS_MQTT5_PT_CONNECT, &connect_storage.storage_view);
@@ -722,12 +738,10 @@ done:
     aws_mqtt5_packet_publish_storage_clean_up(&publish_storage);
     aws_mqtt5_packet_connect_storage_clean_up(&connect_storage);
 
-    return AWS_OP_ERR;
+    return result;
 }
 
 static int s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
-    (void)decoder;
-
     switch (decoder->packet_type) {
         case AWS_MQTT5_PT_PINGREQ:
         case AWS_MQTT5_PT_PINGRESP:
@@ -756,7 +770,9 @@ static int s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(struct aws_mqtt
     }
 }
 
-static int s_aws_mqtt5_decoder_read_packet_on_data(struct aws_mqtt5_decoder *decoder, struct aws_byte_cursor *data) {
+static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data(
+    struct aws_mqtt5_decoder *decoder,
+    struct aws_byte_cursor *data) {
 
     size_t unread_length = decoder->total_length - decoder->scratch_space.len;
     size_t copy_length = aws_min_size(unread_length, data->len);
@@ -767,27 +783,27 @@ static int s_aws_mqtt5_decoder_read_packet_on_data(struct aws_mqtt5_decoder *dec
     };
 
     if (aws_byte_buf_append_dynamic(&decoder->scratch_space, &copy_cursor)) {
-        return AWS_OP_ERR;
+        return AWS_MQTT5_DRT_ERROR;
     }
 
     aws_byte_cursor_advance(data, copy_length);
 
     if (copy_length < unread_length) {
-        return AWS_OP_SUCCESS;
+        return AWS_MQTT5_DRT_MORE_DATA;
     }
 
     if (s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(decoder)) {
-        return AWS_OP_ERR;
+        return AWS_MQTT5_DRT_ERROR;
     }
 
     s_enter_state(decoder, AWS_MQTT5_DS_READ_PACKET_TYPE);
 
-    return AWS_OP_SUCCESS;
+    return AWS_MQTT5_DRT_SUCCESS;
 }
 
 int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct aws_byte_cursor data) {
-    int result = AWS_OP_SUCCESS;
-    while (data.len > 0 && result == AWS_OP_SUCCESS) {
+    enum aws_mqtt5_decode_result_type result = AWS_MQTT5_DRT_SUCCESS;
+    while (result == AWS_MQTT5_DRT_SUCCESS) {
 
         switch (decoder->state) {
             case AWS_MQTT5_DS_READ_PACKET_TYPE:
@@ -808,5 +824,9 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
         }
     }
 
-    return result;
+    if (result == AWS_MQTT5_DRT_ERROR) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
 }

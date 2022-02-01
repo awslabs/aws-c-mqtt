@@ -242,6 +242,8 @@ static int s_compute_connect_variable_length_fields(
     ADD_OPTIONAL_U16_PROPERTY_LENGTH(connect_view->topic_alias_maximum, connect_property_section_length);
     ADD_OPTIONAL_U8_PROPERTY_LENGTH(connect_view->request_response_information, connect_property_section_length);
     ADD_OPTIONAL_U8_PROPERTY_LENGTH(connect_view->request_problem_information, connect_property_section_length);
+    ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(connect_view->authentication_method, connect_property_section_length);
+    ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(connect_view->authentication_data, connect_property_section_length);
 
     *connect_property_length = (uint32_t)connect_property_section_length;
 
@@ -378,6 +380,10 @@ int aws_mqtt5_encoder_begin_connect(
         encoder, AWS_MQTT5_PROPERTY_TYPE_REQUEST_RESPONSE_INFORMATION, connect_view->request_response_information);
     ADD_ENCODE_STEP_OPTIONAL_U8_PROPERTY(
         encoder, AWS_MQTT5_PROPERTY_TYPE_REQUEST_PROBLEM_INFORMATION, connect_view->request_problem_information);
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
+        encoder, AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_METHOD, connect_view->authentication_method);
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
+        encoder, AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_DATA, connect_view->authentication_data);
 
     aws_mqtt5_add_user_property_encoding_steps(
         encoder, connect_view->user_properties, connect_view->user_property_count);

@@ -73,6 +73,10 @@ add_test_case(mqtt5_packet_connect_encode_minimal)
 add_test_case(mqtt5_packet_connect_encode_all)
 
 add_test_case(mqtt5_packet_disconnect_round_trip)
+add_test_case(mqtt5_packet_pingreq_round_trip)
+add_test_case(mqtt5_packet_pingresp_round_trip)
+add_test_case(mqtt5_packet_connect_round_trip)
+add_test_case(mqtt5_packet_connack_round_trip)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

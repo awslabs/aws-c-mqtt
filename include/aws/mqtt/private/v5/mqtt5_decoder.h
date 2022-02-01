@@ -27,6 +27,12 @@ enum aws_mqtt5_decoder_state {
     AWS_MQTT5_DS_READ_PUBLISH_PAYLOAD,
 };
 
+enum aws_mqtt5_decode_result_type {
+    AWS_MQTT5_DRT_MORE_DATA,
+    AWS_MQTT5_DRT_SUCCESS,
+    AWS_MQTT5_DRT_ERROR,
+};
+
 typedef int(aws_mqtt5_on_packet_received_fn)(enum aws_mqtt5_packet_type type, void *packet_view);
 typedef void(aws_mqtt5_on_publish_payload_data_fn)(void *packet_view, struct aws_byte_cursor payload);
 
@@ -72,15 +78,9 @@ AWS_EXTERN_C_END
 
 /* Decode helpers */
 
-enum aws_mqtt5_decode_vli_result_type {
-    AWS_MQTT5_DVRT_MORE_DATA,
-    AWS_MQTT5_DVRT_SUCCESS,
-    AWS_MQTT5_DVRT_ERROR,
-};
-
 AWS_EXTERN_C_BEGIN
 
-AWS_MQTT_API enum aws_mqtt5_decode_vli_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest);
+AWS_MQTT_API enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest);
 
 AWS_MQTT_API int aws_mqtt5_decode_user_property(
     struct aws_byte_cursor *packet_cursor,
@@ -141,7 +141,7 @@ AWS_EXTERN_C_END
     *(u32_ptr_ptr) = (u32_ptr);
 
 #define AWS_MQTT5_DECODE_VLI(cursor_ptr, u32_ptr, error_label)                                                         \
-    if (AWS_MQTT5_DVRT_SUCCESS != aws_mqtt5_decode_vli((cursor_ptr), (u32_ptr))) {                                     \
+    if (AWS_MQTT5_DRT_SUCCESS != aws_mqtt5_decode_vli((cursor_ptr), (u32_ptr))) {                                      \
         goto error_label;                                                                                              \
     }
 
