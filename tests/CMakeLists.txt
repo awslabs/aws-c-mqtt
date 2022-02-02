@@ -65,13 +65,6 @@ add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
 add_test_case(mqtt5_publish_operation_new_set_no_optional)
 add_test_case(mqtt5_publish_operation_new_set_all)
 
-# placeholders until we have corresponding decoding support and can do round trip tests
-add_test_case(mqtt5_packet_ping_encode)
-add_test_case(mqtt5_packet_disconnect_encode_minimal)
-add_test_case(mqtt5_packet_disconnect_encode_all)
-add_test_case(mqtt5_packet_connect_encode_minimal)
-add_test_case(mqtt5_packet_connect_encode_all)
-
 add_test_case(mqtt5_packet_disconnect_round_trip)
 add_test_case(mqtt5_packet_pingreq_round_trip)
 add_test_case(mqtt5_packet_pingresp_round_trip)
