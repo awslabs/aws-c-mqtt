@@ -143,10 +143,6 @@ void aws_mqtt5_add_user_property_encoding_steps(
     }
 }
 
-uint8_t aws_mqtt5_compute_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags) {
-    return flags | ((uint8_t)packet_type << 4);
-}
-
 int aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder) {
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_GENERAL,

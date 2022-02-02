@@ -21,7 +21,7 @@ struct aws_mqtt5_client;
 enum aws_mqtt5_decoder_state {
     AWS_MQTT5_DS_READ_PACKET_TYPE,
     AWS_MQTT5_DS_READ_REMAINING_LENGTH,
-    AWS_MQTT5_DS_READ_PACKET,
+    AWS_MQTT5_DS_READ_NON_PUBLISH_PACKET,
 
     /* NYI: publish-specific to support streaming payloads */
     AWS_MQTT5_DS_READ_PUBLISH_TOPIC_LENGTH,
@@ -49,6 +49,7 @@ typedef int(aws_mqtt5_on_packet_received_fn)(
     enum aws_mqtt5_packet_type type,
     void *packet_view,
     void *decoder_callback_user_data);
+
 typedef void(aws_mqtt5_on_publish_payload_data_fn)(
     struct aws_mqtt5_packet_publish_view *publish_view,
     struct aws_byte_cursor payload,
@@ -139,8 +140,7 @@ AWS_EXTERN_C_BEGIN
  *
  * @param cursor data to decode from
  * @param dest where to put a successfully decoded variable length integer
- * @return the result of attempting the decode: {success, error, not enough data}  If the result is an error,
- *  aws_last_error() will be set.
+ * @return the result of attempting the decode: {success, error, not enough data}  Does not set aws_last_error.
  */
 AWS_MQTT_API enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest);
 

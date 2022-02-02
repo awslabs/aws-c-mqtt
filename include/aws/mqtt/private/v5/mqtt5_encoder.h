@@ -219,8 +219,6 @@ AWS_MQTT_API void aws_mqtt5_add_user_property_encoding_steps(
     const struct aws_mqtt5_user_property *user_properties,
     size_t user_property_count);
 
-uint8_t aws_mqtt5_compute_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags);
-
 AWS_EXTERN_C_END
 
 /* macros to simplify encoding step list construction */

@@ -53,11 +53,40 @@ struct aws_byte_buf;
 
 AWS_EXTERN_C_BEGIN
 
-extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
+/**
+ * CONNECT packet MQTT5 prefix which includes "MQTT" encoded as a utf-8 string followed by the protocol number (5)
+ *
+ * {0x00, 0x04, "MQTT", 0x05}
+ */
+AWS_MQTT_API extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
 
+/**
+ * Encodes a variable length integer to a buffer.  Assumes the buffer has been checked for sufficient room (this
+ * is not a streaming/resumable operation)
+ *
+ * @param buf buffer to encode to
+ * @param value value to encode
+ * @return success/failure
+ */
 AWS_MQTT_API int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value);
 
+/**
+ * Computes how many bytes are necessary to encode a value as a variable length integer
+ * @param value value to encode
+ * @param encode_size output parameter for the encoding size
+ * @return success/failure where failure is exclusively value-is-illegal-and-too-large-to-encode
+ */
 AWS_MQTT_API int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size);
+
+/**
+ * Simple helper function to compute the first byte of an MQTT packet encoding as a function of 4 bit flags
+ * and the packet type.
+ *
+ * @param packet_type type of MQTT packet
+ * @param flags 4-bit wide flags, specific to each packet type, 0-valued for most
+ * @return the expected/required first byte of a packet of that type with flags set
+ */
+AWS_MQTT_API uint8_t aws_mqtt5_compute_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags);
 
 /**
  * Converts a disconnect reason code into the Reason Code Name, as it appears in the mqtt5 spec.
