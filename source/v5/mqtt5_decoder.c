@@ -15,9 +15,7 @@ static void s_reset_decoder_for_new_packet(struct aws_mqtt5_decoder *decoder) {
 
     decoder->packet_type = AWS_MQTT5_PT_RESERVED;
     decoder->remaining_length = 0;
-    decoder->publish_topic_length = 0;
-    AWS_ZERO_STRUCT(decoder->publish_topic);
-    decoder->publish_properties_remaining_length = 0;
+    decoder->total_length = 0;
 }
 
 int aws_mqtt5_decoder_init(
@@ -36,6 +34,10 @@ int aws_mqtt5_decoder_init(
     }
 
     return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_decoder_reset(struct aws_mqtt5_decoder *decoder) {
+    s_reset_decoder_for_new_packet(decoder);
 }
 
 void aws_mqtt5_decoder_clean_up(struct aws_mqtt5_decoder *decoder) {
@@ -369,7 +371,8 @@ done:
     if (result == AWS_OP_SUCCESS) {
         if (decoder->options.on_packet_received != NULL) {
             aws_mqtt5_packet_connack_view_init_from_storage(&storage.storage_view, &storage);
-            result = (*decoder->options.on_packet_received)(AWS_MQTT5_PT_CONNACK, &storage.storage_view);
+            result = (*decoder->options.on_packet_received)(
+                AWS_MQTT5_PT_CONNACK, &storage.storage_view, decoder->options.callback_user_data);
         }
     }
 
@@ -477,7 +480,8 @@ done:
     if (result == AWS_OP_SUCCESS) {
         if (decoder->options.on_packet_received != NULL) {
             aws_mqtt5_packet_disconnect_view_init_from_storage(&storage.storage_view, &storage);
-            result = (*decoder->options.on_packet_received)(AWS_MQTT5_PT_DISCONNECT, &storage.storage_view);
+            result = (*decoder->options.on_packet_received)(
+                AWS_MQTT5_PT_DISCONNECT, &storage.storage_view, decoder->options.callback_user_data);
         }
     }
 
@@ -731,7 +735,8 @@ done:
                 connect_storage.storage_view.will = &publish_storage.storage_view;
             }
 
-            result = (*decoder->options.on_packet_received)(AWS_MQTT5_PT_CONNECT, &connect_storage.storage_view);
+            result = (*decoder->options.on_packet_received)(
+                AWS_MQTT5_PT_CONNECT, &connect_storage.storage_view, decoder->options.callback_user_data);
         }
     }
 
@@ -751,7 +756,7 @@ static int s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(struct aws_mqtt
             }
 
             if (decoder->options.on_packet_received != NULL) {
-                (*decoder->options.on_packet_received)(decoder->packet_type, NULL);
+                (*decoder->options.on_packet_received)(decoder->packet_type, NULL, decoder->options.callback_user_data);
             }
 
             return AWS_OP_SUCCESS;

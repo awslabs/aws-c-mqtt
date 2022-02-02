@@ -242,7 +242,9 @@ static int s_mqtt5_packet_connect_encode_all_fn(struct aws_allocator *allocator,
 
 AWS_TEST_CASE(mqtt5_packet_connect_encode_all, s_mqtt5_packet_connect_encode_all_fn)
 
-static int s_aws_mqtt5_on_disconnect_received_fn(enum aws_mqtt5_packet_type type, void *packet_view) {
+static int s_aws_mqtt5_on_disconnect_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)user_data;
+
     ASSERT_INT_EQUALS((uint32_t)AWS_MQTT5_PT_DISCONNECT, (uint32_t)type);
 
     struct aws_mqtt5_packet_disconnect_view *disconnect_view = packet_view;
@@ -311,7 +313,10 @@ static int s_mqtt5_packet_disconnect_round_trip_fn(struct aws_allocator *allocat
 
 AWS_TEST_CASE(mqtt5_packet_disconnect_round_trip, s_mqtt5_packet_disconnect_round_trip_fn)
 
-static int s_aws_mqtt5_on_pingreq_received_fn(enum aws_mqtt5_packet_type type, void *packet_view) {
+static int s_aws_mqtt5_on_pingreq_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)user_data;
+    (void)packet_view;
+
     ASSERT_INT_EQUALS((uint32_t)AWS_MQTT5_PT_PINGREQ, (uint32_t)type);
 
     return AWS_OP_SUCCESS;
@@ -347,7 +352,10 @@ static int s_mqtt5_packet_pingreq_round_trip_fn(struct aws_allocator *allocator,
 
 AWS_TEST_CASE(mqtt5_packet_pingreq_round_trip, s_mqtt5_packet_pingreq_round_trip_fn)
 
-static int s_aws_mqtt5_on_pingresp_received_fn(enum aws_mqtt5_packet_type type, void *packet_view) {
+static int s_aws_mqtt5_on_pingresp_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)packet_view;
+    (void)user_data;
+
     ASSERT_INT_EQUALS((uint32_t)AWS_MQTT5_PT_PINGRESP, (uint32_t)type);
 
     return AWS_OP_SUCCESS;
@@ -400,7 +408,8 @@ static void s_aws_mqtt5_encode_decoder_tester_init_single_view(
 
 static struct aws_mqtt5_encode_decode_tester s_encode_decode_tester;
 
-static int s_aws_mqtt5_on_connect_received_fn(enum aws_mqtt5_packet_type type, void *packet_view) {
+static int s_aws_mqtt5_on_connect_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)user_data;
     ASSERT_INT_EQUALS((uint32_t)AWS_MQTT5_PT_CONNECT, (uint32_t)type);
 
     ++s_encode_decode_tester.view_count;
@@ -578,7 +587,8 @@ static int s_mqtt5_packet_connect_round_trip_fn(struct aws_allocator *allocator,
 
 AWS_TEST_CASE(mqtt5_packet_connect_round_trip, s_mqtt5_packet_connect_round_trip_fn)
 
-static int s_aws_mqtt5_on_connack_received_fn(enum aws_mqtt5_packet_type type, void *packet_view) {
+static int s_aws_mqtt5_on_connack_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)user_data;
     ASSERT_INT_EQUALS((uint32_t)AWS_MQTT5_PT_CONNACK, (uint32_t)type);
 
     ++s_encode_decode_tester.view_count;
