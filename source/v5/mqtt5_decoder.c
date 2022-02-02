@@ -74,6 +74,10 @@ static bool s_is_decodable_packet_type(enum aws_mqtt5_packet_type type) {
     }
 }
 
+/*
+ * "streaming" step of one byte.  Every mqtt packet has a first byte that, amongst other things, determines the
+ * packet type
+ */
 static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     struct aws_mqtt5_decoder *decoder,
     struct aws_byte_cursor *data) {
@@ -100,6 +104,7 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     return AWS_MQTT5_DRT_SUCCESS;
 }
 
+/* non-streaming variable length integer decode */
 enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest) {
     uint32_t value = 0;
     bool more_data = false;
@@ -133,6 +138,7 @@ enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *c
     return AWS_MQTT5_DRT_SUCCESS;
 }
 
+/* "streaming" variable length integer decode */
 static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_vli_on_data(
     struct aws_mqtt5_decoder *decoder,
     uint32_t *vli_dest,
@@ -140,13 +146,13 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_vli_on_data(
 
     enum aws_mqtt5_decode_result_type decode_vli_result = AWS_MQTT5_DRT_MORE_DATA;
 
+    /* try to decode the vli integer one byte at a time */
     while (data->len > 0 && decode_vli_result == AWS_MQTT5_DRT_MORE_DATA) {
-        struct aws_byte_cursor byte_cursor = *data;
-        byte_cursor.len = 1;
-
+        /* append a single byte to the scratch buffer */
+        struct aws_byte_cursor byte_cursor = aws_byte_cursor_advance(data, 1);
         aws_byte_buf_append_dynamic(&decoder->scratch_space, &byte_cursor);
-        aws_byte_cursor_advance(data, 1);
 
+        /* now try and decode a vli integer based on the range implied by the offset into the buffer */
         struct aws_byte_cursor vli_cursor = {
             .ptr = decoder->scratch_space.buffer + decoder->current_step_scratch_offset,
             .len = decoder->scratch_space.len - decoder->current_step_scratch_offset,
@@ -158,6 +164,7 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_vli_on_data(
     return decode_vli_result;
 }
 
+/* attempts to read the variable length integer that is always the second piece of data in an mqtt packet */
 static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_remaining_length_on_data(
     struct aws_mqtt5_decoder *decoder,
     struct aws_byte_cursor *data) {
@@ -180,6 +187,7 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_remaining_leng
     return AWS_MQTT5_DRT_SUCCESS;
 }
 
+/* non-streaming decode of a user property; failure implies connection termination */
 int aws_mqtt5_decode_user_property(
     struct aws_byte_cursor *packet_cursor,
     struct aws_mqtt5_user_property_set *properties) {
@@ -199,6 +207,7 @@ error:
     return AWS_OP_ERR;
 }
 
+/* decode function for all CONNACK properties */
 static int s_read_connack_property(
     struct aws_mqtt5_packet_connack_storage *storage,
     struct aws_byte_cursor *packet_cursor) {
@@ -313,6 +322,7 @@ done:
     return result;
 }
 
+/* decodes a CONNACK packet whose data must be in the scratch buffer */
 static int s_aws_mqtt5_decoder_decode_connack_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
     struct aws_mqtt5_packet_connack_storage storage;
     if (aws_mqtt5_packet_connack_storage_init_from_external_storage(&storage, decoder->allocator)) {
@@ -340,6 +350,8 @@ static int s_aws_mqtt5_decoder_decode_connack_from_scratch_buffer(struct aws_mqt
 
     uint8_t connect_flags = 0;
     AWS_MQTT5_DECODE_U8(&packet_cursor, &connect_flags, done);
+
+    /* everything but the 0-bit must be 0 */
     if ((connect_flags & 0xFE) != 0) {
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
         goto done;
@@ -381,6 +393,7 @@ done:
     return result;
 }
 
+/* decode function for all DISCONNECT properties */
 static int s_read_disconnect_property(
     struct aws_mqtt5_packet_disconnect_storage *storage,
     struct aws_byte_cursor *packet_cursor) {
@@ -425,6 +438,7 @@ done:
     return result;
 }
 
+/* decodes a DISCONNECT packet whose data must be in the scratch buffer */
 static int s_aws_mqtt5_decoder_decode_disconnect_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
     struct aws_mqtt5_packet_disconnect_storage storage;
     if (aws_mqtt5_packet_disconnect_storage_init_from_external_storage(&storage, decoder->allocator)) {
@@ -490,6 +504,7 @@ done:
     return result;
 }
 
+/* decode function for all CONNECT properties.  Movable to test-only code if we switched to a decoding function table */
 static int s_read_connect_property(
     struct aws_mqtt5_packet_connect_storage *storage,
     struct aws_byte_cursor *packet_cursor) {
@@ -562,6 +577,7 @@ done:
     return result;
 }
 
+/* decode function for all will properties.  Movable to test-only code if we switched to a decoding function table */
 static int s_read_will_property(
     struct aws_mqtt5_packet_connect_storage *connect_storage,
     struct aws_mqtt5_packet_publish_storage *will_storage,
@@ -625,6 +641,10 @@ done:
     return result;
 }
 
+/*
+ * Decodes a CONNECT packet whose data must be in the scratch buffer.
+ * Could be moved to test-only if we used a function table for per-packet-type decoding.
+ */
 static int s_aws_mqtt5_decoder_decode_connect_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
     struct aws_mqtt5_packet_connect_storage connect_storage;
     struct aws_mqtt5_packet_publish_storage publish_storage;
@@ -746,6 +766,11 @@ done:
     return result;
 }
 
+/*
+ * TODO: consider making an array of function pointers indexed by packet type.  Then the server-decode-only
+ * packets that we support (for testing purposes) could be moved into test-only in the same way that encoding
+ * server-encode-only functionality can be moved there already.
+ */
 static int s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
     switch (decoder->packet_type) {
         case AWS_MQTT5_PT_PINGREQ:
@@ -775,6 +800,10 @@ static int s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(struct aws_mqtt
     }
 }
 
+/*
+ * (Streaming) Given a packet type and a variable length integer specifying the packet length, this state reads the
+ * entire packet, and only that packet, into the scratch buffer
+ */
 static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data(
     struct aws_mqtt5_decoder *decoder,
     struct aws_byte_cursor *data) {
@@ -806,6 +835,7 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
     return AWS_MQTT5_DRT_SUCCESS;
 }
 
+/* top-level entry function for all new data received from the remote mqtt endpoint */
 int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct aws_byte_cursor data) {
     enum aws_mqtt5_decode_result_type result = AWS_MQTT5_DRT_SUCCESS;
     while (result == AWS_MQTT5_DRT_SUCCESS) {
