@@ -23,7 +23,7 @@ enum aws_mqtt5_decoder_state {
     AWS_MQTT5_DS_READ_REMAINING_LENGTH,
     AWS_MQTT5_DS_READ_NON_PUBLISH_PACKET,
 
-    /* NYI: publish-specific to support streaming payloads */
+    /* TODO: publish-specific states to support streaming payloads */
     AWS_MQTT5_DS_READ_PUBLISH_TOPIC_LENGTH,
     AWS_MQTT5_DS_READ_PUBLISH_TOPIC,
     AWS_MQTT5_DS_READ_PUBLISH_PROPERTIES_REMAINING_LENGTH,
