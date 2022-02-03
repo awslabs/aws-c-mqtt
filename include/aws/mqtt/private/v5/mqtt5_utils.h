@@ -20,6 +20,14 @@ int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t 
 
 int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size);
 
+void aws_mqtt5_negotiated_settings_reset(
+    struct aws_mqtt5_negotiated_settings *negotiated_settings,
+    struct aws_mqtt5_packet_connect_view *packet_connect_view);
+
+int aws_mqtt5_negotiated_settings_apply_connack(
+    struct aws_mqtt5_negotiated_settings *negotiated_settings,
+    struct aws_mqtt5_packet_connack_view *connack_data);
+
 /**
  * Converts a disconnect reason code into the Reason Code Name, as it appears in the mqtt5 spec.
  *

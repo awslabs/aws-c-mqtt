@@ -86,8 +86,8 @@ struct aws_mqtt5_packet_connect_storage {
     uint16_t receive_maximum;
     uint16_t *receive_maximum_ptr;
 
-    uint16_t topic_alias_maximum;
-    uint16_t *topic_alias_maximum_ptr;
+    uint16_t to_client_topic_alias_maximum;
+    uint16_t *to_client_topic_alias_maximum_ptr;
 
     uint32_t maximum_packet_size_bytes;
     uint32_t *maximum_packet_size_bytes_ptr;
