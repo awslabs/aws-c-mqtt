@@ -597,7 +597,7 @@ struct aws_mqtt5_negotiated_settings {
     enum aws_mqtt5_qos maximum_qos;
 
     uint32_t session_expiry_interval;
-    uint16_t receive_maximum;
+    uint16_t receive_maximum_from_server;
     uint32_t maximum_packet_size;
     uint16_t to_server_topic_alias_maximum;
     uint16_t to_client_topic_alias_maximum;

@@ -69,9 +69,9 @@ void aws_mqtt5_negotiated_settings_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings receive maximum set to %" PRIu16,
+        "(%p) aws_mqtt5_negotiated_settings receive maximum from server set to %" PRIu16,
         (void *)negotiated_settings,
-        negotiated_settings->receive_maximum);
+        negotiated_settings->receive_maximum_from_server);
 
     AWS_LOGF(
         level,
@@ -143,7 +143,7 @@ void aws_mqtt5_negotiated_settings_reset(
     */
     negotiated_settings->server_keep_alive = packet_connect_view->keep_alive_interval_seconds;
     negotiated_settings->session_expiry_interval = 0;
-    negotiated_settings->receive_maximum = 65535;
+    negotiated_settings->receive_maximum_from_server = 65535;
     negotiated_settings->maximum_packet_size = 0; // 0 means no limit. 0 should not be sent to server.
     negotiated_settings->to_client_topic_alias_maximum = 0;
 
@@ -165,10 +165,6 @@ void aws_mqtt5_negotiated_settings_reset(
 
     if (packet_connect_view->session_expiry_interval_seconds != NULL) {
         negotiated_settings->session_expiry_interval = *packet_connect_view->session_expiry_interval_seconds;
-    }
-
-    if (packet_connect_view->receive_maximum != NULL) {
-        negotiated_settings->receive_maximum = *packet_connect_view->receive_maximum;
     }
 
     if (packet_connect_view->maximum_packet_size_bytes != NULL) {
@@ -196,7 +192,7 @@ void aws_mqtt5_negotiated_settings_apply_connack(
     }
 
     if (connack_data->receive_maximum != NULL) {
-        negotiated_settings->receive_maximum = *connack_data->receive_maximum;
+        negotiated_settings->receive_maximum_from_server = *connack_data->receive_maximum;
     }
 
     // NULL = Maximum QoS of 2.
