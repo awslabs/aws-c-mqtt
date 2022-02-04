@@ -393,13 +393,13 @@ void aws_mqtt5_packet_connect_view_log(
             *connect_view->receive_maximum);
     }
 
-    if (connect_view->to_client_topic_alias_maximum != NULL) {
+    if (connect_view->topic_alias_maximum != NULL) {
         AWS_LOGF(
             level,
             AWS_LS_MQTT5_GENERAL,
-            "(%p) aws_mqtt5_packet_connect_view to client topic alias maximum set to %" PRIu16,
+            "(%p) aws_mqtt5_packet_connect_view topic alias maximum set to %" PRIu16,
             (void *)connect_view,
-            *connect_view->to_client_topic_alias_maximum);
+            *connect_view->topic_alias_maximum);
     }
 
     if (connect_view->maximum_packet_size_bytes != NULL) {
@@ -485,7 +485,7 @@ void aws_mqtt5_packet_connect_view_init_from_storage(
     view->request_response_information = storage->request_response_information_ptr;
     view->request_problem_information = storage->request_problem_information_ptr;
     view->receive_maximum = storage->receive_maximum_ptr;
-    view->to_client_topic_alias_maximum = storage->to_client_topic_alias_maximum_ptr;
+    view->topic_alias_maximum = storage->topic_alias_maximum_ptr;
     view->maximum_packet_size_bytes = storage->maximum_packet_size_bytes_ptr;
     if (storage->will != NULL) {
         view->will = &storage->will->storage_view;
@@ -553,9 +553,9 @@ int aws_mqtt5_packet_connect_storage_init(
         storage->receive_maximum_ptr = &storage->receive_maximum;
     }
 
-    if (view->to_client_topic_alias_maximum != NULL) {
-        storage->to_client_topic_alias_maximum = *view->to_client_topic_alias_maximum;
-        storage->to_client_topic_alias_maximum_ptr = &storage->to_client_topic_alias_maximum;
+    if (view->topic_alias_maximum != NULL) {
+        storage->topic_alias_maximum = *view->topic_alias_maximum;
+        storage->topic_alias_maximum_ptr = &storage->topic_alias_maximum;
     }
 
     if (view->maximum_packet_size_bytes != NULL) {

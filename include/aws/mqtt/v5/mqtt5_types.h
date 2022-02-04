@@ -449,7 +449,7 @@ struct aws_mqtt5_packet_connect_view {
     const uint8_t *request_response_information;
     const uint8_t *request_problem_information;
     const uint16_t *receive_maximum;
-    const uint16_t *to_client_topic_alias_maximum;
+    const uint16_t *topic_alias_maximum;
     const uint32_t *maximum_packet_size_bytes;
 
     const uint32_t *will_delay_interval_seconds;
@@ -478,7 +478,7 @@ struct aws_mqtt5_packet_connack_view {
     const bool *retain_available;
     const uint32_t *maximum_packet_size;
     const struct aws_byte_cursor *assigned_client_identifier;
-    const uint16_t *to_server_topic_alias_maximum;
+    const uint16_t *topic_alias_maximum;
     const struct aws_byte_cursor *reason_string;
 
     size_t user_property_count;

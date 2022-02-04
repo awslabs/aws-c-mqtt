@@ -2,6 +2,7 @@
 
 #include <aws/common/byte_buf.h>
 #include <aws/io/stream.h>
+#include <inttypes.h>
 
 int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value) {
     AWS_PRECONDITION(buf);
@@ -45,74 +46,58 @@ int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size)
 void aws_mqtt5_negotiated_settings_log(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     enum aws_log_level level) {
+
     struct aws_logger *logger = aws_logger_get();
     if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
-    switch (negotiated_settings->maximum_qos) {
-        case 0:
-            AWS_LOGF(
-                level,
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_negotiated_settings maxiumum_qos set to AWS_MQTT5_QOS_AT_MOST_ONCE",
-                (void *)negotiated_settings);
-            break;
-        case 1:
-            AWS_LOGF(
-                level,
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_negotiated_settings maxiumum_qos set to AWS_MQTT5_QOS_AT_LEAST_ONCE",
-                (void *)negotiated_settings);
-            break;
-        case 2:
-            AWS_LOGF(
-                level,
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_negotiated_settings maxiumum_qos set to AWS_MQTT5_QOS_EXACTLY_ONCE",
-                (void *)negotiated_settings);
-            break;
-    }
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_negotiated_settings maxiumum qos set to %d",
+        (void *)negotiated_settings,
+        negotiated_settings->maximum_qos);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings session expiry interval set to %d",
+        "(%p) aws_mqtt5_negotiated_settings session expiry interval set to %" PRIu32,
         (void *)negotiated_settings,
         negotiated_settings->session_expiry_interval);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings receive maximum set to %d",
+        "(%p) aws_mqtt5_negotiated_settings receive maximum set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->receive_maximum);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings maximum packet size set to %d",
+        "(%p) aws_mqtt5_negotiated_settings maximum packet size set to %" PRIu32,
         (void *)negotiated_settings,
         negotiated_settings->maximum_packet_size);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings to server topic alias maximum set to %d",
+        "(%p) aws_mqtt5_negotiated_settings to server topic alias maximum set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->to_server_topic_alias_maximum);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings to client topic alias maximum set to %d",
+        "(%p) aws_mqtt5_negotiated_settings to client topic alias maximum set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->to_client_topic_alias_maximum);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings server keep alive set to %d",
+        "(%p) aws_mqtt5_negotiated_settings server keep alive set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->server_keep_alive);
 
@@ -161,9 +146,10 @@ void aws_mqtt5_negotiated_settings_reset(
 
     /** Assign defaults values to negotiated_settings */
 
-    // Properties that may be sent in CONNECT to Server. These should only be sent if Client
-    // changes them from their default values.
-    negotiated_settings->server_keep_alive = 0; // Is default of 0 acceptable?
+    /* Properties that may be sent in CONNECT to Server. These should only be sent if Client
+       changes them from their default values.
+    */
+    negotiated_settings->server_keep_alive = packet_connect_view->keep_alive_interval_seconds;
     negotiated_settings->session_expiry_interval = 0;
     negotiated_settings->receive_maximum = 65535;
     negotiated_settings->maximum_packet_size = 0; // 0 means no limit. 0 should not be sent to server.
@@ -197,8 +183,8 @@ void aws_mqtt5_negotiated_settings_reset(
         negotiated_settings->maximum_packet_size = *packet_connect_view->maximum_packet_size_bytes;
     }
 
-    if (packet_connect_view->to_client_topic_alias_maximum != NULL) {
-        negotiated_settings->to_client_topic_alias_maximum = *packet_connect_view->to_client_topic_alias_maximum;
+    if (packet_connect_view->topic_alias_maximum != NULL) {
+        negotiated_settings->to_client_topic_alias_maximum = *packet_connect_view->topic_alias_maximum;
     }
 }
 
@@ -249,8 +235,8 @@ int aws_mqtt5_negotiated_settings_apply_connack(
     }
 
     // If a value is not sent by Server, the Client must not send any Topic Aliases to the Server.
-    if (connack_data->to_server_topic_alias_maximum != NULL) {
-        negotiated_settings->to_server_topic_alias_maximum = *connack_data->to_server_topic_alias_maximum;
+    if (connack_data->topic_alias_maximum != NULL) {
+        negotiated_settings->to_server_topic_alias_maximum = *connack_data->topic_alias_maximum;
     }
 
     if (connack_data->wildcard_subscriptions_available != NULL) {
