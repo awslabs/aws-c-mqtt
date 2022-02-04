@@ -334,6 +334,7 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
 
 AWS_TEST_CASE(mqtt5_publish_operation_new_set_all, s_mqtt5_publish_operation_new_set_all_fn)
 
+static const uint16_t s_keep_alive_interval_seconds = 999;
 static const uint32_t s_session_expiry_interval = 999;
 static const uint16_t s_receive_maximum = 999;
 static const uint32_t s_maximum_packet_size = 999;
@@ -401,6 +402,7 @@ static int mqtt5_negotiated_settings_reset_default_fn(struct aws_allocator *allo
 
     /* Set client modifiable CONNECT settings then apply them to negotiated_settings */
     
+    connect_view.keep_alive_interval_seconds = s_keep_alive_interval_seconds;
     connect_view.session_expiry_interval_seconds = &s_session_expiry_interval;
     connect_view.receive_maximum = &s_receive_maximum;
     connect_view.maximum_packet_size_bytes = &s_maximum_packet_size;
@@ -408,19 +410,23 @@ static int mqtt5_negotiated_settings_reset_default_fn(struct aws_allocator *allo
 
     aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
 
+    /* Check that all settings are the expected values with client settings */
+    
     ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
 
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 999);
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 999);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum, 999);
     ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 999);
     ASSERT_UINT_EQUALS(negotiated_settings.to_server_topic_alias_maximum, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.to_client_topic_alias_maximum, 999);
-    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
 
     ASSERT_TRUE(negotiated_settings.retain_available);
     ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
     ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
     ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
+
+    
 
     return AWS_OP_SUCCESS;
 }
