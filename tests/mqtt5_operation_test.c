@@ -349,37 +349,12 @@ static const bool s_shared_subscriptions_available = false;
 static int mqtt5_negotiated_settings_reset_default_fn(struct aws_allocator *allocator, void *ctx) {
 
     /* aws_mqtt5_negotiated_settings used for testing */
-    struct aws_mqtt5_negotiated_settings negotiated_settings = {
-        .maximum_qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
-        .session_expiry_interval = 0,
-        .receive_maximum = 0,
-        .maximum_packet_size = 0,
-        .to_server_topic_alias_maximum = 0,
-        .to_client_topic_alias_maximum = 0,
-        .server_keep_alive = 0,
-        .retain_available = true,
-        .wildcard_subscriptions_available = true,
-        .subscription_identifiers_available = true,
-        .shared_subscriptions_available = true,
-    };
+    struct aws_mqtt5_negotiated_settings negotiated_settings;
+    AWS_ZERO_STRUCT(negotiated_settings);
 
     /* Simulate an aws_mqtt5_packet_connect_view with no user set settings  */
     struct aws_mqtt5_packet_connect_view connect_view = {
         .keep_alive_interval_seconds = 0,
-        .client_id = aws_byte_cursor_from_c_str("0"),
-        .username = NULL,
-        .password = NULL,
-        .clean_start = true,
-        .session_expiry_interval_seconds = NULL,
-        .request_response_information = NULL,
-        .request_problem_information = NULL,
-        .receive_maximum = NULL,
-        .topic_alias_maximum = NULL,
-        .maximum_packet_size_bytes = NULL,
-        .will_delay_interval_seconds = NULL,
-        .will = NULL,
-        .user_property_count = 0,
-        .user_properties = NULL,
     };
 
     /* Apply no client settings to a reset of negotiated_settings */
@@ -401,7 +376,7 @@ static int mqtt5_negotiated_settings_reset_default_fn(struct aws_allocator *allo
     ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
 
     /* Set client modifiable CONNECT settings then apply them to negotiated_settings */
-    
+
     connect_view.keep_alive_interval_seconds = s_keep_alive_interval_seconds;
     connect_view.session_expiry_interval_seconds = &s_session_expiry_interval;
     connect_view.receive_maximum = &s_receive_maximum;
@@ -411,22 +386,20 @@ static int mqtt5_negotiated_settings_reset_default_fn(struct aws_allocator *allo
     aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
 
     /* Check that all settings are the expected values with client settings */
-    
+
     ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
 
-    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 999);
-    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 999);
-    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum, 999);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 999);
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, connect_view.keep_alive_interval_seconds);
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connect_view.session_expiry_interval_seconds);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum, *connect_view.receive_maximum);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, *connect_view.maximum_packet_size_bytes);
     ASSERT_UINT_EQUALS(negotiated_settings.to_server_topic_alias_maximum, 0);
-    ASSERT_UINT_EQUALS(negotiated_settings.to_client_topic_alias_maximum, 999);
+    ASSERT_UINT_EQUALS(negotiated_settings.to_client_topic_alias_maximum, *connect_view.topic_alias_maximum);
 
     ASSERT_TRUE(negotiated_settings.retain_available);
     ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
     ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
     ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
-
-    
 
     return AWS_OP_SUCCESS;
 }

@@ -22,13 +22,28 @@ int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size)
 
 void aws_mqtt5_negotiated_settings_log(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
-    enum aws_log_level level); 
+    enum aws_log_level level);
 
+/**
+ * Resets negotiated_settings to defaults reconciled with client set properties.
+ * Called on init of mqtt5 Client and just prior to a CONNECT.
+ *
+ * @param negotiated_settings struct containing settings to be set
+ * @param packet_connect_view Read-only snapshot of a CONNECT packet
+ * @return void
+ */
 void aws_mqtt5_negotiated_settings_reset(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     struct aws_mqtt5_packet_connect_view *packet_connect_view);
 
-int aws_mqtt5_negotiated_settings_apply_connack(
+/**
+ * Checks properties received from Server CONNACK and reconcile with negotiated_settings
+ *
+ * @param negotiated_settings struct containing settings to be set
+ * @param connack_data Read-only snapshot of a CONNACK packet
+ * @return void
+ */
+void aws_mqtt5_negotiated_settings_apply_connack(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     struct aws_mqtt5_packet_connack_view *connack_data);
 

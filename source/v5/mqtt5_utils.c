@@ -130,14 +130,6 @@ void aws_mqtt5_negotiated_settings_log(
         negotiated_settings->shared_subscriptions_available ? "true" : "false");
 }
 
-/**
- * Resets negotiated_settings to defaults reconciled with client set properties.
- * Called on init of mqtt5 Client and just prior to a CONNECT.
- *
- * @param negotiated_settings struct containing settings to be set
- * @param packet_connect_view
- * @return int
- */
 void aws_mqtt5_negotiated_settings_reset(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     struct aws_mqtt5_packet_connect_view *packet_connect_view) {
@@ -188,14 +180,7 @@ void aws_mqtt5_negotiated_settings_reset(
     }
 }
 
-/**
- * Checks properties received from Server CONNACK and reconcile with negotiated_settings
- *
- * @param negotiated_settings struct containing settings to be set
- * @param connack_data
- * @return int
- */
-int aws_mqtt5_negotiated_settings_apply_connack(
+void aws_mqtt5_negotiated_settings_apply_connack(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     struct aws_mqtt5_packet_connack_view *connack_data) {
     AWS_PRECONDITION(negotiated_settings != NULL);
@@ -212,8 +197,6 @@ int aws_mqtt5_negotiated_settings_apply_connack(
 
     if (connack_data->receive_maximum != NULL) {
         negotiated_settings->receive_maximum = *connack_data->receive_maximum;
-    } else {
-        negotiated_settings->receive_maximum = 65535;
     }
 
     // NULL = Maximum QoS of 2.
@@ -254,6 +237,4 @@ int aws_mqtt5_negotiated_settings_apply_connack(
     if (connack_data->server_keep_alive != NULL) {
         negotiated_settings->server_keep_alive = *connack_data->server_keep_alive;
     }
-
-    return AWS_OP_SUCCESS;
 }
