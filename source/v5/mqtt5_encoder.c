@@ -72,7 +72,7 @@ void aws_mqtt5_encoder_push_step_u32(struct aws_mqtt5_encoder *encoder, uint32_t
 
 int aws_mqtt5_encoder_push_step_vli(struct aws_mqtt5_encoder *encoder, uint32_t value) {
     if (value > AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER) {
-        return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_INVALID_VARIABLE_LENGTH_INTEGER);
+        return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_FAILURE);
     }
 
     struct aws_mqtt5_encoding_step step;

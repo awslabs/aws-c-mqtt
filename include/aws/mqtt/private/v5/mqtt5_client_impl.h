@@ -8,9 +8,11 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/common/hash_table.h>
 #include <aws/common/ref_count.h>
 #include <aws/io/channel.h>
-#include <aws/mqtt/private/topic_tree.h>
+#include <aws/mqtt/private/v5/mqtt5_decoder.h>
+#include <aws/mqtt/private/v5/mqtt5_encoder.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_event_loop;
@@ -55,6 +57,9 @@ struct aws_mqtt5_client {
     enum aws_mqtt5_client_state desired_state;
     enum aws_mqtt5_client_state current_state;
 
+    struct aws_mqtt5_encoder encoder;
+    struct aws_mqtt5_decoder decoder;
+
     /*
      * Temporary state-related data.
      *
@@ -72,7 +77,7 @@ struct aws_mqtt5_client {
      * Operation-related state
      *
      * operation flow:
-     *   (qos 0 publish, disconnect)
+     *   (qos 0 publish, disconnect, connect)
      *      user (via cross thread task) ->
      *      queued_operations -> (on front of queue)
      *      current_operation -> (on completely encoded and passed to next handler)
@@ -89,18 +94,26 @@ struct aws_mqtt5_client {
      *      QoS 1+ requires both a table and a list holding the same operations in order to support fast lookups by
      *      mqtt packet id and in-order re-queueing in the case of a disconnection (required by spec)
      *
-     *   On disconnect:
-     *      Fail and release all non-QoS-1+-publish operations in unacked_operations, current_operation,
-     * write_completion_operations If current_operation is QoS1+ publish, move to tail of unacked_operations Append
-     * unacked_operations to the head of queued_operations Clear unacked_operations_table
+     *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
+     *      If current_operation, move current_operation to head of queued_operations
+     *      If disconnect_queue_policy is fail(x):
+     *          Fail, release, and remove everything in queued_operations with property (x)
+     *
+     *   On reconnect (post CONNACK):
+     *      Fail, remove, and release unacked_operations if:
+     *          rejoined_session = false
+     *          or operation-is-not(qos-1+-publish)
+     *
+     *      Move-Append unacked_operations to the head of queued_operations
+     *
+     *      Clear unacked_operations_table
      */
     struct aws_linked_list queued_operations;
     struct aws_mqtt5_operation *current_operation;
     struct aws_hash_table unacked_operations_table;
     struct aws_linked_list unacked_operations;
     struct aws_linked_list write_completion_operations;
-
-    struct aws_mqtt_topic_tree subscriptions;
+    bool pending_write_completion;
 
     /*
      * TODO: topic alias mappings, from-server and to-server have independent mappings

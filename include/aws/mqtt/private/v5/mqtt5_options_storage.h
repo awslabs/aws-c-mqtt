@@ -44,6 +44,7 @@ enum aws_mqtt5_operation_type {
     AWS_MOT_SUBSCRIBE,
     AWS_MOT_UNSUBSCRIBE,
     AWS_MOT_PUBLISH,
+    AWS_MOT_PINGREQ,
 };
 
 /**
@@ -286,6 +287,11 @@ struct aws_mqtt5_operation_unsubscribe {
     struct aws_mqtt5_unsubscribe_completion_options completion_options;
 };
 
+struct aws_mqtt5_operation_pingreq {
+    struct aws_mqtt5_operation base;
+    struct aws_allocator *allocator;
+};
+
 struct aws_mqtt5_client_options_storage {
     struct aws_allocator *allocator;
 
@@ -306,7 +312,7 @@ struct aws_mqtt5_client_options_storage {
     enum aws_mqtt5_client_session_behavior_type session_behavior;
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
 
-    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior;
+    enum aws_mqtt5_client_offline_queue_behavior_type offline_queue_behavior;
     uint64_t min_reconnect_delay_ms;
     uint64_t max_reconnect_delay_ms;
     uint64_t min_connected_time_to_reset_reconnect_delay_ms;
@@ -513,6 +519,10 @@ AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_log(
 AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
     struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
     const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
+
+/* PINGREQ */
+
+AWS_MQTT_API struct aws_mqtt5_operation_pingreq *aws_mqtt5_operation_pingreq_new(struct aws_allocator *allocator);
 
 /* client */
 

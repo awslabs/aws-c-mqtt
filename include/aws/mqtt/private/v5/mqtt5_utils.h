@@ -131,13 +131,13 @@ AWS_MQTT_API const char *aws_mqtt5_suback_reason_code_to_c_string(enum aws_mqtt5
 AWS_MQTT_API const char *aws_mqtt5_unsuback_reason_code_to_c_string(enum aws_mqtt5_unsuback_reason_code reason_code);
 
 /**
- * Converts a reconnect behavior type value to a readable description.
+ * Converts an offline queue behavior type value to a readable description.
  *
- * @param reconnect_behavior type of reconnect behavior
- * @return short string describing the reconnect behavior
+ * @param offline_queue_behavior type of offline queue behavior
+ * @return short string describing the offline queue behavior
  */
-AWS_MQTT_API const char *aws_mqtt5_client_reconnect_behavior_type_to_c_string(
-    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior);
+AWS_MQTT_API const char *aws_mqtt5_client_offline_queue_behavior_type_to_c_string(
+    enum aws_mqtt5_client_offline_queue_behavior_type offline_queue_behavior);
 
 /**
  * Converts a session behavior type value to a readable description.
@@ -183,6 +183,14 @@ AWS_MQTT_API const char *aws_mqtt5_payload_format_indicator_to_c_string(
  */
 AWS_MQTT_API const char *aws_mqtt5_retain_handling_type_to_c_string(
     enum aws_mqtt5_retain_handling_type retain_handling_type);
+
+/**
+ * Converts a packet type value to a readable description.
+ *
+ * @param packet_type type of packet
+ * @return short string describing the packet type
+ */
+AWS_MQTT_API const char *aws_mqtt5_packet_type_to_c_string(enum aws_mqtt5_packet_type packet_type);
 
 AWS_EXTERN_C_END
 

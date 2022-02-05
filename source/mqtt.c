@@ -172,20 +172,20 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION,
                 "Invalid mqtt5 unsubscribe packet options value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT5_ENCODE_INVALID_VARIABLE_LENGTH_INTEGER,
-                "Attempt to encode a variable length integer that is too large."),
-            AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT5_DECODE_INVALID_PACKET_TYPE,
-                "Mqtt5 decoder received invalid packet type value"),
-            AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT5_DECODE_INVALID_VARIABLE_LENGTH_INTEGER,
-                "Mqtt5 decoder received invalid variable length integer"),
-            AWS_DEFINE_ERROR_INFO_MQTT(
-                AWS_ERROR_MQTT5_DECODE_INVALID_PROPERTY,
-                "Mqtt5 decoder received invalid property type"),
+                AWS_ERROR_MQTT5_ENCODE_FAILURE,
+                "Error occurred while encoding an outgoing mqtt5 packet"),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR,
                 "Mqtt5 decoder received an invalid packet that broke mqtt5 protocol rules"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+                "Remote endpoint rejected the CONNECT attempt by returning an unsuccessful CONNACK"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_CONNACK_TIMEOUT,
+                "Remote endpoint did not respond to a CONNECT request before timeout exceeded"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_PING_RESPONSE_TIMEOUT,
+                "Remote endpoint did not respond to a PINGREQ before timeout exceeded"),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_USER_REQUESTED_STOP,
                 "Mqtt5 client connection interrupted by user request."),

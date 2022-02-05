@@ -2120,6 +2120,34 @@ error:
 }
 
 /*********************************************************************************************************************
+ * PINGREQ
+ ********************************************************************************************************************/
+
+static void s_destroy_operation_pingreq(void *object) {
+    if (object == NULL) {
+        return;
+    }
+
+    struct aws_mqtt5_operation_pingreq *pingreq_op = object;
+    aws_mem_release(pingreq_op->allocator, pingreq_op);
+}
+
+struct aws_mqtt5_operation_pingreq *aws_mqtt5_operation_pingreq_new(struct aws_allocator *allocator) {
+    struct aws_mqtt5_operation_pingreq *pingreq_op =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_pingreq));
+    if (pingreq_op == NULL) {
+        return NULL;
+    }
+
+    pingreq_op->allocator = allocator;
+    pingreq_op->base.operation_type = AWS_MOT_PINGREQ;
+    aws_ref_count_init(&pingreq_op->base.ref_count, pingreq_op, s_destroy_operation_pingreq);
+    pingreq_op->base.impl = pingreq_op;
+
+    return pingreq_op;
+}
+
+/*********************************************************************************************************************
  * Client storage options
  ********************************************************************************************************************/
 
@@ -2363,10 +2391,10 @@ void aws_mqtt5_client_options_storage_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_client_options_storage reconnect behavior set to %d(%s)",
+        "(%p) aws_mqtt5_client_options_storage offline queue behavior set to %d(%s)",
         (void *)options_storage,
-        (int)options_storage->reconnect_behavior,
-        aws_mqtt5_client_reconnect_behavior_type_to_c_string(options_storage->reconnect_behavior));
+        (int)options_storage->offline_queue_behavior,
+        aws_mqtt5_client_offline_queue_behavior_type_to_c_string(options_storage->offline_queue_behavior));
 
     AWS_LOGF(
         level,
@@ -2471,7 +2499,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->session_behavior = options->session_behavior;
     options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
 
-    options_storage->reconnect_behavior = options->reconnect_behavior;
+    options_storage->offline_queue_behavior = options->offline_queue_behavior;
     options_storage->min_reconnect_delay_ms = options->min_reconnect_delay_ms;
     options_storage->max_reconnect_delay_ms = options->max_reconnect_delay_ms;
     options_storage->min_connected_time_to_reset_reconnect_delay_ms =
