@@ -75,16 +75,24 @@ typedef int(aws_mqtt5_encode_begin_packet_type_fn)(struct aws_mqtt5_encoder *enc
 /**
  * Per-packet-type table of encoding functions
  */
-struct aws_mqtt5_encoder_vtable {
+struct aws_mqtt5_encoder_function_table {
     aws_mqtt5_encode_begin_packet_type_fn *encoders_by_packet_type[16];
+};
+
+/**
+ * Configuration options for an mqtt5 encoder.  Everything is optional at this time.
+ */
+struct aws_mqtt5_encoder_options {
+    struct aws_mqtt5_client *client;
+    const struct aws_mqtt5_encoder_function_table *encoders;
 };
 
 /**
  * An encoder is just a list of steps and a current location for the encoding process within that list.
  */
 struct aws_mqtt5_encoder {
-    const struct aws_mqtt5_encoder_vtable *vtable;
-    struct aws_mqtt5_client *client;
+    struct aws_mqtt5_encoder_options config;
+
     struct aws_array_list encoding_steps;
     size_t current_encoding_step_index;
 };
@@ -128,29 +136,13 @@ AWS_EXTERN_C_BEGIN
  *
  * @param encoder encoder to initialize
  * @param allocator allocator to use for all memory allocation
- * @param client mqtt5 client this decoder belongs to.  Needed for logging.
+ * @param options encoder configuration options to use
  * @return
  */
 AWS_MQTT_API int aws_mqtt5_encoder_init(
     struct aws_mqtt5_encoder *encoder,
     struct aws_allocator *allocator,
-    struct aws_mqtt5_client *client);
-
-/**
- * Initializes an mqtt5 encoder with a special encoding vtable.  Allows us to set up round trip tests for
- * encode/decode of packet types that are never encoded by the client.
- *
- * @param encoder encoder to initialize
- * @param allocator allocator to use for all memory allocation
- * @param client mqtt5 client this decoder belongs to.  Needed for logging.
- * @param vtable table of encoding functions to use
- * @return
- */
-AWS_MQTT_API int aws_mqtt5_encoder_init_with_vtable(
-    struct aws_mqtt5_encoder *encoder,
-    struct aws_allocator *allocator,
-    struct aws_mqtt5_client *client,
-    struct aws_mqtt5_encoder_vtable *vtable);
+    struct aws_mqtt5_encoder_options *options);
 
 /**
  * Cleans up an mqtt5 encoder
@@ -205,7 +197,7 @@ AWS_MQTT_API enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
  * Default encoder table.  Tests copy it and augment with additional functions in order to do round-trip encode-decode
  * tests for packets that are only encoded on the server.
  */
-AWS_MQTT_API const struct aws_mqtt5_encoder_vtable *g_aws_mqtt5_encoder_default_vtable;
+AWS_MQTT_API const struct aws_mqtt5_encoder_function_table *g_aws_mqtt5_encoder_default_function_table;
 
 AWS_EXTERN_C_END
 

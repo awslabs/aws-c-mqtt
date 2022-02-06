@@ -13,6 +13,7 @@
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_mqtt5_client;
+struct aws_mqtt5_decoder;
 
 /**
  * Overall decoder state.  For all but publish, we read the packet type and the remaining length, and then buffer the
@@ -56,12 +57,26 @@ typedef void(aws_mqtt5_on_publish_payload_data_fn)(
     void *decoder_callback_user_data);
 
 /**
+ * per-packet-type decoding function signature
+ */
+typedef int(aws_mqtt5_decoding_fn)(struct aws_mqtt5_decoder *decoder);
+
+/**
+ * table of decoding functions.  Tests use an augmented version that includes decoders for packet types normally
+ * only decoded by an mqtt server.
+ */
+struct aws_mqtt5_decoder_function_table {
+    aws_mqtt5_decoding_fn *decoders_by_packet_type[16];
+};
+
+/**
  * Basic decoder configuration.
  */
 struct aws_mqtt5_decoder_options {
     void *callback_user_data;
     aws_mqtt5_on_packet_received_fn *on_packet_received;
     aws_mqtt5_on_publish_payload_data_fn *on_publish_payload_data;
+    const struct aws_mqtt5_decoder_function_table *decoder_table;
 };
 
 struct aws_mqtt5_decoder {
@@ -127,6 +142,12 @@ AWS_MQTT_API void aws_mqtt5_decoder_reset(struct aws_mqtt5_decoder *decoder);
  * @return success/failure - failure implies a need to shut down the connection
  */
 AWS_MQTT_API int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct aws_byte_cursor data);
+
+/**
+ * Default decoding table; tests use an augmented version with decoders for packets that only the server needs to
+ * decode.
+ */
+AWS_MQTT_API const struct aws_mqtt5_decoder_function_table *g_aws_mqtt5_default_decoder_table;
 
 AWS_EXTERN_C_END
 
