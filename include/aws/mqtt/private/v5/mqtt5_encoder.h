@@ -14,6 +14,7 @@
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_mqtt5_client;
+struct aws_mqtt5_encoder;
 
 /**
  * We encode packets by looking at all of the packet's values/properties and building a sequence of encoding steps.
@@ -66,9 +67,23 @@ struct aws_mqtt5_encoding_step {
 };
 
 /**
+ * signature of a function that can takes a view assumed to be a specific packet type and appends the encoding
+ * steps necessary to encode that packet into the encoder
+ */
+typedef int(aws_mqtt5_encode_begin_packet_type_fn)(struct aws_mqtt5_encoder *encoder, void *view);
+
+/**
+ * Per-packet-type table of encoding functions
+ */
+struct aws_mqtt5_encoder_vtable {
+    aws_mqtt5_encode_begin_packet_type_fn *encoders_by_packet_type[16];
+};
+
+/**
  * An encoder is just a list of steps and a current location for the encoding process within that list.
  */
 struct aws_mqtt5_encoder {
+    const struct aws_mqtt5_encoder_vtable *vtable;
     struct aws_mqtt5_client *client;
     struct aws_array_list encoding_steps;
     size_t current_encoding_step_index;
@@ -122,6 +137,22 @@ AWS_MQTT_API int aws_mqtt5_encoder_init(
     struct aws_mqtt5_client *client);
 
 /**
+ * Initializes an mqtt5 encoder with a special encoding vtable.  Allows us to set up round trip tests for
+ * encode/decode of packet types that are never encoded by the client.
+ *
+ * @param encoder encoder to initialize
+ * @param allocator allocator to use for all memory allocation
+ * @param client mqtt5 client this decoder belongs to.  Needed for logging.
+ * @param vtable table of encoding functions to use
+ * @return
+ */
+AWS_MQTT_API int aws_mqtt5_encoder_init_with_vtable(
+    struct aws_mqtt5_encoder *encoder,
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_encoder_vtable *vtable);
+
+/**
  * Cleans up an mqtt5 encoder
  *
  * @param encoder encoder to free up all resources for
@@ -136,6 +167,19 @@ AWS_MQTT_API void aws_mqtt5_encoder_clean_up(struct aws_mqtt5_encoder *encoder);
  * @return
  */
 AWS_MQTT_API void aws_mqtt5_encoder_reset(struct aws_mqtt5_encoder *encoder);
+
+/**
+ * Adds all of the primitive encoding steps necessary to encode an MQTT5 packet
+ *
+ * @param encoder encoder to add encoding steps to
+ * @param packet_type type of packet to encode
+ * @param packet_view view into the corresponding packet type
+ * @return success/failure
+ */
+AWS_MQTT_API int aws_mqtt5_encoder_append_packet_encoding(
+    struct aws_mqtt5_encoder *encoder,
+    enum aws_mqtt5_packet_type packet_type,
+    void *packet_view);
 
 /*
  * We intend that the client implementation only submits one packet at a time to the encoder, corresponding to the
@@ -158,39 +202,10 @@ AWS_MQTT_API enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
     struct aws_byte_buf *buffer);
 
 /**
- * Prepares the encoder to encode a CONNECT packet by building the sequence of primitive encoding steps necessary
- * to do so.
- *
- * @param encoder encoder to add encoding steps to
- * @param connect_view view of the CONNECT packet to encode
- * @return success/failure
+ * Default encoder table.  Tests copy it and augment with additional functions in order to do round-trip encode-decode
+ * tests for packets that are only encoded on the server.
  */
-AWS_MQTT_API int aws_mqtt5_encoder_begin_connect(
-    struct aws_mqtt5_encoder *encoder,
-    struct aws_mqtt5_packet_connect_view *connect_view);
-
-/**
- * Prepares the encoder to encode a DISCONNECT packet by building the sequence of primitive encoding steps necessary
- * to do so.
- *
- * @param encoder encoder to add encoding steps to
- * @param disconnect_view view of the DISCONNECT packet to encode
- * @return success/failure
- */
-AWS_MQTT_API int aws_mqtt5_encoder_begin_disconnect(
-    struct aws_mqtt5_encoder *encoder,
-    struct aws_mqtt5_packet_disconnect_view *disconnect_view);
-
-/**
- * Prepares the encoder to encode a PINGREQ packet by building the sequence of primitive encoding steps necessary
- * to do so.
- *
- * @param encoder encoder to add encoding steps to
- * @return success/failure
- */
-AWS_MQTT_API int aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder);
-
-/* TODO: all the other packets save AUTH, PUBREC, PUBREL, PUBCOMP */
+AWS_MQTT_API const struct aws_mqtt5_encoder_vtable *g_aws_mqtt5_encoder_default_vtable;
 
 AWS_EXTERN_C_END
 

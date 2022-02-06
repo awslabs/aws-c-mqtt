@@ -82,9 +82,10 @@ static int s_compute_connack_variable_length_fields(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_encoder_begin_connack(
-    struct aws_mqtt5_encoder *encoder,
-    struct aws_mqtt5_packet_connack_view *connack_view) {
+int aws_mqtt5_encoder_begin_connack(struct aws_mqtt5_encoder *encoder, void *packet_view) {
+
+    struct aws_mqtt5_packet_connack_view *connack_view = packet_view;
+
     uint32_t total_remaining_length = 0;
     uint32_t property_length = 0;
     if (s_compute_connack_variable_length_fields(connack_view, &total_remaining_length, &property_length)) {
@@ -159,7 +160,9 @@ int aws_mqtt5_encoder_begin_connack(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_encoder_begin_pingresp(struct aws_mqtt5_encoder *encoder) {
+int aws_mqtt5_encoder_begin_pingresp(struct aws_mqtt5_encoder *encoder, void *packet_view) {
+    (void)packet_view;
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_GENERAL,
         "(%p) mqtt5 client encoder - setting up encode for a PINGRESP packet",
@@ -170,4 +173,10 @@ int aws_mqtt5_encoder_begin_pingresp(struct aws_mqtt5_encoder *encoder) {
     ADD_ENCODE_STEP_U8(encoder, 0);
 
     return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_encode_init_testing_vtable(struct aws_mqtt5_encoder_vtable *vtable) {
+    *vtable = *g_aws_mqtt5_encoder_default_vtable;
+    vtable->encoders_by_packet_type[AWS_MQTT5_PT_PINGRESP] = &aws_mqtt5_encoder_begin_pingresp;
+    vtable->encoders_by_packet_type[AWS_MQTT5_PT_CONNACK] = &aws_mqtt5_encoder_begin_connack;
 }

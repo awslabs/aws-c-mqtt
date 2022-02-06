@@ -13,31 +13,6 @@
 
 #define INITIAL_ENCODING_STEP_COUNT 64
 
-int aws_mqtt5_encoder_init(
-    struct aws_mqtt5_encoder *encoder,
-    struct aws_allocator *allocator,
-    struct aws_mqtt5_client *client) {
-    AWS_ZERO_STRUCT(*encoder);
-
-    encoder->client = client;
-
-    if (aws_array_list_init_dynamic(
-            &encoder->encoding_steps, allocator, INITIAL_ENCODING_STEP_COUNT, sizeof(struct aws_mqtt5_encoding_step))) {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-void aws_mqtt5_encoder_clean_up(struct aws_mqtt5_encoder *encoder) {
-    aws_array_list_clean_up(&encoder->encoding_steps);
-}
-
-void aws_mqtt5_encoder_reset(struct aws_mqtt5_encoder *encoder) {
-    aws_array_list_clear(&encoder->encoding_steps);
-    encoder->current_encoding_step_index = 0;
-}
-
 int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value) {
     AWS_PRECONDITION(buf);
 
@@ -182,7 +157,9 @@ void aws_mqtt5_add_user_property_encoding_steps(
     }
 }
 
-int aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder) {
+static int s_aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder, void *view) {
+    (void)view;
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_GENERAL,
         "(%p) mqtt5 client encoder - setting up encode for a PINGREQ packet",
@@ -219,9 +196,10 @@ static int s_compute_disconnect_variable_length_fields(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_encoder_begin_disconnect(
-    struct aws_mqtt5_encoder *encoder,
-    struct aws_mqtt5_packet_disconnect_view *disconnect_view) {
+static int s_aws_mqtt5_encoder_begin_disconnect(struct aws_mqtt5_encoder *encoder, void *view) {
+
+    struct aws_mqtt5_packet_disconnect_view *disconnect_view = view;
+
     uint32_t total_remaining_length = 0;
     uint32_t property_length = 0;
     if (s_compute_disconnect_variable_length_fields(disconnect_view, &total_remaining_length, &property_length)) {
@@ -365,10 +343,9 @@ static uint8_t s_aws_mqtt5_connect_compute_connect_flags(const struct aws_mqtt5_
     return flags;
 }
 
-int aws_mqtt5_encoder_begin_connect(
-    struct aws_mqtt5_encoder *encoder,
-    struct aws_mqtt5_packet_connect_view *connect_view) {
+static int s_aws_mqtt5_encoder_begin_connect(struct aws_mqtt5_encoder *encoder, void *view) {
 
+    struct aws_mqtt5_packet_connect_view *connect_view = view;
     const struct aws_mqtt5_packet_publish_view *will = connect_view->will;
 
     size_t total_remaining_length = 0;
@@ -574,4 +551,85 @@ enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
     }
 
     return result;
+}
+
+static struct aws_mqtt5_encoder_vtable s_aws_mqtt5_encoder_default_vtable = {
+    .encoders_by_packet_type =
+        {
+            NULL,                                  /* RESERVED = 0 */
+            &s_aws_mqtt5_encoder_begin_connect,    /* CONNECT */
+            NULL,                                  /* CONNACK */
+            NULL,                                  /* PUBLISH */
+            NULL,                                  /* PUBACK */
+            NULL,                                  /* PUBREC */
+            NULL,                                  /* PUBREL */
+            NULL,                                  /* PUBCOMP */
+            NULL,                                  /* SUBSCRIBE */
+            NULL,                                  /* SUBACK */
+            NULL,                                  /* UNSUBSCRIBE */
+            NULL,                                  /* UNSUBACK */
+            &s_aws_mqtt5_encoder_begin_pingreq,    /* PINGREQ */
+            NULL,                                  /* PINGRESP */
+            &s_aws_mqtt5_encoder_begin_disconnect, /* DISCONNECT */
+            NULL                                   /* AUTH */
+        },
+};
+
+const struct aws_mqtt5_encoder_vtable *g_aws_mqtt5_encoder_default_vtable = &s_aws_mqtt5_encoder_default_vtable;
+
+int aws_mqtt5_encoder_init(
+    struct aws_mqtt5_encoder *encoder,
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_client *client) {
+    AWS_ZERO_STRUCT(*encoder);
+
+    encoder->client = client;
+    encoder->vtable = g_aws_mqtt5_encoder_default_vtable;
+
+    if (aws_array_list_init_dynamic(
+            &encoder->encoding_steps, allocator, INITIAL_ENCODING_STEP_COUNT, sizeof(struct aws_mqtt5_encoding_step))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_encoder_init_with_vtable(
+    struct aws_mqtt5_encoder *encoder,
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_encoder_vtable *vtable) {
+    AWS_ZERO_STRUCT(*encoder);
+
+    encoder->client = client;
+    encoder->vtable = vtable;
+
+    if (aws_array_list_init_dynamic(
+            &encoder->encoding_steps, allocator, INITIAL_ENCODING_STEP_COUNT, sizeof(struct aws_mqtt5_encoding_step))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_encoder_clean_up(struct aws_mqtt5_encoder *encoder) {
+    aws_array_list_clean_up(&encoder->encoding_steps);
+}
+
+void aws_mqtt5_encoder_reset(struct aws_mqtt5_encoder *encoder) {
+    aws_array_list_clear(&encoder->encoding_steps);
+    encoder->current_encoding_step_index = 0;
+}
+
+int aws_mqtt5_encoder_append_packet_encoding(
+    struct aws_mqtt5_encoder *encoder,
+    enum aws_mqtt5_packet_type packet_type,
+    void *packet_view) {
+    aws_mqtt5_encode_begin_packet_type_fn *encoding_fn = encoder->vtable->encoders_by_packet_type[packet_type];
+    if (encoding_fn == NULL) {
+        /* TODO: I think the right error for this is in another branch atm, fix after merging */
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    return (*encoding_fn)(encoder, packet_view);
 }
