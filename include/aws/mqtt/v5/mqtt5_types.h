@@ -378,6 +378,8 @@ struct aws_mqtt5_packet_disconnect_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
  */
 struct aws_mqtt5_packet_subscribe_view {
+    aws_mqtt5_packet_id_t packet_id;
+
     size_t subscription_count;
     const struct aws_mqtt5_subscription_view *subscriptions;
 
@@ -393,6 +395,8 @@ struct aws_mqtt5_packet_subscribe_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
  */
 struct aws_mqtt5_packet_unsubscribe_view {
+    aws_mqtt5_packet_id_t packet_id;
+
     size_t topic_count;
     const struct aws_byte_cursor *topics;
 
@@ -410,6 +414,7 @@ struct aws_mqtt5_packet_publish_view {
     /* This field is always empty on received messages */
     struct aws_byte_cursor payload;
 
+    aws_mqtt5_packet_id_t packet_id;
     enum aws_mqtt5_qos qos;
     bool retain;
     struct aws_byte_cursor topic;
@@ -505,6 +510,8 @@ struct aws_mqtt5_packet_connack_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901121
  */
 struct aws_mqtt5_packet_puback_view {
+    aws_mqtt5_packet_id_t packet_id;
+
     enum aws_mqtt5_puback_reason_code reason_code;
     const struct aws_byte_cursor *reason_string;
 
@@ -518,6 +525,8 @@ struct aws_mqtt5_packet_puback_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171
  */
 struct aws_mqtt5_packet_suback_view {
+    aws_mqtt5_packet_id_t packet_id;
+
     const struct aws_byte_cursor *reason_string;
 
     size_t user_property_count;
@@ -533,6 +542,8 @@ struct aws_mqtt5_packet_suback_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
  */
 struct aws_mqtt5_packet_unsuback_view {
+    aws_mqtt5_packet_id_t packet_id;
+
     const struct aws_byte_cursor *reason_string;
 
     size_t user_property_count;

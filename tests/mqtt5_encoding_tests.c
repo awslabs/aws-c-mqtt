@@ -9,9 +9,152 @@
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
 #include <aws/mqtt/private/v5/mqtt5_encoder.h>
+#include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 #include <aws/testing/aws_test_harness.h>
+
+/*
+ * AWS_MQTT_API enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest);
+ * AWS_MQTT_API int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value);
+ * AWS_MQTT_API int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size);
+ */
+
+static int s_mqtt5_vli_size_fn(struct aws_allocator *allocator, void *ctx) {
+
+    size_t encode_size = 0;
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(0, &encode_size));
+    ASSERT_INT_EQUALS(1, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(1, &encode_size));
+    ASSERT_INT_EQUALS(1, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(127, &encode_size));
+    ASSERT_INT_EQUALS(1, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(128, &encode_size));
+    ASSERT_INT_EQUALS(2, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(256, &encode_size));
+    ASSERT_INT_EQUALS(2, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(16383, &encode_size));
+    ASSERT_INT_EQUALS(2, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(16384, &encode_size));
+    ASSERT_INT_EQUALS(3, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(16384, &encode_size));
+    ASSERT_INT_EQUALS(3, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(16385, &encode_size));
+    ASSERT_INT_EQUALS(3, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(2097151, &encode_size));
+    ASSERT_INT_EQUALS(3, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(2097152, &encode_size));
+    ASSERT_INT_EQUALS(4, encode_size);
+
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER, &encode_size));
+    ASSERT_INT_EQUALS(4, encode_size);
+
+    ASSERT_FAILS(
+        aws_mqtt5_get_variable_length_encode_size(AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER + 1, &encode_size));
+    ASSERT_FAILS(aws_mqtt5_get_variable_length_encode_size(0xFFFFFFFF, &encode_size));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_vli_size, s_mqtt5_vli_size_fn)
+
+static int s_do_success_round_trip_vli_test(uint32_t value, struct aws_allocator *allocator) {
+    struct aws_byte_buf buffer;
+    aws_byte_buf_init(&buffer, allocator, 4);
+
+    ASSERT_SUCCESS(aws_mqtt5_encode_variable_length_integer(&buffer, value));
+
+    size_t encoded_size = 0;
+    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(value, &encoded_size));
+    ASSERT_INT_EQUALS(encoded_size, buffer.len);
+
+    uint32_t decoded_value = 0;
+    for (size_t i = 1; i < encoded_size; ++i) {
+        struct aws_byte_cursor partial_cursor = aws_byte_cursor_from_buf(&buffer);
+        partial_cursor.len = i;
+
+        enum aws_mqtt5_decode_result_type result = aws_mqtt5_decode_vli(&partial_cursor, &decoded_value);
+        ASSERT_INT_EQUALS(AWS_MQTT5_DRT_MORE_DATA, result);
+    }
+
+    struct aws_byte_cursor full_cursor = aws_byte_cursor_from_buf(&buffer);
+
+    enum aws_mqtt5_decode_result_type result = aws_mqtt5_decode_vli(&full_cursor, &decoded_value);
+    ASSERT_INT_EQUALS(AWS_MQTT5_DRT_SUCCESS, result);
+    ASSERT_INT_EQUALS(decoded_value, value);
+
+    aws_byte_buf_clean_up(&buffer);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_vli_success_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(0, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(1, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(47, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(127, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(128, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(129, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(511, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(8000, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(16383, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(16384, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(16385, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(100000, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(4200000, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(34200000, allocator));
+    ASSERT_SUCCESS(s_do_success_round_trip_vli_test(AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER, allocator));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_vli_success_round_trip, s_mqtt5_vli_success_round_trip_fn)
+
+static int s_mqtt5_vli_encode_failures_fn(struct aws_allocator *allocator, void *ctx) {
+
+    struct aws_byte_buf buffer;
+    aws_byte_buf_init(&buffer, allocator, 4);
+
+    ASSERT_FAILS(aws_mqtt5_encode_variable_length_integer(&buffer, AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER + 1));
+    ASSERT_FAILS(aws_mqtt5_encode_variable_length_integer(&buffer, 0x80000000));
+    ASSERT_FAILS(aws_mqtt5_encode_variable_length_integer(&buffer, 0xFFFFFFFF));
+
+    aws_byte_buf_clean_up(&buffer);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_vli_encode_failures, s_mqtt5_vli_encode_failures_fn)
+
+static uint8_t bad_buffers0[] = {0x80, 0x80, 0x80, 0x80};
+static uint8_t bad_buffers1[] = {0x81, 0x81, 0x81, 0xFF};
+
+static int s_mqtt5_vli_decode_failures_fn(struct aws_allocator *allocator, void *ctx) {
+
+    uint32_t value = 0;
+
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_array(&bad_buffers0[0], AWS_ARRAY_SIZE(bad_buffers0));
+    ASSERT_INT_EQUALS(AWS_MQTT5_DRT_ERROR, aws_mqtt5_decode_vli(&cursor, &value));
+
+    cursor = aws_byte_cursor_from_array(&bad_buffers1[0], AWS_ARRAY_SIZE(bad_buffers1));
+    ASSERT_INT_EQUALS(AWS_MQTT5_DRT_ERROR, aws_mqtt5_decode_vli(&cursor, &value));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_vli_decode_failures, s_mqtt5_vli_decode_failures_fn)
 
 static char s_user_prop1_name[] = "Property1";
 static char s_user_prop1_value[] = "Value1";

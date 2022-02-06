@@ -200,6 +200,24 @@ AWS_EXTERN_C_END
 
 AWS_EXTERN_C_BEGIN
 
+/**
+ * Encodes a variable length integer to a buffer.  Assumes the buffer has been checked for sufficient room (this
+ * is not a streaming/resumable operation)
+ *
+ * @param buf buffer to encode to
+ * @param value value to encode
+ * @return success/failure
+ */
+AWS_MQTT_API int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value);
+
+/**
+ * Computes how many bytes are necessary to encode a value as a variable length integer
+ * @param value value to encode
+ * @param encode_size output parameter for the encoding size
+ * @return success/failure where failure is exclusively value-is-illegal-and-too-large-to-encode
+ */
+AWS_MQTT_API int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size);
+
 AWS_MQTT_API void aws_mqtt5_encoder_push_step_u8(struct aws_mqtt5_encoder *encoder, uint8_t value);
 
 AWS_MQTT_API void aws_mqtt5_encoder_push_step_u16(struct aws_mqtt5_encoder *encoder, uint16_t value);

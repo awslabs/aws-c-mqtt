@@ -65,6 +65,11 @@ add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
 add_test_case(mqtt5_publish_operation_new_set_no_optional)
 add_test_case(mqtt5_publish_operation_new_set_all)
 
+add_test_case(mqtt5_vli_size)
+add_test_case(mqtt5_vli_success_round_trip)
+add_test_case(mqtt5_vli_encode_failures)
+add_test_case(mqtt5_vli_decode_failures)
+
 add_test_case(mqtt5_packet_disconnect_round_trip)
 add_test_case(mqtt5_packet_pingreq_round_trip)
 add_test_case(mqtt5_packet_pingresp_round_trip)
