@@ -14,11 +14,61 @@ struct aws_byte_buf;
 
 #define AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER 268435455
 
+/* property type codes */
+#define AWS_MQTT5_PROPERTY_TYPE_PAYLOAD_FORMAT_INDICATOR ((uint8_t)1)
+#define AWS_MQTT5_PROPERTY_TYPE_MESSAGE_EXPIRY_INTERVAL ((uint8_t)2)
+#define AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE ((uint8_t)3)
+#define AWS_MQTT5_PROPERTY_TYPE_RESPONSE_TOPIC ((uint8_t)8)
+#define AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA ((uint8_t)9)
+#define AWS_MQTT5_PROPERTY_TYPE_SESSION_EXPIRY_INTERVAL ((uint8_t)17)
+#define AWS_MQTT5_PROPERTY_TYPE_ASSIGNED_CLIENT_IDENTIFIER ((uint8_t)18)
+#define AWS_MQTT5_PROPERTY_TYPE_SERVER_KEEP_ALIVE ((uint8_t)19)
+#define AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_METHOD ((uint8_t)21)
+#define AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_DATA ((uint8_t)22)
+#define AWS_MQTT5_PROPERTY_TYPE_REQUEST_PROBLEM_INFORMATION ((uint8_t)23)
+#define AWS_MQTT5_PROPERTY_TYPE_WILL_DELAY_INTERVAL ((uint8_t)24)
+#define AWS_MQTT5_PROPERTY_TYPE_REQUEST_RESPONSE_INFORMATION ((uint8_t)25)
+#define AWS_MQTT5_PROPERTY_TYPE_RESPONSE_INFORMATION ((uint8_t)26)
+#define AWS_MQTT5_PROPERTY_TYPE_SERVER_REFERENCE ((uint8_t)28)
+#define AWS_MQTT5_PROPERTY_TYPE_REASON_STRING ((uint8_t)31)
+#define AWS_MQTT5_PROPERTY_TYPE_RECEIVE_MAXIMUM ((uint8_t)33)
+#define AWS_MQTT5_PROPERTY_TYPE_TOPIC_ALIAS_MAXIMUM ((uint8_t)34)
+#define AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_QOS ((uint8_t)36)
+#define AWS_MQTT5_PROPERTY_TYPE_RETAIN_AVAILABLE ((uint8_t)37)
+#define AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY ((uint8_t)38)
+#define AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_PACKET_SIZE ((uint8_t)39)
+#define AWS_MQTT5_PROPERTY_TYPE_WILDCARD_SUBSCRIPTIONS_AVAILABLE ((uint8_t)40)
+#define AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIERS_AVAILABLE ((uint8_t)41)
+#define AWS_MQTT5_PROPERTY_TYPE_SHARED_SUBSCRIPTIONS_AVAILABLE ((uint8_t)42)
+
+/* decode/encode bit masks and positions */
+#define AWS_MQTT5_CONNECT_FLAGS_WILL_BIT (1U << 2)
+#define AWS_MQTT5_CONNECT_FLAGS_CLEAN_START_BIT (1U << 1)
+#define AWS_MQTT5_CONNECT_FLAGS_USER_NAME_BIT (1U << 7)
+#define AWS_MQTT5_CONNECT_FLAGS_PASSWORD_BIT (1U << 6)
+#define AWS_MQTT5_CONNECT_FLAGS_WILL_RETAIN_BIT (1U << 6)
+
+#define AWS_MQTT5_CONNECT_FLAGS_WILL_QOS_BIT_POSITION 3
+#define AWS_MQTT5_CONNECT_FLAGS_WILL_QOS_BIT_MASK 0x03
+
 AWS_EXTERN_C_BEGIN
 
-int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value);
+/**
+ * CONNECT packet MQTT5 prefix which includes "MQTT" encoded as a utf-8 string followed by the protocol number (5)
+ *
+ * {0x00, 0x04, "MQTT", 0x05}
+ */
+AWS_MQTT_API extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
 
-int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size);
+/**
+ * Simple helper function to compute the first byte of an MQTT packet encoding as a function of 4 bit flags
+ * and the packet type.
+ *
+ * @param packet_type type of MQTT packet
+ * @param flags 4-bit wide flags, specific to each packet type, 0-valued for most
+ * @return the expected/required first byte of a packet of that type with flags set
+ */
+AWS_MQTT_API uint8_t aws_mqtt5_compute_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags);
 
 void aws_mqtt5_negotiated_settings_log(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,

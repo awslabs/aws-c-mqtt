@@ -5,6 +5,7 @@
 
 #include <aws/common/string.h>
 
+#include "mqtt5_testing_utils.h"
 #include <aws/io/stream.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
@@ -13,44 +14,12 @@
 
 #include <aws/testing/aws_test_harness.h>
 
-static int s_verify_user_properties_raw(
-    size_t property_count,
-    const struct aws_mqtt5_user_property *properties,
-    size_t expected_count,
-    const struct aws_mqtt5_user_property *expected_properties) {
-
-    ASSERT_UINT_EQUALS(expected_count, property_count);
-
-    for (size_t i = 0; i < expected_count; ++i) {
-        const struct aws_mqtt5_user_property *expected_property = &expected_properties[i];
-        struct aws_byte_cursor expected_name = expected_property->name;
-        struct aws_byte_cursor expected_value = expected_property->value;
-
-        bool found = false;
-        for (size_t j = 0; j < property_count; ++j) {
-            const struct aws_mqtt5_user_property *nv_pair = &properties[j];
-
-            if (aws_byte_cursor_compare_lexical(&expected_name, &nv_pair->name) == 0 &&
-                aws_byte_cursor_compare_lexical(&expected_value, &nv_pair->value) == 0) {
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) {
-            return AWS_OP_ERR;
-        }
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
 static int s_verify_user_properties(
     struct aws_mqtt5_user_property_set *property_set,
     size_t expected_count,
     const struct aws_mqtt5_user_property *expected_properties) {
 
-    return s_verify_user_properties_raw(
+    return aws_mqtt5_test_verify_user_properties_raw(
         aws_mqtt5_user_property_set_size(property_set),
         property_set->properties.data,
         expected_count,
@@ -74,7 +43,6 @@ static const char *PUBLISH_TOPIC = "greetings/friendly";
 
 static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator *allocator, void *ctx) {
     struct aws_mqtt5_packet_publish_view publish_options = {
-        .payload = NULL,
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
         .retain = true,
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
@@ -98,8 +66,8 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
     struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage->storage_view;
 
-    ASSERT_NULL(publish_storage->payload);
-    ASSERT_NULL(stored_view->payload);
+    ASSERT_INT_EQUALS(0, publish_storage->payload.len);
+    ASSERT_INT_EQUALS(0, stored_view->payload.len);
 
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_storage->qos);
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)stored_view->qos);
@@ -134,8 +102,8 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     ASSERT_NULL(stored_view->content_type);
 
     ASSERT_SUCCESS(s_verify_user_properties(&publish_storage->user_properties, 0, NULL));
-    ASSERT_SUCCESS(
-        s_verify_user_properties_raw(stored_view->user_property_count, stored_view->user_properties, 0, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        stored_view->user_property_count, stored_view->user_properties, 0, NULL));
 
     ASSERT_NULL(publish_op->completion_options.completion_callback);
     ASSERT_NULL(publish_op->completion_options.completion_user_data);
@@ -201,10 +169,9 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     struct aws_byte_cursor content_type = aws_byte_cursor_from_c_str(s_content_type);
     enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
     struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD);
-    struct aws_input_stream *payload_stream = aws_input_stream_new_from_cursor(allocator, &payload_cursor);
 
     struct aws_mqtt5_packet_publish_view publish_options = {
-        .payload = payload_stream,
+        .payload = payload_cursor,
         .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
         .retain = false,
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
@@ -233,8 +200,16 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
     struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage->storage_view;
 
-    ASSERT_PTR_EQUALS(payload_stream, publish_storage->payload);
-    ASSERT_PTR_EQUALS(payload_stream, stored_view->payload);
+    ASSERT_NOT_NULL(publish_storage->payload.ptr);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        publish_options.payload.ptr,
+        publish_options.payload.len,
+        publish_storage->payload.ptr,
+        publish_storage->payload.len);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        publish_options.payload.ptr, publish_options.payload.len, stored_view->payload.ptr, stored_view->payload.len);
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, publish_storage->payload));
+    ASSERT_TRUE(s_is_cursor_in_buffer(&publish_storage->storage, stored_view->payload));
 
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)publish_storage->qos);
     ASSERT_UINT_EQUALS((uint32_t)publish_options.qos, (uint32_t)stored_view->qos);
@@ -314,7 +289,7 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
 
     ASSERT_SUCCESS(s_verify_user_properties(
         &publish_storage->user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));
-    ASSERT_SUCCESS(s_verify_user_properties_raw(
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
         stored_view->user_property_count,
         stored_view->user_properties,
         AWS_ARRAY_SIZE(s_user_properties),
@@ -326,8 +301,6 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     aws_mqtt5_packet_publish_view_log(stored_view, AWS_LL_DEBUG);
 
     aws_mqtt5_operation_release(&publish_op->base);
-
-    aws_input_stream_destroy(payload_stream);
 
     return AWS_OP_SUCCESS;
 }
