@@ -83,14 +83,14 @@ void aws_mqtt5_negotiated_settings_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings to server topic alias maximum set to %" PRIu16,
+        "(%p) aws_mqtt5_negotiated_settings topic alias maximum to server set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->topic_alias_maximum_to_server);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings to client topic alias maximum set to %" PRIu16,
+        "(%p) aws_mqtt5_negotiated_settings topic alias maximum to client set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->topic_alias_maximum_to_client);
 
@@ -157,6 +157,8 @@ void aws_mqtt5_negotiated_settings_reset(
     negotiated_settings->wildcard_subscriptions_available = true;
     negotiated_settings->subscription_identifiers_available = true;
     negotiated_settings->shared_subscriptions_available = true;
+
+    negotiated_settings->rejoined_session = false;
 
     /**
      * Apply user set properties to negotiated_settings
@@ -233,4 +235,6 @@ void aws_mqtt5_negotiated_settings_apply_connack(
     if (connack_data->server_keep_alive != NULL) {
         negotiated_settings->server_keep_alive = *connack_data->server_keep_alive;
     }
+
+    negotiated_settings->rejoined_session = *connack_data->session_present;
 }

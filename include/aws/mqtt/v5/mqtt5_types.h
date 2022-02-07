@@ -607,6 +607,7 @@ struct aws_mqtt5_negotiated_settings {
     bool wildcard_subscriptions_available;
     bool subscription_identifiers_available;
     bool shared_subscriptions_available;
+    bool rejoined_session;
 };
 
 /**
