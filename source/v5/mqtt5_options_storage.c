@@ -18,6 +18,18 @@
  * Property set
  ********************************************************************************************************************/
 
+int aws_mqtt5_user_property_set_init(
+    struct aws_mqtt5_user_property_set *property_set,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*property_set);
+
+    if (aws_array_list_init_dynamic(&property_set->properties, allocator, 0, sizeof(struct aws_mqtt5_user_property))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_mqtt5_user_property_set_init_with_storage(
     struct aws_mqtt5_user_property_set *property_set,
     struct aws_allocator *allocator,
@@ -267,7 +279,7 @@ int aws_mqtt5_packet_connect_view_validate(
                 "(%p) aws_mqtt5_packet_connect_view - will payload larger than %d",
                 (void *)connect_options,
                 (int)UINT16_MAX);
-            return AWS_OP_ERR;
+            return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
         }
     }
 
@@ -277,7 +289,7 @@ int aws_mqtt5_packet_connect_view_validate(
                 AWS_LS_MQTT5_GENERAL,
                 "(%p) aws_mqtt5_packet_connect_view - CONNECT packet request problem information has invalid value",
                 (void *)connect_options);
-            return AWS_OP_ERR;
+            return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
         }
     }
 
@@ -287,7 +299,7 @@ int aws_mqtt5_packet_connect_view_validate(
                 AWS_LS_MQTT5_GENERAL,
                 "(%p) aws_mqtt5_packet_connect_view - CONNECT packet request response information has invalid value",
                 (void *)connect_options);
-            return AWS_OP_ERR;
+            return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
         }
     }
 
@@ -297,6 +309,14 @@ int aws_mqtt5_packet_connect_view_validate(
             "aws_mqtt5_packet_connect_view",
             (void *)connect_options)) {
         return AWS_OP_ERR;
+    }
+
+    if (connect_options->authentication_method != NULL || connect_options->authentication_data != NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connect_view - CONNECT packet has unsupported authentication fields set.",
+            (void *)connect_options);
+        return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
     }
 
     return AWS_OP_SUCCESS;
@@ -424,6 +444,22 @@ void aws_mqtt5_packet_connect_view_log(
         (void *)connect_view,
         level,
         "aws_mqtt5_packet_connect_view");
+
+    if (connect_view->authentication_method != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connect_view authentication method set",
+            (void *)connect_view);
+    }
+
+    if (connect_view->password != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connect_view authentication data set",
+            (void *)connect_view);
+    }
 }
 
 void aws_mqtt5_packet_connect_storage_clean_up(struct aws_mqtt5_packet_connect_storage *storage) {
@@ -459,6 +495,14 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(const struct aws_m
     storage_size +=
         s_aws_mqtt5_user_property_set_compute_storage_size(view->user_properties, view->user_property_count);
 
+    if (view->authentication_method != NULL) {
+        storage_size += view->authentication_method->len;
+    }
+
+    if (view->authentication_data != NULL) {
+        storage_size += view->authentication_data->len;
+    }
+
     return storage_size;
 }
 
@@ -482,6 +526,8 @@ void aws_mqtt5_packet_connect_view_init_from_storage(
     view->will_delay_interval_seconds = storage->will_delay_interval_seconds_ptr;
     view->user_property_count = aws_mqtt5_user_property_set_size(&storage->user_properties);
     view->user_properties = storage->user_properties.properties.data;
+    view->authentication_method = storage->authentication_method_ptr;
+    view->authentication_data = storage->authentication_data_ptr;
 }
 
 int aws_mqtt5_packet_connect_storage_init(
@@ -577,7 +623,37 @@ int aws_mqtt5_packet_connect_storage_init(
         return AWS_OP_ERR;
     }
 
+    if (view->authentication_method != NULL) {
+        storage->authentication_method = *view->authentication_method;
+        if (aws_byte_buf_append_and_update(&storage->storage, &storage->authentication_method)) {
+            return AWS_OP_ERR;
+        }
+
+        storage->authentication_method_ptr = &storage->authentication_method;
+    }
+
+    if (view->authentication_data != NULL) {
+        storage->authentication_data = *view->authentication_data;
+        if (aws_byte_buf_append_and_update(&storage->storage, &storage->authentication_data)) {
+            return AWS_OP_ERR;
+        }
+
+        storage->authentication_data_ptr = &storage->authentication_data;
+    }
+
     aws_mqtt5_packet_connect_view_init_from_storage(&storage->storage_view, storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_packet_connect_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_connect_storage *connect_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*connect_storage);
+
+    if (aws_mqtt5_user_property_set_init(&connect_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -626,6 +702,235 @@ error:
     aws_mqtt5_operation_release(&connect_op->base);
 
     return NULL;
+}
+
+/*********************************************************************************************************************
+ * Connack
+ ********************************************************************************************************************/
+
+int aws_mqtt5_packet_connack_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_connack_storage *connack_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*connack_storage);
+
+    if (aws_mqtt5_user_property_set_init(&connack_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_packet_connack_storage_clean_up(struct aws_mqtt5_packet_connack_storage *connack_storage) {
+    if (connack_storage == NULL) {
+        return;
+    }
+
+    aws_mqtt5_user_property_set_clean_up(&connack_storage->user_properties);
+    aws_byte_buf_clean_up(&connack_storage->storage);
+}
+
+void aws_mqtt5_packet_connack_view_log(
+    const struct aws_mqtt5_packet_connack_view *connack_view,
+    enum aws_log_level level) {
+    struct aws_logger *logger = aws_logger_get();
+    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+        return;
+    }
+
+    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_packet_connack_view reason code set to %d(%s)",
+        (void *)connack_view,
+        (int)connack_view->reason_code,
+        aws_mqtt5_connect_reason_code_to_c_string(connack_view->reason_code));
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_packet_connack_view session present set to %d",
+        (void *)connack_view,
+        (int)connack_view->session_present);
+
+    if (connack_view->session_expiry_interval != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view session expiry interval set to %" PRIu32,
+            (void *)connack_view,
+            *connack_view->session_expiry_interval);
+    }
+
+    if (connack_view->receive_maximum != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view receive maximum set to %" PRIu16,
+            (void *)connack_view,
+            *connack_view->receive_maximum);
+    }
+
+    if (connack_view->maximum_qos != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view maximum qos set to %d",
+            (void *)connack_view,
+            (int)(*connack_view->maximum_qos));
+    }
+
+    if (connack_view->retain_available != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view retain available set to %d",
+            (void *)connack_view,
+            (int)(*connack_view->retain_available));
+    }
+
+    if (connack_view->maximum_packet_size != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view maximum packet size set to %" PRIu32,
+            (void *)connack_view,
+            *connack_view->maximum_packet_size);
+    }
+
+    if (connack_view->assigned_client_identifier != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view assigned client identifier set to \"" PRInSTR "\"",
+            (void *)connack_view,
+            AWS_BYTE_CURSOR_PRI(*connack_view->assigned_client_identifier));
+    }
+
+    if (connack_view->topic_alias_maximum != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view topic alias maximum set to %" PRIu16,
+            (void *)connack_view,
+            *connack_view->topic_alias_maximum);
+    }
+
+    if (connack_view->reason_string != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view reason string set to \"" PRInSTR "\"",
+            (void *)connack_view,
+            AWS_BYTE_CURSOR_PRI(*connack_view->reason_string));
+    }
+
+    if (connack_view->wildcard_subscriptions_available != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view wildcard subscriptions available set to %d",
+            (void *)connack_view,
+            (int)(*connack_view->wildcard_subscriptions_available));
+    }
+
+    if (connack_view->subscription_identifiers_available != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view subscription identifiers available set to %d",
+            (void *)connack_view,
+            (int)(*connack_view->subscription_identifiers_available));
+    }
+
+    if (connack_view->shared_subscriptions_available != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view shared subscriptions available set to %d",
+            (void *)connack_view,
+            (int)(*connack_view->shared_subscriptions_available));
+    }
+
+    if (connack_view->server_keep_alive != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view server keep alive set to %" PRIu16,
+            (void *)connack_view,
+            *connack_view->server_keep_alive);
+    }
+
+    if (connack_view->response_information != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view response information set to \"" PRInSTR "\"",
+            (void *)connack_view,
+            AWS_BYTE_CURSOR_PRI(*connack_view->response_information));
+    }
+
+    if (connack_view->server_reference != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view server reference set to \"" PRInSTR "\"",
+            (void *)connack_view,
+            AWS_BYTE_CURSOR_PRI(*connack_view->server_reference));
+    }
+
+    if (connack_view->authentication_method != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view authentication method set",
+            (void *)connack_view);
+    }
+
+    if (connack_view->authentication_data != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_packet_connack_view authentication data set",
+            (void *)connack_view);
+    }
+
+    s_aws_mqtt5_user_property_set_log(
+        connack_view->user_properties,
+        connack_view->user_property_count,
+        (void *)connack_view,
+        level,
+        "aws_mqtt5_packet_connack_view");
+}
+
+void aws_mqtt5_packet_connack_view_init_from_storage(
+    struct aws_mqtt5_packet_connack_view *connack_view,
+    const struct aws_mqtt5_packet_connack_storage *connack_storage) {
+
+    connack_view->session_present = connack_storage->session_present;
+    connack_view->reason_code = connack_storage->reason_code;
+    connack_view->session_expiry_interval = connack_storage->session_expiry_interval_ptr;
+    connack_view->receive_maximum = connack_storage->receive_maximum_ptr;
+    connack_view->maximum_qos = connack_storage->maximum_qos_ptr;
+    connack_view->retain_available = connack_storage->retain_available_ptr;
+    connack_view->maximum_packet_size = connack_storage->maximum_packet_size_ptr;
+    connack_view->assigned_client_identifier = connack_storage->assigned_client_identifier_ptr;
+    connack_view->topic_alias_maximum = connack_storage->topic_alias_maximum_ptr;
+    connack_view->reason_string = connack_storage->reason_string_ptr;
+
+    connack_view->user_property_count = aws_mqtt5_user_property_set_size(&connack_storage->user_properties);
+    connack_view->user_properties = connack_storage->user_properties.properties.data;
+
+    connack_view->wildcard_subscriptions_available = connack_storage->wildcard_subscriptions_available_ptr;
+    connack_view->subscription_identifiers_available = connack_storage->subscription_identifiers_available_ptr;
+    connack_view->shared_subscriptions_available = connack_storage->shared_subscriptions_available_ptr;
+
+    connack_view->server_keep_alive = connack_storage->server_keep_alive_ptr;
+    connack_view->response_information = connack_storage->response_information_ptr;
+    connack_view->server_reference = connack_storage->server_reference_ptr;
+    connack_view->authentication_method = connack_storage->authentication_method_ptr;
+    connack_view->authentication_data = connack_storage->authentication_data_ptr;
 }
 
 /*********************************************************************************************************************
@@ -755,7 +1060,7 @@ void aws_mqtt5_packet_disconnect_view_log(
         "aws_mqtt5_packet_disconnect_view");
 }
 
-void aws_aws_mqtt5_packet_disconnect_storage_clean_up(struct aws_mqtt5_packet_disconnect_storage *disconnect_storage) {
+void aws_mqtt5_packet_disconnect_storage_clean_up(struct aws_mqtt5_packet_disconnect_storage *disconnect_storage) {
     if (disconnect_storage == NULL) {
         return;
     }
@@ -840,6 +1145,18 @@ int aws_mqtt5_packet_disconnect_storage_init(
     return AWS_OP_SUCCESS;
 }
 
+int aws_mqtt5_packet_disconnect_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_disconnect_storage *disconnect_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*disconnect_storage);
+
+    if (aws_mqtt5_user_property_set_init(&disconnect_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static void s_destroy_operation_disconnect(void *object) {
     if (object == NULL) {
         return;
@@ -847,7 +1164,7 @@ static void s_destroy_operation_disconnect(void *object) {
 
     struct aws_mqtt5_operation_disconnect *disconnect_op = object;
 
-    aws_aws_mqtt5_packet_disconnect_storage_clean_up(&disconnect_op->options_storage);
+    aws_mqtt5_packet_disconnect_storage_clean_up(&disconnect_op->options_storage);
 
     aws_mem_release(disconnect_op->allocator, disconnect_op);
 }
@@ -888,14 +1205,6 @@ error:
 /*********************************************************************************************************************
  * Publish
  ********************************************************************************************************************/
-
-#ifdef NEVER
-
-const struct aws_byte_cursor *response_topic;
-const struct aws_byte_cursor *correlation_data;
-
-const struct aws_byte_cursor *content_type;
-#endif
 
 int aws_mqtt5_packet_publish_view_validate(
     const struct aws_mqtt5_packet_publish_view *publish_view,
@@ -1210,6 +1519,18 @@ int aws_mqtt5_packet_publish_storage_init(
     }
 
     aws_mqtt5_packet_publish_view_init_from_storage(&publish_storage->storage_view, publish_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_packet_publish_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_publish_storage *publish_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*publish_storage);
+
+    if (aws_mqtt5_user_property_set_init(&publish_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
 
     return AWS_OP_SUCCESS;
 }
