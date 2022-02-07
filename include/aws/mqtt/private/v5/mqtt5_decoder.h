@@ -51,7 +51,7 @@ typedef int(aws_mqtt5_on_packet_received_fn)(
     void *packet_view,
     void *decoder_callback_user_data);
 
-typedef void(aws_mqtt5_on_publish_payload_data_fn)(
+typedef int(aws_mqtt5_on_publish_payload_data_fn)(
     struct aws_mqtt5_packet_publish_view *publish_view,
     struct aws_byte_cursor payload,
     void *decoder_callback_user_data);

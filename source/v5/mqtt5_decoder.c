@@ -482,11 +482,13 @@ static int s_aws_mqtt5_decoder_decode_pingresp(struct aws_mqtt5_decoder *decoder
         goto error;
     }
 
+    int result = AWS_OP_SUCCESS;
     if (decoder->options.on_packet_received != NULL) {
-        (*decoder->options.on_packet_received)(AWS_MQTT5_PT_PINGRESP, NULL, decoder->options.callback_user_data);
+        result =
+            (*decoder->options.on_packet_received)(AWS_MQTT5_PT_PINGRESP, NULL, decoder->options.callback_user_data);
     }
 
-    return AWS_OP_SUCCESS;
+    return result;
 
 error:
 
