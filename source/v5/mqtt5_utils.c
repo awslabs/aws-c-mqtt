@@ -236,5 +236,5 @@ void aws_mqtt5_negotiated_settings_apply_connack(
         negotiated_settings->server_keep_alive = *connack_data->server_keep_alive;
     }
 
-    negotiated_settings->rejoined_session = *connack_data->session_present;
+    negotiated_settings->rejoined_session = connack_data->session_present;
 }
