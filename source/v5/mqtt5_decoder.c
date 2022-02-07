@@ -66,7 +66,9 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     return AWS_MQTT5_DRT_SUCCESS;
 }
 
-/* non-streaming variable length integer decode */
+/*
+ * non-streaming variable length integer decode.  cursor is updated only if the value was successfully read
+ */
 enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest) {
     uint32_t value = 0;
     bool more_data = false;
@@ -74,12 +76,13 @@ enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *c
 
     uint32_t shift = 0;
 
+    struct aws_byte_cursor cursor_copy = *cursor;
     for (; bytes_used < 4; ++bytes_used) {
-        if (bytes_used >= cursor->len) {
+        uint8_t byte = 0;
+        if (!aws_byte_cursor_read_u8(&cursor_copy, &byte)) {
             return AWS_MQTT5_DRT_MORE_DATA;
         }
 
-        uint8_t byte = *(cursor->ptr + bytes_used);
         value |= ((byte & 0x7F) << shift);
         shift += 7;
 
@@ -521,16 +524,10 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
         size_t unread_length = decoder->remaining_length - decoder->scratch_space.len;
         size_t copy_length = aws_min_size(unread_length, data->len);
 
-        struct aws_byte_cursor copy_cursor = {
-            .ptr = data->ptr,
-            .len = copy_length,
-        };
-
+        struct aws_byte_cursor copy_cursor = aws_byte_cursor_advance(data, copy_length);
         if (aws_byte_buf_append_dynamic(&decoder->scratch_space, &copy_cursor)) {
             return AWS_MQTT5_DRT_ERROR;
         }
-
-        aws_byte_cursor_advance(data, copy_length);
 
         if (copy_length < unread_length) {
             return AWS_MQTT5_DRT_MORE_DATA;
