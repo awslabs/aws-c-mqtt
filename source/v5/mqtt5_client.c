@@ -665,25 +665,28 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
 static int s_aws_mqtt5_client_begin_operation_encode(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation) {
-    switch (operation->operation_type) {
-        case AWS_MOT_CONNECT:
-            if (aws_mqtt5_encoder_begin_connect(
+    switch (operation->packet_type) {
+
+        /* TODO: refactor operation base to make this function unnecessary? */
+        case AWS_MQTT5_PT_CONNECT:
+            if (aws_mqtt5_encoder_append_packet_encoding(
                     &client->encoder,
+                    AWS_MQTT5_PT_CONNECT,
                     &((struct aws_mqtt5_operation_connect *)operation->impl)->options_storage.storage_view)) {
                 return AWS_OP_ERR;
             }
             break;
 
-        case AWS_MOT_PINGREQ:
-            if (aws_mqtt5_encoder_begin_pingreq(&client->encoder)) {
+        case AWS_MQTT5_PT_PINGREQ:
+            if (aws_mqtt5_encoder_append_packet_encoding(&client->encoder, AWS_MQTT5_PT_PINGREQ, NULL)) {
                 return AWS_OP_ERR;
             }
             break;
 
-        case AWS_MOT_DISCONNECT:
-        case AWS_MOT_SUBSCRIBE:
-        case AWS_MOT_UNSUBSCRIBE:
-        case AWS_MOT_PUBLISH:
+        case AWS_MQTT5_PT_DISCONNECT:
+        case AWS_MQTT5_PT_SUBSCRIBE:
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+        case AWS_MQTT5_PT_PUBLISH:
         default:
             return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
@@ -1390,7 +1393,7 @@ static int s_aws_mqtt5_client_on_packet_received(
     return AWS_OP_SUCCESS;
 }
 
-static void s_aws_mqtt5_client_on_publish_payload_received(
+static int s_aws_mqtt5_client_on_publish_payload_received(
     struct aws_mqtt5_packet_publish_view *publish_view,
     struct aws_byte_cursor payload,
     void *decoder_callback_user_data) {
@@ -1399,6 +1402,8 @@ static void s_aws_mqtt5_client_on_publish_payload_received(
     (void)decoder_callback_user_data;
 
     /* TODO: implement */
+
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }
 
 struct aws_mqtt5_client *aws_mqtt5_client_new(
@@ -1458,7 +1463,11 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
         goto on_error;
     }
 
-    if (aws_mqtt5_encoder_init(&client->encoder, allocator, client)) {
+    struct aws_mqtt5_encoder_options encoder_options = {
+        .client = client,
+    };
+
+    if (aws_mqtt5_encoder_init(&client->encoder, allocator, &encoder_options)) {
         goto on_error;
     }
 

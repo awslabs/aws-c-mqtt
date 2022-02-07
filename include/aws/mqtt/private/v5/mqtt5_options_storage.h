@@ -27,32 +27,12 @@ struct aws_mqtt5_user_property_set {
     struct aws_array_list properties;
 };
 
-/*
- * At its core, an operation is anything you want to tell the mqtt5 client to do.
- *
- * This is intentionally different and *not* in sync with aws_mqtt5_packet_type
- *
- * Current thinking is that user-facing packets are operations, but we reserve the right to make additional
- * operations that may represent compound (sub-pub-unsub for example) or external concepts (control, client
- * state manipulation, queries, etc...)
- *
- * We must be careful to make the functional interface for operations not assume a 1-1 with MQTT packets
- */
-enum aws_mqtt5_operation_type {
-    AWS_MOT_CONNECT,
-    AWS_MOT_DISCONNECT,
-    AWS_MOT_SUBSCRIBE,
-    AWS_MOT_UNSUBSCRIBE,
-    AWS_MOT_PUBLISH,
-    AWS_MOT_PINGREQ,
-};
-
 /**
  * This is the base structure for all mqtt operations.  It includes the type, a ref count, and list
  * management.
  */
 struct aws_mqtt5_operation {
-    enum aws_mqtt5_operation_type operation_type;
+    enum aws_mqtt5_packet_type packet_type;
     struct aws_ref_count ref_count;
     struct aws_linked_list_node node;
     void *impl;
