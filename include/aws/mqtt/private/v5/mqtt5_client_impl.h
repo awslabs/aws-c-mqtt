@@ -38,12 +38,6 @@ struct aws_mqtt5_client {
 
     const struct aws_mqtt5_client_options_storage *config;
 
-    /*
-     * TODO: negotiated settings system with APIs for:
-     *      reset (defaults)
-     *      apply CONNECT
-     *      apply CONNACK
-     */
     struct aws_mqtt5_negotiated_settings negotiated_settings;
 
     struct aws_event_loop *loop;
