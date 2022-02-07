@@ -64,8 +64,8 @@ add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
 
 add_test_case(mqtt5_publish_operation_new_set_no_optional)
 add_test_case(mqtt5_publish_operation_new_set_all)
-add_test_case(mqtt5_negotiated_settings_reset_default)
-
+add_test_case(mqtt5_negotiated_settings_reset_test)
+add_test_case(mqtt5_negotiated_settings_apply_connack_test)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
