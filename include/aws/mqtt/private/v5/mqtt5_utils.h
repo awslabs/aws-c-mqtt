@@ -61,24 +61,6 @@ AWS_EXTERN_C_BEGIN
 AWS_MQTT_API extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
 
 /**
- * Encodes a variable length integer to a buffer.  Assumes the buffer has been checked for sufficient room (this
- * is not a streaming/resumable operation)
- *
- * @param buf buffer to encode to
- * @param value value to encode
- * @return success/failure
- */
-AWS_MQTT_API int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value);
-
-/**
- * Computes how many bytes are necessary to encode a value as a variable length integer
- * @param value value to encode
- * @param encode_size output parameter for the encoding size
- * @return success/failure where failure is exclusively value-is-illegal-and-too-large-to-encode
- */
-AWS_MQTT_API int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size);
-
-/**
  * Simple helper function to compute the first byte of an MQTT packet encoding as a function of 4 bit flags
  * and the packet type.
  *
