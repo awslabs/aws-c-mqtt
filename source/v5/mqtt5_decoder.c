@@ -11,11 +11,10 @@
 
 static void s_reset_decoder_for_new_packet(struct aws_mqtt5_decoder *decoder) {
     aws_byte_buf_reset(&decoder->scratch_space, false);
-    decoder->current_step_scratch_offset = 0;
 
-    decoder->packet_type = AWS_MQTT5_PT_RESERVED;
+    decoder->packet_first_byte = 0;
     decoder->remaining_length = 0;
-    decoder->total_length = 0;
+    AWS_ZERO_STRUCT(decoder->packet_cursor);
 }
 
 static void s_enter_state(struct aws_mqtt5_decoder *decoder, enum aws_mqtt5_decoder_state state) {
@@ -23,29 +22,14 @@ static void s_enter_state(struct aws_mqtt5_decoder *decoder, enum aws_mqtt5_deco
 
     if (state == AWS_MQTT5_DS_READ_PACKET_TYPE) {
         s_reset_decoder_for_new_packet(decoder);
+    } else {
+        aws_byte_buf_reset(&decoder->scratch_space, false);
     }
-
-    decoder->current_step_scratch_offset = decoder->scratch_space.len;
 }
 
-static bool s_is_decodable_packet_type(enum aws_mqtt5_packet_type type) {
-    switch (type) {
-        case AWS_MQTT5_PT_CONNECT:
-        case AWS_MQTT5_PT_CONNACK:
-        case AWS_MQTT5_PT_PUBLISH:
-        case AWS_MQTT5_PT_PUBACK:
-        case AWS_MQTT5_PT_SUBSCRIBE:
-        case AWS_MQTT5_PT_SUBACK:
-        case AWS_MQTT5_PT_UNSUBSCRIBE:
-        case AWS_MQTT5_PT_UNSUBACK:
-        case AWS_MQTT5_PT_PINGREQ:
-        case AWS_MQTT5_PT_PINGRESP:
-        case AWS_MQTT5_PT_DISCONNECT:
-            return true;
-
-        default:
-            return false;
-    }
+static bool s_is_decodable_packet_type(struct aws_mqtt5_decoder *decoder, enum aws_mqtt5_packet_type type) {
+    return type < AWS_ARRAY_SIZE(decoder->options.decoder_table->decoders_by_packet_type) &&
+           decoder->options.decoder_table->decoders_by_packet_type[type] != NULL;
 }
 
 /*
@@ -66,7 +50,7 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
 
     enum aws_mqtt5_packet_type packet_type = (byte >> 4);
 
-    if (!s_is_decodable_packet_type(packet_type)) {
+    if (!s_is_decodable_packet_type(decoder, packet_type)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL,
             "(%p) aws_mqtt5_decoder - unsupported or illegal packet type value: %d",
@@ -75,7 +59,7 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
         return AWS_MQTT5_DRT_ERROR;
     }
 
-    decoder->packet_type = packet_type;
+    decoder->packet_first_byte = byte;
 
     s_enter_state(decoder, AWS_MQTT5_DS_READ_REMAINING_LENGTH);
 
@@ -133,8 +117,8 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_vli_on_data(
 
         /* now try and decode a vli integer based on the range implied by the offset into the buffer */
         struct aws_byte_cursor vli_cursor = {
-            .ptr = decoder->scratch_space.buffer + decoder->current_step_scratch_offset,
-            .len = decoder->scratch_space.len - decoder->current_step_scratch_offset,
+            .ptr = decoder->scratch_space.buffer,
+            .len = decoder->scratch_space.len,
         };
 
         decode_vli_result = aws_mqtt5_decode_vli(&vli_cursor, vli_dest);
@@ -153,8 +137,6 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_remaining_leng
     if (result != AWS_MQTT5_DRT_SUCCESS) {
         return result;
     }
-
-    decoder->total_length = decoder->remaining_length + decoder->scratch_space.len;
 
     /* TODO: branch state based on PUBLISH packet vs non-PUBLISH */
 
@@ -303,26 +285,23 @@ done:
 }
 
 /* decodes a CONNACK packet whose data must be in the scratch buffer */
-static int s_aws_mqtt5_decoder_decode_connack_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
+static int s_aws_mqtt5_decoder_decode_connack(struct aws_mqtt5_decoder *decoder) {
     struct aws_mqtt5_packet_connack_storage storage;
     if (aws_mqtt5_packet_connack_storage_init_from_external_storage(&storage, decoder->allocator)) {
         return AWS_OP_ERR;
     }
 
     int result = AWS_OP_ERR;
-    struct aws_byte_cursor packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
 
-    uint8_t first_byte = 0;
-    AWS_MQTT5_DECODE_U8(&packet_cursor, &first_byte, done);
-
+    uint8_t first_byte = decoder->packet_first_byte;
     /* CONNACK flags must be zero by protocol */
     if ((first_byte & 0x0F) != 0) {
         goto done;
     }
 
-    uint32_t remaining_length = 0;
-    AWS_MQTT5_DECODE_VLI(&packet_cursor, &remaining_length, done);
-    if (remaining_length != decoder->remaining_length || remaining_length != (uint32_t)packet_cursor.len) {
+    struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
+    uint32_t remaining_length = decoder->remaining_length;
+    if (remaining_length != (uint32_t)packet_cursor.len) {
         goto done;
     }
 
@@ -425,26 +404,23 @@ done:
 }
 
 /* decodes a DISCONNECT packet whose data must be in the scratch buffer */
-static int s_aws_mqtt5_decoder_decode_disconnect_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
+static int s_aws_mqtt5_decoder_decode_disconnect(struct aws_mqtt5_decoder *decoder) {
     struct aws_mqtt5_packet_disconnect_storage storage;
     if (aws_mqtt5_packet_disconnect_storage_init_from_external_storage(&storage, decoder->allocator)) {
         return AWS_OP_ERR;
     }
 
     int result = AWS_OP_ERR;
-    struct aws_byte_cursor packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
 
-    uint8_t first_byte = 0;
-    AWS_MQTT5_DECODE_U8(&packet_cursor, &first_byte, done);
-
+    uint8_t first_byte = decoder->packet_first_byte;
     /* DISCONNECT flags must be zero by protocol */
     if ((first_byte & 0x0F) != 0) {
         goto done;
     }
 
-    uint32_t remaining_length = 0;
-    AWS_MQTT5_DECODE_VLI(&packet_cursor, &remaining_length, done);
-    if (remaining_length != decoder->remaining_length || remaining_length != (uint32_t)packet_cursor.len) {
+    struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
+    uint32_t remaining_length = decoder->remaining_length;
+    if (remaining_length != (uint32_t)packet_cursor.len) {
         goto done;
     }
 
@@ -493,15 +469,13 @@ done:
     return result;
 }
 
-static int s_aws_mqtt5_decoder_decode_pingresp_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
-    if (decoder->scratch_space.len != 2) {
+static int s_aws_mqtt5_decoder_decode_pingresp(struct aws_mqtt5_decoder *decoder) {
+    if (decoder->packet_cursor.len != 0) {
         goto error;
     }
 
-    uint8_t first_byte = decoder->scratch_space.buffer[0];
-    uint8_t second_byte = decoder->scratch_space.buffer[1];
     uint8_t expected_first_byte = aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_PINGRESP, 0);
-    if (first_byte != expected_first_byte || second_byte != 0) {
+    if (decoder->packet_first_byte != expected_first_byte || decoder->remaining_length != 0) {
         goto error;
     }
 
@@ -518,8 +492,9 @@ error:
     return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
 }
 
-static int s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
-    aws_mqtt5_decoding_fn *decoder_fn = decoder->options.decoder_table->decoders_by_packet_type[decoder->packet_type];
+static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) {
+    enum aws_mqtt5_packet_type packet_type = (enum aws_mqtt5_packet_type)(decoder->packet_first_byte >> 4);
+    aws_mqtt5_decoding_fn *decoder_fn = decoder->options.decoder_table->decoders_by_packet_type[packet_type];
     if (decoder_fn == NULL) {
         return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
@@ -528,32 +503,43 @@ static int s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(struct aws_mqtt
 }
 
 /*
- * (Streaming) Given a packet type and a variable length integer specifying the packet length, this state reads the
- * entire packet, and only that packet, into the scratch buffer
+ * (Streaming) Given a packet type and a variable length integer specifying the packet length, this state either
+ *    (1) decodes directly from the cursor if possible
+ *    (2) reads the packet into the scratch buffer and then decodes it once it is completely present
+ *
  */
 static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data(
     struct aws_mqtt5_decoder *decoder,
     struct aws_byte_cursor *data) {
 
-    size_t unread_length = decoder->total_length - decoder->scratch_space.len;
-    size_t copy_length = aws_min_size(unread_length, data->len);
+    /* Are we able to decode directly from the channel message data buffer? */
+    if (decoder->scratch_space.len == 0 && decoder->remaining_length <= data->len) {
+        /* The cursor contains the entire packet, so decode directly from the backing io message buffer */
+        decoder->packet_cursor = aws_byte_cursor_advance(data, decoder->remaining_length);
+    } else {
+        /* If the packet is fragmented across multiple io messages, then we buffer it internally */
+        size_t unread_length = decoder->remaining_length - decoder->scratch_space.len;
+        size_t copy_length = aws_min_size(unread_length, data->len);
 
-    struct aws_byte_cursor copy_cursor = {
-        .ptr = data->ptr,
-        .len = copy_length,
-    };
+        struct aws_byte_cursor copy_cursor = {
+            .ptr = data->ptr,
+            .len = copy_length,
+        };
 
-    if (aws_byte_buf_append_dynamic(&decoder->scratch_space, &copy_cursor)) {
-        return AWS_MQTT5_DRT_ERROR;
+        if (aws_byte_buf_append_dynamic(&decoder->scratch_space, &copy_cursor)) {
+            return AWS_MQTT5_DRT_ERROR;
+        }
+
+        aws_byte_cursor_advance(data, copy_length);
+
+        if (copy_length < unread_length) {
+            return AWS_MQTT5_DRT_MORE_DATA;
+        }
+
+        decoder->packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
     }
 
-    aws_byte_cursor_advance(data, copy_length);
-
-    if (copy_length < unread_length) {
-        return AWS_MQTT5_DRT_MORE_DATA;
-    }
-
-    if (s_aws_mqtt5_decoder_decode_packet_from_scratch_buffer(decoder)) {
+    if (s_aws_mqtt5_decoder_decode_packet(decoder)) {
         return AWS_MQTT5_DRT_ERROR;
     }
 
@@ -596,22 +582,22 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
 static struct aws_mqtt5_decoder_function_table s_aws_mqtt5_decoder_default_function_table = {
     .decoders_by_packet_type =
         {
-            NULL,                                                       /* RESERVED = 0 */
-            NULL,                                                       /* CONNECT */
-            &s_aws_mqtt5_decoder_decode_connack_from_scratch_buffer,    /* CONNACK */
-            NULL,                                                       /* PUBLISH */
-            NULL,                                                       /* PUBACK */
-            NULL,                                                       /* PUBREC */
-            NULL,                                                       /* PUBREL */
-            NULL,                                                       /* PUBCOMP */
-            NULL,                                                       /* SUBSCRIBE */
-            NULL,                                                       /* SUBACK */
-            NULL,                                                       /* UNSUBSCRIBE */
-            NULL,                                                       /* UNSUBACK */
-            NULL,                                                       /* PINGREQ */
-            &s_aws_mqtt5_decoder_decode_pingresp_from_scratch_buffer,   /* PINGRESP */
-            &s_aws_mqtt5_decoder_decode_disconnect_from_scratch_buffer, /* DISCONNECT */
-            NULL                                                        /* AUTH */
+            NULL,                                   /* RESERVED = 0 */
+            NULL,                                   /* CONNECT */
+            &s_aws_mqtt5_decoder_decode_connack,    /* CONNACK */
+            NULL,                                   /* PUBLISH */
+            NULL,                                   /* PUBACK */
+            NULL,                                   /* PUBREC */
+            NULL,                                   /* PUBREL */
+            NULL,                                   /* PUBCOMP */
+            NULL,                                   /* SUBSCRIBE */
+            NULL,                                   /* SUBACK */
+            NULL,                                   /* UNSUBSCRIBE */
+            NULL,                                   /* UNSUBACK */
+            NULL,                                   /* PINGREQ */
+            &s_aws_mqtt5_decoder_decode_pingresp,   /* PINGRESP */
+            &s_aws_mqtt5_decoder_decode_disconnect, /* DISCONNECT */
+            NULL                                    /* AUTH */
         },
 };
 

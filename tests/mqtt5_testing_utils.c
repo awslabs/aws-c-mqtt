@@ -182,15 +182,13 @@ void aws_mqtt5_encode_init_testing_function_table(struct aws_mqtt5_encoder_funct
     function_table->encoders_by_packet_type[AWS_MQTT5_PT_CONNACK] = &aws_mqtt5_encoder_begin_connack;
 }
 
-static int s_aws_mqtt5_decoder_decode_pingreq_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
-    if (decoder->scratch_space.len != 2) {
+static int s_aws_mqtt5_decoder_decode_pingreq(struct aws_mqtt5_decoder *decoder) {
+    if (decoder->packet_cursor.len != 0) {
         goto error;
     }
 
-    uint8_t first_byte = decoder->scratch_space.buffer[0];
-    uint8_t second_byte = decoder->scratch_space.buffer[1];
     uint8_t expected_first_byte = aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_PINGREQ, 0);
-    if (first_byte != expected_first_byte || second_byte != 0) {
+    if (decoder->packet_first_byte != expected_first_byte || decoder->remaining_length != 0) {
         goto error;
     }
 
@@ -356,7 +354,7 @@ done:
  * Decodes a CONNECT packet whose data must be in the scratch buffer.
  * Could be moved to test-only if we used a function table for per-packet-type decoding.
  */
-static int s_aws_mqtt5_decoder_decode_connect_from_scratch_buffer(struct aws_mqtt5_decoder *decoder) {
+static int s_aws_mqtt5_decoder_decode_connect(struct aws_mqtt5_decoder *decoder) {
     struct aws_mqtt5_packet_connect_storage connect_storage;
     struct aws_mqtt5_packet_publish_storage publish_storage;
     int result = AWS_OP_ERR;
@@ -370,18 +368,14 @@ static int s_aws_mqtt5_decoder_decode_connect_from_scratch_buffer(struct aws_mqt
         goto done;
     }
 
-    struct aws_byte_cursor packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
-    uint8_t first_byte = 0;
-    AWS_MQTT5_DECODE_U8(&packet_cursor, &first_byte, done);
-
+    uint8_t first_byte = decoder->packet_first_byte;
     /* CONNECT flags must be zero by protocol */
     if ((first_byte & 0x0F) != 0) {
         goto done;
     }
 
-    uint32_t remaining_length = 0;
-    AWS_MQTT5_DECODE_VLI(&packet_cursor, &remaining_length, done);
-    if (remaining_length != decoder->remaining_length || remaining_length != (uint32_t)packet_cursor.len) {
+    struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
+    if (decoder->remaining_length != (uint32_t)packet_cursor.len) {
         goto done;
     }
 
@@ -480,8 +474,6 @@ done:
 
 void aws_mqtt5_decode_init_testing_function_table(struct aws_mqtt5_decoder_function_table *function_table) {
     *function_table = *g_aws_mqtt5_default_decoder_table;
-    function_table->decoders_by_packet_type[AWS_MQTT5_PT_PINGREQ] =
-        &s_aws_mqtt5_decoder_decode_pingreq_from_scratch_buffer;
-    function_table->decoders_by_packet_type[AWS_MQTT5_PT_CONNECT] =
-        &s_aws_mqtt5_decoder_decode_connect_from_scratch_buffer;
+    function_table->decoders_by_packet_type[AWS_MQTT5_PT_PINGREQ] = &s_aws_mqtt5_decoder_decode_pingreq;
+    function_table->decoders_by_packet_type[AWS_MQTT5_PT_CONNECT] = &s_aws_mqtt5_decoder_decode_connect;
 }

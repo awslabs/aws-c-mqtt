@@ -86,23 +86,25 @@ struct aws_mqtt5_decoder {
     enum aws_mqtt5_decoder_state state;
 
     /*
-     * decode scratch space: packets get fully buffered here before decode (except publish payloads)
+     * decode scratch space: packets may get fully buffered here before decode (except publish payloads)
+     * Exceptions:
+     *   (1) publish payloads
+     *   (2) when the incoming io message buffer contains the entire packet, we decode directly from it instead
      */
     struct aws_byte_buf scratch_space;
-
-    /*
-     * For the limited streaming decode we do, this is the beginning of the current item as an index in the scratch
-     * buffer
-     */
-    size_t current_step_scratch_offset;
 
     /*
      * During streaming decoding, we fill out basic properties as we decode them in order to guide the
      * in-memory decode.
      */
-    enum aws_mqtt5_packet_type packet_type;
-    uint32_t total_length;
+    uint8_t packet_first_byte; /* packet type and flags */
     uint32_t remaining_length;
+
+    /*
+     * Packet decoders work from this cursor.  It may point to scratch_space (for packets that were delivered
+     * in more than one fragment) or to an io message buffer that contains the entire packet.
+     */
+    struct aws_byte_cursor packet_cursor;
 };
 
 AWS_EXTERN_C_BEGIN
