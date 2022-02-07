@@ -85,14 +85,14 @@ void aws_mqtt5_negotiated_settings_log(
         AWS_LS_MQTT5_GENERAL,
         "(%p) aws_mqtt5_negotiated_settings to server topic alias maximum set to %" PRIu16,
         (void *)negotiated_settings,
-        negotiated_settings->to_server_topic_alias_maximum);
+        negotiated_settings->topic_alias_maximum_to_server);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
         "(%p) aws_mqtt5_negotiated_settings to client topic alias maximum set to %" PRIu16,
         (void *)negotiated_settings,
-        negotiated_settings->to_client_topic_alias_maximum);
+        negotiated_settings->topic_alias_maximum_to_client);
 
     AWS_LOGF(
         level,
@@ -145,12 +145,12 @@ void aws_mqtt5_negotiated_settings_reset(
     negotiated_settings->session_expiry_interval = 0;
     negotiated_settings->receive_maximum_from_server = 65535;
     negotiated_settings->maximum_packet_size = 0; // 0 means no limit. 0 should not be sent to server.
-    negotiated_settings->to_client_topic_alias_maximum = 0;
+    negotiated_settings->topic_alias_maximum_to_client = 0;
 
     // Default for Client is QoS 1. Server default is 2.
     // This should only be changed if server returns a 0 in the CONNACK
     negotiated_settings->maximum_qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;
-    negotiated_settings->to_server_topic_alias_maximum = 0;
+    negotiated_settings->topic_alias_maximum_to_server = 0;
 
     // Default is true for following settings but can be changed by Server on CONNACK
     negotiated_settings->retain_available = true;
@@ -172,7 +172,7 @@ void aws_mqtt5_negotiated_settings_reset(
     }
 
     if (packet_connect_view->topic_alias_maximum != NULL) {
-        negotiated_settings->to_client_topic_alias_maximum = *packet_connect_view->topic_alias_maximum;
+        negotiated_settings->topic_alias_maximum_to_client = *packet_connect_view->topic_alias_maximum;
     }
 }
 
@@ -215,7 +215,7 @@ void aws_mqtt5_negotiated_settings_apply_connack(
 
     // If a value is not sent by Server, the Client must not send any Topic Aliases to the Server.
     if (connack_data->topic_alias_maximum != NULL) {
-        negotiated_settings->to_server_topic_alias_maximum = *connack_data->topic_alias_maximum;
+        negotiated_settings->topic_alias_maximum_to_server = *connack_data->topic_alias_maximum;
     }
 
     if (connack_data->wildcard_subscriptions_available != NULL) {

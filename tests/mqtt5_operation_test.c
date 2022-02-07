@@ -338,7 +338,7 @@ static const uint16_t s_keep_alive_interval_seconds = 999;
 static const uint32_t s_session_expiry_interval = 999;
 static const uint16_t s_receive_maximum = 999;
 static const uint32_t s_maximum_packet_size = 999;
-static const uint16_t s_to_server_topic_alias_maximum = 999;
+static const uint16_t s_topic_alias_maximum_to_server = 999;
 static const uint16_t s_topic_alias_maximum = 999;
 static const uint16_t s_server_keep_alive = 999;
 static const bool s_retain_available = false;
@@ -364,10 +364,10 @@ static int mqtt5_negotiated_settings_reset_default_fn(struct aws_allocator *allo
     ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
-    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum, 65535);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, 65535);
     ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 0);
-    ASSERT_UINT_EQUALS(negotiated_settings.to_server_topic_alias_maximum, 0);
-    ASSERT_UINT_EQUALS(negotiated_settings.to_client_topic_alias_maximum, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
 
     ASSERT_TRUE(negotiated_settings.retain_available);
@@ -391,10 +391,46 @@ static int mqtt5_negotiated_settings_reset_default_fn(struct aws_allocator *allo
 
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, connect_view.keep_alive_interval_seconds);
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connect_view.session_expiry_interval_seconds);
-    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum, *connect_view.receive_maximum);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, 65535);
     ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, *connect_view.maximum_packet_size_bytes);
-    ASSERT_UINT_EQUALS(negotiated_settings.to_server_topic_alias_maximum, 0);
-    ASSERT_UINT_EQUALS(negotiated_settings.to_client_topic_alias_maximum, *connect_view.topic_alias_maximum);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, *connect_view.topic_alias_maximum);
+
+    ASSERT_TRUE(negotiated_settings.retain_available);
+    ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
+    ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
+
+    /* Reset connect view to clean defaults */
+
+    connect_view.keep_alive_interval_seconds = 0;
+    connect_view.session_expiry_interval_seconds = NULL;
+    connect_view.receive_maximum = NULL;
+    connect_view.maximum_packet_size_bytes = NULL;
+    connect_view.topic_alias_maximum = NULL;
+
+    /* Change remaining default properties on negotiated_settings to non-default values */
+    // ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_EXACTLY_ONCE);
+
+    // ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    // ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, *connect_view.topic_alias_maximum);
+
+    // ASSERT_TRUE(negotiated_settings.retain_available);
+    // ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
+    // ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
+    // ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
+
+    aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
+
+    /* Check that all settings are the expected default values */
+    ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
+
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, 65535);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
 
     ASSERT_TRUE(negotiated_settings.retain_available);
     ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
