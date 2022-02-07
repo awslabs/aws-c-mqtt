@@ -101,6 +101,9 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
     aws_http_message_release(client->handshake);
 
+    aws_mqtt5_encoder_clean_up(&client->encoder);
+    aws_mqtt5_decoder_clean_up(&client->decoder);
+
     aws_mem_release(client->allocator, client);
 }
 
@@ -252,6 +255,7 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
      */
     if (next_service_time < client->next_service_task_run_time) {
         aws_event_loop_cancel_task(client->loop, &client->service_task);
+        client->next_service_task_run_time = 0;
     }
 
     if (next_service_time > 0 &&
@@ -265,6 +269,8 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
 static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqtt5_client_state next_state);
 
 static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
+    client->current_state = AWS_MCS_STOPPED;
+
     if (client->config->lifecycle_event_handler != NULL) {
         struct aws_mqtt5_client_lifecycle_event event;
         AWS_ZERO_STRUCT(event);
@@ -1008,12 +1014,10 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
             break;
         case AWS_MCS_TERMINATED:
             s_change_current_state_to_terminated(client);
-            break;
+            return;
     }
 
-    if (client->next_service_task_run_time == 0) {
-        s_reevaluate_service_task(client);
-    }
+    s_reevaluate_service_task(client);
 }
 
 static bool s_service_state_stopped(struct aws_mqtt5_client *client) {
@@ -1532,7 +1536,6 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
 
 done:
 
-    aws_mqtt5_client_release(change_state_task->client);
     aws_mqtt5_operation_disconnect_release(change_state_task->disconnect_operation);
 
     aws_mem_release(change_state_task->allocator, change_state_task);
@@ -1553,7 +1556,7 @@ static struct aws_mqtt_change_desired_state_task *s_aws_mqtt_change_desired_stat
     aws_task_init(&change_state_task->task, s_change_state_task_fn, (void *)change_state_task, "ChangeStateTask");
 
     change_state_task->allocator = client->allocator;
-    change_state_task->client = aws_mqtt5_client_acquire(client);
+    change_state_task->client = client;
     change_state_task->desired_state = desired_state;
     change_state_task->disconnect_operation = aws_mqtt5_operation_disconnect_acquire(disconnect_operation);
 
@@ -1640,7 +1643,6 @@ error:
 done:
 
     aws_mqtt5_operation_release(submit_operation_task->operation);
-    aws_mqtt5_client_release(submit_operation_task->client);
 
     aws_mem_release(submit_operation_task->allocator, submit_operation_task);
 }
@@ -1654,7 +1656,7 @@ static int s_submit_operation(struct aws_mqtt5_client *client, struct aws_mqtt5_
 
     aws_task_init(&submit_task->task, s_mqtt5_submit_operation_task_fn, submit_task, "Mqtt5SubmitOperation");
     submit_task->allocator = client->allocator;
-    submit_task->client = aws_mqtt5_client_acquire(client);
+    submit_task->client = client;
     submit_task->operation = operation;
 
     aws_event_loop_schedule_task_now(client->loop, &submit_task->task);

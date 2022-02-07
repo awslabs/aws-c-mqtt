@@ -153,6 +153,33 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
     (void)event;
 }
 
+static bool s_skip_whitespace(uint8_t value) {
+    return value == '\n' || value == '\r' || value == '\t' || value == ' ';
+}
+
+static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_line) {
+
+    struct aws_byte_cursor quit_cursor = aws_byte_cursor_from_c_str("quit");
+    struct aws_byte_cursor start_cursor = aws_byte_cursor_from_c_str("start");
+    struct aws_byte_cursor stop_cursor = aws_byte_cursor_from_c_str("stop");
+
+    struct aws_byte_cursor line_cursor = aws_byte_cursor_from_c_str(input_line);
+    line_cursor = aws_byte_cursor_trim_pred(&line_cursor, &s_skip_whitespace);
+
+    if (aws_byte_cursor_eq_ignore_case(&line_cursor, &quit_cursor)) {
+        printf("Quitting!\n");
+        return true;
+    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &start_cursor)) {
+        printf("Starting client!\n");
+        aws_mqtt5_client_start(client);
+    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &stop_cursor)) {
+        printf("Stopping client!\n");
+        aws_mqtt5_client_stop(client, NULL);
+    }
+
+    return false;
+}
+
 AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "HelloWorld");
 
 int main(int argc, char **argv) {
@@ -288,6 +315,9 @@ int main(int argc, char **argv) {
         .outbound_topic_aliasing_behavior = AWS_MQTT5_COTABT_LRU,
         .lifecycle_event_handler = s_lifecycle_event_callback,
         .lifecycle_event_handler_user_data = NULL,
+        .max_reconnect_delay_ms = 120000,
+        .min_connected_time_to_reset_reconnect_delay_ms = 30000,
+        .min_reconnect_delay_ms = 1000,
     };
 
     struct aws_mqtt5_client *client = aws_mqtt5_client_new(allocator, &client_options);
@@ -295,7 +325,13 @@ int main(int argc, char **argv) {
 
     bool done = false;
     while (!done) {
-        aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+        printf("Enter command:\n");
+
+        char *line = NULL;
+        size_t len = 0;
+        getline(&line, &len, stdin);
+        done = s_handle_input(client, line);
+        free(line);
     }
 
     aws_mqtt5_client_release(client);
