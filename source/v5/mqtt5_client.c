@@ -719,8 +719,7 @@ static void s_reset_ping(struct aws_mqtt5_client *client) {
     uint64_t now = 0;
     aws_high_res_clock_get_ticks(&now);
 
-    /* TODO: use negotiated settings and not config's keep alive */
-    uint16_t keep_alive_seconds = client->config->connect.keep_alive_interval_seconds;
+    uint16_t keep_alive_seconds = client->negotiated_settings.server_keep_alive;
 
     uint64_t keep_alive_interval_nanos =
         aws_timestamp_convert(keep_alive_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
@@ -1299,7 +1298,7 @@ static void s_aws_mqtt5_client_on_connack(
         return;
     }
 
-    /* TODO: apply connack to negotiated settings and then log the final settings state */
+    aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
 
     /* TODO: lifecycle event successful connection with connack && final settings */
 
