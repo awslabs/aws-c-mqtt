@@ -119,7 +119,7 @@ void aws_mqtt5_negotiated_settings_reset(
     negotiated_settings->receive_maximum_from_server = 65535;
     /* Default is no limit (256MB is MQTT5 max packet size).
      * This value should not be sent unless set by client to something else. */
-    negotiated_settings->maximum_packet_size = 268435456;
+    negotiated_settings->maximum_packet_size = 268435460;
     negotiated_settings->topic_alias_maximum_to_client = 0;
 
     // Default for Client is QoS 1. Server default is 2.
@@ -188,7 +188,7 @@ void aws_mqtt5_negotiated_settings_apply_connack(
     } else {
         /* Property not being present means the Server is set to unlimited.
          * 256MB is the MQTT max packet size */
-        negotiated_settings->maximum_packet_size = 268435456;
+        negotiated_settings->maximum_packet_size = 268435460;
     }
 
     // If a value is not sent by Server, the Client must not send any Topic Aliases to the Server.
