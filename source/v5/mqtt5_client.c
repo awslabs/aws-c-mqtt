@@ -886,6 +886,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
 
     aws_mqtt5_encoder_reset(&client->encoder);
     aws_mqtt5_decoder_reset(&client->decoder);
+    aws_mqtt5_negotiated_settings_reset(&client->negotiated_settings, &client->config->connect.storage_view);
 
     struct aws_mqtt5_operation_connect *connect_op =
         aws_mqtt5_operation_connect_new(client->allocator, &client->config->connect.storage_view);

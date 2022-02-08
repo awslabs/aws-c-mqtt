@@ -105,7 +105,7 @@ void aws_mqtt5_negotiated_settings_log(
 
 void aws_mqtt5_negotiated_settings_reset(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
-    struct aws_mqtt5_packet_connect_view *packet_connect_view) {
+    const struct aws_mqtt5_packet_connect_view *packet_connect_view) {
     AWS_PRECONDITION(negotiated_settings != NULL);
     AWS_PRECONDITION(packet_connect_view != NULL);
 
@@ -154,7 +154,7 @@ void aws_mqtt5_negotiated_settings_reset(
 
 void aws_mqtt5_negotiated_settings_apply_connack(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
-    struct aws_mqtt5_packet_connack_view *connack_data) {
+    const struct aws_mqtt5_packet_connack_view *connack_data) {
     AWS_PRECONDITION(negotiated_settings != NULL);
     AWS_PRECONDITION(connack_data != NULL);
 
