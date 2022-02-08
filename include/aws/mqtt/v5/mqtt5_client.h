@@ -83,9 +83,9 @@ struct aws_mqtt5_client_options {
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
 
     /**
-     * Controls the reconnect behavior of the mqtt5 client.
+     * Controls the offline queue behavior of the mqtt5 client.
      */
-    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior;
+    enum aws_mqtt5_client_offline_queue_behavior_type offline_queue_behavior;
 
     /**
      * Minimum and maximum amount of time to wait to reconnect after a disconnect.  Basic exponential backoff is
