@@ -150,7 +150,30 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
 }
 
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
-    (void)event;
+
+    switch (event->event_type) {
+        case AWS_MQTT5_CLET_STOPPED:
+            printf("Lifecycle event: Stopped!\n");
+            break;
+
+        case AWS_MQTT5_CLET_ATTEMPTING_CONNECT:
+            printf("Lifecycle event: Attempting Connect!\n");
+            break;
+
+        case AWS_MQTT5_CLET_CONNECTION_FAILURE:
+            printf("Lifecycle event: Connection Failure!\n");
+            break;
+
+        case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
+            printf("Lifecycle event: Connection Success!\n");
+            break;
+
+        case AWS_MQTT5_CLET_DISCONNECTION:
+            printf("Lifecycle event: Disconnect!\n");
+            break;
+    }
+
+    fflush(stdout);
 }
 
 static bool s_skip_whitespace(uint8_t value) {
