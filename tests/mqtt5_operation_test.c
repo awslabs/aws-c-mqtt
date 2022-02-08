@@ -339,7 +339,7 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, 65535);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 268435456);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
@@ -403,7 +403,7 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, 65535);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 268435456);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
@@ -444,7 +444,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, 65535);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, 268435456);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
