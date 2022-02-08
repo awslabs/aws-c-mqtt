@@ -9,6 +9,7 @@
 #include <aws/io/stream.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
+#include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 #include <aws/testing/aws_test_harness.h>
@@ -305,6 +306,188 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
 }
 
 AWS_TEST_CASE(mqtt5_publish_operation_new_set_all, s_mqtt5_publish_operation_new_set_all_fn)
+
+static const enum aws_mqtt5_qos s_maximum_qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;
+static const uint16_t s_keep_alive_interval_seconds = 999;
+static const uint32_t s_session_expiry_interval = 999;
+static const uint16_t s_receive_maximum = 999;
+static const uint32_t s_maximum_packet_size = 999;
+static const uint16_t s_topic_alias_maximum_to_server = 999;
+static const uint16_t s_topic_alias_maximum = 999;
+static const uint16_t s_server_keep_alive = 999;
+static const bool s_retain_available = false;
+static const bool s_wildcard_subscriptions_available = false;
+static const bool s_subscription_identifiers_available = false;
+static const bool s_shared_subscriptions_available = false;
+
+static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocator, void *ctx) {
+
+    /* aws_mqtt5_negotiated_settings used for testing */
+    struct aws_mqtt5_negotiated_settings negotiated_settings;
+    AWS_ZERO_STRUCT(negotiated_settings);
+
+    /* Simulate an aws_mqtt5_packet_connect_view with no user set settings  */
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 0,
+    };
+
+    /* Apply no client settings to a reset of negotiated_settings */
+    aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
+
+    /* Check that all settings are the expected default values */
+    ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
+
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
+
+    ASSERT_TRUE(negotiated_settings.retain_available);
+    ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
+    ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
+    ASSERT_FALSE(negotiated_settings.rejoined_session);
+
+    /* Set client modifiable CONNECT settings */
+    connect_view.keep_alive_interval_seconds = s_keep_alive_interval_seconds;
+    connect_view.session_expiry_interval_seconds = &s_session_expiry_interval;
+    connect_view.receive_maximum = &s_receive_maximum;
+    connect_view.maximum_packet_size_bytes = &s_maximum_packet_size;
+    connect_view.topic_alias_maximum = &s_topic_alias_maximum;
+
+    /* Apply client settings to a reset of negotiated settings */
+    aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
+
+    /* Check that all settings are the expected values with client settings */
+    ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
+
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, connect_view.keep_alive_interval_seconds);
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connect_view.session_expiry_interval_seconds);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, *connect_view.maximum_packet_size_bytes);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, *connect_view.topic_alias_maximum);
+
+    ASSERT_TRUE(negotiated_settings.retain_available);
+    ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
+    ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
+    ASSERT_FALSE(negotiated_settings.rejoined_session);
+
+    /* Reset connect view to clean defaults */
+
+    connect_view.keep_alive_interval_seconds = 0;
+    connect_view.session_expiry_interval_seconds = NULL;
+    connect_view.receive_maximum = NULL;
+    connect_view.maximum_packet_size_bytes = NULL;
+    connect_view.topic_alias_maximum = NULL;
+
+    /* Change remaining default properties on negotiated_settings to non-default values */
+    negotiated_settings.maximum_qos = AWS_MQTT5_QOS_EXACTLY_ONCE;
+
+    negotiated_settings.topic_alias_maximum_to_server = s_topic_alias_maximum_to_server;
+    negotiated_settings.topic_alias_maximum_to_client = s_topic_alias_maximum_to_server;
+
+    negotiated_settings.retain_available = s_retain_available;
+    negotiated_settings.wildcard_subscriptions_available = s_wildcard_subscriptions_available;
+    negotiated_settings.subscription_identifiers_available = s_subscription_identifiers_available;
+    negotiated_settings.shared_subscriptions_available = s_shared_subscriptions_available;
+
+    /* Apply no client settings to a reset of negotiated_settings */
+    aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
+
+    /* Check that all settings are the expected default values */
+    ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
+
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
+
+    ASSERT_TRUE(negotiated_settings.retain_available);
+    ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
+    ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_negotiated_settings_reset_test, mqtt5_negotiated_settings_reset_test_fn)
+
+static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator *allocator, void *ctx) {
+
+    /* aws_mqtt5_negotiated_settings used for testing */
+    struct aws_mqtt5_negotiated_settings negotiated_settings;
+    AWS_ZERO_STRUCT(negotiated_settings);
+
+    /* An aws_mqtt5_packet_connect_view with no user set settings to reset negotiated_settings */
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 0,
+    };
+
+    /* reset negotiated_settings to default values */
+    aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
+
+    /* Simulate an aws_mqtt5_packet_connack_view with no user set settings  */
+    struct aws_mqtt5_packet_connack_view connack_view = {
+        .session_present = false,
+    };
+
+    /* Check if everything defaults appropriately if no properties are set in either direction */
+    aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
+
+    ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
+
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
+
+    ASSERT_TRUE(negotiated_settings.retain_available);
+    ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
+    ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
+    ASSERT_FALSE(negotiated_settings.rejoined_session);
+
+    /* Apply server settings to properties in connack_view */
+    connack_view.session_present = true;
+    connack_view.maximum_qos = &s_maximum_qos;
+    connack_view.session_expiry_interval = &s_session_expiry_interval;
+    connack_view.receive_maximum = &s_receive_maximum;
+    connack_view.retain_available = &s_retain_available;
+    connack_view.maximum_packet_size = &s_maximum_packet_size;
+    connack_view.topic_alias_maximum = &s_topic_alias_maximum_to_server;
+    connack_view.wildcard_subscriptions_available = &s_wildcard_subscriptions_available;
+    connack_view.subscription_identifiers_available = &s_subscription_identifiers_available;
+    connack_view.shared_subscriptions_available = &s_shared_subscriptions_available;
+    connack_view.server_keep_alive = &s_server_keep_alive;
+
+    aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
+
+    ASSERT_TRUE(negotiated_settings.rejoined_session);
+    ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos);
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connack_view.session_expiry_interval);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, *connack_view.receive_maximum);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, *connack_view.maximum_packet_size);
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, *connack_view.server_keep_alive);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, *connack_view.topic_alias_maximum);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
+
+    ASSERT_FALSE(negotiated_settings.retain_available);
+    ASSERT_FALSE(negotiated_settings.wildcard_subscriptions_available);
+    ASSERT_FALSE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_FALSE(negotiated_settings.shared_subscriptions_available);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_negotiated_settings_apply_connack_test, mqtt5_negotiated_settings_apply_connack_test_fn)
 
 /* Utility functions that will be needed for client config testing */
 

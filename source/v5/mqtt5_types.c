@@ -253,18 +253,18 @@ const char *aws_mqtt5_unsuback_reason_code_to_c_string(enum aws_mqtt5_unsuback_r
     return s_unknown_reason;
 }
 
-const char *aws_mqtt5_client_reconnect_behavior_type_to_c_string(
-    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior) {
-    switch (reconnect_behavior) {
-        case AWS_MQTT5_CRBT_RECONNECT_IF_INITIAL_SUCCESS:
-            return "Reconnect if and only if initial connection attempt succeeded";
-        case AWS_MQTT5_CRBT_RECONNECT_ALWAYS:
-            return "Reconnect always";
-        case AWS_MQTT5_CRBT_RECONNECT_NEVER:
-            return "Reconnect never";
+const char *aws_mqtt5_client_offline_queue_behavior_type_to_c_string(
+    enum aws_mqtt5_client_offline_queue_behavior_type offline_queue_behavior) {
+    switch (offline_queue_behavior) {
+        case AWS_MQTT5_COQBT_FAIL_ALL:
+            return "Fail all queued operations";
+        case AWS_MQTT5_COQBT_FAIL_NONE:
+            return "Fail nothing";
+        case AWS_MQTT5_COQBT_FAIL_PARTIAL_COMPLETION:
+            return "Fail all partially complete operations";
     }
 
-    return "Unknown reconnect behavior";
+    return "Unknown offline queue behavior";
 }
 
 const char *aws_mqtt5_client_session_behavior_type_to_c_string(
@@ -327,4 +327,59 @@ const char *aws_mqtt5_retain_handling_type_to_c_string(enum aws_mqtt5_retain_han
     }
 
     return "Unknown Retain Handling Type";
+}
+
+const char *aws_mqtt5_packet_type_to_c_string(enum aws_mqtt5_packet_type packet_type) {
+    switch (packet_type) {
+        case AWS_MQTT5_PT_RESERVED:
+            return "RESERVED(INVALID)";
+
+        case AWS_MQTT5_PT_CONNECT:
+            return "CONNECT";
+
+        case AWS_MQTT5_PT_CONNACK:
+            return "CONNACK";
+
+        case AWS_MQTT5_PT_PUBLISH:
+            return "PUBLISH";
+
+        case AWS_MQTT5_PT_PUBACK:
+            return "PUBACK";
+
+        case AWS_MQTT5_PT_PUBREC:
+            return "PUBREC";
+
+        case AWS_MQTT5_PT_PUBREL:
+            return "PUBREL";
+
+        case AWS_MQTT5_PT_PUBCOMP:
+            return "PUBCOMP";
+
+        case AWS_MQTT5_PT_SUBSCRIBE:
+            return "SUBSCRIBE";
+
+        case AWS_MQTT5_PT_SUBACK:
+            return "SUBACK";
+
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            return "UNSUBSCRIBE";
+
+        case AWS_MQTT5_PT_UNSUBACK:
+            return "UNSUBACK";
+
+        case AWS_MQTT5_PT_PINGREQ:
+            return "PINGREQ";
+
+        case AWS_MQTT5_PT_PINGRESP:
+            return "PINGRESP";
+
+        case AWS_MQTT5_PT_DISCONNECT:
+            return "DISCONNECT";
+
+        case AWS_MQTT5_PT_AUTH:
+            return "AUTH";
+
+        default:
+            return "UNKNOWN";
+    }
 }

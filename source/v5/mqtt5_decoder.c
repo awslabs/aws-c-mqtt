@@ -572,6 +572,7 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
 
     if (result == AWS_MQTT5_DRT_ERROR) {
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        decoder->state = AWS_MQTT5_DS_FATAL_ERROR;
         return AWS_OP_ERR;
     }
 

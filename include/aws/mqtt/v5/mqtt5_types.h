@@ -221,24 +221,20 @@ typedef void(aws_mqtt5_transform_websocket_handshake_fn)(
     void *complete_ctx);
 
 /**
- * Enum governing how the mqtt client should behave in reconnect scenarios.
+ * Enum governing how the mqtt client should treat queued (and current) operations when going offline and
+ * while offline
  */
-enum aws_mqtt5_client_reconnect_behavior_type {
-    /**
-     * Default legacy behavior: reconnect if the initial connection attempt was successful, otherwise do nothing.
-     */
-    AWS_MQTT5_CRBT_RECONNECT_IF_INITIAL_SUCCESS,
+enum aws_mqtt5_client_offline_queue_behavior_type {
+    /* Every operation that has not been fully sent (and if appropriate, acked) should be failed and forgotten */
+    AWS_MQTT5_COQBT_FAIL_ALL,
 
-    /**
-     * New default: always reconnect, regardless of what happened on the initial connection attempt
-     */
-    AWS_MQTT5_CRBT_RECONNECT_ALWAYS,
+    /* All operations should be kept */
+    AWS_MQTT5_COQBT_FAIL_NONE,
 
-    /**
-     * Never attempt to reconnect, just go into the stopped state.
-     * TODO: does this have any value whatsoever?
-     */
-    AWS_MQTT5_CRBT_RECONNECT_NEVER,
+    /* All operations that were in-progress or pending write completion or pending ack (non-qos1+-publish) */
+    AWS_MQTT5_COQBT_FAIL_PARTIAL_COMPLETION,
+
+    /* TODO: beyond very simple heuristics, should we include a callback-based acceptor? */
 };
 
 /**
@@ -255,7 +251,7 @@ enum aws_mqtt5_client_session_behavior_type {
      */
     AWS_MQTT5_CSBT_REJOIN,
 
-    /* TODO: rejoin and resub support */
+    /* TODO: consider rejoin and resub support */
 };
 
 /*
@@ -612,15 +608,17 @@ struct aws_mqtt5_negotiated_settings {
     enum aws_mqtt5_qos maximum_qos;
 
     uint32_t session_expiry_interval;
-    uint16_t receive_maximum;
+    uint16_t receive_maximum_from_server;
     uint32_t maximum_packet_size;
-    uint16_t topic_alias_maximum;
+    uint16_t topic_alias_maximum_to_server;
+    uint16_t topic_alias_maximum_to_client;
     uint16_t server_keep_alive;
 
     bool retain_available;
     bool wildcard_subscriptions_available;
     bool subscription_identifiers_available;
     bool shared_subscriptions_available;
+    bool rejoined_session;
 };
 
 /**

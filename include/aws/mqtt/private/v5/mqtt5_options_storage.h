@@ -27,31 +27,12 @@ struct aws_mqtt5_user_property_set {
     struct aws_array_list properties;
 };
 
-/*
- * At its core, an operation is anything you want to tell the mqtt5 client to do.
- *
- * This is intentionally different and *not* in sync with aws_mqtt5_packet_type
- *
- * Current thinking is that user-facing packets are operations, but we reserve the right to make additional
- * operations that may represent compound (sub-pub-unsub for example) or external concepts (control, client
- * state manipulation, queries, etc...)
- *
- * We must be careful to make the functional interface for operations not assume a 1-1 with MQTT packets
- */
-enum aws_mqtt5_operation_type {
-    AWS_MOT_CONNECT,
-    AWS_MOT_DISCONNECT,
-    AWS_MOT_SUBSCRIBE,
-    AWS_MOT_UNSUBSCRIBE,
-    AWS_MOT_PUBLISH,
-};
-
 /**
  * This is the base structure for all mqtt operations.  It includes the type, a ref count, and list
  * management.
  */
 struct aws_mqtt5_operation {
-    enum aws_mqtt5_operation_type operation_type;
+    enum aws_mqtt5_packet_type packet_type;
     struct aws_ref_count ref_count;
     struct aws_linked_list_node node;
     void *impl;
@@ -286,6 +267,11 @@ struct aws_mqtt5_operation_unsubscribe {
     struct aws_mqtt5_unsubscribe_completion_options completion_options;
 };
 
+struct aws_mqtt5_operation_pingreq {
+    struct aws_mqtt5_operation base;
+    struct aws_allocator *allocator;
+};
+
 struct aws_mqtt5_client_options_storage {
     struct aws_allocator *allocator;
 
@@ -306,7 +292,7 @@ struct aws_mqtt5_client_options_storage {
     enum aws_mqtt5_client_session_behavior_type session_behavior;
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
 
-    enum aws_mqtt5_client_reconnect_behavior_type reconnect_behavior;
+    enum aws_mqtt5_client_offline_queue_behavior_type offline_queue_behavior;
     uint64_t min_reconnect_delay_ms;
     uint64_t max_reconnect_delay_ms;
     uint64_t min_connected_time_to_reset_reconnect_delay_ms;
@@ -513,6 +499,10 @@ AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_log(
 AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
     struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
     const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
+
+/* PINGREQ */
+
+AWS_MQTT_API struct aws_mqtt5_operation_pingreq *aws_mqtt5_operation_pingreq_new(struct aws_allocator *allocator);
 
 /* client */
 

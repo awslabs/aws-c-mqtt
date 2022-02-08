@@ -687,7 +687,7 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     }
 
     connect_op->allocator = allocator;
-    connect_op->base.operation_type = AWS_MOT_CONNECT;
+    connect_op->base.packet_type = AWS_MQTT5_PT_CONNECT;
     aws_ref_count_init(&connect_op->base.ref_count, connect_op, s_destroy_operation_connect);
     connect_op->base.impl = connect_op;
 
@@ -1185,7 +1185,7 @@ struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     }
 
     disconnect_op->allocator = allocator;
-    disconnect_op->base.operation_type = AWS_MOT_DISCONNECT;
+    disconnect_op->base.packet_type = AWS_MQTT5_PT_DISCONNECT;
     aws_ref_count_init(&disconnect_op->base.ref_count, disconnect_op, s_destroy_operation_disconnect);
     disconnect_op->base.impl = disconnect_op;
 
@@ -1570,7 +1570,7 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     }
 
     publish_op->allocator = allocator;
-    publish_op->base.operation_type = AWS_MOT_PUBLISH;
+    publish_op->base.packet_type = AWS_MQTT5_PT_PUBLISH;
     aws_ref_count_init(&publish_op->base.ref_count, publish_op, s_destroy_operation_publish);
     publish_op->base.impl = publish_op;
 
@@ -1793,7 +1793,7 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     }
 
     unsubscribe_op->allocator = allocator;
-    unsubscribe_op->base.operation_type = AWS_MOT_UNSUBSCRIBE;
+    unsubscribe_op->base.packet_type = AWS_MQTT5_PT_UNSUBSCRIBE;
     aws_ref_count_init(&unsubscribe_op->base.ref_count, unsubscribe_op, s_destroy_operation_unsubscribe);
     unsubscribe_op->base.impl = unsubscribe_op;
 
@@ -2098,7 +2098,7 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     }
 
     subscribe_op->allocator = allocator;
-    subscribe_op->base.operation_type = AWS_MOT_SUBSCRIBE;
+    subscribe_op->base.packet_type = AWS_MQTT5_PT_SUBSCRIBE;
     aws_ref_count_init(&subscribe_op->base.ref_count, subscribe_op, s_destroy_operation_subscribe);
     subscribe_op->base.impl = subscribe_op;
 
@@ -2117,6 +2117,34 @@ error:
     aws_mqtt5_operation_release(&subscribe_op->base);
 
     return NULL;
+}
+
+/*********************************************************************************************************************
+ * PINGREQ
+ ********************************************************************************************************************/
+
+static void s_destroy_operation_pingreq(void *object) {
+    if (object == NULL) {
+        return;
+    }
+
+    struct aws_mqtt5_operation_pingreq *pingreq_op = object;
+    aws_mem_release(pingreq_op->allocator, pingreq_op);
+}
+
+struct aws_mqtt5_operation_pingreq *aws_mqtt5_operation_pingreq_new(struct aws_allocator *allocator) {
+    struct aws_mqtt5_operation_pingreq *pingreq_op =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_pingreq));
+    if (pingreq_op == NULL) {
+        return NULL;
+    }
+
+    pingreq_op->allocator = allocator;
+    pingreq_op->base.packet_type = AWS_MQTT5_PT_PINGREQ;
+    aws_ref_count_init(&pingreq_op->base.ref_count, pingreq_op, s_destroy_operation_pingreq);
+    pingreq_op->base.impl = pingreq_op;
+
+    return pingreq_op;
 }
 
 /*********************************************************************************************************************
@@ -2363,10 +2391,10 @@ void aws_mqtt5_client_options_storage_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_client_options_storage reconnect behavior set to %d(%s)",
+        "(%p) aws_mqtt5_client_options_storage offline queue behavior set to %d(%s)",
         (void *)options_storage,
-        (int)options_storage->reconnect_behavior,
-        aws_mqtt5_client_reconnect_behavior_type_to_c_string(options_storage->reconnect_behavior));
+        (int)options_storage->offline_queue_behavior,
+        aws_mqtt5_client_offline_queue_behavior_type_to_c_string(options_storage->offline_queue_behavior));
 
     AWS_LOGF(
         level,
@@ -2471,7 +2499,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->session_behavior = options->session_behavior;
     options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
 
-    options_storage->reconnect_behavior = options->reconnect_behavior;
+    options_storage->offline_queue_behavior = options->offline_queue_behavior;
     options_storage->min_reconnect_delay_ms = options->min_reconnect_delay_ms;
     options_storage->max_reconnect_delay_ms = options->max_reconnect_delay_ms;
     options_storage->min_connected_time_to_reset_reconnect_delay_ms =
