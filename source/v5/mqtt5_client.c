@@ -874,23 +874,6 @@ static int s_aws_mqtt5_client_write_current_operation_only(struct aws_mqtt5_clie
     return AWS_OP_SUCCESS;
 }
 
-static void s_aws_mqtt5_client_reset_operations_for_new_connection(struct aws_mqtt5_client *client) {
-    (void)client;
-
-    /*
-     * TODO:
-     *
-     *   On reconnect (post CONNACK):
-     *      Fail, remove, and release unacked_operations if:
-     *          rejoined_session = false
-     *       OR operation-is-not(qos-1+-publish)
-     *
-     *      Move-Append unacked_operations to the head of queued_operations
-     *
-     *      Clear unacked_operations_table
-     */
-}
-
 /* TODO: make this a config setting? */
 #define AWS_MQTT5_CONNECT_PACKET_TIMEOUT 10
 
@@ -904,8 +887,6 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
 
     aws_mqtt5_encoder_reset(&client->encoder);
     aws_mqtt5_decoder_reset(&client->decoder);
-
-    s_aws_mqtt5_client_reset_operations_for_new_connection(client);
 
     struct aws_mqtt5_operation_connect *connect_op =
         aws_mqtt5_operation_connect_new(client->allocator, &client->config->connect.storage_view);
@@ -947,11 +928,29 @@ static void s_reset_reconnection_delay_time(struct aws_mqtt5_client *client) {
     client->next_reconnect_delay_interval_reset_time = aws_add_u64_saturating(now, reset_reconnection_delay_time_nanos);
 }
 
+static void s_aws_mqtt5_client_reset_operations_for_new_connection(struct aws_mqtt5_client *client) {
+    (void)client;
+
+    /*
+     * TODO:
+     *
+     *   On reconnect (post CONNACK):
+     *      Fail, remove, and release unacked_operations if:
+     *          rejoined_session = false
+     *       OR operation-is-not(qos-1+-publish)
+     *
+     *      Move-Append unacked_operations to the head of queued_operations
+     *
+     *      Clear unacked_operations_table
+     */
+}
+
 static void s_change_current_state_to_connected(struct aws_mqtt5_client *client) {
     AWS_FATAL_ASSERT(client->current_state == AWS_MCS_MQTT_CONNECT);
 
     client->current_state = AWS_MCS_CONNECTED;
 
+    s_aws_mqtt5_client_reset_operations_for_new_connection(client);
     s_reset_ping(client);
     s_reset_reconnection_delay_time(client);
 }
