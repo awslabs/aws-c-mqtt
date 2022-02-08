@@ -624,18 +624,42 @@ struct aws_mqtt5_negotiated_settings {
  */
 enum aws_mqtt5_client_lifecycle_event_type {
     /**
-     * Lifecycle event containing the result (success/failure) of a connection attempt.
+     * Emitted when the client begins an attempt to connect to the remote endpoint.
+     *
+     * Mandatory event fields: client, user_data
      */
-    AWS_MQTT5_CLET_CONNECTION_RESULT,
+    AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
 
     /**
-     * Lifecycle event containing information about a disconnect.  Emitted at most once relative to a single
-     * previous successful connection event.
+     * Emitted after the client connects to the remote endpoint and receives a successful CONNACK.
+     * Every ATTEMPTING_CONNECT will be followed by exactly one CONNECTION_SUCCESS or one CONNECTION_FAILURE.
+     *
+     * Mandatory event fields: client, user_data, connack_data, settings
+     */
+    AWS_MQTT5_CLET_CONNECTION_SUCCESS,
+
+    /**
+     * Emitted at any point during the connection process when it has conclusively failed.
+     * Every ATTEMPTING_CONNECT will be followed by exactly one CONNECTION_SUCCESS or one CONNECTION_FAILURE.
+     *
+     * Mandatory event fields: client, user_data, error_code
+     * Conditional event fields: connack_data
+     */
+    AWS_MQTT5_CLET_CONNECTION_FAILURE,
+
+    /**
+     * Lifecycle event containing information about a disconnect.  Every CONNECTION_SUCCESS will eventually be
+     * followed by one and only one DISCONNECTION.
+     *
+     * Mandatory event fields: client, user_data, error_code
+     * Conditional event fields: disconnect_data
      */
     AWS_MQTT5_CLET_DISCONNECTION,
 
     /**
      * Lifecycle event notifying the user that the client has entered the STOPPED state.
+     *
+     * Mandatory event fields: client, user_data
      */
     AWS_MQTT5_CLET_STOPPED,
 };
@@ -649,6 +673,12 @@ struct aws_mqtt5_client_lifecycle_event {
      * Type of event this is.
      */
     enum aws_mqtt5_client_lifecycle_event_type event_type;
+
+    /**
+     * Client this event corresponds to.  Necessary (can't be replaced with user data) because the client
+     * doesn't exist at the time the event callback user data is configured.
+     */
+    struct aws_mqtt5_client *client;
 
     /**
      * Aws-c-* error code associated with the event

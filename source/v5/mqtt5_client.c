@@ -113,6 +113,49 @@ static void s_on_mqtt5_client_zero_ref_count(void *user_data) {
     s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_TERMINATED, NULL);
 }
 
+static void s_aws_mqtt5_client_emit_stopped_lifecycle_event(struct aws_mqtt5_client *client) {
+    if (client->config->lifecycle_event_handler != NULL) {
+        struct aws_mqtt5_client_lifecycle_event event;
+        AWS_ZERO_STRUCT(event);
+
+        event.event_type = AWS_MQTT5_CLET_STOPPED;
+        event.client = client;
+        event.user_data = client->config->lifecycle_event_handler_user_data;
+
+        (*client->config->lifecycle_event_handler)(&event);
+    }
+}
+
+static void s_aws_mqtt5_client_emit_connecting_lifecycle_event(struct aws_mqtt5_client *client) {
+    if (client->config->lifecycle_event_handler != NULL) {
+        struct aws_mqtt5_client_lifecycle_event event;
+        AWS_ZERO_STRUCT(event);
+
+        event.event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT;
+        event.client = client;
+        event.user_data = client->config->lifecycle_event_handler_user_data;
+
+        (*client->config->lifecycle_event_handler)(&event);
+    }
+}
+
+static void s_aws_mqtt5_client_emit_connection_success_lifecycle_event(
+    struct aws_mqtt5_client *client,
+    const struct aws_mqtt5_packet_connack_view *connack_view) {
+    if (client->config->lifecycle_event_handler != NULL) {
+        struct aws_mqtt5_client_lifecycle_event event;
+        AWS_ZERO_STRUCT(event);
+
+        event.event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS;
+        event.client = client;
+        event.user_data = client->config->lifecycle_event_handler_user_data;
+        event.settings = &client->negotiated_settings;
+        event.connack_data = connack_view;
+
+        (*client->config->lifecycle_event_handler)(&event);
+    }
+}
+
 static void s_enqueue_operation(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
     /* TODO: when statistics are added, we'll need to update them here */
 
@@ -271,15 +314,7 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
 static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
     client->current_state = AWS_MCS_STOPPED;
 
-    if (client->config->lifecycle_event_handler != NULL) {
-        struct aws_mqtt5_client_lifecycle_event event;
-        AWS_ZERO_STRUCT(event);
-
-        event.event_type = AWS_MQTT5_CLET_STOPPED;
-        event.user_data = client->config->lifecycle_event_handler_user_data;
-
-        (client->config->lifecycle_event_handler)(&event);
-    }
+    s_aws_mqtt5_client_emit_stopped_lifecycle_event(client);
 }
 
 static void s_aws_mqtt5_client_shutdown_channel(struct aws_mqtt5_client *client, int error_code) {
@@ -620,6 +655,21 @@ on_error:
     return AWS_OP_ERR;
 }
 
+static void s_aws_mqtt5_client_reset_offline_queue(struct aws_mqtt5_client *client) {
+    (void)client;
+
+    /*
+     * TODO:
+     *      (done) If current_operation, move current_operation to head of queued_operations
+     *      If disconnect_queue_policy is fail(x):
+     *          Fail, release, and remove everything in queued_operations with property (x)
+     */
+    if (client->current_operation != NULL) {
+        aws_linked_list_push_front(&client->queued_operations, &client->current_operation->node);
+        client->current_operation = NULL;
+    }
+}
+
 static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client) {
     (void)client;
     AWS_ASSERT(client->current_state == AWS_MCS_STOPPED || client->current_state == AWS_MCS_PENDING_RECONNECT);
@@ -627,14 +677,10 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
     client->current_state = AWS_MCS_CONNECTING;
     client->disconnect_operation = aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
 
-    if (client->current_operation != NULL) {
-        /*
-         * Move any left-over in-progress operation back to the head of the queue.  The operation will be examined
-         * for possible culling on the transition from MQTT_CONNECT -> CONNECTED.
-         */
-        aws_linked_list_push_front(&client->queued_operations, &client->current_operation->node);
-        client->current_operation = NULL;
-    }
+    /* TODO: we might not want to do this here */
+    s_aws_mqtt5_client_reset_offline_queue(client);
+
+    s_aws_mqtt5_client_emit_connecting_lifecycle_event(client);
 
     int result = 0;
     if (client->config->websocket_handshake_transform != NULL) {
@@ -917,21 +963,6 @@ static void s_change_current_state_to_clean_disconnect(struct aws_mqtt5_client *
     client->current_state = AWS_MCS_CLEAN_DISCONNECT;
 
     /* TODO: Queue DISCONNECT packet, failure => EnterState(CHANNEL_SHUTDOWN) */
-}
-
-static void s_aws_mqtt5_client_reset_offline_queue(struct aws_mqtt5_client *client) {
-    (void)client;
-
-    /*
-     * TODO:
-     *      (done) If current_operation, move current_operation to head of queued_operations
-     *      If disconnect_queue_policy is fail(x):
-     *          Fail, release, and remove everything in queued_operations with property (x)
-     */
-    if (client->current_operation != NULL) {
-        aws_linked_list_push_front(&client->queued_operations, &client->current_operation->node);
-        client->current_operation = NULL;
-    }
 }
 
 static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *client) {
@@ -1304,6 +1335,7 @@ static void s_aws_mqtt5_client_on_connack(
     /* TODO: lifecycle event successful connection with connack && final settings */
 
     s_change_current_state(client, AWS_MCS_CONNECTED);
+    s_aws_mqtt5_client_emit_connection_success_lifecycle_event(client, connack_view);
 }
 
 static void s_aws_mqtt5_client_log_received_packet(

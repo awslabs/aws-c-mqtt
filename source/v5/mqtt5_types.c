@@ -294,8 +294,12 @@ const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
 const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
     enum aws_mqtt5_client_lifecycle_event_type lifecycle_event) {
     switch (lifecycle_event) {
-        case AWS_MQTT5_CLET_CONNECTION_RESULT:
-            return "Connection establishment result";
+        case AWS_MQTT5_CLET_ATTEMPTING_CONNECT:
+            return "Connection establishment attempt";
+        case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
+            return "Connection establishment success";
+        case AWS_MQTT5_CLET_CONNECTION_FAILURE:
+            return "Connection establishment failure";
         case AWS_MQTT5_CLET_DISCONNECTION:
             return "Disconnection";
         case AWS_MQTT5_CLET_STOPPED:
