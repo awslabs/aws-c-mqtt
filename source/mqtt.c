@@ -172,6 +172,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION,
                 "Invalid mqtt5 unsubscribe packet options value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION,
+                "Invalid mqtt5 user property value."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_ENCODE_FAILURE,
                 "Error occurred while encoding an outgoing mqtt5 packet"),
             AWS_DEFINE_ERROR_INFO_MQTT(
