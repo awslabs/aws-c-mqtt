@@ -149,6 +149,11 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
     }
 }
 
+static void s_on_subscribe_complete_fn(
+    const struct aws_mqtt5_packet_suback_view *suback,
+    int error_code,
+    void *complete_ctx) {}
+
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
 
     switch (event->event_type) {
@@ -185,6 +190,8 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
     struct aws_byte_cursor quit_cursor = aws_byte_cursor_from_c_str("quit");
     struct aws_byte_cursor start_cursor = aws_byte_cursor_from_c_str("start");
     struct aws_byte_cursor stop_cursor = aws_byte_cursor_from_c_str("stop");
+    struct aws_byte_cursor subscribe_cursor = aws_byte_cursor_from_c_str("subscribe");
+    struct aws_byte_cursor unsubscribe_cursor = aws_byte_cursor_from_c_str("unsubscribe");
 
     struct aws_byte_cursor line_cursor = aws_byte_cursor_from_c_str(input_line);
     line_cursor = aws_byte_cursor_trim_pred(&line_cursor, &s_skip_whitespace);
@@ -198,8 +205,35 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
     } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &stop_cursor)) {
         printf("Stopping client!\n");
         aws_mqtt5_client_stop(client, NULL);
-    }
+    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &subscribe_cursor)) {
+        printf("Subscribing to topic!\n");
+        struct aws_mqtt5_subscribe_completion_options subscribe_completion_options = {
+            .completion_callback = &s_on_subscribe_complete_fn,
+            .completion_user_data = (void *)0xFFFF,
+        };
 
+        struct aws_mqtt5_subscription_view subscription_view = {
+            .topic_filter = aws_byte_cursor_from_c_str("test_topic"),
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .no_local = false,
+            .retain_as_published = false,
+            .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
+        };
+
+        struct aws_mqtt5_packet_subscribe_view packet_subscribe_view = {
+            .packet_id = 0,          // set an iterative index for use
+            .subscription_count = 1, // a single subscription is being attempted
+            .subscriptions = &subscription_view,
+            .subscription_identifier = 0, // what is this?
+            .user_properties = 1,
+            .user_properties = NULL,
+        };
+
+        aws_mqtt5_client_subscribe(client, &packet_subscribe_view, &subscribe_completion_options);
+    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &unsubscribe_cursor)) {
+        printf("Unsubscribing from topic!\n");
+        aws_mqtt5_client_unsubscribe(client, NULL, NULL);
+    }
     return false;
 }
 

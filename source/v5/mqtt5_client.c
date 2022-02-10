@@ -717,6 +717,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
 static int s_aws_mqtt5_client_begin_operation_encode(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation) {
+
     switch (operation->packet_type) {
 
         /* TODO: refactor operation base to make this function unnecessary? */
@@ -737,6 +738,12 @@ static int s_aws_mqtt5_client_begin_operation_encode(
 
         case AWS_MQTT5_PT_DISCONNECT:
         case AWS_MQTT5_PT_SUBSCRIBE:
+            if (aws_mqtt5_encoder_append_packet_encoding(
+                    &client->encoder,
+                    AWS_MQTT5_PT_SUBSCRIBE,
+                    &((struct aws_mqtt5_operation_subscribe *)operation->impl)->options_storage.storage_view)) {
+                return AWS_OP_ERR;
+            }
         case AWS_MQTT5_PT_UNSUBSCRIBE:
         case AWS_MQTT5_PT_PUBLISH:
         default:
@@ -1738,6 +1745,11 @@ int aws_mqtt5_client_subscribe(
 
     if (s_submit_operation(client, &subscribe_op->base)) {
         goto error;
+    }
+
+    if (s_aws_mqtt5_client_set_current_operation(client, &subscribe_op->base)) {
+        /* Return a more descriptive error */
+        return AWS_OP_ERR;
     }
 
     return AWS_OP_SUCCESS;
