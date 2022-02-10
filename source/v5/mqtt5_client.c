@@ -1446,6 +1446,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         case AWS_MQTT5_PT_DISCONNECT:
             s_aws_mqtt5_client_emit_final_lifecycle_event(
                 client, AWS_ERROR_MQTT5_DISCONNECT_RECEIVED, NULL, packet_view);
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DISCONNECT_RECEIVED);
             break;
 
         default:
