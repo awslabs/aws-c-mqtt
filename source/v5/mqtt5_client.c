@@ -161,6 +161,12 @@ static void s_aws_mqtt5_client_emit_connection_success_lifecycle_event(
     }
 }
 
+/*
+ * Emits either a CONNECTION_FAILED or DISCONNECT event based on the current life cycle state.  Once a "final"
+ * event is emitted by the client, it must attempt to reconnect before another one will be emitted, since the
+ * lifecycle state check will early out until then.  It is expected that this function may get called unnecessarily
+ * often during various channel shutdown or disconnection/failure flows.  This will not affect overall correctness.
+ */
 static void s_aws_mqtt5_client_emit_final_lifecycle_event(
     struct aws_mqtt5_client *client,
     int error_code,
