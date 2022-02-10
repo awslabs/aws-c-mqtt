@@ -127,6 +127,8 @@ static void s_aws_mqtt5_client_emit_stopped_lifecycle_event(struct aws_mqtt5_cli
 }
 
 static void s_aws_mqtt5_client_emit_connecting_lifecycle_event(struct aws_mqtt5_client *client) {
+    client->lifecycle_state = AWS_MQTT5_LS_CONNECTING;
+
     if (client->config->lifecycle_event_handler != NULL) {
         struct aws_mqtt5_client_lifecycle_event event;
         AWS_ZERO_STRUCT(event);
@@ -142,6 +144,9 @@ static void s_aws_mqtt5_client_emit_connecting_lifecycle_event(struct aws_mqtt5_
 static void s_aws_mqtt5_client_emit_connection_success_lifecycle_event(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_connack_view *connack_view) {
+
+    client->lifecycle_state = AWS_MQTT5_LS_CONNECTED;
+
     if (client->config->lifecycle_event_handler != NULL) {
         struct aws_mqtt5_client_lifecycle_event event;
         AWS_ZERO_STRUCT(event);
@@ -152,6 +157,41 @@ static void s_aws_mqtt5_client_emit_connection_success_lifecycle_event(
         event.settings = &client->negotiated_settings;
         event.connack_data = connack_view;
 
+        (*client->config->lifecycle_event_handler)(&event);
+    }
+}
+
+static void s_aws_mqtt5_client_emit_final_lifecycle_event(
+    struct aws_mqtt5_client *client,
+    int error_code,
+    const struct aws_mqtt5_packet_connack_view *connack_view,
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_view) {
+
+    if (client->lifecycle_state == AWS_MQTT5_LS_NONE) {
+        /* we already emitted a final event earlier */
+        return;
+    }
+
+    struct aws_mqtt5_client_lifecycle_event event;
+    AWS_ZERO_STRUCT(event);
+
+    if (client->lifecycle_state == AWS_MQTT5_LS_CONNECTING) {
+        AWS_FATAL_ASSERT(disconnect_view == NULL);
+        event.event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE;
+    } else {
+        AWS_FATAL_ASSERT(client->lifecycle_state == AWS_MQTT5_LS_CONNECTED);
+        AWS_FATAL_ASSERT(connack_view == NULL);
+        event.event_type = AWS_MQTT5_CLET_DISCONNECTION;
+    }
+
+    event.error_code = error_code;
+    event.user_data = client->config->lifecycle_event_handler_user_data;
+    event.connack_data = connack_view;
+    event.disconnect_data = disconnect_view;
+
+    client->lifecycle_state = AWS_MQTT5_LS_NONE;
+
+    if (client->config->lifecycle_event_handler != NULL) {
         (*client->config->lifecycle_event_handler)(&event);
     }
 }
@@ -336,13 +376,11 @@ static void s_aws_mqtt5_client_shutdown_channel(struct aws_mqtt5_client *client,
         return;
     }
 
-    /*
-     * TODO: sync failure => LifecycleEvent(ConnFailure) or LifecycleEvent(Disconnect)?
-     */
-
     if (error_code == AWS_ERROR_SUCCESS) {
         error_code = AWS_ERROR_UNKNOWN;
     }
+
+    s_aws_mqtt5_client_emit_final_lifecycle_event(client, error_code, NULL, NULL);
 
     s_change_current_state(client, AWS_MCS_CHANNEL_SHUTDOWN);
     aws_channel_shutdown(client->slot->channel, error_code);
@@ -361,6 +399,8 @@ static void s_mqtt5_client_shutdown(
     if (error_code == AWS_ERROR_SUCCESS) {
         error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
     }
+
+    s_aws_mqtt5_client_emit_final_lifecycle_event(client, error_code, NULL, NULL);
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT5_CLIENT,
@@ -708,7 +748,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
     if (result) {
         AWS_ASSERT(client->desired_state == AWS_MCS_CONNECTED);
 
-        /* TODO: lifecycle event (CONN_FAILURE) */
+        s_aws_mqtt5_client_emit_final_lifecycle_event(client, aws_last_error(), NULL, NULL);
 
         s_change_current_state(client, AWS_MCS_PENDING_RECONNECT);
     }
@@ -974,12 +1014,12 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
 
     s_aws_mqtt5_client_reset_offline_queue(client);
 
-    /*
-     * TODO: we need a semi-persistent disconnect state that includes aws error code and optional
-     * received disconnect view.  Assumption is that an earlier channel shutdown will cause
-     * this error code to be dropped.
-     */
-    aws_channel_shutdown(client->slot->channel, AWS_ERROR_UNKNOWN);
+    int error_code = aws_last_error();
+    if (error_code == AWS_ERROR_SUCCESS) {
+        error_code = AWS_ERROR_UNKNOWN;
+    }
+
+    aws_channel_shutdown(client->slot->channel, error_code);
 }
 
 static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client *client) {
@@ -1069,7 +1109,7 @@ static void s_service_state_connecting(struct aws_mqtt5_client *client) {
 static void s_service_state_mqtt_connect(struct aws_mqtt5_client *client, uint64_t now) {
     enum aws_mqtt5_client_state desired_state = client->desired_state;
     if (desired_state != AWS_MCS_CONNECTED) {
-        /* TODO: emit lifecycle event ConnFailure(user requested, no packet data) */
+        s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, NULL, NULL);
 
         /* TODO: init DISCONNECT packet */
 
@@ -1078,7 +1118,7 @@ static void s_service_state_mqtt_connect(struct aws_mqtt5_client *client, uint64
     }
 
     if (now >= client->next_mqtt_connect_packet_timeout_time) {
-        /* TODO: emit lifecycle event ConnFailure(timeout, no packet data) */
+        s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_CONNACK_TIMEOUT, NULL, NULL);
 
         /* TODO: use clean disconnect rather than channel termination */
 
@@ -1125,7 +1165,7 @@ static int s_aws_mqtt5_client_send_ping(struct aws_mqtt5_client *client, uint64_
 static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t now) {
     enum aws_mqtt5_client_state desired_state = client->desired_state;
     if (desired_state != AWS_MCS_CONNECTED) {
-        /* TODO: emit lifecycle event ConnFailure(user requested, no packet data) */
+        s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, NULL, NULL);
 
         /* TODO: use clean disconnect rather than channel termination */
 
@@ -1134,7 +1174,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
     }
 
     if (now >= client->next_ping_timeout_time && client->next_ping_timeout_time != 0) {
-        /* TODO: emit lifecycle event ConnFailure(keep alive timeout, no packet data) */
+        s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_PING_RESPONSE_TIMEOUT, NULL, NULL);
 
         /* TODO: use clean disconnect rather than channel termination */
 
@@ -1321,10 +1361,8 @@ static void s_aws_mqtt5_client_on_connack(
 
     bool is_successful = s_aws_is_successful_reason_code((int)connack_view->reason_code);
     if (!is_successful) {
-        /*
-         * TODO: lifecycle event emission needs the connack here, unsure how to do that with a generic
-         * shutdown function used everywhere across various states
-         */
+        s_aws_mqtt5_client_emit_final_lifecycle_event(
+            client, AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED, connack_view, NULL);
         s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED);
         return;
     }
@@ -1399,6 +1437,11 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             client->next_ping_timeout_time = 0;
             break;
 
+        case AWS_MQTT5_PT_DISCONNECT:
+            s_aws_mqtt5_client_emit_final_lifecycle_event(
+                client, AWS_ERROR_MQTT5_DISCONNECT_RECEIVED, NULL, packet_view);
+            break;
+
         default:
             break;
     }
@@ -1471,6 +1514,7 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
 
     client->desired_state = AWS_MCS_STOPPED;
     client->current_state = AWS_MCS_STOPPED;
+    client->lifecycle_state = AWS_MQTT5_LS_NONE;
 
     client->next_mqtt_packet_id = 1;
 

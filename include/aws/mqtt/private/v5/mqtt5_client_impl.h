@@ -31,6 +31,33 @@ enum aws_mqtt5_client_state {
     AWS_MCS_TERMINATED,
 };
 
+/*
+ * In order to make it easier to guarantee the lifecycle events are properly paired and emitted, we track
+ * a separate state (from aws_mqtt5_client_state) and emit lifecycle events based on it.
+ *
+ * For example, if our lifecycle event is CONNECTING, than anything going wrong becomes a CONNECTION_FAILED event
+ * whereas if we were in  CONNECTED, it must be a DISCONNECTED event.  By setting the state to NONE after emitting
+ * a CONNECTION_FAILED or DISCONNECTED event, then execution spots further down the processing pipeline will not
+ * accidentally emit an additional event.  This also allows us to emit immediately when an event happens, if
+ * appropriate, without having to persist additional event data (like packet views) until some synchronization point.
+ *
+ * For example:
+ *
+ * If I'm in CONNECTING and the channel shuts down, I want to emit a CONNECTION_FAILED event with the error code.
+ * If I'm in CONNECTING and I receive a failed CONNACK, I want to emit a CONNECTION_FAILED event immediately with
+ *   the CONNACK view in it and then invoke channel shutdown (and channel shutdown completing later should not emit an
+ *   event).
+ * If I'm in CONNECTED and the channel shuts down, I want to emit a DISCONNECTED event with the error code.
+ * But If I'm in CONNECTED and get a DISCONNECT packet from the server, I want to emit a DISCONNECTED event with
+ *  the DISCONNECT packet in it, invoke channel shutdown,  and then I *don't* want to emit a DISCONNECTED event
+ *  when the channel finishes shutting down.
+ */
+enum aws_mqtt5_lifecycle_state {
+    AWS_MQTT5_LS_NONE,
+    AWS_MQTT5_LS_CONNECTING,
+    AWS_MQTT5_LS_CONNECTED,
+};
+
 struct aws_mqtt5_client {
     struct aws_task service_task;
     uint64_t next_service_task_run_time;
@@ -51,6 +78,8 @@ struct aws_mqtt5_client {
     enum aws_mqtt5_client_state desired_state;
     enum aws_mqtt5_client_state current_state;
 
+    enum aws_mqtt5_lifecycle_state lifecycle_state;
+
     struct aws_mqtt5_encoder encoder;
     struct aws_mqtt5_decoder decoder;
 
@@ -68,7 +97,7 @@ struct aws_mqtt5_client {
     aws_mqtt5_packet_id_t next_mqtt_packet_id;
 
     /*
-     * Operation-related state
+     * Operation-related state notes
      *
      * operation flow:
      *   (qos 0 publish, disconnect, connect)

@@ -162,6 +162,7 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
 
         case AWS_MQTT5_CLET_CONNECTION_FAILURE:
             printf("Lifecycle event: Connection Failure!\n");
+            printf("  Error Code: %d(%s)\n", event->error_code, aws_error_debug_str(event->error_code));
             break;
 
         case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
@@ -170,6 +171,7 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
 
         case AWS_MQTT5_CLET_DISCONNECTION:
             printf("Lifecycle event: Disconnect!\n");
+            printf("  Error Code: %d(%s)\n", event->error_code, aws_error_debug_str(event->error_code));
             break;
     }
 
