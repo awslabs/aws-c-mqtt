@@ -35,11 +35,11 @@ enum aws_mqtt5_client_state {
  * In order to make it easier to guarantee the lifecycle events are properly paired and emitted, we track
  * a separate state (from aws_mqtt5_client_state) and emit lifecycle events based on it.
  *
- * For example, if our lifecycle event is CONNECTING, than anything going wrong becomes a CONNECTION_FAILED event
+ * For example, if our lifecycle event is state CONNECTING, than anything going wrong becomes a CONNECTION_FAILED event
  * whereas if we were in  CONNECTED, it must be a DISCONNECTED event.  By setting the state to NONE after emitting
- * a CONNECTION_FAILED or DISCONNECTED event, then execution spots further down the processing pipeline will not
+ * a CONNECTION_FAILED or DISCONNECTED event, then emission spots further down the execution pipeline will not
  * accidentally emit an additional event.  This also allows us to emit immediately when an event happens, if
- * appropriate, without having to persist additional event data (like packet views) until some synchronization point.
+ * appropriate, without having to persist additional event data (like packet views) until some singular point.
  *
  * For example:
  *
