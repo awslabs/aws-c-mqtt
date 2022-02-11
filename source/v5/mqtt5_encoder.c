@@ -535,10 +535,10 @@ static int s_aws_mqtt5_encoder_begin_subscribe(struct aws_mqtt5_encoder *encoder
      * Fixed Header
      * byte 1:
      *  bits 7-4 MQTT Control Packet Type
-     *  bits 3-0 Reserved
+     *  bits 3-0 Reserved, must be set to 0, 0, 1, 0
      * byte 2-x: Remaining Length as Variable Byte Integer (1-4 bytes)
      */
-    ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_SUBSCRIBE, 0));
+    ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_SUBSCRIBE, 2));
     ADD_ENCODE_STEP_VLI(encoder, total_remaining_length_u32);
 
     /*
