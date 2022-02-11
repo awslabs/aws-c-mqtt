@@ -152,7 +152,9 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
 static void s_on_subscribe_complete_fn(
     const struct aws_mqtt5_packet_suback_view *suback,
     int error_code,
-    void *complete_ctx) {}
+    void *complete_ctx) {
+    printf("s_on_subscribe_complete_fn");
+}
 
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
 
@@ -221,7 +223,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
         };
 
         struct aws_mqtt5_packet_subscribe_view packet_subscribe_view = {
-            .packet_id = 0,          // set an iterative index for use
+            .packet_id = 1,          // TODO Figure out where to use next_mqtt_packet_id and where to increment it
             .subscription_count = 1, // a single subscription is being attempted
             .subscriptions = &subscription_view,
             .subscription_identifier = 0, // what is this?

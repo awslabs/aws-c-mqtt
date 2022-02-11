@@ -736,7 +736,6 @@ static int s_aws_mqtt5_client_begin_operation_encode(
             }
             break;
 
-        case AWS_MQTT5_PT_DISCONNECT:
         case AWS_MQTT5_PT_SUBSCRIBE:
             if (aws_mqtt5_encoder_append_packet_encoding(
                     &client->encoder,
@@ -744,6 +743,9 @@ static int s_aws_mqtt5_client_begin_operation_encode(
                     &((struct aws_mqtt5_operation_subscribe *)operation->impl)->options_storage.storage_view)) {
                 return AWS_OP_ERR;
             }
+            break;
+
+        case AWS_MQTT5_PT_DISCONNECT:
         case AWS_MQTT5_PT_UNSUBSCRIBE:
         case AWS_MQTT5_PT_PUBLISH:
         default:
