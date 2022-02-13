@@ -17,8 +17,31 @@
 
 struct aws_event_loop;
 struct aws_http_message;
+struct aws_http_proxy_options;
 struct aws_mqtt5_client_options_storage;
 struct aws_mqtt5_operation;
+struct aws_websocket_client_connection_options;
+
+struct aws_mqtt5_client_vtable {
+    uint64_t (*get_current_time_fn)(void);                                   /* aws_high_res_clock_get_ticks */
+    int (*channel_shutdown_fn)(struct aws_channel *channel, int error_code); /* aws_channel_shutdown */
+    int (*websocket_connect_fn)(
+        const struct aws_websocket_client_connection_options *options); /* aws_websocket_client_connect */
+    int (*client_bootstrap_new_socket_channel_fn)(
+        struct aws_socket_channel_bootstrap_options *options); /* aws_client_bootstrap_new_socket_channel */
+    int (*http_proxy_new_socket_channel_fn)(
+        struct aws_socket_channel_bootstrap_options *channel_options,
+        const struct aws_http_proxy_options *proxy_options); /* aws_http_proxy_new_socket_channel */
+
+    /*
+     * Potential additional candidates:
+     *
+     * aws_channel_slot_remove
+     * aws_websocket_release
+     * aws_websocket_get_channel
+     * aws_websocket_convert_to_midchannel_handler
+     */
+};
 
 enum aws_mqtt5_client_state {
     AWS_MCS_STOPPED,
@@ -48,7 +71,7 @@ enum aws_mqtt5_client_state {
  *   the CONNACK view in it and then invoke channel shutdown (and channel shutdown completing later should not emit an
  *   event).
  * If I'm in CONNECTED and the channel shuts down, I want to emit a DISCONNECTED event with the error code.
- * But If I'm in CONNECTED and get a DISCONNECT packet from the server, I want to emit a DISCONNECTED event with
+ * If I'm in CONNECTED and get a DISCONNECT packet from the server, I want to emit a DISCONNECTED event with
  *  the DISCONNECT packet in it, invoke channel shutdown,  and then I *don't* want to emit a DISCONNECTED event
  *  when the channel finishes shutting down.
  */
@@ -59,13 +82,16 @@ enum aws_mqtt5_lifecycle_state {
 };
 
 struct aws_mqtt5_client {
-    struct aws_task service_task;
-    uint64_t next_service_task_run_time;
 
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
 
+    const struct aws_mqtt5_client_vtable *vtable;
+
     const struct aws_mqtt5_client_options_storage *config;
+
+    struct aws_task service_task;
+    uint64_t next_service_task_run_time;
 
     struct aws_mqtt5_negotiated_settings negotiated_settings;
 
@@ -117,18 +143,22 @@ struct aws_mqtt5_client {
      *      QoS 1+ requires both a table and a list holding the same operations in order to support fast lookups by
      *      mqtt packet id and in-order re-queueing in the case of a disconnection (required by spec)
      *
+     *   On PUBLISH completely received (and final callback invoked):
+     *      Add PUBACK at head of queued_operations
+     *
      *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
      *      If current_operation, move current_operation to head of queued_operations
      *      If disconnect_queue_policy is fail(x):
      *          Fail, release, and remove everything in queued_operations with property (x)
+     *          Release and remove: PUBACK, DISCONNECT
+     *      Fail, remove, and release unacked_operations if:
+     *          Operation is not Qos 1+ publish
      *
      *   On reconnect (post CONNACK):
-     *      Fail, remove, and release unacked_operations if:
-     *          rejoined_session = false
-     *          or operation-is-not(qos-1+-publish)
+     *      if rejoined_session == false:
+     *          Fail, remove, and release unacked_operations
      *
      *      Move-Append unacked_operations to the head of queued_operations
-     *
      *      Clear unacked_operations_table
      */
     struct aws_linked_list queued_operations;
@@ -165,6 +195,12 @@ struct aws_mqtt5_client {
 };
 
 AWS_EXTERN_C_BEGIN
+
+AWS_MQTT_API void aws_mqtt5_client_set_vtable(
+    struct aws_mqtt5_client *client,
+    const struct aws_mqtt5_client_vtable *vtable);
+
+AWS_MQTT_API const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void);
 
 AWS_EXTERN_C_END
 

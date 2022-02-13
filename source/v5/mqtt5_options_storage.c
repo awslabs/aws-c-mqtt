@@ -205,6 +205,35 @@ struct aws_mqtt5_operation *aws_mqtt5_operation_release(struct aws_mqtt5_operati
     return NULL;
 }
 
+void aws_mqtt5_operation_complete(struct aws_mqtt5_operation *operation, int error_code, void *associated_view) {
+    AWS_FATAL_ASSERT(operation->vtable != NULL);
+    if (operation->vtable->aws_mqtt5_operation_completion_fn != NULL) {
+        (*operation->vtable->aws_mqtt5_operation_completion_fn)(operation, error_code, associated_view);
+    }
+}
+
+void aws_mqtt5_operation_set_packet_id(struct aws_mqtt5_operation *operation, aws_mqtt5_packet_id_t packet_id) {
+    AWS_FATAL_ASSERT(operation->vtable != NULL);
+    if (operation->vtable->aws_mqtt5_operation_set_packet_id_fn != NULL) {
+        (*operation->vtable->aws_mqtt5_operation_set_packet_id_fn)(operation, packet_id);
+    }
+}
+
+aws_mqtt5_packet_id_t aws_mqtt5_operation_get_packet_id(const struct aws_mqtt5_operation *operation) {
+    AWS_FATAL_ASSERT(operation->vtable != NULL);
+    if (operation->vtable->aws_mqtt5_operation_get_packet_id_fn != NULL) {
+        return (*operation->vtable->aws_mqtt5_operation_get_packet_id_fn)(operation);
+    }
+
+    return 0;
+}
+
+static struct aws_mqtt5_operation_vtable s_empty_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = NULL,
+    .aws_mqtt5_operation_set_packet_id_fn = NULL,
+    .aws_mqtt5_operation_get_packet_id_fn = NULL,
+};
+
 /*********************************************************************************************************************
  * Connect
  ********************************************************************************************************************/
@@ -687,6 +716,7 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     }
 
     connect_op->allocator = allocator;
+    connect_op->base.vtable = &s_empty_operation_vtable;
     connect_op->base.packet_type = AWS_MQTT5_PT_CONNECT;
     aws_ref_count_init(&connect_op->base.ref_count, connect_op, s_destroy_operation_connect);
     connect_op->base.impl = connect_op;
@@ -694,6 +724,8 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     if (aws_mqtt5_packet_connect_storage_init(&connect_op->options_storage, allocator, connect_options)) {
         goto error;
     }
+
+    connect_op->base.packet_view = &connect_op->options_storage.storage_view;
 
     return connect_op;
 
@@ -1185,6 +1217,7 @@ struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     }
 
     disconnect_op->allocator = allocator;
+    disconnect_op->base.vtable = &s_empty_operation_vtable;
     disconnect_op->base.packet_type = AWS_MQTT5_PT_DISCONNECT;
     aws_ref_count_init(&disconnect_op->base.ref_count, disconnect_op, s_destroy_operation_disconnect);
     disconnect_op->base.impl = disconnect_op;
@@ -1192,6 +1225,8 @@ struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     if (aws_mqtt5_packet_disconnect_storage_init(&disconnect_op->options_storage, allocator, disconnect_options)) {
         goto error;
     }
+
+    disconnect_op->base.packet_view = &disconnect_op->options_storage.storage_view;
 
     return disconnect_op;
 
@@ -1540,6 +1575,36 @@ void aws_mqtt5_packet_publish_storage_clean_up(struct aws_mqtt5_packet_publish_s
     aws_byte_buf_clean_up(&publish_storage->storage);
 }
 
+static void s_aws_mqtt5_operation_publish_complete(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    const void *completion_view) {
+    struct aws_mqtt5_operation_publish *publish_op = operation->impl;
+
+    if (publish_op->completion_options.completion_callback != NULL) {
+        (*publish_op->completion_options.completion_callback)(
+            completion_view, error_code, publish_op->completion_options.completion_user_data);
+    }
+}
+
+static void s_aws_mqtt5_operation_publish_set_packet_id(
+    struct aws_mqtt5_operation *operation,
+    aws_mqtt5_packet_id_t packet_id) {
+    struct aws_mqtt5_operation_publish *publish_op = operation->impl;
+    publish_op->options_storage.storage_view.packet_id = packet_id;
+}
+
+static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_publish_get_packet_id(const struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_operation_publish *publish_op = operation->impl;
+    return publish_op->options_storage.storage_view.packet_id;
+}
+
+static struct aws_mqtt5_operation_vtable s_publish_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_publish_complete,
+    .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_publish_set_packet_id,
+    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_publish_get_packet_id,
+};
+
 static void s_destroy_operation_publish(void *object) {
     if (object == NULL) {
         return;
@@ -1570,6 +1635,7 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     }
 
     publish_op->allocator = allocator;
+    publish_op->base.vtable = &s_publish_operation_vtable;
     publish_op->base.packet_type = AWS_MQTT5_PT_PUBLISH;
     aws_ref_count_init(&publish_op->base.ref_count, publish_op, s_destroy_operation_publish);
     publish_op->base.impl = publish_op;
@@ -1577,6 +1643,8 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     if (aws_mqtt5_packet_publish_storage_init(&publish_op->options_storage, allocator, publish_options)) {
         goto error;
     }
+
+    publish_op->base.packet_view = &publish_op->options_storage.storage_view;
 
     if (completion_options != NULL) {
         publish_op->completion_options = *completion_options;
@@ -1763,6 +1831,37 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
     return AWS_OP_SUCCESS;
 }
 
+static void s_aws_mqtt5_operation_unsubscribe_complete(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    const void *completion_view) {
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
+
+    if (unsubscribe_op->completion_options.completion_callback != NULL) {
+        (*unsubscribe_op->completion_options.completion_callback)(
+            completion_view, error_code, unsubscribe_op->completion_options.completion_user_data);
+    }
+}
+
+static void s_aws_mqtt5_operation_unsubscribe_set_packet_id(
+    struct aws_mqtt5_operation *operation,
+    aws_mqtt5_packet_id_t packet_id) {
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
+    unsubscribe_op->options_storage.storage_view.packet_id = packet_id;
+}
+
+static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_unsubscribe_get_packet_id(
+    const struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
+    return unsubscribe_op->options_storage.storage_view.packet_id;
+}
+
+static struct aws_mqtt5_operation_vtable s_unsubscribe_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_unsubscribe_complete,
+    .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_set_packet_id,
+    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_get_packet_id,
+};
+
 static void s_destroy_operation_unsubscribe(void *object) {
     if (object == NULL) {
         return;
@@ -1793,6 +1892,7 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     }
 
     unsubscribe_op->allocator = allocator;
+    unsubscribe_op->base.vtable = &s_unsubscribe_operation_vtable;
     unsubscribe_op->base.packet_type = AWS_MQTT5_PT_UNSUBSCRIBE;
     aws_ref_count_init(&unsubscribe_op->base.ref_count, unsubscribe_op, s_destroy_operation_unsubscribe);
     unsubscribe_op->base.impl = unsubscribe_op;
@@ -1800,6 +1900,8 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     if (aws_mqtt5_packet_unsubscribe_storage_init(&unsubscribe_op->options_storage, allocator, unsubscribe_options)) {
         goto error;
     }
+
+    unsubscribe_op->base.packet_view = &unsubscribe_op->options_storage.storage_view;
 
     if (completion_options != NULL) {
         unsubscribe_op->completion_options = *completion_options;
@@ -2068,6 +2170,37 @@ int aws_mqtt5_packet_subscribe_storage_init(
     return AWS_OP_SUCCESS;
 }
 
+static void s_aws_mqtt5_operation_subscribe_complete(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    const void *completion_view) {
+    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
+
+    if (subscribe_op->completion_options.completion_callback != NULL) {
+        (*subscribe_op->completion_options.completion_callback)(
+            completion_view, error_code, subscribe_op->completion_options.completion_user_data);
+    }
+}
+
+static void s_aws_mqtt5_operation_subscribe_set_packet_id(
+    struct aws_mqtt5_operation *operation,
+    aws_mqtt5_packet_id_t packet_id) {
+    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
+    subscribe_op->options_storage.storage_view.packet_id = packet_id;
+}
+
+static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_subscribe_get_packet_id(
+    const struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
+    return subscribe_op->options_storage.storage_view.packet_id;
+}
+
+static struct aws_mqtt5_operation_vtable s_subscribe_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_subscribe_complete,
+    .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_subscribe_set_packet_id,
+    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_subscribe_get_packet_id,
+};
+
 static void s_destroy_operation_subscribe(void *object) {
     if (object == NULL) {
         return;
@@ -2098,6 +2231,7 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     }
 
     subscribe_op->allocator = allocator;
+    subscribe_op->base.vtable = &s_subscribe_operation_vtable;
     subscribe_op->base.packet_type = AWS_MQTT5_PT_SUBSCRIBE;
     aws_ref_count_init(&subscribe_op->base.ref_count, subscribe_op, s_destroy_operation_subscribe);
     subscribe_op->base.impl = subscribe_op;
@@ -2105,6 +2239,8 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     if (aws_mqtt5_packet_subscribe_storage_init(&subscribe_op->options_storage, allocator, subscribe_options)) {
         goto error;
     }
+
+    subscribe_op->base.packet_view = &subscribe_op->options_storage.storage_view;
 
     if (completion_options != NULL) {
         subscribe_op->completion_options = *completion_options;
@@ -2140,6 +2276,7 @@ struct aws_mqtt5_operation_pingreq *aws_mqtt5_operation_pingreq_new(struct aws_a
     }
 
     pingreq_op->allocator = allocator;
+    pingreq_op->base.vtable = &s_empty_operation_vtable;
     pingreq_op->base.packet_type = AWS_MQTT5_PT_PINGREQ;
     aws_ref_count_init(&pingreq_op->base.ref_count, pingreq_op, s_destroy_operation_pingreq);
     pingreq_op->base.impl = pingreq_op;

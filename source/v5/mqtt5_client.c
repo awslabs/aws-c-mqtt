@@ -331,11 +331,7 @@ static uint64_t s_compute_next_service_time_by_current_state(struct aws_mqtt5_cl
 static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
     (void)client;
 
-    uint64_t now = 0;
-    if (aws_high_res_clock_get_ticks(&now)) {
-        return;
-    }
-
+    uint64_t now = (*client->vtable->get_current_time_fn)();
     uint64_t next_service_time = s_compute_next_service_time_by_current_state(client, now);
 
     /*
@@ -389,7 +385,7 @@ static void s_aws_mqtt5_client_shutdown_channel(struct aws_mqtt5_client *client,
     s_aws_mqtt5_client_emit_final_lifecycle_event(client, error_code, NULL, NULL);
 
     s_change_current_state(client, AWS_MCS_CHANNEL_SHUTDOWN);
-    aws_channel_shutdown(client->slot->channel, error_code);
+    (*client->vtable->channel_shutdown_fn)(client->slot->channel, error_code);
 }
 
 static void s_mqtt5_client_shutdown(
@@ -485,7 +481,7 @@ static void s_mqtt5_client_setup(
 error:
 
     s_change_current_state(client, AWS_MCS_CHANNEL_SHUTDOWN);
-    aws_channel_shutdown(channel, aws_last_error());
+    (*client->vtable->channel_shutdown_fn)(channel, aws_last_error());
 }
 
 static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {
@@ -533,7 +529,7 @@ static void s_on_websocket_setup(
                 aws_last_error(),
                 aws_error_name(aws_last_error()));
 
-            aws_channel_shutdown(channel, aws_last_error());
+            (*client->vtable->channel_shutdown_fn)(channel, aws_last_error());
             return;
         }
     }
@@ -590,7 +586,7 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
             websocket_options.proxy_options = &client->config->http_proxy_options;
         }
 
-        if (aws_websocket_client_connect(&websocket_options)) {
+        if (client->vtable->websocket_connect_fn(&websocket_options)) {
             AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Failed to initiate websocket connection.", (void *)client);
             error_code = aws_last_error();
             goto error;
@@ -745,9 +741,10 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
         channel_options.requested_event_loop = client->loop;
 
         if (client->config->http_proxy_config == NULL) {
-            result = aws_client_bootstrap_new_socket_channel(&channel_options);
+            result = (*client->vtable->client_bootstrap_new_socket_channel_fn)(&channel_options);
         } else {
-            result = aws_http_proxy_new_socket_channel(&channel_options, &client->config->http_proxy_options);
+            result = (*client->vtable->http_proxy_new_socket_channel_fn)(
+                &channel_options, &client->config->http_proxy_options);
         }
     }
 
@@ -808,9 +805,7 @@ static int s_aws_mqtt5_client_set_current_operation(
 static int s_aws_mqtt5_client_write_current_operation_only(struct aws_mqtt5_client *client);
 
 static void s_reset_ping(struct aws_mqtt5_client *client) {
-    uint64_t now = 0;
-    aws_high_res_clock_get_ticks(&now);
-
+    uint64_t now = (*client->vtable->get_current_time_fn)();
     uint16_t keep_alive_seconds = client->negotiated_settings.server_keep_alive;
 
     uint64_t keep_alive_interval_nanos =
@@ -952,20 +947,13 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         return;
     }
 
-    uint64_t now = 0;
-    if (aws_high_res_clock_get_ticks(&now)) {
-        s_aws_mqtt5_client_shutdown_channel(client, aws_last_error());
-        return;
-    }
-
+    uint64_t now = (*client->vtable->get_current_time_fn)();
     client->next_mqtt_connect_packet_timeout_time =
         now + aws_timestamp_convert(AWS_MQTT5_CONNECT_PACKET_TIMEOUT, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 }
 
 static void s_reset_reconnection_delay_time(struct aws_mqtt5_client *client) {
-    uint64_t now = 0;
-    aws_high_res_clock_get_ticks(&now);
-
+    uint64_t now = (*client->vtable->get_current_time_fn)();
     uint64_t reset_reconnection_delay_time_nanos = aws_timestamp_convert(
         client->config->min_connected_time_to_reset_reconnect_delay_ms,
         AWS_TIMESTAMP_MILLIS,
@@ -1025,14 +1013,13 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
         error_code = AWS_ERROR_UNKNOWN;
     }
 
-    aws_channel_shutdown(client->slot->channel, error_code);
+    (*client->vtable->channel_shutdown_fn)(client->slot->channel, error_code);
 }
 
 static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client *client) {
     AWS_ASSERT(client->current_state == AWS_MCS_CONNECTING || client->current_state == AWS_MCS_CHANNEL_SHUTDOWN);
 
-    uint64_t now = 0;
-    aws_high_res_clock_get_ticks(&now);
+    uint64_t now = (*client->vtable->get_current_time_fn)();
 
     client->current_state = AWS_MCS_PENDING_RECONNECT;
 
@@ -1242,10 +1229,7 @@ static void s_mqtt5_service_task_fn(struct aws_task *task, void *arg, enum aws_t
 
     struct aws_mqtt5_client *client = arg;
 
-    uint64_t now = 0;
-    /* there's no reasonable recovery for a failure here */
-    aws_high_res_clock_get_ticks(&now);
-
+    uint64_t now = (*client->vtable->get_current_time_fn)();
     bool terminated = false;
     switch (client->current_state) {
         case AWS_MCS_STOPPED:
@@ -1491,6 +1475,29 @@ static int s_aws_mqtt5_client_on_publish_payload_received(
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }
 
+static uint64_t s_aws_high_res_clock_get_ticks_proxy(void) {
+    uint64_t current_time = 0;
+    AWS_FATAL_ASSERT(aws_high_res_clock_get_ticks(&current_time) == AWS_OP_SUCCESS);
+
+    return current_time;
+}
+
+static struct aws_mqtt5_client_vtable s_default_client_vtable = {
+    .get_current_time_fn = s_aws_high_res_clock_get_ticks_proxy,
+    .channel_shutdown_fn = aws_channel_shutdown,
+    .websocket_connect_fn = aws_websocket_client_connect,
+    .client_bootstrap_new_socket_channel_fn = aws_client_bootstrap_new_socket_channel,
+    .http_proxy_new_socket_channel_fn = aws_http_proxy_new_socket_channel,
+};
+
+void aws_mqtt5_client_set_vtable(struct aws_mqtt5_client *client, const struct aws_mqtt5_client_vtable *vtable) {
+    client->vtable = vtable;
+}
+
+const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void) {
+    return &s_default_client_vtable;
+}
+
 struct aws_mqtt5_client *aws_mqtt5_client_new(
     struct aws_allocator *allocator,
     struct aws_mqtt5_client_options *options) {
@@ -1505,6 +1512,7 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     aws_task_init(&client->service_task, s_mqtt5_service_task_fn, client, "Mqtt5Service");
 
     client->allocator = allocator;
+    client->vtable = &s_default_client_vtable;
 
     aws_ref_count_init(&client->ref_count, client, s_on_mqtt5_client_zero_ref_count);
 
