@@ -184,6 +184,101 @@ static int s_aws_mqtt5_user_property_set_validate(
 }
 
 /*********************************************************************************************************************
+ * Suback Reason Code set
+ ********************************************************************************************************************/
+
+int aws_mqtt5_suback_reason_code_set_init(
+    struct aws_mqtt5_suback_reason_code_set *suback_reason_code_set,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*suback_reason_code_set);
+
+    if (aws_array_list_init_dynamic(&suback_reason_code_set->reason_codes, allocator, 0, sizeof(uint8_t))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_suback_reason_code_set_init_with_storage(
+    struct aws_mqtt5_suback_reason_code_set *suback_reason_code_set,
+    struct aws_allocator *allocator,
+    struct aws_byte_buf *storage,
+    size_t reason_code_count,
+    const uint8_t *reason_codes) {
+    AWS_ZERO_STRUCT(*suback_reason_code_set);
+
+    if (aws_array_list_init_dynamic(
+            &suback_reason_code_set->reason_codes, allocator, reason_code_count, sizeof(uint8_t))) {
+        goto error;
+    }
+
+    for (size_t i = 0; i < reason_code_count; ++i) {
+        const uint8_t *reason_code = &reason_codes[i];
+        uint8_t reason_code_clone = *reason_code;
+        /* TODO STEVE CURSOR MAY BE NEEDED HERE? MAYBE NOT? */
+
+        if (aws_array_list_push_back(&suback_reason_code_set->reason_codes, &reason_code_clone)) {
+            goto error;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+
+error:
+
+    aws_mqtt5_suback_reason_code_set_clean_up(suback_reason_code_set);
+
+    return AWS_OP_ERR;
+}
+
+void aws_mqtt5_suback_reason_code_set_clean_up(struct aws_mqtt5_suback_reason_code_set *reason_code_set) {
+    aws_array_list_clean_up(&reason_code_set->reason_codes);
+}
+
+size_t aws_mqtt5_suback_reason_code_set_size(const struct aws_mqtt5_suback_reason_code_set *reason_code_set) {
+    return aws_array_list_length(&reason_code_set->reason_codes);
+}
+
+int aws_mqtt5_suback_reason_code_set_get_reason_code(
+    const struct aws_mqtt5_suback_reason_code_set *reason_code_set,
+    size_t index,
+    uint8_t *reason_code_out) {
+    return aws_array_list_get_at(&reason_code_set->reason_codes, reason_code_out, index);
+}
+
+int aws_mqtt5_suback_reason_code_set_add_stored_reason_code(
+    struct aws_mqtt5_suback_reason_code_set *reason_code_set,
+    uint8_t *reason_code) {
+    return aws_array_list_push_back(&reason_code_set->reason_codes, reason_code);
+}
+
+static void s_aws_mqtt5_suback_reason_code_set_log(
+    const uint8_t *reason_code,
+    size_t reason_code_count,
+    void *log_context,
+    enum aws_log_level level,
+    const char *log_prefix) {
+
+    /* TODO STEVE LOGGING FOR REASON CODE SET
+    AWS_LOGF(level, AWS_LS_MQTT5_GENERAL, "(%p) %s with %zu user properties:", log_context, log_prefix, property_count);
+
+    for (size_t i = 0; i < property_count; ++i) {
+        const struct aws_mqtt5_user_property *property = &properties[i];
+
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) %s user property %zu with name: \"" PRInSTR "\", value: \"" PRInSTR "\"",
+            log_context,
+            log_prefix,
+            i,
+            AWS_BYTE_CURSOR_PRI(property->name),
+            AWS_BYTE_CURSOR_PRI(property->value));
+    }
+    */
+}
+
+/*********************************************************************************************************************
  * Operation base
  ********************************************************************************************************************/
 
@@ -931,6 +1026,87 @@ void aws_mqtt5_packet_connack_view_init_from_storage(
     connack_view->server_reference = connack_storage->server_reference_ptr;
     connack_view->authentication_method = connack_storage->authentication_method_ptr;
     connack_view->authentication_data = connack_storage->authentication_data_ptr;
+}
+
+/*********************************************************************************************************************
+ * Suback
+ ********************************************************************************************************************/
+
+int aws_mqtt5_packet_suback_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_suback_storage *suback_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*suback_storage);
+
+    if (aws_mqtt5_user_property_set_init(&suback_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_mqtt5_suback_reason_code_set_init(&suback_storage->reason_codes, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_packet_suback_storage_clean_up(struct aws_mqtt5_packet_suback_storage *suback_storage) {
+    if (suback_storage == NULL) {
+        return;
+    }
+    aws_mqtt5_user_property_set_clean_up(&suback_storage->user_properties);
+    aws_mqtt5_suback_reason_code_set_clean_up(&suback_storage->reason_codes);
+    aws_byte_buf_clean_up(&suback_storage->storage);
+}
+
+void aws_mqtt5_packet_suback_view_log(
+    const struct aws_mqtt5_packet_suback_view *suback_view,
+    enum aws_log_level level) {
+    struct aws_logger *logger = aws_logger_get();
+    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+        return;
+    }
+
+    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_packet_suback_view packet id set to %d",
+        (void *)suback_view,
+        (int)suback_view->packet_id);
+
+    /*    TODO STEVE log reason codes in suback view
+        for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
+            const uint8_t reason_code = &suback_view->reason_codes[i];
+
+            AWS_LOGF(
+                level,
+                AWS_LS_MQTT5_GENERAL,
+                "(%p) aws_mqtt5_packet_suback_view reason code set to %d(%s)",
+                (void *)suback_view,
+                (int)reason_code,
+                aws_mqtt5_suback_reason_code_to_c_string(reason_code));
+        }
+    */
+    s_aws_mqtt5_user_property_set_log(
+        suback_view->user_properties,
+        suback_view->user_property_count,
+        (void *)suback_view,
+        level,
+        "aws_mqtt5_packet_suback_view");
+}
+
+void aws_mqtt5_packet_suback_view_init_from_storage(
+    struct aws_mqtt5_packet_suback_view *suback_view,
+    const struct aws_mqtt5_packet_suback_storage *suback_storage) {
+
+    suback_view->packet_id = suback_storage->packet_id;
+    suback_view->reason_string = suback_storage->reason_string_ptr;
+
+    suback_view->user_property_count = aws_mqtt5_user_property_set_size(&suback_storage->user_properties);
+    suback_view->user_properties = suback_storage->user_properties.properties.data;
+
+    suback_view->reason_code_count = aws_mqtt5_suback_reason_code_set_size(suback_storage->reason_codes);
+    suback_view->reason_codes = &suback_storage->reason_codes.reason_codes.data;
 }
 
 /*********************************************************************************************************************
@@ -1981,7 +2157,7 @@ void aws_mqtt5_packet_subscribe_storage_clean_up(struct aws_mqtt5_packet_subscri
 void aws_mqtt5_packet_subscribe_view_init_from_storage(
     struct aws_mqtt5_packet_subscribe_view *subscribe_view,
     const struct aws_mqtt5_packet_subscribe_storage *subscribe_storage) {
-
+    subscribe_view->packet_id = subscribe_storage->storage_view.packet_id;
     subscribe_view->subscription_identifier = subscribe_storage->subscription_identifier_ptr;
 
     subscribe_view->subscription_count = aws_array_list_length(&subscribe_storage->subscriptions);
@@ -2044,6 +2220,8 @@ int aws_mqtt5_packet_subscribe_storage_init(
         return AWS_OP_ERR;
     }
 
+    subscribe_storage->storage_view.packet_id = subscribe_options->packet_id;
+
     if (subscribe_options->subscription_identifier != NULL) {
         subscribe_storage->subscription_identifier = *subscribe_options->subscription_identifier;
         subscribe_storage->subscription_identifier_ptr = &subscribe_storage->subscription_identifier;
@@ -2062,7 +2240,6 @@ int aws_mqtt5_packet_subscribe_storage_init(
             subscribe_options->user_properties)) {
         return AWS_OP_ERR;
     }
-
     aws_mqtt5_packet_subscribe_view_init_from_storage(&subscribe_storage->storage_view, subscribe_storage);
 
     return AWS_OP_SUCCESS;

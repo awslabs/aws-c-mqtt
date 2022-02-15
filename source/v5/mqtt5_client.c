@@ -1741,6 +1741,7 @@ int aws_mqtt5_client_subscribe(
 
     struct aws_mqtt5_operation_subscribe *subscribe_op =
         aws_mqtt5_operation_subscribe_new(client->allocator, subscribe_options, completion_options);
+
     if (subscribe_op == NULL) {
         return AWS_OP_ERR;
     }
@@ -1750,8 +1751,7 @@ int aws_mqtt5_client_subscribe(
     }
 
     if (s_aws_mqtt5_client_set_current_operation(client, &subscribe_op->base)) {
-        /* Return a more descriptive error */
-        return AWS_OP_ERR;
+        goto error;
     }
 
     return AWS_OP_SUCCESS;

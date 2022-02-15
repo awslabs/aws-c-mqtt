@@ -529,7 +529,7 @@ struct aws_mqtt5_packet_suback_view {
     const struct aws_mqtt5_user_property *user_properties;
 
     size_t reason_code_count;
-    const enum aws_mqtt5_suback_reason_code *reason_codes;
+    const uint8_t *reason_codes;
 };
 
 /**
