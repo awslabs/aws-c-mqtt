@@ -43,14 +43,79 @@ struct aws_mqtt5_client_vtable {
      */
 };
 
+/**
+ * The various states that the client can be in.
+ */
 enum aws_mqtt5_client_state {
+
+    /*
+     * The client is not connected and not waiting for anything to happen.
+     *
+     * Next States:
+     *    CONNECTING - if the user invokes Start() on the client
+     *    TERMINATED - if the user releases the last ref count on the client
+     */
     AWS_MCS_STOPPED,
+
+    /*
+     * The client is attempting to connect to a remote endpoint, and is waiting for channel setup to complete.
+     *
+     * Next States:
+     *    MQTT_CONNECT - if the channel completes setup with no error and desired state is still CONNECTED
+     *    CHANNEL_SHUTDOWN - if the channel completes setup with no error, but desired state is not CONNECTED
+     *    PENDING_RECONNECT - if the channel fails to complete setup and desired state is still CONNECTED
+     *    STOPPED - if the channel fails to complete setup and desired state is not CONNECTED
+     */
     AWS_MCS_CONNECTING,
+
+    /*
+     * The client is sending a CONNECT packet and waiting on a CONNACK packet.
+     *
+     * Next States:
+     *    CONNECTED - if a successful CONNACK is received and desired state is still CONNECTED
+     *    CHANNEL_SHUTDOWN - On send/encode errors, read/decode errors, unsuccessful CONNACK, timeout to receive
+     *       CONNACK, successful CONNACK but desired state is no longer CONNECTED
+     */
     AWS_MCS_MQTT_CONNECT,
+
+    /*
+     * The client is ready to perform user-requested mqtt operations.
+     *
+     * Next States:
+     *    CHANNEL_SHUTDOWN - On send/encode errors, read/decode errors, DISCONNECT packet received, desired state
+     *       no longer CONNECTED
+     *    PENDING_RECONNECT - unexpected channel shutdown completion
+     */
     AWS_MCS_CONNECTED,
+
+    /*
+     * NYI/TODO: a state tentatively earmarked for processing the current mqtt outbound operation as well as a
+     * user-or-client-created outbound DISCONNECT.
+     */
     AWS_MCS_CLEAN_DISCONNECT,
+
+    /*
+     * The client is waiting for the io channel to completely shut down.
+     *
+     * Next States:
+     *    PENDING_RECONNECT - the io channel has shut down and desired state is still CONNECTED
+     *    STOPPED - the io channel has shut down and desired state is not CONNECTED
+     */
     AWS_MCS_CHANNEL_SHUTDOWN,
+
+    /*
+     * The client is waiting for the reconnect timer to expire before attempting to connect again.
+     *
+     * Next States:
+     *    CONNECTING - the reconnect timer has expired and desired state is still CONNECTED
+     *    STOPPED - desired state is no longer CONNECTED
+     */
     AWS_MCS_PENDING_RECONNECT,
+
+    /*
+     * The client is performing final shutdown and release of all resources.  This state is only realized for
+     * a single service.
+     */
     AWS_MCS_TERMINATED,
 };
 
@@ -92,6 +157,7 @@ struct aws_mqtt5_client {
 
     struct aws_task service_task;
     uint64_t next_service_task_run_time;
+    bool in_service;
 
     struct aws_mqtt5_negotiated_settings negotiated_settings;
 
