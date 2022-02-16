@@ -161,9 +161,7 @@ static int s_aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder, 
     (void)view;
 
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL,
-        "(%p) mqtt5 client encoder - setting up encode for a PINGREQ packet",
-        (void *)encoder->config.client);
+        AWS_LS_MQTT5_CLIENT, "id=%p: setting up encode for a PINGREQ packet", (void *)encoder->config.client);
 
     /* A ping is just a fixed header with a 0-valued remaining length which we encode as a 0 u8 rather than a 0 vli */
     ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_PINGREQ, 0));
@@ -205,8 +203,8 @@ static int s_aws_mqtt5_encoder_begin_disconnect(struct aws_mqtt5_encoder *encode
     if (s_compute_disconnect_variable_length_fields(disconnect_view, &total_remaining_length, &property_length)) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "(%p) mqtt5 client encoder - failed to compute variable length values for DISCONNECT packet with error "
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: failed to compute variable length values for DISCONNECT packet with error "
             "%d(%s)",
             (void *)encoder->config.client,
             error_code,
@@ -215,8 +213,8 @@ static int s_aws_mqtt5_encoder_begin_disconnect(struct aws_mqtt5_encoder *encode
     }
 
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL,
-        "(%p) mqtt5 client encoder - setting up encode for a DISCONNECT packet with remaining length %" PRIu32,
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: setting up encode for a DISCONNECT packet with remaining length %" PRIu32,
         (void *)encoder->config.client,
         total_remaining_length);
 
@@ -355,8 +353,8 @@ static int s_aws_mqtt5_encoder_begin_connect(struct aws_mqtt5_encoder *encoder, 
             connect_view, &total_remaining_length, &connect_property_length, &will_property_length)) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "(%p) mqtt5 client encoder - failed to compute variable length values for CONNECT packet with error %d(%s)",
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: failed to compute variable length values for CONNECT packet with error %d(%s)",
             (void *)encoder->config.client,
             error_code,
             aws_error_debug_str(error_code));
@@ -364,8 +362,8 @@ static int s_aws_mqtt5_encoder_begin_connect(struct aws_mqtt5_encoder *encoder, 
     }
 
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL,
-        "(%p) mqtt5 client encoder - setting up encode for a CONNECT packet with remaining length %zu",
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: setting up encode for a CONNECT packet with remaining length %zu",
         (void *)encoder->config.client,
         total_remaining_length);
 
@@ -487,8 +485,8 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
                 if (aws_input_stream_read(step->value.value_stream, buffer)) {
                     int error_code = aws_last_error();
                     AWS_LOGF_ERROR(
-                        AWS_LS_MQTT5_GENERAL,
-                        "(%p) mqtt5 client encoder - failed to read from stream with error %d(%s)",
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: failed to read from stream with error %d(%s)",
                         (void *)encoder->config.client,
                         error_code,
                         aws_error_debug_str(error_code));
@@ -499,8 +497,8 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
                 if (aws_input_stream_get_status(step->value.value_stream, &status)) {
                     int error_code = aws_last_error();
                     AWS_LOGF_ERROR(
-                        AWS_LS_MQTT5_GENERAL,
-                        "(%p) mqtt5 client encoder - failed to query stream status with error %d(%s)",
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: failed to query stream status with error %d(%s)",
                         (void *)encoder->config.client,
                         error_code,
                         aws_error_debug_str(error_code));
@@ -520,10 +518,7 @@ static enum aws_mqtt5_encoding_result s_execute_encode_step(
     }
 
     /* shouldn't be reachable */
-    AWS_LOGF_ERROR(
-        AWS_LS_MQTT5_GENERAL,
-        "(%p) mqtt5 client encoder - reached an unreachable state",
-        (void *)encoder->config.client);
+    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: encoder reached an unreachable state", (void *)encoder->config.client);
     aws_raise_error(AWS_ERROR_INVALID_STATE);
     return AWS_MQTT5_ER_ERROR;
 }
@@ -546,9 +541,7 @@ enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
 
     if (result == AWS_MQTT5_ER_FINISHED) {
         AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_GENERAL,
-            "(%p) mqtt5 client encoder - finished encoding current operation",
-            (void *)encoder->config.client);
+            AWS_LS_MQTT5_CLIENT, "id=%p: finished encoding current operation", (void *)encoder->config.client);
         aws_mqtt5_encoder_reset(encoder);
     }
 

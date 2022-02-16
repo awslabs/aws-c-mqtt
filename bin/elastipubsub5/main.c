@@ -343,6 +343,7 @@ int main(int argc, char **argv) {
         .max_reconnect_delay_ms = 120000,
         .min_connected_time_to_reset_reconnect_delay_ms = 30000,
         .min_reconnect_delay_ms = 1000,
+        .ping_timeout_ms = 10000,
     };
 
     struct aws_mqtt5_client *client = aws_mqtt5_client_new(allocator, &client_options);

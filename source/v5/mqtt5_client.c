@@ -114,7 +114,7 @@ static void s_on_mqtt5_client_zero_ref_count(void *user_data) {
 }
 
 static void s_aws_mqtt5_client_emit_stopped_lifecycle_event(struct aws_mqtt5_client *client) {
-    AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - emitting stopped lifecycle event", (void *)client);
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: emitting stopped lifecycle event", (void *)client);
 
     if (client->config->lifecycle_event_handler != NULL) {
         struct aws_mqtt5_client_lifecycle_event event;
@@ -129,7 +129,7 @@ static void s_aws_mqtt5_client_emit_stopped_lifecycle_event(struct aws_mqtt5_cli
 }
 
 static void s_aws_mqtt5_client_emit_connecting_lifecycle_event(struct aws_mqtt5_client *client) {
-    AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - emitting connecting lifecycle event", (void *)client);
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: emitting connecting lifecycle event", (void *)client);
 
     client->lifecycle_state = AWS_MQTT5_LS_CONNECTING;
 
@@ -149,8 +149,7 @@ static void s_aws_mqtt5_client_emit_connection_success_lifecycle_event(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_connack_view *connack_view) {
 
-    AWS_LOGF_INFO(
-        AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - emitting connection success lifecycle event", (void *)client);
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: emitting connection success lifecycle event", (void *)client);
 
     client->lifecycle_state = AWS_MQTT5_LS_CONNECTED;
 
@@ -194,7 +193,7 @@ static void s_aws_mqtt5_client_emit_final_lifecycle_event(
 
         AWS_LOGF_INFO(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - emitting connection failure lifecycle event with error code %d(%s)",
+            "id=%p: emitting connection failure lifecycle event with error code %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -205,7 +204,7 @@ static void s_aws_mqtt5_client_emit_final_lifecycle_event(
 
         AWS_LOGF_INFO(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - emitting disconnection lifecycle event with error code %d(%s)",
+            "id=%p: emitting disconnection lifecycle event with error code %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -228,7 +227,7 @@ static void s_enqueue_operation(struct aws_mqtt5_client *client, struct aws_mqtt
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - enqueuing %s operation",
+        "id=%p: enqueuing %s operation",
         (void *)client,
         aws_mqtt5_packet_type_to_c_string(operation->packet_type));
 
@@ -371,16 +370,13 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
 
     /*
      * This catches both the case when there's an existing service schedule and we either want to not
-     * perform it (next_service_time == 0) or need to run service earlier than the current scheduled time.
+     * perform it (next_service_time == 0) or need to run service at a different time than the current scheduled time.
      */
-    if (next_service_time < client->next_service_task_run_time) {
+    if (next_service_time != client->next_service_task_run_time && client->next_service_task_run_time > 0) {
         aws_event_loop_cancel_task(client->loop, &client->service_task);
         client->next_service_task_run_time = 0;
 
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - cancelling previously scheduled service task",
-            (void *)client);
+        AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: cancelling previously scheduled service task", (void *)client);
     }
 
     if (next_service_time > 0 &&
@@ -388,10 +384,7 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
         aws_event_loop_schedule_task_future(client->loop, &client->service_task, next_service_time);
 
         AWS_LOGF_TRACE(
-            AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - scheduled service task for time %" PRIu64,
-            (void *)client,
-            next_service_time);
+            AWS_LS_MQTT5_CLIENT, "id=%p: scheduled service task for time %" PRIu64, (void *)client, next_service_time);
     }
 
     client->next_service_task_run_time = next_service_time;
@@ -422,17 +415,15 @@ static void s_aws_mqtt5_client_shutdown_channel(struct aws_mqtt5_client *client,
         client->current_state != AWS_MCS_CLEAN_DISCONNECT) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - client channel shutdown invoked from unexpected state %d",
+            "id=%p: client channel shutdown invoked from unexpected state %d(%s)",
             (void *)client,
-            (int)client->current_state);
+            (int)client->current_state,
+            s_aws_mqtt5_client_state_to_c_str(client->current_state));
         return;
     }
 
     if (client->slot == NULL || client->slot->channel == NULL) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - client channel shutdown invoked without a channel",
-            (void *)client);
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: client channel shutdown invoked without a channel", (void *)client);
         return;
     }
 
@@ -458,14 +449,14 @@ static void s_mqtt5_client_shutdown(
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - channel tore down with error code %d(%s)",
+        "id=%p: channel tore down with error code %d(%s)",
         (void *)client,
         error_code,
         aws_error_debug_str(error_code));
 
     if (client->slot) {
         aws_channel_slot_remove(client->slot);
-        AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - slot removed successfully", (void *)client);
+        AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: slot removed successfully", (void *)client);
         client->slot = NULL;
     }
 
@@ -506,7 +497,7 @@ static void s_mqtt5_client_setup(
     if (aws_channel_slot_insert_end(channel, client->slot)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) Failed to insert slot into channel %p, error %d (%s).",
+            "id=%p: Failed to insert slot into channel %p, error %d (%s).",
             (void *)client,
             (void *)channel,
             aws_last_error(),
@@ -517,7 +508,7 @@ static void s_mqtt5_client_setup(
     if (aws_channel_slot_set_handler(client->slot, &client->handler)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) Failed to set MQTT handler into slot on channel %p, error %d (%s).",
+            "id=%p: Failed to set MQTT handler into slot on channel %p, error %d (%s).",
             (void *)client,
             (void *)channel,
             aws_last_error(),
@@ -771,7 +762,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
         int error_code = aws_last_error();
         AWS_LOGF_INFO(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - failed to kick off connection with error %d(%s)",
+            "id=%p: failed to kick off connection with error %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -789,7 +780,7 @@ static int s_aws_mqtt5_client_set_current_operation(
         int error_code = aws_last_error();
         AWS_LOGF_INFO(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - failed to append packet encoding sequence for current operation with error %d(%s)",
+            "id=%p: failed to append packet encoding sequence for current operation with error %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -813,10 +804,7 @@ static void s_reset_ping(struct aws_mqtt5_client *client) {
     client->next_ping_timeout_time = 0;
 
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - pushing next ping time out to %" PRIu64,
-        (void *)client,
-        client->next_ping_time);
+        AWS_LS_MQTT5_CLIENT, "id=%p: next PINGREQ scheduled for time %" PRIu64, (void *)client, client->next_ping_time);
 }
 
 static void s_aws_mqtt5_on_socket_write_completion_mqtt_connect(struct aws_mqtt5_client *client, int error_code) {
@@ -860,7 +848,7 @@ static void s_aws_mqtt5_on_socket_write_completion(
     if (error_code != AWS_ERROR_SUCCESS) {
         AWS_LOGF_INFO(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - socket write completion invoked with error %d(%s)",
+            "id=%p: socket write completion invoked with error %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -915,7 +903,7 @@ static int s_aws_mqtt5_client_write_current_operation_only(struct aws_mqtt5_clie
             int error_code = aws_last_error();
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
-                "(%p) aws_mqtt5_client - socket write failed with error %d(%s)",
+                "id=%p: socket write failed with error %d(%s)",
                 (void *)client,
                 error_code,
                 aws_error_debug_str(error_code));
@@ -952,7 +940,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - failed to create CONNECT operation with error %d(%s)",
+            "id=%p: failed to create CONNECT operation with error %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -965,7 +953,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - failed to set current client operation to CONNECT with error %d(%s)",
+            "id=%p: failed to set current client operation to CONNECT with error %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -979,7 +967,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - failed to write CONNECT packet to channel with error %d(%s)",
+            "id=%p: failed to write CONNECT packet to channel with error %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -994,7 +982,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - setting CONNECT timeout to %" PRIu64,
+        "id=%p: setting CONNECT timeout to %" PRIu64,
         (void *)client,
         client->next_mqtt_connect_packet_timeout_time);
 }
@@ -1010,7 +998,7 @@ static void s_reset_reconnection_delay_time(struct aws_mqtt5_client *client) {
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - reconnection delay reset time set to %" PRIu64,
+        "id=%p: reconnection delay reset time set to %" PRIu64,
         (void *)client,
         client->next_reconnect_delay_interval_reset_time);
 }
@@ -1075,12 +1063,16 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
 
     s_aws_mqtt5_client_reset_offline_queue(client);
 
-    int error_code = aws_last_error();
-    if (error_code == AWS_ERROR_SUCCESS) {
-        error_code = AWS_ERROR_UNKNOWN;
-    }
-
-    (*client->vtable->channel_shutdown_fn)(client->slot->channel, error_code);
+    /*
+     * Critical requirement: The caller must invoke the channel shutdown function themselves (with the desired error
+     * code) *after* changing state.
+     *
+     * The caller is the only one with the error context and we want to be safe and avoid the possibility of a
+     * synchronous channel shutdown (mocks) leading to a situation where we get the shutdown callback before we've
+     * transitioned into the CHANNEL_SHUTDOWN state.
+     *
+     * We could relax this if a synchronous channel shutdown is literally impossible even with mocked channels.
+     */
 }
 
 static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client *client) {
@@ -1096,7 +1088,7 @@ static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client 
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - next connection attempt at time %" PRIu64 ", in %" PRIu64 " seconds",
+        "id=%p: next connection attempt at time %" PRIu64 ", in %" PRIu64 " seconds",
         (void *)client,
         client->next_reconnect_time,
         aws_timestamp_convert(
@@ -1109,7 +1101,7 @@ static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client 
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - next reconnect delay set to %" PRIu64 " seconds",
+        "id=%p: next reconnect delay set to %" PRIu64 " seconds",
         (void *)client,
         aws_timestamp_convert(
             client->current_reconnect_delay_interval_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL));
@@ -1130,7 +1122,7 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - switching current state from %s to %s",
+        "id=%p: switching current state from %s to %s",
         (void *)client,
         s_aws_mqtt5_client_state_to_c_str(client->current_state),
         s_aws_mqtt5_client_state_to_c_str(next_state));
@@ -1199,10 +1191,7 @@ static void s_service_state_mqtt_connect(struct aws_mqtt5_client *client, uint64
     if (now >= client->next_mqtt_connect_packet_timeout_time) {
         s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_CONNACK_TIMEOUT, NULL, NULL);
 
-        AWS_LOGF_INFO(
-            AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - shutting down channel due to CONNACK timeout",
-            (void *)client);
+        AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: shutting down channel due to CONNACK timeout", (void *)client);
 
         /* TODO: use clean disconnect rather than channel termination */
 
@@ -1215,7 +1204,7 @@ static void s_service_state_mqtt_connect(struct aws_mqtt5_client *client, uint64
             int error_code = aws_last_error();
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
-                "(%p) aws_mqtt5_client - failed to write CONNECT packet continuation to channel with error %d(%s)",
+                "id=%p: failed to write CONNECT packet continuation to channel with error %d(%s)",
                 (void *)client,
                 error_code,
                 aws_error_debug_str(error_code));
@@ -1235,17 +1224,15 @@ static int s_aws_mqtt5_client_send_ping(struct aws_mqtt5_client *client, uint64_
 
     if (client->current_operation != NULL) {
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - ping timer hit while there's a current outbound operation",
-            (void *)client);
+            AWS_LS_MQTT5_CLIENT, "id=%p: ping timer hit while there's a current outbound operation", (void *)client);
         return AWS_OP_SUCCESS;
     }
 
-    AWS_LOGF_INFO(
+    AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - sending ping with timeout %" PRIu64,
+        "id=%p: sending ping with timeout in %" PRIu32 " ms",
         (void *)client,
-        ping_timeout_nanos);
+        client->config->ping_timeout_ms);
 
     struct aws_mqtt5_operation_pingreq *pingreq_op = aws_mqtt5_operation_pingreq_new(client->allocator);
     if (s_aws_mqtt5_client_set_current_operation(client, &pingreq_op->base)) {
@@ -1265,8 +1252,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
     if (desired_state != AWS_MCS_CONNECTED) {
         s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, NULL, NULL);
 
-        AWS_LOGF_INFO(
-            AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - channel shutdown due to user Stop request", (void *)client);
+        AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: channel shutdown due to user Stop request", (void *)client);
 
         /* TODO: use clean disconnect rather than channel termination */
 
@@ -1277,8 +1263,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
     if (now >= client->next_ping_timeout_time && client->next_ping_timeout_time != 0) {
         s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_PING_RESPONSE_TIMEOUT, NULL, NULL);
 
-        AWS_LOGF_INFO(
-            AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - channel shutdown due to PINGRESP timeout", (void *)client);
+        AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: channel shutdown due to PINGRESP timeout", (void *)client);
 
         /* TODO: use clean disconnect rather than channel termination */
 
@@ -1291,7 +1276,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
             int error_code = aws_last_error();
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
-                "(%p) aws_mqtt5_client - failed to send PINGREQ with error %d(%s)",
+                "id=%p: failed to send PINGREQ with error %d(%s)",
                 (void *)client,
                 error_code,
                 aws_error_debug_str(error_code));
@@ -1305,7 +1290,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
         client->next_reconnect_delay_interval_reset_time != 0) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - connected sufficiently long that reconnect backoff delay has been reset back to "
+            "id=%p: connected sufficiently long that reconnect backoff delay has been reset back to "
             "minimum value",
             (void *)client);
 
@@ -1319,7 +1304,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
             int error_code = aws_last_error();
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
-                "(%p) aws_mqtt5_client - failed to write current operation with error %d(%s)",
+                "id=%p: failed to write current operation with error %d(%s)",
                 (void *)client,
                 error_code,
                 aws_error_debug_str(error_code));
@@ -1411,15 +1396,12 @@ static int s_process_read_message(
     struct aws_mqtt5_client *client = handler->impl;
 
     if (message->message_type != AWS_IO_MESSAGE_APPLICATION_DATA) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - unexpected io message data", (void *)client);
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: unexpected io message data", (void *)client);
         return AWS_OP_ERR;
     }
 
     AWS_LOGF_TRACE(
-        AWS_LS_MQTT5_CLIENT,
-        "(%p) aws_mqtt5_client - processing read message of size %zu",
-        (void *)client,
-        message->message_data.len);
+        AWS_LS_MQTT5_CLIENT, "id=%p: processing read message of size %zu", (void *)client, message->message_data.len);
 
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
@@ -1428,7 +1410,7 @@ static int s_process_read_message(
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - decode failure with error %d(%s)",
+            "id=%p: decode failure with error %d(%s)",
             (void *)client,
             error_code,
             aws_error_debug_str(error_code));
@@ -1500,7 +1482,7 @@ static void s_aws_mqtt5_client_on_connack(
 
         AWS_LOGF_INFO(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - connection refused (via failed CONNACK) by remote host with reason code %d(%s)",
+            "id=%p: connection refused (via failed CONNACK) by remote host with reason code %d(%s)",
             (void *)client,
             (int)reason_code,
             aws_mqtt5_connect_reason_code_to_c_string(reason_code));
@@ -1520,7 +1502,7 @@ static void s_aws_mqtt5_client_log_received_packet(
     enum aws_mqtt5_packet_type type,
     void *packet_view) {
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_CLIENT, "(%p) Received %s packet", (void *)client, aws_mqtt5_packet_type_to_c_string(type));
+        AWS_LS_MQTT5_CLIENT, "id=%p: Received %s packet", (void *)client, aws_mqtt5_packet_type_to_c_string(type));
 
     switch (type) {
         case AWS_MQTT5_PT_CONNACK:
@@ -1563,7 +1545,7 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
         s_aws_mqtt5_client_on_connack(client, (struct aws_mqtt5_packet_connack_view *)packet_view);
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_CLIENT, "(%p) Invalid packet type received while in MQTT_CONNECT state", (void *)client);
+            AWS_LS_MQTT5_CLIENT, "id=%p: Invalid packet type received while in MQTT_CONNECT state", (void *)client);
 
         s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
@@ -1576,7 +1558,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
 
     switch (type) {
         case AWS_MQTT5_PT_PINGRESP:
-            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - resetting PINGREQ timer", (void *)client);
+            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: resetting PINGREQ timer", (void *)client);
 
             client->next_ping_timeout_time = 0;
             break;
@@ -1585,8 +1567,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             s_aws_mqtt5_client_emit_final_lifecycle_event(
                 client, AWS_ERROR_MQTT5_DISCONNECT_RECEIVED, NULL, packet_view);
 
-            AWS_LOGF_INFO(
-                AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - shutting down channel due to DISCONNECT", (void *)client);
+            AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: shutting down channel due to DISCONNECT", (void *)client);
 
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DISCONNECT_RECEIVED);
             break;
@@ -1618,6 +1599,8 @@ static int s_aws_mqtt5_client_on_packet_received(
         default:
             break;
     }
+
+    s_reevaluate_service_task(client);
 
     return AWS_OP_SUCCESS;
 }
@@ -1779,7 +1762,7 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
     if (client->desired_state != desired_state) {
         AWS_LOGF_INFO(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - changing desired client state from %s to %s",
+            "id=%p: changing desired client state from %s to %s",
             (void *)client,
             s_aws_mqtt5_client_state_to_c_str(client->desired_state),
             s_aws_mqtt5_client_state_to_c_str(desired_state));
@@ -1846,7 +1829,7 @@ static int s_aws_mqtt5_client_change_desired_state(
     if (!s_is_valid_desired_state(desired_state)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "(%p) aws_mqtt5_client - invalid desired state argument %d(%s)",
+            "id=%p: invalid desired state argument %d(%s)",
             (void *)client,
             (int)desired_state,
             s_aws_mqtt5_client_state_to_c_str(desired_state));
@@ -1857,8 +1840,7 @@ static int s_aws_mqtt5_client_change_desired_state(
     struct aws_mqtt_change_desired_state_task *task =
         s_aws_mqtt_change_desired_state_task_new(client->allocator, client, desired_state, disconnect_operation);
     if (task == NULL) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_CLIENT, "(%p) aws_mqtt5_client - failed to create change desired state task", (void *)client);
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: failed to create change desired state task", (void *)client);
         return AWS_OP_ERR;
     }
 
@@ -1877,9 +1859,7 @@ int aws_mqtt5_client_stop(struct aws_mqtt5_client *client, const struct aws_mqtt
         disconnect_op = aws_mqtt5_operation_disconnect_new(client->allocator, options);
         if (disconnect_op == NULL) {
             AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_CLIENT,
-                "(%p) aws_mqtt5_client - failed to create requested DISCONNECT operation",
-                (void *)client);
+                AWS_LS_MQTT5_CLIENT, "id=%p: failed to create requested DISCONNECT operation", (void *)client);
             return AWS_OP_ERR;
         }
     }
