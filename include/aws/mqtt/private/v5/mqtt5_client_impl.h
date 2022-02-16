@@ -186,6 +186,10 @@ struct aws_mqtt5_client {
     struct aws_mqtt5_operation_disconnect *disconnect_operation;
     struct aws_http_message *handshake;
 
+    /*
+     * One more than the most recently used packet id.  This is the best starting point for a forward search through
+     * the id space for a free id.
+     */
     aws_mqtt5_packet_id_t next_mqtt_packet_id;
 
     /*
