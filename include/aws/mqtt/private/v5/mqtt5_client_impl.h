@@ -22,27 +22,6 @@ struct aws_mqtt5_client_options_storage;
 struct aws_mqtt5_operation;
 struct aws_websocket_client_connection_options;
 
-struct aws_mqtt5_client_vtable {
-    uint64_t (*get_current_time_fn)(void);                                   /* aws_high_res_clock_get_ticks */
-    int (*channel_shutdown_fn)(struct aws_channel *channel, int error_code); /* aws_channel_shutdown */
-    int (*websocket_connect_fn)(
-        const struct aws_websocket_client_connection_options *options); /* aws_websocket_client_connect */
-    int (*client_bootstrap_new_socket_channel_fn)(
-        struct aws_socket_channel_bootstrap_options *options); /* aws_client_bootstrap_new_socket_channel */
-    int (*http_proxy_new_socket_channel_fn)(
-        struct aws_socket_channel_bootstrap_options *channel_options,
-        const struct aws_http_proxy_options *proxy_options); /* aws_http_proxy_new_socket_channel */
-
-    /*
-     * Potential additional candidates:
-     *
-     * aws_channel_slot_remove
-     * aws_websocket_release
-     * aws_websocket_get_channel
-     * aws_websocket_convert_to_midchannel_handler
-     */
-};
-
 /**
  * The various states that the client can be in.
  */
@@ -117,6 +96,33 @@ enum aws_mqtt5_client_state {
      * a single service.
      */
     AWS_MCS_TERMINATED,
+};
+
+struct aws_mqtt5_client_vtable {
+    uint64_t (*get_current_time_fn)(void);                                   /* aws_high_res_clock_get_ticks */
+    int (*channel_shutdown_fn)(struct aws_channel *channel, int error_code); /* aws_channel_shutdown */
+    int (*websocket_connect_fn)(
+        const struct aws_websocket_client_connection_options *options); /* aws_websocket_client_connect */
+    int (*client_bootstrap_new_socket_channel_fn)(
+        struct aws_socket_channel_bootstrap_options *options); /* aws_client_bootstrap_new_socket_channel */
+    int (*http_proxy_new_socket_channel_fn)(
+        struct aws_socket_channel_bootstrap_options *channel_options,
+        const struct aws_http_proxy_options *proxy_options); /* aws_http_proxy_new_socket_channel */
+
+    /* This doesn't replace anything, it's just for test verification of state changes */
+    void (*on_client_state_change_callback_fn)(
+        struct aws_mqtt5_client *client,
+        enum aws_mqtt5_client_state old_state,
+        enum aws_mqtt5_client_state new_state);
+
+    /*
+     * Potential additional candidates:
+     *
+     * aws_channel_slot_remove
+     * aws_websocket_release
+     * aws_websocket_get_channel
+     * aws_websocket_convert_to_midchannel_handler
+     */
 };
 
 /*

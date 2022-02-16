@@ -1061,6 +1061,10 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
         (void *)client,
         s_aws_mqtt5_client_state_to_c_str(next_state));
 
+    if (client->vtable->on_client_state_change_callback_fn != NULL) {
+        (*client->vtable->on_client_state_change_callback_fn)(client, client->current_state, next_state);
+    }
+
     switch (next_state) {
         case AWS_MCS_STOPPED:
             s_change_current_state_to_stopped(client);
