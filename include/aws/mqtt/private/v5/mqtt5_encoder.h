@@ -70,7 +70,7 @@ struct aws_mqtt5_encoding_step {
  * signature of a function that can takes a view assumed to be a specific packet type and appends the encoding
  * steps necessary to encode that packet into the encoder
  */
-typedef int(aws_mqtt5_encode_begin_packet_type_fn)(struct aws_mqtt5_encoder *encoder, void *view);
+typedef int(aws_mqtt5_encode_begin_packet_type_fn)(struct aws_mqtt5_encoder *encoder, const void *view);
 
 /**
  * Per-packet-type table of encoding functions
@@ -171,7 +171,7 @@ AWS_MQTT_API void aws_mqtt5_encoder_reset(struct aws_mqtt5_encoder *encoder);
 AWS_MQTT_API int aws_mqtt5_encoder_append_packet_encoding(
     struct aws_mqtt5_encoder *encoder,
     enum aws_mqtt5_packet_type packet_type,
-    void *packet_view);
+    const void *packet_view);
 
 /*
  * We intend that the client implementation only submits one packet at a time to the encoder, corresponding to the

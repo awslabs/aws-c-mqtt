@@ -157,7 +157,7 @@ void aws_mqtt5_add_user_property_encoding_steps(
     }
 }
 
-static int s_aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder, void *view) {
+static int s_aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder, const void *view) {
     (void)view;
 
     AWS_LOGF_DEBUG(
@@ -173,7 +173,7 @@ static int s_aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder, 
 }
 
 static int s_compute_disconnect_variable_length_fields(
-    struct aws_mqtt5_packet_disconnect_view *disconnect_view,
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
     uint32_t *total_remaining_length,
     uint32_t *property_length) {
     size_t local_property_length = aws_mqtt5_compute_user_property_encode_length(
@@ -196,9 +196,9 @@ static int s_compute_disconnect_variable_length_fields(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_mqtt5_encoder_begin_disconnect(struct aws_mqtt5_encoder *encoder, void *view) {
+static int s_aws_mqtt5_encoder_begin_disconnect(struct aws_mqtt5_encoder *encoder, const void *view) {
 
-    struct aws_mqtt5_packet_disconnect_view *disconnect_view = view;
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_view = view;
 
     uint32_t total_remaining_length = 0;
     uint32_t property_length = 0;
@@ -241,7 +241,7 @@ static int s_aws_mqtt5_encoder_begin_disconnect(struct aws_mqtt5_encoder *encode
 }
 
 static int s_compute_connect_variable_length_fields(
-    struct aws_mqtt5_packet_connect_view *connect_view,
+    const struct aws_mqtt5_packet_connect_view *connect_view,
     size_t *total_remaining_length,
     size_t *connect_property_length,
     size_t *will_property_length) {
@@ -343,9 +343,9 @@ static uint8_t s_aws_mqtt5_connect_compute_connect_flags(const struct aws_mqtt5_
     return flags;
 }
 
-static int s_aws_mqtt5_encoder_begin_connect(struct aws_mqtt5_encoder *encoder, void *view) {
+static int s_aws_mqtt5_encoder_begin_connect(struct aws_mqtt5_encoder *encoder, const void *view) {
 
-    struct aws_mqtt5_packet_connect_view *connect_view = view;
+    const struct aws_mqtt5_packet_connect_view *connect_view = view;
     const struct aws_mqtt5_packet_publish_view *will = connect_view->will;
 
     size_t total_remaining_length = 0;
@@ -611,7 +611,7 @@ void aws_mqtt5_encoder_reset(struct aws_mqtt5_encoder *encoder) {
 int aws_mqtt5_encoder_append_packet_encoding(
     struct aws_mqtt5_encoder *encoder,
     enum aws_mqtt5_packet_type packet_type,
-    void *packet_view) {
+    const void *packet_view) {
     aws_mqtt5_encode_begin_packet_type_fn *encoding_fn = encoder->config.encoders->encoders_by_packet_type[packet_type];
     if (encoding_fn == NULL) {
         /* TODO: I think the right error for this is in another branch atm, fix after merging */

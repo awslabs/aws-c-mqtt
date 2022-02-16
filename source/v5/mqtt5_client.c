@@ -16,6 +16,8 @@
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 
+#include <inttypes.h>
+
 static const char *s_aws_mqtt5_client_state_to_c_str(enum aws_mqtt5_client_state state) {
     switch (state) {
         case AWS_MCS_STOPPED:
@@ -204,6 +206,12 @@ static void s_aws_mqtt5_client_emit_final_lifecycle_event(
 
 static void s_enqueue_operation(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
     /* TODO: when statistics are added, we'll need to update them here */
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "(%p) aws_mqtt5_client - enqueuing %s operation",
+        (void *)client,
+        aws_mqtt5_packet_type_to_c_string(operation->packet_type));
 
     aws_linked_list_push_back(&client->queued_operations, &operation->node);
 }
@@ -765,42 +773,10 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
     }
 }
 
-static int s_aws_mqtt5_client_begin_operation_encode(
-    struct aws_mqtt5_client *client,
-    struct aws_mqtt5_operation *operation) {
-    switch (operation->packet_type) {
-
-        /* TODO: refactor operation base to make this function unnecessary? */
-        case AWS_MQTT5_PT_CONNECT:
-            if (aws_mqtt5_encoder_append_packet_encoding(
-                    &client->encoder,
-                    AWS_MQTT5_PT_CONNECT,
-                    &((struct aws_mqtt5_operation_connect *)operation->impl)->options_storage.storage_view)) {
-                return AWS_OP_ERR;
-            }
-            break;
-
-        case AWS_MQTT5_PT_PINGREQ:
-            if (aws_mqtt5_encoder_append_packet_encoding(&client->encoder, AWS_MQTT5_PT_PINGREQ, NULL)) {
-                return AWS_OP_ERR;
-            }
-            break;
-
-        case AWS_MQTT5_PT_DISCONNECT:
-        case AWS_MQTT5_PT_SUBSCRIBE:
-        case AWS_MQTT5_PT_UNSUBSCRIBE:
-        case AWS_MQTT5_PT_PUBLISH:
-        default:
-            return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
 static int s_aws_mqtt5_client_set_current_operation(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation) {
-    if (s_aws_mqtt5_client_begin_operation_encode(client, operation)) {
+    if (aws_mqtt5_encoder_append_packet_encoding(&client->encoder, operation->packet_type, operation->packet_view)) {
         s_aws_mqtt5_client_shutdown_channel(client, aws_last_error());
         return AWS_OP_ERR;
     }
@@ -820,6 +796,12 @@ static void s_reset_ping(struct aws_mqtt5_client *client) {
         aws_timestamp_convert(keep_alive_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     client->next_ping_time = aws_add_u64_saturating(now, keep_alive_interval_nanos);
     client->next_ping_timeout_time = 0;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "(%p) aws_mqtt5_client - pushing next ping time out to %" PRIu64,
+        (void *)client,
+        client->next_ping_time);
 }
 
 static void s_aws_mqtt5_on_socket_write_completion_mqtt_connect(struct aws_mqtt5_client *client, int error_code) {
@@ -968,6 +950,12 @@ static void s_reset_reconnection_delay_time(struct aws_mqtt5_client *client) {
         AWS_TIMESTAMP_NANOS,
         NULL);
     client->next_reconnect_delay_interval_reset_time = aws_add_u64_saturating(now, reset_reconnection_delay_time_nanos);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "(%p) aws_mqtt5_client - reconnection delay reset time set to %" PRIu64,
+        (void *)client,
+        client->next_reconnect_delay_interval_reset_time);
 }
 
 static void s_aws_mqtt5_client_reset_operations_for_new_connection(struct aws_mqtt5_client *client) {
@@ -1035,11 +1023,25 @@ static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client 
         client->current_reconnect_delay_interval_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     client->next_reconnect_time = aws_add_u64_saturating(now, reconnect_delay_nanos);
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "(%p) aws_mqtt5_client - next connection attempt at time %" PRIu64 ", in %" PRIu64 " seconds",
+        (void *)client,
+        client->next_reconnect_time,
+        aws_timestamp_convert(
+            client->current_reconnect_delay_interval_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL));
+
     uint64_t double_reconnect_delay = aws_add_u64_saturating(
         client->current_reconnect_delay_interval_ms, client->current_reconnect_delay_interval_ms);
     client->current_reconnect_delay_interval_ms =
         aws_min_u64(double_reconnect_delay, client->config->max_reconnect_delay_ms);
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "(%p) aws_mqtt5_client - next reconnect delay set to %" PRIu64 " seconds",
+        (void *)client,
+        aws_timestamp_convert(
+            client->current_reconnect_delay_interval_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL));
     s_aws_mqtt5_client_reset_offline_queue(client);
 }
 
@@ -1154,6 +1156,12 @@ static int s_aws_mqtt5_client_send_ping(struct aws_mqtt5_client *client, uint64_
         return AWS_OP_SUCCESS;
     }
 
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CLIENT,
+        "(%p) aws_mqtt5_client - sending ping with timeout %" PRIu64,
+        (void *)client,
+        ping_timeout_nanos);
+
     struct aws_mqtt5_operation_pingreq *pingreq_op = aws_mqtt5_operation_pingreq_new(client->allocator);
     if (s_aws_mqtt5_client_set_current_operation(client, &pingreq_op->base)) {
         aws_mqtt5_operation_release(&pingreq_op->base);
@@ -1196,6 +1204,11 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
 
     if (now >= client->next_reconnect_delay_interval_reset_time &&
         client->next_reconnect_delay_interval_reset_time != 0) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_CLIENT,
+            "(%p) aws_mqtt5_client - connected sufficiently long that reconnect backoff delay has been reset to zero",
+            (void *)client);
+
         client->current_reconnect_delay_interval_ms = client->config->min_reconnect_delay_ms;
         client->next_reconnect_delay_interval_reset_time = 0;
     }
@@ -1373,8 +1386,6 @@ static void s_aws_mqtt5_client_on_connack(
 
     aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
 
-    /* TODO: lifecycle event successful connection with connack && final settings */
-
     s_change_current_state(client, AWS_MCS_CONNECTED);
     s_aws_mqtt5_client_emit_connection_success_lifecycle_event(client, connack_view);
 }
@@ -1385,6 +1396,7 @@ static void s_aws_mqtt5_client_log_received_packet(
     void *packet_view) {
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT, "(%p) Received %s packet", (void *)client, aws_mqtt5_packet_type_to_c_string(type));
+
     switch (type) {
         case AWS_MQTT5_PT_CONNACK:
             aws_mqtt5_packet_connack_view_log(packet_view, AWS_LL_TRACE);
@@ -1631,6 +1643,13 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
     struct aws_mqtt5_client *client = change_state_task->client;
 
     if (client->desired_state != desired_state) {
+        AWS_LOGF_INFO(
+            AWS_LS_MQTT5_CLIENT,
+            "(%p) aws_mqtt5_client - changing desired client state from %s to %s",
+            (void *)client,
+            s_aws_mqtt5_client_state_to_c_str(client->desired_state),
+            s_aws_mqtt5_client_state_to_c_str(desired_state));
+
         client->desired_state = desired_state;
         aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
         client->disconnect_operation = aws_mqtt5_operation_disconnect_acquire(change_state_task->disconnect_operation);
