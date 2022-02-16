@@ -23,7 +23,15 @@ struct aws_mqtt5_operation;
 struct aws_websocket_client_connection_options;
 
 /**
- * The various states that the client can be in.
+ * The various states that the client can be in.  A client has both a current state and a desired state.
+ * Desired state is only allowed to be one of {STOPPED, CONNECTED, TERMINATED}.  The client transitions states
+ * based on either
+ *  (1) changes in desired state, or
+ *  (2) external events.
+ *
+ * Most states are interruptible (in the sense of a change in desired state causing an immediate change in state) but
+ * CONNECTING and CHANNEL_SHUTDOWN cannot be interrupted due to waiting for an asynchronous callback (that has no
+ * cancel) to complete.
  */
 enum aws_mqtt5_client_state {
 
@@ -37,7 +45,8 @@ enum aws_mqtt5_client_state {
     AWS_MCS_STOPPED,
 
     /*
-     * The client is attempting to connect to a remote endpoint, and is waiting for channel setup to complete.
+     * The client is attempting to connect to a remote endpoint, and is waiting for channel setup to complete. This
+     * state is not interruptible by any means other than channel setup completion.
      *
      * Next States:
      *    MQTT_CONNECT - if the channel completes setup with no error and desired state is still CONNECTED
@@ -53,7 +62,7 @@ enum aws_mqtt5_client_state {
      * Next States:
      *    CONNECTED - if a successful CONNACK is received and desired state is still CONNECTED
      *    CHANNEL_SHUTDOWN - On send/encode errors, read/decode errors, unsuccessful CONNACK, timeout to receive
-     *       CONNACK, successful CONNACK but desired state is no longer CONNECTED
+     *       CONNACK, desired state is no longer CONNECTED
      */
     AWS_MCS_MQTT_CONNECT,
 
@@ -62,7 +71,7 @@ enum aws_mqtt5_client_state {
      *
      * Next States:
      *    CHANNEL_SHUTDOWN - On send/encode errors, read/decode errors, DISCONNECT packet received, desired state
-     *       no longer CONNECTED
+     *       no longer CONNECTED, PINGRESP timeout
      *    PENDING_RECONNECT - unexpected channel shutdown completion
      */
     AWS_MCS_CONNECTED,
@@ -74,7 +83,7 @@ enum aws_mqtt5_client_state {
     AWS_MCS_CLEAN_DISCONNECT,
 
     /*
-     * The client is waiting for the io channel to completely shut down.
+     * The client is waiting for the io channel to completely shut down.  This state is not interruptible.
      *
      * Next States:
      *    PENDING_RECONNECT - the io channel has shut down and desired state is still CONNECTED
@@ -93,21 +102,31 @@ enum aws_mqtt5_client_state {
 
     /*
      * The client is performing final shutdown and release of all resources.  This state is only realized for
-     * a single service.
+     * a non-observable instant of time (transition out of STOPPED).
      */
     AWS_MCS_TERMINATED,
 };
 
+/**
+ * Table of overridable external functions to allow mocking and monitoring of the client.
+ */
 struct aws_mqtt5_client_vtable {
-    uint64_t (*get_current_time_fn)(void);                                   /* aws_high_res_clock_get_ticks */
-    int (*channel_shutdown_fn)(struct aws_channel *channel, int error_code); /* aws_channel_shutdown */
-    int (*websocket_connect_fn)(
-        const struct aws_websocket_client_connection_options *options); /* aws_websocket_client_connect */
-    int (*client_bootstrap_new_socket_channel_fn)(
-        struct aws_socket_channel_bootstrap_options *options); /* aws_client_bootstrap_new_socket_channel */
+    /* aws_high_res_clock_get_ticks */
+    uint64_t (*get_current_time_fn)(void);
+
+    /* aws_channel_shutdown */
+    int (*channel_shutdown_fn)(struct aws_channel *channel, int error_code);
+
+    /* aws_websocket_client_connect */
+    int (*websocket_connect_fn)(const struct aws_websocket_client_connection_options *options);
+
+    /* aws_client_bootstrap_new_socket_channel */
+    int (*client_bootstrap_new_socket_channel_fn)(struct aws_socket_channel_bootstrap_options *options);
+
+    /* aws_http_proxy_new_socket_channel */
     int (*http_proxy_new_socket_channel_fn)(
         struct aws_socket_channel_bootstrap_options *channel_options,
-        const struct aws_http_proxy_options *proxy_options); /* aws_http_proxy_new_socket_channel */
+        const struct aws_http_proxy_options *proxy_options);
 
     /* This doesn't replace anything, it's just for test verification of state changes */
     void (*on_client_state_change_callback_fn)(
@@ -159,26 +178,69 @@ struct aws_mqtt5_client {
 
     const struct aws_mqtt5_client_vtable *vtable;
 
+    /*
+     * Client configuration
+     */
     const struct aws_mqtt5_client_options_storage *config;
 
+    /*
+     * The recurrent task that runs all client logic outside of external event callbacks.  Bound to the client's
+     * event loop.
+     */
     struct aws_task service_task;
+
+    /*
+     * Tracks when the client's service task is next schedule to run.  Is zero if the task is not scheduled to run or
+     * we are in the middle of a service (so technically not scheduled too).
+     */
     uint64_t next_service_task_run_time;
+
+    /*
+     * True if the client's service task is running.  Used to skip service task reevaluation due to state changes
+     * while running the service task.  Reevaluation will occur at the very end of the service.
+     */
     bool in_service;
 
+    /*
+     * The final mqtt5 settings negotiated between defaults, CONNECT, and CONNACK.  Only valid while in
+     * CONNECTED or CLEAN_DISCONNECT states.
+     */
     struct aws_mqtt5_negotiated_settings negotiated_settings;
 
+    /*
+     * Event loop all the client's connections and any related tasks will be pinned to, ensuring serialization and
+     * concurrency safety.
+     */
     struct aws_event_loop *loop;
 
     /* Channel handler information */
     struct aws_channel_handler handler;
     struct aws_channel_slot *slot;
 
+    /*
+     * What state is the client working towards?
+     */
     enum aws_mqtt5_client_state desired_state;
+
+    /*
+     * What is the client's current state?
+     */
     enum aws_mqtt5_client_state current_state;
 
+    /*
+     * The client's lifecycle state.  Used to correctly emit lifecycle events in spite of the complicated
+     * async execution pathways that are possible.
+     */
     enum aws_mqtt5_lifecycle_state lifecycle_state;
 
+    /*
+     * The client's MQTT packet encoder
+     */
     struct aws_mqtt5_encoder encoder;
+
+    /*
+     * The client's MQTT packet decoder
+     */
     struct aws_mqtt5_decoder decoder;
 
     /*
@@ -259,14 +321,37 @@ struct aws_mqtt5_client {
      * as well as throughput throttles and any other modellable IoT Core limit.
      */
 
-    /* next event times and related data */
+    /*
+     * When should the next PINGREQ be sent?  Automatically pushed out with ever socket write completion.
+     */
     uint64_t next_ping_time;
+
+    /*
+     * When should we shut down the channel due to failure to receive a PINGRESP?  Only non-zero when an outstanding
+     * PINGREQ has not been answered.
+     */
     uint64_t next_ping_timeout_time;
 
+    /*
+     * When should the client next attempt to reconnect?  Only used by PENDING_RECONNECT state.
+     */
     uint64_t next_reconnect_time;
+
+    /*
+     * How much should we wait before our next reconnect attempt?  TODO: retry strategy?
+     */
     uint64_t current_reconnect_delay_interval_ms;
+
+    /*
+     * When should the client reset current_reconnect_delay_interval_ms to the minimum value?  Only relevant to the
+     * CONNECTED state.
+     */
     uint64_t next_reconnect_delay_interval_reset_time;
 
+    /*
+     * When should we shut down the channel due to failure to receive a CONNACK?  Only relevant during the MQTT_CONNECT
+     * state.
+     */
     uint64_t next_mqtt_connect_packet_timeout_time;
 };
 
