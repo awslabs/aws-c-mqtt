@@ -144,6 +144,11 @@ struct aws_mqtt5_client_vtable {
      */
 };
 
+struct aws_mqtt5_vtable_channel_creation_context {
+    struct aws_mqtt5_client *client;
+    void *user_data;
+};
+
 /*
  * In order to make it easier to guarantee the lifecycle events are properly paired and emitted, we track
  * a separate state (from aws_mqtt5_client_state) and emit lifecycle events based on it.
@@ -177,6 +182,8 @@ struct aws_mqtt5_client {
     struct aws_ref_count ref_count;
 
     const struct aws_mqtt5_client_vtable *vtable;
+
+    struct aws_mqtt5_vtable_channel_creation_context channel_creation_context;
 
     /*
      * Client configuration
@@ -359,7 +366,8 @@ AWS_EXTERN_C_BEGIN
 
 AWS_MQTT_API void aws_mqtt5_client_set_vtable(
     struct aws_mqtt5_client *client,
-    const struct aws_mqtt5_client_vtable *vtable);
+    const struct aws_mqtt5_client_vtable *vtable,
+    void *channel_creation_context_user_data);
 
 AWS_MQTT_API const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void);
 
