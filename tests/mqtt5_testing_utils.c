@@ -5,9 +5,11 @@
 
 #include "mqtt5_testing_utils.h"
 
+#include <aws/io/channel_bootstrap.h>
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
 #include <aws/mqtt/private/v5/mqtt5_encoder.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
+#include <aws/mqtt/v5/mqtt5_client.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -476,4 +478,168 @@ void aws_mqtt5_decode_init_testing_function_table(struct aws_mqtt5_decoder_funct
     *function_table = *g_aws_mqtt5_default_decoder_table;
     function_table->decoders_by_packet_type[AWS_MQTT5_PT_PINGREQ] = &s_aws_mqtt5_decoder_decode_pingreq;
     function_table->decoders_by_packet_type[AWS_MQTT5_PT_CONNECT] = &s_aws_mqtt5_decoder_decode_connect;
+}
+
+/*******************************************************************************************************************/
+
+static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
+    enum aws_mqtt5_packet_type type,
+    void *packet_view,
+    void *decoder_callback_user_data) {
+
+    struct aws_mqtt5_mock_server_packet_record packet_record;
+    AWS_ZERO_STRUCT(packet_record);
+
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = decoder_callback_user_data;
+
+    void *packet_storage = NULL;
+    switch (type) {
+        case AWS_MQTT5_PT_CONNECT:
+            packet_record.packet_storage =
+                aws_mem_calloc(test_fixture->allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
+            aws_mqtt5_packet_connect_storage_init(packet_record.packet_storage, test_fixture->allocator, packet_view);
+            break;
+
+        case AWS_MQTT5_PT_DISCONNECT:
+            packet_record.packet_storage =
+                aws_mem_calloc(test_fixture->allocator, 1, sizeof(struct aws_mqtt5_packet_disconnect_storage));
+            aws_mqtt5_packet_disconnect_storage_init(
+                packet_record.packet_storage, test_fixture->allocator, packet_view);
+            break;
+
+        case AWS_MQTT5_PT_SUBSCRIBE:
+            packet_record.packet_storage =
+                aws_mem_calloc(test_fixture->allocator, 1, sizeof(struct aws_mqtt5_packet_subscribe_storage));
+            aws_mqtt5_packet_subscribe_storage_init(packet_record.packet_storage, test_fixture->allocator, packet_view);
+            break;
+
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            packet_record.packet_storage =
+                aws_mem_calloc(test_fixture->allocator, 1, sizeof(struct aws_mqtt5_packet_unsubscribe_storage));
+            aws_mqtt5_packet_unsubscribe_storage_init(
+                packet_record.packet_storage, test_fixture->allocator, packet_view);
+            break;
+
+        case AWS_MQTT5_PT_PUBLISH:
+            packet_record.packet_storage =
+                aws_mem_calloc(test_fixture->allocator, 1, sizeof(struct aws_mqtt5_packet_publish_storage));
+            aws_mqtt5_packet_publish_storage_init(packet_record.packet_storage, test_fixture->allocator, packet_view);
+            break;
+
+        case AWS_MQTT5_PT_PUBACK:
+            /* TODO */
+            break;
+
+        default:
+            break;
+    }
+
+    packet_record.timestamp = (*test_fixture->client_vtable.get_current_time_fn)();
+    packet_record.packet_storage = packet_storage;
+    packet_record.packet_type = type;
+
+    return aws_array_list_push_back(&test_fixture->server_received_packets, &packet_record);
+}
+
+static int s_aws_mqtt5_client_mock_test_fixture_bootstrap(
+    struct aws_socket_channel_bootstrap_options *bootstrap_options) {
+    (void)bootstrap_options;
+
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+int aws_mqtt5_client_mock_test_fixture_init(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options *options) {
+
+    AWS_ZERO_STRUCT(*test_fixture);
+
+    test_fixture->allocator = options->allocator;
+    test_fixture->client_vtable = *aws_mqtt5_client_get_default_vtable();
+    test_fixture->client_vtable.client_bootstrap_new_socket_channel_fn = s_aws_mqtt5_client_mock_test_fixture_bootstrap;
+
+    test_fixture->mocked_client = aws_mqtt5_client_new(options->allocator, options->client_options);
+    aws_mqtt5_client_set_vtable(test_fixture->mocked_client, &test_fixture->client_vtable, test_fixture);
+
+    aws_mqtt5_encode_init_testing_function_table(&test_fixture->encoding_table);
+
+    struct aws_mqtt5_encoder_options encoder_options = {
+        .client = NULL,
+        .encoders = &test_fixture->encoding_table,
+    };
+
+    aws_mqtt5_encoder_init(&test_fixture->server_encoder, options->allocator, &encoder_options);
+
+    aws_mqtt5_decode_init_testing_function_table(&test_fixture->decoding_table);
+
+    struct aws_mqtt5_decoder_options decode_options = {
+        .callback_user_data = test_fixture,
+        .on_packet_received = s_aws_mqtt5_mock_test_fixture_on_packet_received_fn,
+        .on_publish_payload_data = NULL, /* TODO */
+        .decoder_table = &test_fixture->decoding_table,
+    };
+
+    aws_mqtt5_decoder_init(&test_fixture->server_decoder, options->allocator, &decode_options);
+
+    aws_array_list_init_dynamic(
+        &test_fixture->server_received_packets,
+        options->allocator,
+        10,
+        sizeof(struct aws_mqtt5_mock_server_packet_record));
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_clean_up_packet_record(struct aws_mqtt5_mock_server_packet_record *packet_record) {
+    switch (packet_record->packet_type) {
+        case AWS_MQTT5_PT_CONNECT:
+            aws_mqtt5_packet_connect_storage_clean_up(packet_record->packet_storage);
+            break;
+
+        case AWS_MQTT5_PT_DISCONNECT:
+            aws_mqtt5_packet_disconnect_storage_clean_up(packet_record->packet_storage);
+            break;
+
+        case AWS_MQTT5_PT_SUBSCRIBE:
+            aws_mqtt5_packet_subscribe_storage_clean_up(packet_record->packet_storage);
+            break;
+
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            aws_mqtt5_packet_unsubscribe_storage_clean_up(packet_record->packet_storage);
+            break;
+
+        case AWS_MQTT5_PT_PUBLISH:
+            aws_mqtt5_packet_publish_storage_clean_up(packet_record->packet_storage);
+            break;
+
+        case AWS_MQTT5_PT_PUBACK:
+            /* TODO */
+            break;
+
+        case AWS_MQTT5_PT_PINGREQ:
+            AWS_FATAL_ASSERT(packet_record->packet_storage == NULL);
+            break;
+
+        default:
+            AWS_FATAL_ASSERT(false);
+    }
+
+    if (packet_record->packet_storage != NULL) {
+        aws_mem_release(packet_record->storage_allocator, packet_record->packet_storage);
+    }
+}
+
+void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_test_fixture *test_fixture) {
+    aws_mqtt5_client_release(test_fixture->mocked_client);
+    aws_mqtt5_decoder_clean_up(&test_fixture->server_decoder);
+    aws_mqtt5_encoder_clean_up(&test_fixture->server_encoder);
+
+    for (size_t i = 0; i < aws_array_list_length(&test_fixture->server_received_packets); ++i) {
+        struct aws_mqtt5_mock_server_packet_record *packet = NULL;
+        aws_array_list_get_at_ptr(&test_fixture->server_received_packets, (void **)&packet, i);
+
+        s_clean_up_packet_record(packet);
+    }
+
+    aws_array_list_clean_up(&test_fixture->server_received_packets);
 }

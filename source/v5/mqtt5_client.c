@@ -1651,7 +1651,7 @@ const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void) 
 
 struct aws_mqtt5_client *aws_mqtt5_client_new(
     struct aws_allocator *allocator,
-    struct aws_mqtt5_client_options *options) {
+    const struct aws_mqtt5_client_options *options) {
     AWS_FATAL_ASSERT(allocator != NULL);
     AWS_FATAL_ASSERT(options != NULL);
 

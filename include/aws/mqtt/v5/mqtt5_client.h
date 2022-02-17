@@ -131,7 +131,7 @@ AWS_EXTERN_C_BEGIN
 AWS_MQTT_API
 struct aws_mqtt5_client *aws_mqtt5_client_new(
     struct aws_allocator *allocator,
-    struct aws_mqtt5_client_options *options);
+    const struct aws_mqtt5_client_options *options);
 
 /**
  * Acquires a reference to an mqtt5 client
