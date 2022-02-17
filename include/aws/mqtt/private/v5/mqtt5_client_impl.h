@@ -63,6 +63,8 @@ enum aws_mqtt5_client_state {
      *    CONNECTED - if a successful CONNACK is received and desired state is still CONNECTED
      *    CHANNEL_SHUTDOWN - On send/encode errors, read/decode errors, unsuccessful CONNACK, timeout to receive
      *       CONNACK, desired state is no longer CONNECTED
+     *    PENDING_RECONNECT - unexpected channel shutdown completion and desired state still CONNECTED
+     *    STOPPED - unexpected channel shutdown completion and desired state no longer CONNECTED
      */
     AWS_MCS_MQTT_CONNECT,
 
@@ -72,7 +74,8 @@ enum aws_mqtt5_client_state {
      * Next States:
      *    CHANNEL_SHUTDOWN - On send/encode errors, read/decode errors, DISCONNECT packet received, desired state
      *       no longer CONNECTED, PINGRESP timeout
-     *    PENDING_RECONNECT - unexpected channel shutdown completion
+     *    PENDING_RECONNECT - unexpected channel shutdown completion and desired state still CONNECTED
+     *    STOPPED - unexpected channel shutdown completion and desired state no longer CONNECTED
      */
     AWS_MCS_CONNECTED,
 
