@@ -350,7 +350,7 @@ AWS_MQTT_API struct aws_mqtt5_operation *aws_mqtt5_operation_release(struct aws_
 AWS_MQTT_API void aws_mqtt5_operation_complete(
     struct aws_mqtt5_operation *operation,
     int error_code,
-    void *associated_view);
+    const void *associated_view);
 
 AWS_MQTT_API void aws_mqtt5_operation_set_packet_id(
     struct aws_mqtt5_operation *operation,

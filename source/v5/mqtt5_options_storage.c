@@ -206,7 +206,7 @@ struct aws_mqtt5_operation *aws_mqtt5_operation_release(struct aws_mqtt5_operati
     return NULL;
 }
 
-void aws_mqtt5_operation_complete(struct aws_mqtt5_operation *operation, int error_code, void *associated_view) {
+void aws_mqtt5_operation_complete(struct aws_mqtt5_operation *operation, int error_code, const void *associated_view) {
     AWS_FATAL_ASSERT(operation->vtable != NULL);
     if (operation->vtable->aws_mqtt5_operation_completion_fn != NULL) {
         (*operation->vtable->aws_mqtt5_operation_completion_fn)(operation, error_code, associated_view);
