@@ -28,77 +28,77 @@ void aws_mqtt5_negotiated_settings_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings maxiumum qos set to %d",
+        "id=%p: aws_mqtt5_negotiated_settings maxiumum qos set to %d",
         (void *)negotiated_settings,
         negotiated_settings->maximum_qos);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings session expiry interval set to %" PRIu32,
+        "id=%p: aws_mqtt5_negotiated_settings session expiry interval set to %" PRIu32,
         (void *)negotiated_settings,
         negotiated_settings->session_expiry_interval);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings receive maximum from server set to %" PRIu16,
+        "id=%p: aws_mqtt5_negotiated_settings receive maximum from server set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->receive_maximum_from_server);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings maximum packet size set to %" PRIu32,
+        "id=%p: aws_mqtt5_negotiated_settings maximum packet size set to %" PRIu32,
         (void *)negotiated_settings,
         negotiated_settings->maximum_packet_size);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings topic alias maximum to server set to %" PRIu16,
+        "id=%p: aws_mqtt5_negotiated_settings topic alias maximum to server set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->topic_alias_maximum_to_server);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings topic alias maximum to client set to %" PRIu16,
+        "id=%p: aws_mqtt5_negotiated_settings topic alias maximum to client set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->topic_alias_maximum_to_client);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings server keep alive set to %" PRIu16,
+        "id=%p: aws_mqtt5_negotiated_settings server keep alive set to %" PRIu16,
         (void *)negotiated_settings,
         negotiated_settings->server_keep_alive);
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings retain available set to %s",
+        "id=%p: aws_mqtt5_negotiated_settings retain available set to %s",
         (void *)negotiated_settings,
         negotiated_settings->retain_available ? "true" : "false");
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings wildcard subscriptions available set to %s",
+        "id=%p: aws_mqtt5_negotiated_settings wildcard subscriptions available set to %s",
         (void *)negotiated_settings,
         negotiated_settings->wildcard_subscriptions_available ? "true" : "false");
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings subscription identifiers available set to %s",
+        "id=%p: aws_mqtt5_negotiated_settings subscription identifiers available set to %s",
         (void *)negotiated_settings,
         negotiated_settings->subscription_identifiers_available ? "true" : "false");
 
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_negotiated_settings shared subscriptions available set to %s",
+        "id=%p: aws_mqtt5_negotiated_settings shared subscriptions available set to %s",
         (void *)negotiated_settings,
         negotiated_settings->shared_subscriptions_available ? "true" : "false");
 }

@@ -52,8 +52,8 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
 
     if (!s_is_decodable_packet_type(decoder, packet_type)) {
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "(%p) aws_mqtt5_decoder - unsupported or illegal packet type value: %d",
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: unsupported or illegal packet type value: %d",
             decoder->options.callback_user_data,
             (int)packet_type);
         return AWS_MQTT5_DRT_ERROR;
@@ -345,10 +345,7 @@ done:
                 AWS_MQTT5_PT_CONNACK, &storage.storage_view, decoder->options.callback_user_data);
         }
     } else {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "(%p) aws_mqtt5_decoder - CONNACK decode failure",
-            decoder->options.callback_user_data);
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: CONNACK decode failure", decoder->options.callback_user_data);
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -460,10 +457,7 @@ done:
                 AWS_MQTT5_PT_DISCONNECT, &storage.storage_view, decoder->options.callback_user_data);
         }
     } else {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "(%p) aws_mqtt5_decoder - DISCONNECT decode failure",
-            decoder->options.callback_user_data);
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: DISCONNECT decode failure", decoder->options.callback_user_data);
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -492,8 +486,7 @@ static int s_aws_mqtt5_decoder_decode_pingresp(struct aws_mqtt5_decoder *decoder
 
 error:
 
-    AWS_LOGF_ERROR(
-        AWS_LS_MQTT5_GENERAL, "(%p) aws_mqtt5_decoder - PINGRESP decode failure", decoder->options.callback_user_data);
+    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: PINGRESP decode failure", decoder->options.callback_user_data);
     return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
 }
 
