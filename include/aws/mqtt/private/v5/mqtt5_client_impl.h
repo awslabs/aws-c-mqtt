@@ -135,7 +135,8 @@ struct aws_mqtt5_client_vtable {
     void (*on_client_state_change_callback_fn)(
         struct aws_mqtt5_client *client,
         enum aws_mqtt5_client_state old_state,
-        enum aws_mqtt5_client_state new_state);
+        enum aws_mqtt5_client_state new_state,
+        void *vtable_user_data);
 
     /*
      * Potential additional candidates:
@@ -145,11 +146,8 @@ struct aws_mqtt5_client_vtable {
      * aws_websocket_get_channel
      * aws_websocket_convert_to_midchannel_handler
      */
-};
 
-struct aws_mqtt5_vtable_channel_creation_context {
-    struct aws_mqtt5_client *client;
-    void *user_data;
+    void *vtable_user_data;
 };
 
 /*
@@ -185,8 +183,6 @@ struct aws_mqtt5_client {
     struct aws_ref_count ref_count;
 
     const struct aws_mqtt5_client_vtable *vtable;
-
-    struct aws_mqtt5_vtable_channel_creation_context channel_creation_context;
 
     /*
      * Client configuration
@@ -369,8 +365,7 @@ AWS_EXTERN_C_BEGIN
 
 AWS_MQTT_API void aws_mqtt5_client_set_vtable(
     struct aws_mqtt5_client *client,
-    const struct aws_mqtt5_client_vtable *vtable,
-    void *channel_creation_context_user_data);
+    const struct aws_mqtt5_client_vtable *vtable);
 
 AWS_MQTT_API const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void);
 

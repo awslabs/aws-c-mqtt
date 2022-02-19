@@ -440,8 +440,7 @@ static void s_mqtt5_client_shutdown(
     (void)bootstrap;
     (void)channel;
 
-    struct aws_mqtt5_vtable_channel_creation_context *channel_creation_context = user_data;
-    struct aws_mqtt5_client *client = channel_creation_context->client;
+    struct aws_mqtt5_client *client = user_data;
 
     if (error_code == AWS_ERROR_SUCCESS) {
         error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
@@ -479,8 +478,7 @@ static void s_mqtt5_client_setup(
 
     /* Setup callback contract is: if error_code is non-zero then channel is NULL. */
     AWS_FATAL_ASSERT((error_code != 0) == (channel == NULL));
-    struct aws_mqtt5_vtable_channel_creation_context *channel_creation_context = user_data;
-    struct aws_mqtt5_client *client = channel_creation_context->client;
+    struct aws_mqtt5_client *client = user_data;
 
     AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
 
@@ -535,7 +533,7 @@ static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_c
 
     struct aws_channel *channel = client->slot ? client->slot->channel : NULL;
 
-    s_mqtt5_client_shutdown(client->config->bootstrap, error_code, channel, &client->channel_creation_context);
+    s_mqtt5_client_shutdown(client->config->bootstrap, error_code, channel, client);
 
     if (websocket) {
         aws_websocket_release(websocket);
@@ -581,7 +579,7 @@ static void s_on_websocket_setup(
     }
 
     /* Call into the channel-setup callback, the rest of the logic is the same. */
-    s_mqtt5_client_setup(client->config->bootstrap, error_code, channel, &client->channel_creation_context);
+    s_mqtt5_client_setup(client->config->bootstrap, error_code, channel, client);
 }
 
 struct aws_mqtt5_websocket_transform_complete_task {
@@ -750,7 +748,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
         channel_options.tls_options = client->config->tls_options_ptr;
         channel_options.setup_callback = &s_mqtt5_client_setup;
         channel_options.shutdown_callback = &s_mqtt5_client_shutdown;
-        channel_options.user_data = &client->channel_creation_context;
+        channel_options.user_data = client;
         channel_options.requested_event_loop = client->loop;
 
         if (client->config->http_proxy_config == NULL) {
@@ -1132,7 +1130,8 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
         s_aws_mqtt5_client_state_to_c_str(next_state));
 
     if (client->vtable->on_client_state_change_callback_fn != NULL) {
-        (*client->vtable->on_client_state_change_callback_fn)(client, client->current_state, next_state);
+        (*client->vtable->on_client_state_change_callback_fn)(
+            client, client->current_state, next_state, client->vtable->vtable_user_data);
     }
 
     switch (next_state) {
@@ -1420,8 +1419,8 @@ static int s_process_read_message(
             aws_error_debug_str(error_code));
 
         /* TODO: conditional clean disconnect */
-        s_aws_mqtt5_client_shutdown_channel(client, aws_last_error());
-        return AWS_OP_SUCCESS;
+        s_aws_mqtt5_client_shutdown_channel(client, error_code);
+        return AWS_OP_ERR;
     }
 
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
@@ -1635,14 +1634,12 @@ static struct aws_mqtt5_client_vtable s_default_client_vtable = {
     .websocket_connect_fn = aws_websocket_client_connect,
     .client_bootstrap_new_socket_channel_fn = aws_client_bootstrap_new_socket_channel,
     .http_proxy_new_socket_channel_fn = aws_http_proxy_new_socket_channel,
+
+    .vtable_user_data = NULL,
 };
 
-void aws_mqtt5_client_set_vtable(
-    struct aws_mqtt5_client *client,
-    const struct aws_mqtt5_client_vtable *vtable,
-    void *channel_creation_context_user_data) {
+void aws_mqtt5_client_set_vtable(struct aws_mqtt5_client *client, const struct aws_mqtt5_client_vtable *vtable) {
     client->vtable = vtable;
-    client->channel_creation_context.user_data = channel_creation_context_user_data;
 }
 
 const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void) {
@@ -1665,9 +1662,11 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     client->allocator = allocator;
     client->vtable = &s_default_client_vtable;
 
-    client->channel_creation_context.client = client;
-
     aws_ref_count_init(&client->ref_count, client, s_on_mqtt5_client_zero_ref_count);
+
+    aws_linked_list_init(&client->queued_operations);
+    aws_linked_list_init(&client->write_completion_operations);
+    aws_linked_list_init(&client->unacked_operations);
 
     client->config = aws_mqtt5_client_options_storage_new(allocator, options);
     if (client->config == NULL) {
@@ -1686,9 +1685,6 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
 
     client->next_mqtt_packet_id = 1;
 
-    aws_linked_list_init(&client->queued_operations);
-    aws_linked_list_init(&client->write_completion_operations);
-    aws_linked_list_init(&client->unacked_operations);
     if (aws_hash_table_init(
             &client->unacked_operations_table,
             allocator,

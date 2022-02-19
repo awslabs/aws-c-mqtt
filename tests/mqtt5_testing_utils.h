@@ -8,11 +8,15 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/common/array_list.h>
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 #include <aws/io/channel.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
 #include <aws/mqtt/private/v5/mqtt5_encoder.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
+
+struct aws_event_loop_group;
 
 struct aws_mqtt5_mock_server_packet_record {
     struct aws_allocator *storage_allocator;
@@ -23,31 +27,75 @@ struct aws_mqtt5_mock_server_packet_record {
     enum aws_mqtt5_packet_type packet_type;
 };
 
-struct aws_mqtt5_mock_server_vtable {};
+struct aws_mqtt5_lifecycle_event_record {
+    struct aws_allocator *allocator;
+
+    uint64_t timestamp;
+
+    struct aws_mqtt5_client_lifecycle_event event;
+
+    struct aws_mqtt5_negotiated_settings settings_storage;
+    struct aws_mqtt5_packet_disconnect_storage disconnect_storage;
+    struct aws_mqtt5_packet_connack_storage connack_storage;
+};
+
+struct aws_mqtt5_server_mock_connection_context {
+    struct aws_allocator *allocator;
+
+    struct aws_channel *channel;
+    struct aws_channel_handler handler;
+    struct aws_channel_slot *slot;
+
+    struct aws_mqtt5_encoder_function_table encoding_table;
+    struct aws_mqtt5_encoder encoder;
+
+    struct aws_mqtt5_decoder_function_table decoding_table;
+    struct aws_mqtt5_decoder decoder;
+
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+};
+
+typedef int (*on_server_packet_received_fn)(
+    void *packet_view,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *packet_received_user_data);
+
+struct aws_mqtt5_mock_server_vtable {
+    on_server_packet_received_fn packet_handlers[16];
+};
 
 struct aws_mqtt5_client_mqtt5_mock_test_fixture_options {
-    struct aws_allocator *allocator;
-    const struct aws_mqtt5_client_options *client_options;
-    const struct aws_mqtt5_mock_server_vtable *server_table;
+    struct aws_mqtt5_client_options *client_options;
+    const struct aws_mqtt5_mock_server_vtable *server_function_table;
+    void *server_packet_received_user_data;
 };
 
 struct aws_mqtt5_client_mock_test_fixture {
     struct aws_allocator *allocator;
 
+    struct aws_event_loop_group *elg;
+    struct aws_host_resolver *host_resolver;
+    struct aws_client_bootstrap *client_bootstrap;
+    struct aws_server_bootstrap *server_bootstrap;
+    struct aws_socket_endpoint endpoint;
+    struct aws_socket_options socket_options;
+    struct aws_socket *listener;
+
+    const struct aws_mqtt5_mock_server_vtable *server_function_table;
+    void *server_packet_received_user_data;
+
     struct aws_mqtt5_client_vtable client_vtable;
-    struct aws_mqtt5_client *mocked_client;
+    struct aws_mqtt5_client *client;
 
-    struct aws_channel *unified_channel;
-    struct aws_channel_handler server_handler;
-    struct aws_channel_slot *server_slot;
+    aws_mqtt5_client_connection_event_callback_fn *original_lifecycle_event_handler;
+    void *original_lifecycle_event_handler_user_data;
 
-    struct aws_mqtt5_encoder_function_table encoding_table;
-    struct aws_mqtt5_encoder server_encoder;
-
-    struct aws_mqtt5_decoder_function_table decoding_table;
-    struct aws_mqtt5_decoder server_decoder;
-
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
     struct aws_array_list server_received_packets;
+    struct aws_array_list lifecycle_events;
+    struct aws_array_list client_states;
+    bool listener_destroyed;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -64,6 +112,7 @@ AWS_MQTT_API void aws_mqtt5_decode_init_testing_function_table(struct aws_mqtt5_
 
 AWS_MQTT_API int aws_mqtt5_client_mock_test_fixture_init(
     struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    struct aws_allocator *allocator,
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options *options);
 
 AWS_MQTT_API void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_test_fixture *test_fixture);
