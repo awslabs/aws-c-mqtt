@@ -1758,12 +1758,11 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
     (void)task;
 
     struct aws_mqtt_change_desired_state_task *change_state_task = arg;
+    struct aws_mqtt5_client* client = change_state_task->client;
+    enum aws_mqtt5_client_state desired_state = change_state_task->desired_state;
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto done;
     }
-
-    enum aws_mqtt5_client_state desired_state = change_state_task->desired_state;
-    struct aws_mqtt5_client *client = change_state_task->client;
 
     if (client->desired_state != desired_state) {
         AWS_LOGF_INFO(

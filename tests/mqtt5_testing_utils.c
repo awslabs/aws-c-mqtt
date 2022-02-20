@@ -83,7 +83,7 @@ static int s_compute_connack_variable_length_fields(
     }
 
     /* reason code (1 byte) + flags (1 byte) */
-    *total_remaining_length = *property_length + property_length_encoding_length + 2;
+    *total_remaining_length = *property_length + (uint32_t)property_length_encoding_length + 2;
 
     return AWS_OP_SUCCESS;
 }
@@ -750,6 +750,8 @@ void s_aws_mqtt5_test_fixture_state_changed_callback(
     enum aws_mqtt5_client_state old_state,
     enum aws_mqtt5_client_state new_state,
     void *vtable_user_data) {
+    (void)old_state;
+    (void)client;
 
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = vtable_user_data;
 

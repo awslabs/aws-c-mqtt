@@ -169,6 +169,8 @@ static void s_wait_for_stopped_lifecycle_event(struct aws_mqtt5_client_mock_test
 }
 
 static int s_mqtt5_client_simple_connect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     aws_mqtt_library_init(allocator);
 
     struct aws_mqtt5_packet_connect_view connect_options;

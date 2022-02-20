@@ -356,8 +356,8 @@ int aws_mqtt5_packet_connect_view_validate(
 void aws_mqtt5_packet_connect_view_log(
     const struct aws_mqtt5_packet_connect_view *connect_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
@@ -928,8 +928,8 @@ void aws_mqtt5_packet_connack_storage_clean_up(struct aws_mqtt5_packet_connack_s
 void aws_mqtt5_packet_connack_view_log(
     const struct aws_mqtt5_packet_connack_view *connack_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
@@ -1207,8 +1207,8 @@ int aws_mqtt5_packet_disconnect_view_validate(
 void aws_mqtt5_packet_disconnect_view_log(
     const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger * temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
@@ -1516,8 +1516,8 @@ int aws_mqtt5_packet_publish_view_validate(
 void aws_mqtt5_packet_publish_view_log(
     const struct aws_mqtt5_packet_publish_view *publish_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger * temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
@@ -1880,8 +1880,8 @@ int aws_mqtt5_packet_unsubscribe_view_validate(
 void aws_mqtt5_packet_unsubscribe_view_log(
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger * temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
@@ -2192,8 +2192,8 @@ int aws_mqtt5_packet_subscribe_view_validate(
 void aws_mqtt5_packet_subscribe_view_log(
     const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger * temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
@@ -2566,8 +2566,8 @@ static void s_log_tls_connection_options(
 void aws_mqtt5_client_options_storage_log(
     const struct aws_mqtt5_client_options_storage *options_storage,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger * temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
