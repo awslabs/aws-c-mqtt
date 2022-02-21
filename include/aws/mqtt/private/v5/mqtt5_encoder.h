@@ -260,7 +260,7 @@ AWS_EXTERN_C_END
 
 #define ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, cursor)                                                        \
     {                                                                                                                  \
-        aws_mqtt5_encoder_push_step_u16(encoder, (uint16_t)((cursor).len));                                                        \
+        aws_mqtt5_encoder_push_step_u16(encoder, (uint16_t)((cursor).len));                                            \
         aws_mqtt5_encoder_push_step_cursor(encoder, (cursor));                                                         \
     }
 
