@@ -566,6 +566,7 @@ int aws_mqtt5_packet_connect_storage_init(
     struct aws_mqtt5_packet_connect_storage *storage,
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_connect_view *view) {
+    AWS_ZERO_STRUCT(*storage);
 
     size_t storage_capacity = s_aws_mqtt5_packet_connect_compute_storage_size(view);
     if (aws_byte_buf_init(&storage->storage, allocator, storage_capacity)) {
@@ -785,6 +786,7 @@ int aws_mqtt5_packet_connack_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_connack_view *connack_view) {
 
+    AWS_ZERO_STRUCT(*connack_storage);
     size_t storage_capacity = s_aws_mqtt5_packet_connack_compute_storage_size(connack_view);
     if (aws_byte_buf_init(&connack_storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
@@ -1299,6 +1301,7 @@ int aws_mqtt5_packet_disconnect_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_disconnect_view *disconnect_options) {
 
+    AWS_ZERO_STRUCT(*disconnect_storage);
     size_t storage_capacity = s_aws_mqtt5_packet_disconnect_compute_storage_size(disconnect_options);
     if (aws_byte_buf_init(&disconnect_storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
@@ -1649,6 +1652,7 @@ int aws_mqtt5_packet_publish_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_publish_view *publish_options) {
 
+    AWS_ZERO_STRUCT(*publish_storage);
     size_t storage_capacity = s_aws_mqtt5_packet_publish_compute_storage_size(publish_options);
     if (aws_byte_buf_init(&publish_storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
@@ -1972,6 +1976,7 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options) {
 
+    AWS_ZERO_STRUCT(*unsubscribe_storage);
     size_t storage_capacity = s_aws_mqtt5_packet_unsubscribe_compute_storage_size(unsubscribe_options);
     if (aws_byte_buf_init(&unsubscribe_storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
@@ -2306,6 +2311,7 @@ int aws_mqtt5_packet_subscribe_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_subscribe_view *subscribe_options) {
 
+    AWS_ZERO_STRUCT(*subscribe_storage);
     size_t storage_capacity = s_aws_mqtt5_packet_subscribe_compute_storage_size(subscribe_options);
     if (aws_byte_buf_init(&subscribe_storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;

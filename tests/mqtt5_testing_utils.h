@@ -117,6 +117,11 @@ AWS_MQTT_API int aws_mqtt5_client_mock_test_fixture_init(
 
 AWS_MQTT_API void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_test_fixture *test_fixture);
 
+AWS_MQTT_API bool aws_mqtt5_client_test_are_packets_equal(
+    enum aws_mqtt5_packet_type packet_type,
+    void *lhs_packet_storage,
+    void *rhs_packet_storage);
+
 AWS_EXTERN_C_END
 
 #endif /* MQTT_MQTT5_TESTING_UTILS_H */

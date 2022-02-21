@@ -933,3 +933,79 @@ void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_te
     aws_mutex_clean_up(&test_fixture->lock);
     aws_condition_variable_clean_up(&test_fixture->signal);
 }
+
+#define AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs, rhs)                                                               \
+    if ((lhs) != (rhs)) {                                                                                              \
+        return false;                                                                                                  \
+    }
+
+#define AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs, rhs)                                                      \
+    if (((lhs) != NULL) != ((rhs) != NULL)) {                                                                          \
+        return false;                                                                                                  \
+    }                                                                                                                  \
+    if (((lhs) != NULL) && ((rhs) != NULL) && (*(lhs) != *(rhs))) {                                                    \
+        return false;                                                                                                  \
+    }
+
+#define AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs, rhs)                                                            \
+    if (!aws_byte_cursor_eq(&(lhs), &(rhs))) {                                                                         \
+        return false;                                                                                                  \
+    }
+
+#define AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs, rhs)                                                   \
+    if (((lhs) != NULL) != ((rhs) != NULL)) {                                                                          \
+        return false;                                                                                                  \
+    }                                                                                                                  \
+    if (((lhs) != NULL) && ((rhs) != NULL) && (!aws_byte_cursor_eq(lhs, rhs))) {                                       \
+        return false;                                                                                                  \
+    }
+
+#define AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(lhs_props, lhs_prop_count, rhs_props, rhs_prop_count)              \
+    if (aws_mqtt5_test_verify_user_properties_raw((lhs_prop_count), (lhs_props), (rhs_prop_count), (rhs_props)) !=     \
+        AWS_OP_SUCCESS) {                                                                                              \
+        return false;                                                                                                  \
+    }
+
+static bool s_aws_connect_packets_equal(
+    const struct aws_mqtt5_packet_connect_view *lhs,
+    const struct aws_mqtt5_packet_connect_view *rhs) {
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->keep_alive_interval_seconds, rhs->keep_alive_interval_seconds);
+    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->client_id, rhs->client_id);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->username, rhs->username);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->password, rhs->password);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->clean_start, rhs->clean_start);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(
+        lhs->session_expiry_interval_seconds, rhs->session_expiry_interval_seconds);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(
+        lhs->request_response_information, rhs->request_response_information);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->request_problem_information, rhs->request_problem_information);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->receive_maximum, rhs->receive_maximum);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->topic_alias_maximum, rhs->topic_alias_maximum);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->maximum_packet_size_bytes, rhs->maximum_packet_size_bytes);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->will_delay_interval_seconds, rhs->will_delay_interval_seconds);
+
+    /* TODO: Check Will */
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
+        lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->authentication_method, rhs->authentication_method);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->authentication_data, rhs->authentication_data);
+
+    return true;
+}
+
+bool aws_mqtt5_client_test_are_packets_equal(
+    enum aws_mqtt5_packet_type packet_type,
+    void *lhs_packet_storage,
+    void *rhs_packet_storage) {
+    switch (packet_type) {
+        case AWS_MQTT5_PT_CONNECT:
+            return s_aws_connect_packets_equal(
+                &((struct aws_mqtt5_packet_connect_storage *)lhs_packet_storage)->storage_view,
+                &((struct aws_mqtt5_packet_connect_storage *)rhs_packet_storage)->storage_view);
+
+        default:
+            return false;
+    }
+}
