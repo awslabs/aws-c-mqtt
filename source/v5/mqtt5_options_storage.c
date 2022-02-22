@@ -1109,19 +1109,18 @@ void aws_mqtt5_packet_suback_view_log(
         (void *)suback_view,
         (int)suback_view->packet_id);
 
-    /*    TODO STEVE log reason codes in suback view
-        for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
-            const uint8_t reason_code = &suback_view->reason_codes[i];
+    for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
+        const uint8_t reason_code = suback_view->reason_codes[i];
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: topic %d reason code:%d %s",
+            (void *)suback_view,
+            i,
+            (int)reason_code,
+            aws_mqtt5_suback_reason_code_to_c_string(reason_code));
+    }
 
-            AWS_LOGF(
-                level,
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_packet_suback_view reason code set to %d(%s)",
-                (void *)suback_view,
-                (int)reason_code,
-                aws_mqtt5_suback_reason_code_to_c_string(reason_code));
-        }
-    */
     s_aws_mqtt5_user_property_set_log(
         suback_view->user_properties,
         suback_view->user_property_count,
@@ -1140,8 +1139,8 @@ void aws_mqtt5_packet_suback_view_init_from_storage(
     suback_view->user_property_count = aws_mqtt5_user_property_set_size(&suback_storage->user_properties);
     suback_view->user_properties = suback_storage->user_properties.properties.data;
 
-    suback_view->reason_code_count = aws_mqtt5_suback_reason_code_set_size(suback_storage->reason_codes);
-    suback_view->reason_codes = &suback_storage->reason_codes.reason_codes.data;
+    suback_view->reason_code_count = aws_mqtt5_suback_reason_code_set_size(&suback_storage->reason_codes);
+    suback_view->reason_codes = suback_storage->reason_codes.reason_codes.data;
 }
 
 /*********************************************************************************************************************

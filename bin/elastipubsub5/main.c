@@ -218,7 +218,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
 
         struct aws_mqtt5_subscription_view subscription_view_1 = {
             .topic_filter = aws_byte_cursor_from_c_str("test_topic_1"),
-            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
             .no_local = false,
             .retain_as_published = false,
             .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
@@ -232,18 +232,19 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
         };
         struct aws_mqtt5_subscription_view subscription_view_3 = {
             .topic_filter = aws_byte_cursor_from_c_str("test_topic_3"),
-            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
             .no_local = false,
             .retain_as_published = false,
             .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
         };
+
         struct aws_mqtt5_subscription_view subscriptions[3];
         subscriptions[0] = subscription_view_1;
         subscriptions[1] = subscription_view_2;
         subscriptions[2] = subscription_view_3;
 
         struct aws_mqtt5_packet_subscribe_view packet_subscribe_view = {
-            .packet_id = 1, // TODO Figure out where to use next_mqtt_packet_id and where to increment it
+            .packet_id = 1, // This should automatically be updated elsewhere in logic
             .subscription_count = 3,
             .subscriptions = &subscriptions,
             .subscription_identifier = 0, // what is this?

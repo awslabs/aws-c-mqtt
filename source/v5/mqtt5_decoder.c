@@ -515,7 +515,7 @@ static int s_aws_mqtt5_decoder_decode_suback(struct aws_mqtt5_decoder *decoder) 
     if (property_length != 0) {
         uint32_t reason_code_length = packet_cursor.len - property_length;
         while (packet_cursor.len > reason_code_length) {
-            if(s_read_suback_property(&storage, &packet_cursor){
+            if (s_read_suback_property(&storage, &packet_cursor)) {
                 goto done;
             }
         }
