@@ -7,11 +7,103 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/common/array_list.h>
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
+#include <aws/io/channel.h>
+#include <aws/mqtt/private/v5/mqtt5_client_impl.h>
+#include <aws/mqtt/private/v5/mqtt5_decoder.h>
+#include <aws/mqtt/private/v5/mqtt5_encoder.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
-struct aws_mqtt5_encoder;
-struct aws_mqtt5_decoder_function_table;
-struct aws_mqtt5_encoder_function_table;
+struct aws_event_loop_group;
+
+struct aws_mqtt5_mock_server_packet_record {
+    struct aws_allocator *storage_allocator;
+
+    uint64_t timestamp;
+
+    void *packet_storage;
+    enum aws_mqtt5_packet_type packet_type;
+};
+
+struct aws_mqtt5_lifecycle_event_record {
+    struct aws_allocator *allocator;
+
+    uint64_t timestamp;
+
+    struct aws_mqtt5_client_lifecycle_event event;
+
+    struct aws_mqtt5_negotiated_settings settings_storage;
+    struct aws_mqtt5_packet_disconnect_storage disconnect_storage;
+    struct aws_mqtt5_packet_connack_storage connack_storage;
+};
+
+struct aws_mqtt5_server_mock_connection_context {
+    struct aws_allocator *allocator;
+
+    struct aws_channel *channel;
+    struct aws_channel_handler handler;
+    struct aws_channel_slot *slot;
+
+    struct aws_mqtt5_encoder_function_table encoding_table;
+    struct aws_mqtt5_encoder encoder;
+
+    struct aws_mqtt5_decoder_function_table decoding_table;
+    struct aws_mqtt5_decoder decoder;
+
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+
+    struct aws_task service_task;
+};
+
+typedef int(aws_mqtt5_on_mock_server_packet_received_fn)(
+    void *packet_view,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *packet_received_user_data);
+
+typedef void(
+    aws_mqtt5_mock_server_service_fn)(struct aws_mqtt5_server_mock_connection_context *mock_server, void *user_data);
+
+struct aws_mqtt5_mock_server_vtable {
+    aws_mqtt5_on_mock_server_packet_received_fn *packet_handlers[16];
+    aws_mqtt5_mock_server_service_fn *service_task_fn;
+};
+
+struct aws_mqtt5_client_mqtt5_mock_test_fixture_options {
+    struct aws_mqtt5_client_options *client_options;
+    const struct aws_mqtt5_mock_server_vtable *server_function_table;
+
+    void *mock_server_user_data;
+};
+
+struct aws_mqtt5_client_mock_test_fixture {
+    struct aws_allocator *allocator;
+
+    struct aws_event_loop_group *elg;
+    struct aws_host_resolver *host_resolver;
+    struct aws_client_bootstrap *client_bootstrap;
+    struct aws_server_bootstrap *server_bootstrap;
+    struct aws_socket_endpoint endpoint;
+    struct aws_socket_options socket_options;
+    struct aws_socket *listener;
+
+    const struct aws_mqtt5_mock_server_vtable *server_function_table;
+    void *mock_server_user_data;
+
+    struct aws_mqtt5_client_vtable client_vtable;
+    struct aws_mqtt5_client *client;
+
+    aws_mqtt5_client_connection_event_callback_fn *original_lifecycle_event_handler;
+    void *original_lifecycle_event_handler_user_data;
+
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+    struct aws_array_list server_received_packets;
+    struct aws_array_list lifecycle_events;
+    struct aws_array_list client_states;
+    bool listener_destroyed;
+};
 
 AWS_EXTERN_C_BEGIN
 
@@ -24,6 +116,18 @@ AWS_MQTT_API int aws_mqtt5_test_verify_user_properties_raw(
 AWS_MQTT_API void aws_mqtt5_encode_init_testing_function_table(struct aws_mqtt5_encoder_function_table *function_table);
 
 AWS_MQTT_API void aws_mqtt5_decode_init_testing_function_table(struct aws_mqtt5_decoder_function_table *function_table);
+
+AWS_MQTT_API int aws_mqtt5_client_mock_test_fixture_init(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options *options);
+
+AWS_MQTT_API void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_test_fixture *test_fixture);
+
+AWS_MQTT_API bool aws_mqtt5_client_test_are_packets_equal(
+    enum aws_mqtt5_packet_type packet_type,
+    void *lhs_packet_storage,
+    void *rhs_packet_storage);
 
 AWS_EXTERN_C_END
 

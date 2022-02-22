@@ -441,6 +441,7 @@ static void s_mqtt5_client_shutdown(
     (void)channel;
 
     struct aws_mqtt5_client *client = user_data;
+
     if (error_code == AWS_ERROR_SUCCESS) {
         error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
     }
@@ -960,8 +961,7 @@ static int s_aws_mqtt5_client_write_current_operation_only(struct aws_mqtt5_clie
     return AWS_OP_SUCCESS;
 }
 
-/* TODO: make this a config setting? */
-#define AWS_MQTT5_CONNECT_PACKET_TIMEOUT 10
+#define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {
     AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
@@ -1016,9 +1016,14 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         return;
     }
 
+    uint32_t timeout_ms = client->config->connack_timeout_ms;
+    if (timeout_ms == 0) {
+        timeout_ms = AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS;
+    }
+
     uint64_t now = (*client->vtable->get_current_time_fn)();
     client->next_mqtt_connect_packet_timeout_time =
-        now + aws_timestamp_convert(AWS_MQTT5_CONNECT_PACKET_TIMEOUT, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        now + aws_timestamp_convert(timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
@@ -1170,7 +1175,8 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
         s_aws_mqtt5_client_state_to_c_str(next_state));
 
     if (client->vtable->on_client_state_change_callback_fn != NULL) {
-        (*client->vtable->on_client_state_change_callback_fn)(client, client->current_state, next_state);
+        (*client->vtable->on_client_state_change_callback_fn)(
+            client, client->current_state, next_state, client->vtable->vtable_user_data);
     }
 
     switch (next_state) {
@@ -1458,8 +1464,8 @@ static int s_process_read_message(
             aws_error_debug_str(error_code));
 
         /* TODO: conditional clean disconnect */
-        s_aws_mqtt5_client_shutdown_channel(client, aws_last_error());
-        return AWS_OP_SUCCESS;
+        s_aws_mqtt5_client_shutdown_channel(client, error_code);
+        return AWS_OP_ERR;
     }
 
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
@@ -1677,6 +1683,8 @@ static struct aws_mqtt5_client_vtable s_default_client_vtable = {
     .websocket_connect_fn = aws_websocket_client_connect,
     .client_bootstrap_new_socket_channel_fn = aws_client_bootstrap_new_socket_channel,
     .http_proxy_new_socket_channel_fn = aws_http_proxy_new_socket_channel,
+
+    .vtable_user_data = NULL,
 };
 
 void aws_mqtt5_client_set_vtable(struct aws_mqtt5_client *client, const struct aws_mqtt5_client_vtable *vtable) {
@@ -1689,7 +1697,7 @@ const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void) 
 
 struct aws_mqtt5_client *aws_mqtt5_client_new(
     struct aws_allocator *allocator,
-    struct aws_mqtt5_client_options *options) {
+    const struct aws_mqtt5_client_options *options) {
     AWS_FATAL_ASSERT(allocator != NULL);
     AWS_FATAL_ASSERT(options != NULL);
 
@@ -1704,6 +1712,10 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     client->vtable = &s_default_client_vtable;
 
     aws_ref_count_init(&client->ref_count, client, s_on_mqtt5_client_zero_ref_count);
+
+    aws_linked_list_init(&client->queued_operations);
+    aws_linked_list_init(&client->write_completion_operations);
+    aws_linked_list_init(&client->unacked_operations);
 
     client->config = aws_mqtt5_client_options_storage_new(allocator, options);
     if (client->config == NULL) {
@@ -1722,9 +1734,6 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
 
     client->next_mqtt_packet_id = 1;
 
-    aws_linked_list_init(&client->queued_operations);
-    aws_linked_list_init(&client->write_completion_operations);
-    aws_linked_list_init(&client->unacked_operations);
     if (aws_hash_table_init(
             &client->unacked_operations_table,
             allocator,
@@ -1798,12 +1807,11 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
     (void)task;
 
     struct aws_mqtt_change_desired_state_task *change_state_task = arg;
+    struct aws_mqtt5_client *client = change_state_task->client;
+    enum aws_mqtt5_client_state desired_state = change_state_task->desired_state;
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto done;
     }
-
-    enum aws_mqtt5_client_state desired_state = change_state_task->desired_state;
-    struct aws_mqtt5_client *client = change_state_task->client;
 
     if (client->desired_state != desired_state) {
         AWS_LOGF_INFO(

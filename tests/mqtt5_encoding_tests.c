@@ -21,6 +21,8 @@
  */
 
 static int s_mqtt5_vli_size_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
 
     size_t encode_size = 0;
 
@@ -100,6 +102,7 @@ static int s_do_success_round_trip_vli_test(uint32_t value, struct aws_allocator
 }
 
 static int s_mqtt5_vli_success_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     ASSERT_SUCCESS(s_do_success_round_trip_vli_test(0, allocator));
     ASSERT_SUCCESS(s_do_success_round_trip_vli_test(1, allocator));
@@ -123,6 +126,7 @@ static int s_mqtt5_vli_success_round_trip_fn(struct aws_allocator *allocator, vo
 AWS_TEST_CASE(mqtt5_vli_success_round_trip, s_mqtt5_vli_success_round_trip_fn)
 
 static int s_mqtt5_vli_encode_failures_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     struct aws_byte_buf buffer;
     aws_byte_buf_init(&buffer, allocator, 4);
@@ -142,6 +146,8 @@ static uint8_t bad_buffers0[] = {0x80, 0x80, 0x80, 0x80};
 static uint8_t bad_buffers1[] = {0x81, 0x81, 0x81, 0xFF};
 
 static int s_mqtt5_vli_decode_failures_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
 
     uint32_t value = 0;
 
@@ -336,6 +342,8 @@ static int s_aws_mqtt5_on_disconnect_received_fn(enum aws_mqtt5_packet_type type
 }
 
 static int s_mqtt5_packet_disconnect_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     uint32_t session_expiry_interval_seconds = 333;
     struct aws_byte_cursor reason_string_cursor = aws_byte_cursor_from_c_str(s_reason_string);
     struct aws_byte_cursor server_reference_cursor = aws_byte_cursor_from_c_str(s_server_reference);
@@ -369,6 +377,8 @@ static int s_aws_mqtt5_on_pingreq_received_fn(enum aws_mqtt5_packet_type type, v
 }
 
 static int s_mqtt5_packet_pingreq_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
         allocator, AWS_MQTT5_PT_PINGREQ, NULL, s_aws_mqtt5_on_pingreq_received_fn));
 
@@ -389,6 +399,8 @@ static int s_aws_mqtt5_on_pingresp_received_fn(enum aws_mqtt5_packet_type type, 
 }
 
 static int s_mqtt5_packet_pingresp_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
         allocator, AWS_MQTT5_PT_PINGRESP, NULL, s_aws_mqtt5_on_pingresp_received_fn));
 
@@ -492,6 +504,8 @@ static int s_aws_mqtt5_on_connect_received_fn(enum aws_mqtt5_packet_type type, v
 }
 
 static int s_mqtt5_packet_connect_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     struct aws_byte_cursor will_payload_cursor = aws_byte_cursor_from_c_str(s_will_payload);
     enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
     uint32_t message_expiry_interval_seconds = 65537;
@@ -619,6 +633,8 @@ static int s_aws_mqtt5_on_connack_received_fn(enum aws_mqtt5_packet_type type, v
 }
 
 static int s_mqtt5_packet_connack_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     uint32_t session_expiry_interval = 3600;
     uint16_t receive_maximum = 20;
     enum aws_mqtt5_qos maximum_qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;

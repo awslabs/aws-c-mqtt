@@ -332,6 +332,7 @@ struct aws_mqtt5_client_options_storage {
     uint64_t min_connected_time_to_reset_reconnect_delay_ms;
 
     uint32_t ping_timeout_ms;
+    uint32_t connack_timeout_ms;
 
     struct aws_mqtt5_packet_connect_storage connect;
 
@@ -433,6 +434,11 @@ AWS_MQTT_API void aws_mqtt5_packet_connect_view_init_from_storage(
     const struct aws_mqtt5_packet_connect_storage *connect_storage);
 
 /* Connack */
+
+AWS_MQTT_API int aws_mqtt5_packet_connack_storage_init(
+    struct aws_mqtt5_packet_connack_storage *connack_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_connack_view *connack_options);
 
 AWS_MQTT_API int aws_mqtt5_packet_connack_storage_init_from_external_storage(
     struct aws_mqtt5_packet_connack_storage *connack_storage,

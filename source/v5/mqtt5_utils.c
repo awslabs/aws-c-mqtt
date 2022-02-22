@@ -20,8 +20,8 @@ void aws_mqtt5_negotiated_settings_log(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     enum aws_log_level level) {
 
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 

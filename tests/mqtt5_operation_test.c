@@ -42,6 +42,8 @@ static const char *PUBLISH_PAYLOAD = "hello-world";
 static const char *PUBLISH_TOPIC = "greetings/friendly";
 
 static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     struct aws_mqtt5_packet_publish_view publish_options = {
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
         .retain = true,
@@ -164,6 +166,8 @@ static void s_aws_mqtt5_publish_completion_fn(
 }
 
 static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     struct aws_byte_cursor response_topic = aws_byte_cursor_from_c_str(s_response_topic);
     struct aws_byte_cursor correlation_data = aws_byte_cursor_from_c_str(s_correlation_data);
     struct aws_byte_cursor content_type = aws_byte_cursor_from_c_str(s_content_type);
@@ -321,6 +325,8 @@ static const bool s_subscription_identifiers_available = false;
 static const bool s_shared_subscriptions_available = false;
 
 static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
 
     /* aws_mqtt5_negotiated_settings used for testing */
     struct aws_mqtt5_negotiated_settings negotiated_settings;
@@ -419,6 +425,8 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
 AWS_TEST_CASE(mqtt5_negotiated_settings_reset_test, mqtt5_negotiated_settings_reset_test_fn)
 
 static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
 
     /* aws_mqtt5_negotiated_settings used for testing */
     struct aws_mqtt5_negotiated_settings negotiated_settings;
