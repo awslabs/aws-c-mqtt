@@ -106,6 +106,12 @@ struct aws_mqtt5_client_options {
     uint32_t ping_timeout_ms;
 
     /**
+     * Time interval to wait after sending a CONNECT request for a CONNACK to arrive.  If one does not arrive, the
+     * connection will be shut down.
+     */
+    uint32_t connack_timeout_ms;
+
+    /**
      * Callback and user data for all client lifecycle events.
      * Life cycle events include:
      *    ConnectionSuccess

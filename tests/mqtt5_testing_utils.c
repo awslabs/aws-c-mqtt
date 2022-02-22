@@ -538,9 +538,11 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
     }
 
     int result = AWS_OP_SUCCESS;
-    on_server_packet_received_fn packet_handler = test_fixture->server_function_table->packet_handlers[type];
+    aws_mqtt5_on_mock_server_packet_received_fn *packet_handler =
+        test_fixture->server_function_table->packet_handlers[type];
     if (packet_handler != NULL) {
-        result = (*packet_handler)(packet_view, server_connection, test_fixture->server_packet_received_user_data);
+        result =
+            (*packet_handler)(packet_view, server_connection, server_connection->test_fixture->mock_server_user_data);
     }
 
     packet_record.storage_allocator = test_fixture->allocator;
@@ -607,6 +609,9 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 static void s_destroy(struct aws_channel_handler *handler) {
     struct aws_mqtt5_server_mock_connection_context *server_connection = handler->impl;
 
+    aws_event_loop_cancel_task(
+        aws_channel_get_event_loop(server_connection->channel), &server_connection->service_task);
+
     aws_mqtt5_decoder_clean_up(&server_connection->decoder);
     aws_mqtt5_encoder_clean_up(&server_connection->encoder);
 
@@ -629,6 +634,29 @@ static struct aws_channel_handler_vtable s_mqtt5_mock_server_channel_handler_vta
     .destroy = &s_destroy,
 };
 
+static void s_mock_server_service_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        return;
+    }
+
+    struct aws_mqtt5_server_mock_connection_context *server_connection = arg;
+
+    aws_mqtt5_mock_server_service_fn *service_fn =
+        server_connection->test_fixture->server_function_table->service_task_fn;
+    if (service_fn != NULL) {
+        (*service_fn)(server_connection, server_connection->test_fixture->mock_server_user_data);
+    }
+
+    uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&now);
+    uint64_t next_service_time = now + aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+    aws_event_loop_schedule_task_future(
+        aws_channel_get_event_loop(server_connection->channel), task, next_service_time);
+}
+
 static void s_on_incoming_channel_setup_fn(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
@@ -650,6 +678,13 @@ static void s_on_incoming_channel_setup_fn(
         server_connection->handler.alloc = server_connection->allocator;
         server_connection->handler.vtable = &s_mqtt5_mock_server_channel_handler_vtable;
         server_connection->handler.impl = server_connection;
+
+        aws_task_init(
+            &server_connection->service_task,
+            s_mock_server_service_task_fn,
+            server_connection,
+            "mock_server_service_task_fn");
+        aws_event_loop_schedule_task_now(aws_channel_get_event_loop(channel), &server_connection->service_task);
 
         aws_channel_slot_set_handler(server_connection->slot, &server_connection->handler);
 
@@ -773,10 +808,10 @@ int aws_mqtt5_client_mock_test_fixture_init(
     aws_condition_variable_init(&test_fixture->signal);
 
     test_fixture->server_function_table = options->server_function_table;
-    test_fixture->server_packet_received_user_data = options->server_packet_received_user_data;
+    test_fixture->mock_server_user_data = options->mock_server_user_data;
 
     struct aws_socket_options socket_options = {
-        .connect_timeout_ms = 100,
+        .connect_timeout_ms = 1000,
         .domain = AWS_SOCKET_LOCAL,
     };
 

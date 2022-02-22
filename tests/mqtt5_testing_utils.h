@@ -53,21 +53,28 @@ struct aws_mqtt5_server_mock_connection_context {
     struct aws_mqtt5_decoder decoder;
 
     struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+
+    struct aws_task service_task;
 };
 
-typedef int (*on_server_packet_received_fn)(
+typedef int(aws_mqtt5_on_mock_server_packet_received_fn)(
     void *packet_view,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *packet_received_user_data);
 
+typedef void(
+    aws_mqtt5_mock_server_service_fn)(struct aws_mqtt5_server_mock_connection_context *mock_server, void *user_data);
+
 struct aws_mqtt5_mock_server_vtable {
-    on_server_packet_received_fn packet_handlers[16];
+    aws_mqtt5_on_mock_server_packet_received_fn *packet_handlers[16];
+    aws_mqtt5_mock_server_service_fn *service_task_fn;
 };
 
 struct aws_mqtt5_client_mqtt5_mock_test_fixture_options {
     struct aws_mqtt5_client_options *client_options;
     const struct aws_mqtt5_mock_server_vtable *server_function_table;
-    void *server_packet_received_user_data;
+
+    void *mock_server_user_data;
 };
 
 struct aws_mqtt5_client_mock_test_fixture {
@@ -82,7 +89,7 @@ struct aws_mqtt5_client_mock_test_fixture {
     struct aws_socket *listener;
 
     const struct aws_mqtt5_mock_server_vtable *server_function_table;
-    void *server_packet_received_user_data;
+    void *mock_server_user_data;
 
     struct aws_mqtt5_client_vtable client_vtable;
     struct aws_mqtt5_client *client;

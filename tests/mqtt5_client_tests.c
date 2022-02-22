@@ -216,6 +216,18 @@ static void s_wait_for_connection_failure_lifecycle_event(struct aws_mqtt5_clien
     aws_mutex_unlock(&test_context->lock);
 }
 
+static bool s_has_disconnect_event(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+
+    return s_has_lifecycle_event(test_fixture, AWS_MQTT5_CLET_DISCONNECTION);
+}
+
+static void s_wait_for_disconnection_lifecycle_event(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(&test_context->signal, &test_context->lock, s_has_disconnect_event, test_context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
 static int s_verify_client_state_sequence(
     struct aws_mqtt5_client_mock_test_fixture *test_context,
     enum aws_mqtt5_client_state *expected_states,
@@ -608,3 +620,238 @@ static int s_mqtt5_client_websocket_connect_handshake_failure_fn(struct aws_allo
 }
 
 AWS_TEST_CASE(mqtt5_client_websocket_connect_handshake_failure, s_mqtt5_client_websocket_connect_handshake_failure_fn)
+
+static int s_aws_mqtt5_mock_server_handle_connect_always_fail(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    connack_view.reason_code = AWS_MQTT5_CRC_BANNED;
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+static int s_mqtt5_client_direct_connect_connack_refusal_fn(struct aws_allocator *allocator, void *ctx) {
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_always_fail;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connection_failure_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_direct_connect_connack_refusal, s_mqtt5_client_direct_connect_connack_refusal_fn)
+
+static int s_mqtt5_client_direct_connect_connack_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* fast CONNACK timeout and don't response to the CONNECT packet */
+    client_options.connack_timeout_ms = 2000;
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = NULL;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connection_failure_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_TIMEOUT,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_direct_connect_connack_timeout, s_mqtt5_client_direct_connect_connack_timeout_fn)
+
+struct aws_mqtt5_server_disconnect_test_context {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+    bool disconnect_sent;
+};
+
+static void s_server_disconnect_service_fn(
+    struct aws_mqtt5_server_mock_connection_context *mock_server,
+    void *user_data) {
+
+    struct aws_mqtt5_server_disconnect_test_context *test_context = user_data;
+    if (test_context->disconnect_sent) {
+        return;
+    }
+
+    test_context->disconnect_sent = true;
+
+    struct aws_mqtt5_packet_disconnect_view disconnect = {
+        .reason_code = AWS_MQTT5_DRC_PACKET_TOO_LARGE,
+    };
+
+    s_aws_mqtt5_mock_server_send_packet(mock_server, AWS_MQTT5_PT_DISCONNECT, &disconnect);
+}
+
+static int s_mqtt5_client_direct_connect_from_server_disconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.service_task_fn = s_server_disconnect_service_fn;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_disconnection_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_DISCONNECTION,
+            .error_code = AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CONNECTED,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    struct aws_mqtt5_packet_connect_storage expected_connect_storage;
+    ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_connect_storage(&expected_connect_storage, allocator));
+
+    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {
+        {
+            .packet_type = AWS_MQTT5_PT_CONNECT,
+            .packet_storage = &expected_connect_storage,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_received_packet_sequence(&test_context, expected_packets, AWS_ARRAY_SIZE(expected_packets)));
+
+    aws_mqtt5_packet_connect_storage_clean_up(&expected_connect_storage);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_direct_connect_from_server_disconnect,
+    s_mqtt5_client_direct_connect_from_server_disconnect_fn)

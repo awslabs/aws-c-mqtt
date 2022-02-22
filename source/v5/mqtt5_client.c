@@ -920,8 +920,7 @@ static int s_aws_mqtt5_client_write_current_operation_only(struct aws_mqtt5_clie
     return AWS_OP_SUCCESS;
 }
 
-/* TODO: make this a config setting? */
-#define AWS_MQTT5_CONNECT_PACKET_TIMEOUT 10
+#define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {
     AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
@@ -976,9 +975,14 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         return;
     }
 
+    uint32_t timeout_ms = client->config->connack_timeout_ms;
+    if (timeout_ms == 0) {
+        timeout_ms = AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS;
+    }
+
     uint64_t now = (*client->vtable->get_current_time_fn)();
     client->next_mqtt_connect_packet_timeout_time =
-        now + aws_timestamp_convert(AWS_MQTT5_CONNECT_PACKET_TIMEOUT, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        now + aws_timestamp_convert(timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,

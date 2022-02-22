@@ -2727,6 +2727,13 @@ void aws_mqtt5_client_options_storage_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage connack timeout interval set to %" PRIu32 " ms",
+        (void *)options_storage,
+        options_storage->connack_timeout_ms);
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage connect options:",
         (void *)options_storage);
 
@@ -2813,6 +2820,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         options->min_connected_time_to_reset_reconnect_delay_ms;
 
     options_storage->ping_timeout_ms = options->ping_timeout_ms;
+    options_storage->connack_timeout_ms = options->connack_timeout_ms;
 
     if (aws_mqtt5_packet_connect_storage_init(&options_storage->connect, allocator, options->connect_options)) {
         goto error;
