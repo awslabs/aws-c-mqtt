@@ -6,6 +6,9 @@
 #include "mqtt5_testing_utils.h"
 
 #include <aws/common/string.h>
+#include <aws/http/websocket.h>
+#include <aws/io/channel_bootstrap.h>
+#include <aws/io/event_loop.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 
@@ -180,6 +183,39 @@ static void s_wait_for_stopped_lifecycle_event(struct aws_mqtt5_client_mock_test
     aws_mutex_unlock(&test_context->lock);
 }
 
+static bool s_has_lifecycle_event(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    enum aws_mqtt5_client_lifecycle_event_type event_type) {
+    size_t event_count = aws_array_list_length(&test_fixture->lifecycle_events);
+    if (event_count == 0) {
+        return false;
+    }
+
+    size_t record_count = aws_array_list_length(&test_fixture->lifecycle_events);
+    for (size_t i = 0; i < record_count; ++i) {
+        struct aws_mqtt5_lifecycle_event_record *record = NULL;
+        aws_array_list_get_at(&test_fixture->lifecycle_events, &record, i);
+        if (record->event.event_type == event_type) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool s_has_connection_failure_event(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+
+    return s_has_lifecycle_event(test_fixture, AWS_MQTT5_CLET_CONNECTION_FAILURE);
+}
+
+static void s_wait_for_connection_failure_lifecycle_event(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_has_connection_failure_event, test_context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
 static int s_verify_client_state_sequence(
     struct aws_mqtt5_client_mock_test_fixture *test_context,
     enum aws_mqtt5_client_state *expected_states,
@@ -250,7 +286,7 @@ static int s_verify_received_packet_sequence(
     return AWS_OP_SUCCESS;
 }
 
-static int s_mqtt5_client_simple_connect_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_mqtt_library_init(allocator);
@@ -324,4 +360,251 @@ static int s_mqtt5_client_simple_connect_fn(struct aws_allocator *allocator, voi
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(mqtt5_client_simple_connect, s_mqtt5_client_simple_connect_fn)
+AWS_TEST_CASE(mqtt5_client_direct_connect_success, s_mqtt5_client_direct_connect_success_fn)
+
+static int s_mqtt5_client_simple_failure_test_fn(
+    struct aws_allocator *allocator,
+    void (*change_client_test_config_fn)(struct aws_mqtt5_client_mqtt5_mock_test_fixture_options *config),
+    void (*change_client_vtable_fn)(struct aws_mqtt5_client_vtable *)) {
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    if (change_client_test_config_fn != NULL) {
+        (*change_client_test_config_fn)(&test_fixture_options);
+    }
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    struct aws_mqtt5_client_vtable vtable = *client->vtable;
+    if (change_client_vtable_fn != NULL) {
+        (*change_client_vtable_fn)(&vtable);
+        aws_mqtt5_client_set_vtable(client, &vtable);
+    }
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connection_failure_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_INVALID_STATE,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_PENDING_RECONNECT,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_test_synchronous_socket_channel_failure_fn(
+    struct aws_socket_channel_bootstrap_options *options) {
+    (void)options;
+
+    return aws_raise_error(AWS_ERROR_INVALID_STATE);
+}
+
+static void s_change_client_vtable_synchronous_direct_failure(struct aws_mqtt5_client_vtable *vtable) {
+    vtable->client_bootstrap_new_socket_channel_fn = s_mqtt5_client_test_synchronous_socket_channel_failure_fn;
+}
+
+static int s_mqtt5_client_direct_connect_sync_channel_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(
+        s_mqtt5_client_simple_failure_test_fn(allocator, NULL, s_change_client_vtable_synchronous_direct_failure));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_direct_connect_sync_channel_failure, s_mqtt5_client_direct_connect_sync_channel_failure_fn)
+
+struct socket_channel_failure_wrapper {
+    struct aws_socket_channel_bootstrap_options bootstrap_options;
+    struct aws_task task;
+};
+
+static struct socket_channel_failure_wrapper s_socket_channel_failure_wrapper;
+
+void s_socket_channel_async_failure_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        return;
+    }
+
+    struct socket_channel_failure_wrapper *wrapper = arg;
+    struct aws_socket_channel_bootstrap_options *options = &wrapper->bootstrap_options;
+
+    (*wrapper->bootstrap_options.setup_callback)(options->bootstrap, AWS_ERROR_INVALID_STATE, NULL, options->user_data);
+}
+
+static int s_mqtt5_client_test_asynchronous_socket_channel_failure_fn(
+    struct aws_socket_channel_bootstrap_options *options) {
+    aws_task_init(
+        &s_socket_channel_failure_wrapper.task,
+        s_socket_channel_async_failure_task_fn,
+        &s_socket_channel_failure_wrapper,
+        "asynchronous_socket_channel_failure");
+    s_socket_channel_failure_wrapper.bootstrap_options = *options;
+
+    struct aws_mqtt5_client *client = options->user_data;
+    aws_event_loop_schedule_task_now(client->loop, &s_socket_channel_failure_wrapper.task);
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_change_client_vtable_asynchronous_direct_failure(struct aws_mqtt5_client_vtable *vtable) {
+    vtable->client_bootstrap_new_socket_channel_fn = s_mqtt5_client_test_asynchronous_socket_channel_failure_fn;
+}
+
+static int s_mqtt5_client_direct_connect_async_channel_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(
+        s_mqtt5_client_simple_failure_test_fn(allocator, NULL, s_change_client_vtable_asynchronous_direct_failure));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_direct_connect_async_channel_failure, s_mqtt5_client_direct_connect_async_channel_failure_fn)
+
+static int s_mqtt5_client_test_synchronous_websocket_failure_fn(
+    const struct aws_websocket_client_connection_options *options) {
+    (void)options;
+
+    return aws_raise_error(AWS_ERROR_INVALID_STATE);
+}
+
+static void s_change_client_vtable_synchronous_websocket_failure(struct aws_mqtt5_client_vtable *vtable) {
+    vtable->websocket_connect_fn = s_mqtt5_client_test_synchronous_websocket_failure_fn;
+}
+
+static void s_mqtt5_client_test_websocket_successful_transform(
+    struct aws_http_message *request,
+    void *user_data,
+    aws_mqtt5_transform_websocket_handshake_complete_fn *complete_fn,
+    void *complete_ctx) {
+
+    (*complete_fn)(request, AWS_ERROR_SUCCESS, complete_ctx);
+}
+
+static void s_change_client_options_to_websockets(struct aws_mqtt5_client_mqtt5_mock_test_fixture_options *config) {
+    config->client_options->websocket_handshake_transform = s_mqtt5_client_test_websocket_successful_transform;
+}
+
+static int s_mqtt5_client_websocket_connect_sync_channel_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_mqtt5_client_simple_failure_test_fn(
+        allocator, s_change_client_options_to_websockets, s_change_client_vtable_synchronous_websocket_failure));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_websocket_connect_sync_channel_failure,
+    s_mqtt5_client_websocket_connect_sync_channel_failure_fn)
+
+struct websocket_channel_failure_wrapper {
+    struct aws_websocket_client_connection_options websocket_options;
+    struct aws_task task;
+};
+
+static struct websocket_channel_failure_wrapper s_websocket_channel_failure_wrapper;
+
+void s_websocket_channel_async_failure_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        return;
+    }
+
+    struct websocket_channel_failure_wrapper *wrapper = arg;
+    struct aws_websocket_client_connection_options *options = &wrapper->websocket_options;
+
+    (*wrapper->websocket_options.on_connection_setup)(NULL, AWS_ERROR_INVALID_STATE, 0, NULL, 0, options->user_data);
+}
+
+static int s_mqtt5_client_test_asynchronous_websocket_failure_fn(
+    const struct aws_websocket_client_connection_options *options) {
+    aws_task_init(
+        &s_websocket_channel_failure_wrapper.task,
+        s_websocket_channel_async_failure_task_fn,
+        &s_websocket_channel_failure_wrapper,
+        "asynchronous_websocket_channel_failure");
+    s_websocket_channel_failure_wrapper.websocket_options = *options;
+
+    struct aws_mqtt5_client *client = options->user_data;
+    aws_event_loop_schedule_task_now(client->loop, &s_websocket_channel_failure_wrapper.task);
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_change_client_vtable_asynchronous_websocket_failure(struct aws_mqtt5_client_vtable *vtable) {
+    vtable->websocket_connect_fn = s_mqtt5_client_test_asynchronous_websocket_failure_fn;
+}
+
+static int s_mqtt5_client_websocket_connect_async_channel_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_mqtt5_client_simple_failure_test_fn(
+        allocator, s_change_client_options_to_websockets, s_change_client_vtable_asynchronous_websocket_failure));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_websocket_connect_async_channel_failure,
+    s_mqtt5_client_websocket_connect_async_channel_failure_fn)
+
+static void s_mqtt5_client_test_websocket_failed_transform(
+    struct aws_http_message *request,
+    void *user_data,
+    aws_mqtt5_transform_websocket_handshake_complete_fn *complete_fn,
+    void *complete_ctx) {
+
+    (*complete_fn)(request, AWS_ERROR_INVALID_STATE, complete_ctx);
+}
+
+static void s_change_client_options_to_failed_websocket_transform(
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options *config) {
+    config->client_options->websocket_handshake_transform = s_mqtt5_client_test_websocket_failed_transform;
+}
+
+static int s_mqtt5_client_websocket_connect_handshake_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(
+        s_mqtt5_client_simple_failure_test_fn(allocator, s_change_client_options_to_failed_websocket_transform, NULL));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_websocket_connect_handshake_failure, s_mqtt5_client_websocket_connect_handshake_failure_fn)

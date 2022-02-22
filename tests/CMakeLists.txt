@@ -78,7 +78,12 @@ add_test_case(mqtt5_packet_pingresp_round_trip)
 add_test_case(mqtt5_packet_connect_round_trip)
 add_test_case(mqtt5_packet_connack_round_trip)
 
-add_test_case(mqtt5_client_simple_connect)
+add_test_case(mqtt5_client_direct_connect_success)
+add_test_case(mqtt5_client_direct_connect_sync_channel_failure)
+add_test_case(mqtt5_client_direct_connect_async_channel_failure)
+add_test_case(mqtt5_client_websocket_connect_sync_channel_failure)
+add_test_case(mqtt5_client_websocket_connect_async_channel_failure)
+add_test_case(mqtt5_client_websocket_connect_handshake_failure)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
