@@ -135,7 +135,8 @@ struct aws_mqtt5_client_vtable {
     void (*on_client_state_change_callback_fn)(
         struct aws_mqtt5_client *client,
         enum aws_mqtt5_client_state old_state,
-        enum aws_mqtt5_client_state new_state);
+        enum aws_mqtt5_client_state new_state,
+        void *vtable_user_data);
 
     /*
      * Potential additional candidates:
@@ -145,6 +146,8 @@ struct aws_mqtt5_client_vtable {
      * aws_websocket_get_channel
      * aws_websocket_convert_to_midchannel_handler
      */
+
+    void *vtable_user_data;
 };
 
 /*

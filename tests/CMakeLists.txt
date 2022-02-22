@@ -4,7 +4,7 @@ include(AwsLibFuzzer)
 enable_testing()
 
 file(GLOB TEST_HDRS "*.h")
-set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_operation_test.c mqtt5_encoding_tests.c mqtt5_testing_utils.c)
+set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_operation_test.c mqtt5_encoding_tests.c mqtt5_testing_utils.c mqtt5_client_tests.c)
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
@@ -77,6 +77,16 @@ add_test_case(mqtt5_packet_pingreq_round_trip)
 add_test_case(mqtt5_packet_pingresp_round_trip)
 add_test_case(mqtt5_packet_connect_round_trip)
 add_test_case(mqtt5_packet_connack_round_trip)
+
+add_test_case(mqtt5_client_direct_connect_success)
+add_test_case(mqtt5_client_direct_connect_sync_channel_failure)
+add_test_case(mqtt5_client_direct_connect_async_channel_failure)
+add_test_case(mqtt5_client_websocket_connect_sync_channel_failure)
+add_test_case(mqtt5_client_websocket_connect_async_channel_failure)
+add_test_case(mqtt5_client_websocket_connect_handshake_failure)
+add_test_case(mqtt5_client_direct_connect_connack_refusal)
+add_test_case(mqtt5_client_direct_connect_connack_timeout)
+add_test_case(mqtt5_client_direct_connect_from_server_disconnect)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
