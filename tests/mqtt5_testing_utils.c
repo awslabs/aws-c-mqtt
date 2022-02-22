@@ -46,7 +46,7 @@ int aws_mqtt5_test_verify_user_properties_raw(
 }
 
 static int s_compute_connack_variable_length_fields(
-    struct aws_mqtt5_packet_connack_view *connack_view,
+    const struct aws_mqtt5_packet_connack_view *connack_view,
     uint32_t *total_remaining_length,
     uint32_t *property_length) {
 
@@ -83,9 +83,9 @@ static int s_compute_connack_variable_length_fields(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_encoder_begin_connack(struct aws_mqtt5_encoder *encoder, void *packet_view) {
+int aws_mqtt5_encoder_begin_connack(struct aws_mqtt5_encoder *encoder, const void *packet_view) {
 
-    struct aws_mqtt5_packet_connack_view *connack_view = packet_view;
+    const struct aws_mqtt5_packet_connack_view *connack_view = packet_view;
 
     uint32_t total_remaining_length = 0;
     uint32_t property_length = 0;
@@ -161,7 +161,7 @@ int aws_mqtt5_encoder_begin_connack(struct aws_mqtt5_encoder *encoder, void *pac
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_encoder_begin_pingresp(struct aws_mqtt5_encoder *encoder, void *packet_view) {
+int aws_mqtt5_encoder_begin_pingresp(struct aws_mqtt5_encoder *encoder, const void *packet_view) {
     (void)packet_view;
 
     AWS_LOGF_DEBUG(

@@ -31,15 +31,27 @@ struct aws_mqtt5_suback_reason_code_set {
     struct aws_array_list reason_codes;
 };
 
+struct aws_mqtt5_operation_vtable {
+    void (*aws_mqtt5_operation_completion_fn)(
+        struct aws_mqtt5_operation *operation,
+        int error_code,
+        const void *completion_view);
+    void (
+        *aws_mqtt5_operation_set_packet_id_fn)(struct aws_mqtt5_operation *operation, aws_mqtt5_packet_id_t packet_id);
+    aws_mqtt5_packet_id_t (*aws_mqtt5_operation_get_packet_id_fn)(const struct aws_mqtt5_operation *operation);
+};
+
 /**
  * This is the base structure for all mqtt operations.  It includes the type, a ref count, and list
  * management.
  */
 struct aws_mqtt5_operation {
+    const struct aws_mqtt5_operation_vtable *vtable;
     enum aws_mqtt5_packet_type packet_type;
     struct aws_ref_count ref_count;
     struct aws_linked_list_node node;
     void *impl;
+    const void *packet_view;
 };
 
 struct aws_mqtt5_packet_connect_storage {
@@ -379,6 +391,17 @@ AWS_MQTT_API int aws_mqtt5_suback_reason_code_set_add_stored_reason_code(
 AWS_MQTT_API struct aws_mqtt5_operation *aws_mqtt5_operation_acquire(struct aws_mqtt5_operation *operation);
 
 AWS_MQTT_API struct aws_mqtt5_operation *aws_mqtt5_operation_release(struct aws_mqtt5_operation *operation);
+
+AWS_MQTT_API void aws_mqtt5_operation_complete(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    const void *associated_view);
+
+AWS_MQTT_API void aws_mqtt5_operation_set_packet_id(
+    struct aws_mqtt5_operation *operation,
+    aws_mqtt5_packet_id_t packet_id);
+
+AWS_MQTT_API aws_mqtt5_packet_id_t aws_mqtt5_operation_get_packet_id(const struct aws_mqtt5_operation *operation);
 
 /* Connect */
 

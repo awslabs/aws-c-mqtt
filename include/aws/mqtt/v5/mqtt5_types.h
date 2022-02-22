@@ -685,7 +685,7 @@ struct aws_mqtt5_client_lifecycle_event {
     /**
      * Aws-c-* error code associated with the event
      */
-    int aws_error_code;
+    int error_code;
 
     /**
      * User data associated with the client's lifecycle event handler.  Set with client configuration.

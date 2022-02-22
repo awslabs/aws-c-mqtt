@@ -192,6 +192,12 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_USER_REQUESTED_STOP,
                 "Mqtt5 client connection interrupted by user request."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+                "Mqtt5 client connection interrupted by server DISCONNECT."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_CLIENT_TERMINATED,
+                "Mqtt5 client terminated by user request."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
