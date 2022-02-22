@@ -635,8 +635,6 @@ static struct aws_channel_handler_vtable s_mqtt5_mock_server_channel_handler_vta
 };
 
 static void s_mock_server_service_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-
     if (status != AWS_TASK_STATUS_RUN_READY) {
         return;
     }

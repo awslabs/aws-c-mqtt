@@ -753,6 +753,7 @@ AWS_TEST_CASE(mqtt5_client_direct_connect_connack_timeout, s_mqtt5_client_direct
 struct aws_mqtt5_server_disconnect_test_context {
     struct aws_mqtt5_client_mock_test_fixture *test_fixture;
     bool disconnect_sent;
+    bool connack_sent;
 };
 
 static void s_server_disconnect_service_fn(
@@ -760,7 +761,7 @@ static void s_server_disconnect_service_fn(
     void *user_data) {
 
     struct aws_mqtt5_server_disconnect_test_context *test_context = user_data;
-    if (test_context->disconnect_sent) {
+    if (test_context->disconnect_sent || !test_context->connack_sent) {
         return;
     }
 
@@ -773,6 +774,23 @@ static void s_server_disconnect_service_fn(
     s_aws_mqtt5_mock_server_send_packet(mock_server, AWS_MQTT5_PT_DISCONNECT, &disconnect);
 }
 
+static int s_aws_mqtt5_server_disconnect_on_connect(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+
+    /*
+     * We intercept the CONNECT in order to correctly set the connack_sent test state.  Otherwise we risk sometimes
+     * sending the DISCONNECT before the CONNACK
+     */
+    int result = s_aws_mqtt5_mock_server_handle_connect_always_succeed(packet, connection, user_data);
+
+    struct aws_mqtt5_server_disconnect_test_context *test_context = user_data;
+    test_context->connack_sent = true;
+
+    return result;
+}
+
 static int s_mqtt5_client_direct_connect_from_server_disconnect_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -783,7 +801,9 @@ static int s_mqtt5_client_direct_connect_from_server_disconnect_fn(struct aws_al
     struct aws_mqtt5_mock_server_vtable server_function_table;
     s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
 
+    /* mock server sends a DISCONNECT packet back to the client after a successful CONNECTION establishment */
     server_function_table.service_task_fn = s_server_disconnect_service_fn;
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_server_disconnect_on_connect;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
@@ -831,20 +851,6 @@ static int s_mqtt5_client_direct_connect_from_server_disconnect_fn(struct aws_al
         AWS_MCS_CHANNEL_SHUTDOWN,
     };
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
-
-    struct aws_mqtt5_packet_connect_storage expected_connect_storage;
-    ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_connect_storage(&expected_connect_storage, allocator));
-
-    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {
-        {
-            .packet_type = AWS_MQTT5_PT_CONNECT,
-            .packet_storage = &expected_connect_storage,
-        },
-    };
-    ASSERT_SUCCESS(
-        s_verify_received_packet_sequence(&test_context, expected_packets, AWS_ARRAY_SIZE(expected_packets)));
-
-    aws_mqtt5_packet_connect_storage_clean_up(&expected_connect_storage);
 
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
