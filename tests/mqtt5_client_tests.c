@@ -5,6 +5,7 @@
 
 #include "mqtt5_testing_utils.h"
 
+#include <aws/common/clock.h>
 #include <aws/common/string.h>
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
@@ -186,10 +187,6 @@ static void s_wait_for_stopped_lifecycle_event(struct aws_mqtt5_client_mock_test
 static bool s_has_lifecycle_event(
     struct aws_mqtt5_client_mock_test_fixture *test_fixture,
     enum aws_mqtt5_client_lifecycle_event_type event_type) {
-    size_t event_count = aws_array_list_length(&test_fixture->lifecycle_events);
-    if (event_count == 0) {
-        return false;
-    }
 
     size_t record_count = aws_array_list_length(&test_fixture->lifecycle_events);
     for (size_t i = 0; i < record_count; ++i) {
@@ -279,7 +276,7 @@ static int s_verify_received_packet_sequence(
     aws_mutex_lock(&test_context->lock);
 
     size_t actual_packets_count = aws_array_list_length(&test_context->server_received_packets);
-    ASSERT_TRUE(actual_packets_count == expected_packets_count);
+    ASSERT_TRUE(actual_packets_count >= expected_packets_count);
 
     for (size_t i = 0; i < expected_packets_count; ++i) {
         struct aws_mqtt5_mock_server_packet_record *actual_packet = NULL;
@@ -861,3 +858,321 @@ static int s_mqtt5_client_direct_connect_from_server_disconnect_fn(struct aws_al
 AWS_TEST_CASE(
     mqtt5_client_direct_connect_from_server_disconnect,
     s_mqtt5_client_direct_connect_from_server_disconnect_fn)
+
+static bool s_received_at_least_five_pingreqs(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+
+    size_t ping_count = 0;
+    size_t packet_count = aws_array_list_length(&test_fixture->server_received_packets);
+    for (size_t i = 0; i < packet_count; ++i) {
+        struct aws_mqtt5_mock_server_packet_record *record = NULL;
+        aws_array_list_get_at_ptr(&test_fixture->server_received_packets, (void **)&record, i);
+
+        if (record->packet_type == AWS_MQTT5_PT_PINGREQ) {
+            ping_count++;
+        }
+    }
+
+    return ping_count >= 5;
+}
+
+static void s_wait_for_five_pingreqs(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_received_at_least_five_pingreqs, test_context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+#define TEST_PING_INTERVAL_MS 2000
+
+static int s_verify_ping_sequence_timing(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+
+    uint64_t last_packet_time = 0;
+
+    size_t packet_count = aws_array_list_length(&test_context->server_received_packets);
+    for (size_t i = 0; i < packet_count; ++i) {
+        struct aws_mqtt5_mock_server_packet_record *record = NULL;
+        aws_array_list_get_at_ptr(&test_context->server_received_packets, (void **)&record, i);
+
+        if (i == 0) {
+            ASSERT_INT_EQUALS(record->packet_type, AWS_MQTT5_PT_CONNECT);
+            last_packet_time = record->timestamp;
+        } else {
+            ASSERT_INT_EQUALS(record->packet_type, AWS_MQTT5_PT_PINGREQ);
+
+            uint64_t time_delta_ns = record->timestamp - last_packet_time;
+            uint64_t time_delta_millis =
+                aws_timestamp_convert(time_delta_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+
+            uint64_t max_delta = aws_max_u64(TEST_PING_INTERVAL_MS, time_delta_millis);
+            uint64_t min_delta = aws_min_u64(TEST_PING_INTERVAL_MS, time_delta_millis);
+
+            /* Things aren't going to be exact, so let's just make sure we're reasonably close */
+            ASSERT_TRUE((double)min_delta > .9 * (double)max_delta);
+
+            last_packet_time = record->timestamp;
+        }
+    }
+    aws_mutex_unlock(&test_context->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_client_test_init_ping_test_connect_storage(
+    struct aws_mqtt5_packet_connect_storage *storage,
+    struct aws_allocator *allocator) {
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds =
+            (uint32_t)aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL),
+        .client_id = aws_byte_cursor_from_string(s_client_id),
+        .clean_start = true,
+    };
+
+    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
+}
+
+/*
+ * Test that the client sends pings at regular intervals to the server
+ *
+ * This is a low-keep-alive variant of the basic success test that waits for N pingreqs to be received by the server
+ * and validates the approximate time intervals between them.
+ */
+static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* fast keep alive in order keep tests reasonably short */
+    uint32_t keep_alive_seconds =
+        aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
+    connect_options.keep_alive_interval_seconds = keep_alive_seconds;
+
+    /* faster ping timeout */
+    client_options.ping_timeout_ms = 750;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+    s_wait_for_five_pingreqs(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_DISCONNECTION,
+            .error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_STOPPED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CONNECTED,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+        AWS_MCS_STOPPED,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    struct aws_mqtt5_packet_connect_storage expected_connect_storage;
+    ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_ping_test_connect_storage(&expected_connect_storage, allocator));
+
+    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {
+        {
+            .packet_type = AWS_MQTT5_PT_CONNECT,
+            .packet_storage = &expected_connect_storage,
+        },
+        {
+            .packet_type = AWS_MQTT5_PT_PINGREQ,
+        },
+        {
+            .packet_type = AWS_MQTT5_PT_PINGREQ,
+        },
+        {
+            .packet_type = AWS_MQTT5_PT_PINGREQ,
+        },
+        {
+            .packet_type = AWS_MQTT5_PT_PINGREQ,
+        },
+        {
+            .packet_type = AWS_MQTT5_PT_PINGREQ,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_received_packet_sequence(&test_context, expected_packets, AWS_ARRAY_SIZE(expected_packets)));
+
+    ASSERT_SUCCESS(s_verify_ping_sequence_timing(&test_context));
+
+    aws_mqtt5_packet_connect_storage_clean_up(&expected_connect_storage);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_ping_sequence, s_mqtt5_client_ping_sequence_fn)
+
+/*
+ * Test that sending other data to the server pushes out the client ping timer
+ *
+ * This is a low-keep-alive variant of the basic success test that writes UNSUBSCRIBEs to the server at fast intervals.
+ * Verify the server doesn't receive any PINGREQs until the right amount of time after we stop sending the CONNECTs to
+ * it.
+ *
+ * TODO: we can't write this test until we have proper operation handling during CONNECTED state
+ */
+static int s_mqtt5_client_ping_write_pushout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_ping_write_pushout, s_mqtt5_client_ping_write_pushout_fn)
+
+#define TIMEOUT_TEST_PING_INTERVAL_MS 10000
+
+static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+
+    uint64_t connected_time = 0;
+    uint64_t disconnected_time = 0;
+
+    size_t event_count = aws_array_list_length(&test_context->lifecycle_events);
+    for (size_t i = 0; i < event_count; ++i) {
+        struct aws_mqtt5_lifecycle_event_record *record = NULL;
+        aws_array_list_get_at(&test_context->lifecycle_events, &record, i);
+        if (connected_time == 0 && record->event.event_type == AWS_MQTT5_CLET_CONNECTION_SUCCESS) {
+            connected_time = record->timestamp;
+        }
+
+        if (disconnected_time == 0 && record->event.event_type == AWS_MQTT5_CLET_DISCONNECTION) {
+            disconnected_time = record->timestamp;
+        }
+    }
+
+    aws_mutex_unlock(&test_context->lock);
+
+    ASSERT_TRUE(connected_time > 0 && disconnected_time > 0 && disconnected_time > connected_time);
+
+    uint64_t connected_interval_ms =
+        aws_timestamp_convert(disconnected_time - connected_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+    uint64_t expected_connected_time_ms = TIMEOUT_TEST_PING_INTERVAL_MS + test_context->client->config->ping_timeout_ms;
+
+    uint64_t max_interval = aws_max_u64(connected_interval_ms, expected_connected_time_ms);
+    uint64_t min_interval = aws_min_u64(connected_interval_ms, expected_connected_time_ms);
+
+    /* Things aren't going to be exact, so let's just make sure we're reasonably close */
+    ASSERT_TRUE((double)min_interval > .9 * (double)max_interval);
+
+    return AWS_OP_SUCCESS;
+}
+
+/*
+ * Test that not receiving a PINGRESP causes a disconnection
+ *
+ * This is a low-keep-alive variant of the basic success test where the mock server does not respond to a PINGREQ.
+ */
+static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* fast keep alive in order keep tests reasonably short */
+    uint32_t keep_alive_seconds =
+        aws_timestamp_convert(TIMEOUT_TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
+    connect_options.keep_alive_interval_seconds = keep_alive_seconds;
+
+    /* don't response to PINGREQs */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PINGREQ] = NULL;
+
+    /* faster ping timeout */
+    client_options.ping_timeout_ms = 5000;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+    s_wait_for_disconnection_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_DISCONNECTION,
+            .error_code = AWS_ERROR_MQTT5_PING_RESPONSE_TIMEOUT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_STOPPED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    ASSERT_SUCCESS(s_verify_ping_timeout_interval(&test_context));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CONNECTED,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+        AWS_MCS_STOPPED,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_ping_timeout, s_mqtt5_client_ping_timeout_fn)

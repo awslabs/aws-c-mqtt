@@ -88,6 +88,10 @@ add_test_case(mqtt5_client_direct_connect_connack_refusal)
 add_test_case(mqtt5_client_direct_connect_connack_timeout)
 add_test_case(mqtt5_client_direct_connect_from_server_disconnect)
 
+add_test_case(mqtt5_client_ping_sequence)
+#add_test_case(mqtt5_client_ping_write_pushout) TODO: we need operation handling logic first
+add_test_case(mqtt5_client_ping_timeout)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)
