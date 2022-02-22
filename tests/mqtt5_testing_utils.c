@@ -1038,6 +1038,10 @@ bool aws_mqtt5_client_test_are_packets_equal(
                 &((struct aws_mqtt5_packet_connect_storage *)lhs_packet_storage)->storage_view,
                 &((struct aws_mqtt5_packet_connect_storage *)rhs_packet_storage)->storage_view);
 
+        case AWS_MQTT5_PT_PINGREQ:
+        case AWS_MQTT5_PT_PINGRESP:
+            return true;
+
         default:
             return false;
     }
