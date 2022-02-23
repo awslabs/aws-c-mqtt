@@ -6,6 +6,7 @@
 #include <aws/mqtt/v5/mqtt5_client.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/device_random.h>
 #include <aws/common/string.h>
 #include <aws/http/proxy.h>
 #include <aws/http/request_response.h>
@@ -293,8 +294,8 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
     }
 
     /* reset reconnect delay interval */
-    if (client->next_reconnect_delay_interval_reset_time > 0) {
-        next_service_time = aws_min_u64(next_service_time, client->next_reconnect_delay_interval_reset_time);
+    if (client->next_reconnect_delay_reset_time_ns > 0) {
+        next_service_time = aws_min_u64(next_service_time, client->next_reconnect_delay_reset_time_ns);
     }
 
     return next_service_time;
@@ -323,7 +324,7 @@ static uint64_t s_compute_next_service_time_client_pending_reconnect(struct aws_
         return now;
     }
 
-    return client->next_reconnect_time;
+    return client->next_reconnect_time_ns;
 }
 
 static uint64_t s_compute_next_service_time_client_terminated(struct aws_mqtt5_client *client, uint64_t now) {
@@ -998,13 +999,13 @@ static void s_reset_reconnection_delay_time(struct aws_mqtt5_client *client) {
         AWS_TIMESTAMP_MILLIS,
         AWS_TIMESTAMP_NANOS,
         NULL);
-    client->next_reconnect_delay_interval_reset_time = aws_add_u64_saturating(now, reset_reconnection_delay_time_nanos);
+    client->next_reconnect_delay_reset_time_ns = aws_add_u64_saturating(now, reset_reconnection_delay_time_nanos);
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
         "id=%p: reconnection delay reset time set to %" PRIu64,
         (void *)client,
-        client->next_reconnect_delay_interval_reset_time);
+        client->next_reconnect_delay_reset_time_ns);
 }
 
 static void s_aws_mqtt5_client_reset_operations_for_new_connection(struct aws_mqtt5_client *client) {
@@ -1081,36 +1082,88 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
      */
 }
 
+/* TODO: refactor internals of retry strategy to expose these as usable functions in aws-c-io */
+
+static uint64_t s_aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to) {
+    uint64_t max = aws_max_u64(from, to);
+    uint64_t min = aws_min_u64(from, to);
+
+    uint64_t diff = max - min;
+    if (!diff) {
+        return min;
+    }
+
+    uint64_t random_value = 0;
+    if (aws_device_random_u64(&random_value)) {
+        return min;
+    }
+
+    if (diff == UINT64_MAX) {
+        return random_value;
+    }
+
+    return min + random_value % (diff + 1); /* + 1 is safe due to previous check */
+}
+
+static uint64_t s_aws_mqtt5_compute_reconnect_backoff_no_jitter(struct aws_mqtt5_client *client) {
+    uint64_t retry_count = aws_min_u64(client->reconnect_count, 63);
+    return aws_mul_u64_saturating((uint64_t)1 << retry_count, client->config->min_reconnect_delay_ms);
+}
+
+static uint64_t s_aws_mqtt5_compute_reconnect_backoff_full_jitter(struct aws_mqtt5_client *client) {
+    uint64_t non_jittered = s_aws_mqtt5_compute_reconnect_backoff_no_jitter(client);
+    return s_aws_mqtt5_client_random_in_range(0, non_jittered);
+}
+
+static uint64_t s_compute_deccorelated_jitter(struct aws_mqtt5_client *client) {
+    uint64_t last_backoff_val = client->current_reconnect_delay_ms;
+
+    if (!last_backoff_val) {
+        return s_aws_mqtt5_compute_reconnect_backoff_full_jitter(client);
+    }
+
+    return s_aws_mqtt5_client_random_in_range(
+        client->config->min_reconnect_delay_ms, aws_mul_u64_saturating(last_backoff_val, 3));
+}
+
+static void s_update_reconnect_delay_for_pending_reconnect(struct aws_mqtt5_client *client) {
+    uint64_t delay_ms = 0;
+
+    switch (client->config->retry_jitter_mode) {
+        case AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED:
+            delay_ms = s_compute_deccorelated_jitter(client);
+            break;
+
+        case AWS_EXPONENTIAL_BACKOFF_JITTER_NONE:
+            delay_ms = s_aws_mqtt5_compute_reconnect_backoff_no_jitter(client);
+            break;
+
+        case AWS_EXPONENTIAL_BACKOFF_JITTER_FULL:
+        case AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT:
+        default:
+            delay_ms = s_aws_mqtt5_compute_reconnect_backoff_full_jitter(client);
+            break;
+    }
+
+    delay_ms = aws_min_u64(delay_ms, client->config->max_reconnect_delay_ms);
+    uint64_t now = (*client->vtable->get_current_time_fn)();
+
+    client->next_reconnect_time_ns =
+        aws_add_u64_saturating(now, aws_timestamp_convert(delay_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL));
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT, "id=%p: next connection attempt in %" PRIu64 " milliseconds", (void *)client, delay_ms);
+
+    client->reconnect_count++;
+}
+
 static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client *client) {
     AWS_ASSERT(client->current_state == AWS_MCS_CONNECTING || client->current_state == AWS_MCS_CHANNEL_SHUTDOWN);
 
-    uint64_t now = (*client->vtable->get_current_time_fn)();
-
     client->current_state = AWS_MCS_PENDING_RECONNECT;
 
-    uint64_t reconnect_delay_nanos = aws_timestamp_convert(
-        client->current_reconnect_delay_interval_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
-    client->next_reconnect_time = aws_add_u64_saturating(now, reconnect_delay_nanos);
+    s_update_reconnect_delay_for_pending_reconnect(client);
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_CLIENT,
-        "id=%p: next connection attempt at time %" PRIu64 ", in %" PRIu64 " seconds",
-        (void *)client,
-        client->next_reconnect_time,
-        aws_timestamp_convert(
-            client->current_reconnect_delay_interval_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL));
-
-    uint64_t double_reconnect_delay = aws_add_u64_saturating(
-        client->current_reconnect_delay_interval_ms, client->current_reconnect_delay_interval_ms);
-    client->current_reconnect_delay_interval_ms =
-        aws_min_u64(double_reconnect_delay, client->config->max_reconnect_delay_ms);
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_CLIENT,
-        "id=%p: next reconnect delay set to %" PRIu64 " seconds",
-        (void *)client,
-        aws_timestamp_convert(
-            client->current_reconnect_delay_interval_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL));
     s_aws_mqtt5_client_reset_offline_queue(client);
 }
 
@@ -1293,16 +1346,16 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
         }
     }
 
-    if (now >= client->next_reconnect_delay_interval_reset_time &&
-        client->next_reconnect_delay_interval_reset_time != 0) {
+    if (now >= client->next_reconnect_delay_reset_time_ns && client->next_reconnect_delay_reset_time_ns != 0) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CLIENT,
             "id=%p: connected sufficiently long that reconnect backoff delay has been reset back to "
             "minimum value",
             (void *)client);
 
-        client->current_reconnect_delay_interval_ms = client->config->min_reconnect_delay_ms;
-        client->next_reconnect_delay_interval_reset_time = 0;
+        client->reconnect_count = 0;
+        client->current_reconnect_delay_ms = 0;
+        client->next_reconnect_delay_reset_time_ns = 0;
     }
 
     /* TODO: flow control, operation queue processing, etc... */
@@ -1338,7 +1391,7 @@ static void s_service_state_pending_reconnect(struct aws_mqtt5_client *client, u
         return;
     }
 
-    if (now >= client->next_reconnect_time) {
+    if (now >= client->next_reconnect_time_ns) {
         s_change_current_state(client, AWS_MCS_CONNECTING);
         return;
     }
@@ -1718,7 +1771,7 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
         goto on_error;
     }
 
-    client->current_reconnect_delay_interval_ms = client->config->min_reconnect_delay_ms;
+    client->current_reconnect_delay_ms = 0;
 
     client->handler.alloc = client->allocator;
     client->handler.vtable = &s_mqtt5_channel_handler_vtable;
