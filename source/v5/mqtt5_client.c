@@ -1082,7 +1082,7 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
      */
 }
 
-/* TODO: refactor internals of retry strategy to expose these as usable functions in aws-c-io */
+/* TODO: refactor and reunify with internals of retry strategy to expose these as usable functions in aws-c-io */
 
 static uint64_t s_aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to) {
     uint64_t max = aws_max_u64(from, to);
