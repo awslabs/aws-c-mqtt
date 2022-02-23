@@ -682,3 +682,59 @@ static int s_mqtt5_packet_connack_round_trip_fn(struct aws_allocator *allocator,
 }
 
 AWS_TEST_CASE(mqtt5_packet_connack_round_trip, s_mqtt5_packet_connack_round_trip_fn)
+
+static char s_subscription_topic_1[] = "test_topic_1";
+static char s_subscription_topic_2[] = "test_topic_2";
+static char s_subscription_topic_3[] = "test_topic_3";
+
+static const struct aws_mqtt5_subscription_view s_subscriptions[] = {
+    {.topic_filter =
+         {
+             .ptr = (uint8_t *)s_subscription_topic_1,
+             .len = AWS_ARRAY_SIZE(s_subscription_topic_1) - 1,
+         },
+     .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+     .no_local = false,
+     .retain_as_published = false,
+     .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND},
+    {.topic_filter =
+         {
+             .ptr = (uint8_t *)s_subscription_topic_2,
+             .len = AWS_ARRAY_SIZE(s_subscription_topic_2) - 1,
+         },
+     .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+     .no_local = false,
+     .retain_as_published = false,
+     .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND},
+    {.topic_filter =
+         {
+             .ptr = (uint8_t *)s_subscription_topic_3,
+             .len = AWS_ARRAY_SIZE(s_subscription_topic_3) - 1,
+         },
+     .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+     .no_local = false,
+     .retain_as_published = false,
+     .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND},
+};
+
+static int s_mqtt5_packet_subscribe_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt5_packet_id_t packet_id = 1;
+    size_t subscription_count = 1;
+    const struct aws_mqtt5_subscription_view *subscriptions;
+    const uint32_t *subscription_identifier;
+
+    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
+        .packet_id = &packet_id,
+        .subscription_count = &subscription_count,
+        .subscriptions = &subscriptions,
+        .subscription_identifier = &subscription_identifier,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+    };
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_packet_subscribe_round_trip, s_mqtt5_packet_subscribe_round_trip_fn)
