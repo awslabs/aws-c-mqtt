@@ -1088,6 +1088,7 @@ static uint64_t s_aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to) {
     uint64_t max = aws_max_u64(from, to);
     uint64_t min = aws_min_u64(from, to);
 
+    /* Note: this contains several corrections to the corresponding function in aws-c-io.  Don't throw them away. */
     uint64_t diff = max - min;
     if (!diff) {
         return min;
