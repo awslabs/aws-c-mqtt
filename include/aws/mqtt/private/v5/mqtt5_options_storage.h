@@ -383,10 +383,6 @@ AWS_MQTT_API int aws_mqtt5_suback_reason_code_set_get_reason_code(
     size_t index,
     uint8_t *reason_code_out);
 
-AWS_MQTT_API int aws_mqtt5_suback_reason_code_set_add_stored_reason_code(
-    struct aws_mqtt5_suback_reason_code_set *reason_code_set,
-    uint8_t *reason_code);
-
 /* Operation base */
 
 AWS_MQTT_API struct aws_mqtt5_operation *aws_mqtt5_operation_acquire(struct aws_mqtt5_operation *operation);
