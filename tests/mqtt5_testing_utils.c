@@ -705,6 +705,8 @@ static void s_on_incoming_channel_setup_fn(
         };
 
         aws_mqtt5_decoder_init(&server_connection->decoder, server_connection->allocator, &decoder_options);
+
+        aws_channel_trigger_read(channel);
     }
 }
 

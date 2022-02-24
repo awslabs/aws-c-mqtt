@@ -15,7 +15,14 @@
 
 #include <aws/testing/aws_test_harness.h>
 
+#include <math.h>
+
 #define TEST_IO_MESSAGE_LENGTH 4096
+
+static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_time, double percentage) {
+    double actual_percent = 1.0 - (double)actual_time / (double)expected_time;
+    return fabs(actual_percent) <= percentage;
+}
 
 static int s_aws_mqtt5_mock_server_send_packet(
     struct aws_mqtt5_server_mock_connection_context *connection,
@@ -905,11 +912,7 @@ static int s_verify_ping_sequence_timing(struct aws_mqtt5_client_mock_test_fixtu
             uint64_t time_delta_millis =
                 aws_timestamp_convert(time_delta_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
 
-            uint64_t max_delta = aws_max_u64(TEST_PING_INTERVAL_MS, time_delta_millis);
-            uint64_t min_delta = aws_min_u64(TEST_PING_INTERVAL_MS, time_delta_millis);
-
-            /* Things aren't going to be exact, so let's just make sure we're reasonably close */
-            ASSERT_TRUE((double)min_delta > .9 * (double)max_delta);
+            ASSERT_TRUE(s_is_within_percentage_of(TEST_PING_INTERVAL_MS, time_delta_millis, .1));
 
             last_packet_time = record->timestamp;
         }
@@ -1087,11 +1090,7 @@ static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixt
         aws_timestamp_convert(disconnected_time - connected_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
     uint64_t expected_connected_time_ms = TIMEOUT_TEST_PING_INTERVAL_MS + test_context->client->config->ping_timeout_ms;
 
-    uint64_t max_interval = aws_max_u64(connected_interval_ms, expected_connected_time_ms);
-    uint64_t min_interval = aws_min_u64(connected_interval_ms, expected_connected_time_ms);
-
-    /* Things aren't going to be exact, so let's just make sure we're reasonably close */
-    ASSERT_TRUE((double)min_interval > .9 * (double)max_interval);
+    ASSERT_TRUE(s_is_within_percentage_of(expected_connected_time_ms, connected_interval_ms, .1));
 
     return AWS_OP_SUCCESS;
 }
@@ -1176,3 +1175,535 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
 }
 
 AWS_TEST_CASE(mqtt5_client_ping_timeout, s_mqtt5_client_ping_timeout_fn)
+
+struct aws_connection_failure_wait_context {
+    size_t number_of_failures;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+};
+
+static bool s_received_at_least_n_connection_failures(void *arg) {
+    struct aws_connection_failure_wait_context *context = arg;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = context->test_fixture;
+
+    size_t failure_count = 0;
+    size_t event_count = aws_array_list_length(&test_fixture->lifecycle_events);
+    for (size_t i = 0; i < event_count; ++i) {
+        struct aws_mqtt5_lifecycle_event_record *record = NULL;
+        aws_array_list_get_at(&test_fixture->lifecycle_events, &record, i);
+
+        if (record->event.event_type == AWS_MQTT5_CLET_CONNECTION_FAILURE) {
+            failure_count++;
+        }
+    }
+
+    return failure_count >= context->number_of_failures;
+}
+
+static void s_wait_for_n_connection_failure_lifecycle_events(
+    struct aws_mqtt5_client_mock_test_fixture *test_context,
+    size_t failure_count) {
+    struct aws_connection_failure_wait_context context = {
+        .number_of_failures = failure_count,
+        .test_fixture = test_context,
+    };
+
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_received_at_least_n_connection_failures, &context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+#define RECONNECT_TEST_MIN_BACKOFF 500
+#define RECONNECT_TEST_MAX_BACKOFF 5000
+#define RECONNECT_TEST_BACKOFF_RESET_DELAY 5000
+
+static int s_verify_reconnection_exponential_backoff_timestamps(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture) {
+    aws_mutex_lock(&test_fixture->lock);
+
+    size_t event_count = aws_array_list_length(&test_fixture->lifecycle_events);
+    uint64_t last_timestamp = 0;
+    uint64_t expected_backoff = RECONNECT_TEST_MIN_BACKOFF;
+
+    for (size_t i = 0; i < event_count; ++i) {
+        struct aws_mqtt5_lifecycle_event_record *record = NULL;
+        aws_array_list_get_at(&test_fixture->lifecycle_events, &record, i);
+
+        if (record->event.event_type == AWS_MQTT5_CLET_CONNECTION_FAILURE) {
+            if (last_timestamp == 0) {
+                last_timestamp = record->timestamp;
+            } else {
+                uint64_t time_diff = aws_timestamp_convert(
+                    record->timestamp - last_timestamp, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+
+                if (!s_is_within_percentage_of(expected_backoff, time_diff, .1)) {
+                    return AWS_OP_ERR;
+                }
+
+                expected_backoff = aws_min_u64(expected_backoff * 2, RECONNECT_TEST_MAX_BACKOFF);
+                last_timestamp = record->timestamp;
+            }
+        }
+    }
+
+    aws_mutex_unlock(&test_fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+/*
+ * Always-fail variant that waits for 6 connection failures and then checks the timestamps between them against
+ * what we'd expect with exponential backoff and no jitter
+ */
+static int s_mqtt5_client_reconnect_failure_backoff_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* backoff delay sequence: 500, 1000, 2000, 4000, 5000, ... */
+    client_options.retry_jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE;
+    client_options.min_reconnect_delay_ms = RECONNECT_TEST_MIN_BACKOFF;
+    client_options.max_reconnect_delay_ms = RECONNECT_TEST_MAX_BACKOFF;
+    client_options.min_connected_time_to_reset_reconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY;
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_always_fail;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_n_connection_failure_lifecycle_events(&test_context, 6);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    /* 6 (connecting, connection failure) pairs */
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    ASSERT_SUCCESS(s_verify_reconnection_exponential_backoff_timestamps(&test_context));
+
+    /* 6 (connecting, mqtt_connect, channel_shutdown, pending_reconnect) tuples (minus the final pending_reconnect) */
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_reconnect_failure_backoff, s_mqtt5_client_reconnect_failure_backoff_fn)
+
+struct aws_mqtt5_mock_server_reconnect_state {
+    size_t required_connection_failure_count;
+
+    size_t connection_attempts;
+    uint64_t connect_timestamp;
+
+    uint64_t successful_connection_disconnect_delay_ms;
+};
+
+static int s_aws_mqtt5_mock_server_handle_connect_succeed_on_nth(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+
+    struct aws_mqtt5_mock_server_reconnect_state *context = user_data;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    if (context->connection_attempts == context->required_connection_failure_count) {
+        connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+        aws_high_res_clock_get_ticks(&context->connect_timestamp);
+    } else {
+        connack_view.reason_code = AWS_MQTT5_CRC_NOT_AUTHORIZED;
+    }
+
+    ++context->connection_attempts;
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+static void s_aws_mqtt5_mock_server_disconnect_after_n_ms(
+    struct aws_mqtt5_server_mock_connection_context *mock_server,
+    void *user_data) {
+
+    struct aws_mqtt5_mock_server_reconnect_state *context = user_data;
+    if (context->connect_timestamp == 0) {
+        return;
+    }
+
+    uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&now);
+
+    if (now < context->connect_timestamp) {
+        return;
+    }
+
+    uint64_t elapsed_ms =
+        aws_timestamp_convert(now - context->connect_timestamp, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+    if (elapsed_ms > context->successful_connection_disconnect_delay_ms) {
+
+        struct aws_mqtt5_packet_disconnect_view disconnect = {
+            .reason_code = AWS_MQTT5_DRC_PACKET_TOO_LARGE,
+        };
+
+        s_aws_mqtt5_mock_server_send_packet(mock_server, AWS_MQTT5_PT_DISCONNECT, &disconnect);
+        context->connect_timestamp = 0;
+    }
+}
+
+static int s_verify_reconnection_after_success_used_backoff(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    uint64_t expected_reconnect_delay_ms) {
+
+    aws_mutex_lock(&test_fixture->lock);
+
+    size_t event_count = aws_array_list_length(&test_fixture->lifecycle_events);
+
+    uint64_t disconnect_after_success_timestamp = 0;
+    uint64_t reconnect_failure_after_disconnect_timestamp = 0;
+
+    for (size_t i = 0; i < event_count; ++i) {
+        struct aws_mqtt5_lifecycle_event_record *record = NULL;
+        aws_array_list_get_at(&test_fixture->lifecycle_events, &record, i);
+
+        if (record->event.event_type == AWS_MQTT5_CLET_DISCONNECTION) {
+            ASSERT_INT_EQUALS(0, disconnect_after_success_timestamp);
+            disconnect_after_success_timestamp = record->timestamp;
+        } else if (record->event.event_type == AWS_MQTT5_CLET_CONNECTION_FAILURE) {
+            if (reconnect_failure_after_disconnect_timestamp == 0 && disconnect_after_success_timestamp > 0) {
+                reconnect_failure_after_disconnect_timestamp = record->timestamp;
+            }
+        }
+    }
+
+    aws_mutex_unlock(&test_fixture->lock);
+
+    ASSERT_TRUE(disconnect_after_success_timestamp > 0 && reconnect_failure_after_disconnect_timestamp > 0);
+
+    uint64_t post_success_reconnect_time_ms = aws_timestamp_convert(
+        reconnect_failure_after_disconnect_timestamp - disconnect_after_success_timestamp,
+        AWS_TIMESTAMP_NANOS,
+        AWS_TIMESTAMP_MILLIS,
+        NULL);
+
+    if (!s_is_within_percentage_of(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .1)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+/*
+ * Fail-until-max-backoff variant, followed by a success that then quickly disconnects.  Verify the next reconnect
+ * attempt still uses the maximum backoff because we weren't connected long enough to reset it.
+ */
+static int s_mqtt5_client_reconnect_backoff_insufficient_reset_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    struct aws_mqtt5_mock_server_reconnect_state mock_server_state = {
+        .required_connection_failure_count = 6,
+        /* quick disconnect should not reset reconnect delay */
+        .successful_connection_disconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY / 5,
+    };
+
+    /* backoff delay sequence: 500, 1000, 2000, 4000, 5000, ... */
+    client_options.retry_jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE;
+    client_options.min_reconnect_delay_ms = RECONNECT_TEST_MIN_BACKOFF;
+    client_options.max_reconnect_delay_ms = RECONNECT_TEST_MAX_BACKOFF;
+    client_options.min_connected_time_to_reset_reconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY;
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_succeed_on_nth;
+    server_function_table.service_task_fn = s_aws_mqtt5_mock_server_disconnect_after_n_ms;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &mock_server_state,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_n_connection_failure_lifecycle_events(&test_context, 7);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    /* 6 (connecting, connection failure) pairs, followed by a successful connection, then a disconnect and reconnect */
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_DISCONNECTION,
+            .error_code = AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    ASSERT_SUCCESS(s_verify_reconnection_after_success_used_backoff(&test_context, RECONNECT_TEST_MAX_BACKOFF));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_reconnect_backoff_insufficient_reset, s_mqtt5_client_reconnect_backoff_insufficient_reset_fn)
+
+/*
+ * Fail-until-max-backoff variant, followed by a success that disconnects after enough time has passed that the backoff
+ * should be reset.  Verify that the next reconnect is back to using the minimum backoff value.
+ */
+static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    struct aws_mqtt5_mock_server_reconnect_state mock_server_state = {
+        .required_connection_failure_count = 6,
+        /* slow disconnect should reset reconnect delay */
+        .successful_connection_disconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY * 2,
+    };
+
+    /* backoff delay sequence: 500, 1000, 2000, 4000, 5000, ... */
+    client_options.retry_jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE;
+    client_options.min_reconnect_delay_ms = RECONNECT_TEST_MIN_BACKOFF;
+    client_options.max_reconnect_delay_ms = RECONNECT_TEST_MAX_BACKOFF;
+    client_options.min_connected_time_to_reset_reconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY;
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_succeed_on_nth;
+    server_function_table.service_task_fn = s_aws_mqtt5_mock_server_disconnect_after_n_ms;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &mock_server_state,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_n_connection_failure_lifecycle_events(&test_context, 7);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    /* 6 (connecting, connection failure) pairs, followed by a successful connection, then a disconnect and reconnect */
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_DISCONNECTION,
+            .error_code = AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    ASSERT_SUCCESS(s_verify_reconnection_after_success_used_backoff(&test_context, RECONNECT_TEST_MIN_BACKOFF));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_reconnect_backoff_sufficient_reset, s_mqtt5_client_reconnect_backoff_sufficient_reset_fn)
