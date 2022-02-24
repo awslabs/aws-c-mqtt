@@ -1145,7 +1145,8 @@ int aws_mqtt5_packet_suback_storage_init_from_external_storage(
         return AWS_OP_ERR;
     }
 
-    if (aws_array_list_init_dynamic(&suback_storage->reason_codes, allocator, 0, sizeof(uint8_t))) {
+    if (aws_array_list_init_dynamic(
+            &suback_storage->reason_codes, allocator, 0, sizeof(enum aws_mqtt5_suback_reason_code))) {
         return AWS_OP_ERR;
     }
 
@@ -1181,14 +1182,14 @@ void aws_mqtt5_packet_suback_view_log(
         (int)suback_view->packet_id);
 
     for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
-        const uint8_t reason_code = suback_view->reason_codes[i];
+        enum aws_mqtt5_suback_reason_code reason_code = suback_view->reason_codes[i];
         AWS_LOGF(
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: topic %zu reason code:%d %s",
             (void *)suback_view,
             i,
-            reason_code,
+            (int)reason_code,
             aws_mqtt5_suback_reason_code_to_c_string(reason_code));
     }
 

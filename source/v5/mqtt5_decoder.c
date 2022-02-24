@@ -396,7 +396,6 @@ static int s_aws_mqtt5_decoder_decode_suback(struct aws_mqtt5_decoder *decoder) 
     if (aws_mqtt5_packet_suback_storage_init_from_external_storage(&storage, decoder->allocator)) {
         return AWS_OP_ERR;
     }
-
     int result = AWS_OP_ERR;
 
     struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
@@ -412,17 +411,14 @@ static int s_aws_mqtt5_decoder_decode_suback(struct aws_mqtt5_decoder *decoder) 
         }
     }
 
+    aws_array_list_init_dynamic(
+        &storage.reason_codes, decoder->allocator, packet_cursor.len, sizeof(enum aws_mqtt5_suback_reason_code));
+
     while (packet_cursor.len > 0) {
-        /* STEVE CLEAN UP
-
-        Store the reason codes directly in the storage's byte buffer and then use
-        aws_array_list_init_static to reference the correct memory range within it.
-
-        TODO Clean up the code below to apply the above process
-        */
-        enum aws_mqtt5_suback_reason_code reason_code;
+        uint8_t reason_code;
         AWS_MQTT5_DECODE_U8(&packet_cursor, &reason_code, done);
-        aws_array_list_push_back(&storage.reason_codes, &reason_code);
+        enum aws_mqtt5_suback_reason_code reason_code_enum = reason_code;
+        aws_array_list_push_back(&storage.reason_codes, &reason_code_enum);
     }
 
     result = AWS_OP_SUCCESS;
