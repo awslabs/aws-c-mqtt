@@ -774,47 +774,6 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
     }
 }
 
-static int s_aws_mqtt5_client_begin_operation_encode(
-    struct aws_mqtt5_client *client,
-    struct aws_mqtt5_operation *operation) {
-
-    switch (operation->packet_type) {
-
-        /* TODO: refactor operation base to make this function unnecessary? */
-        case AWS_MQTT5_PT_CONNECT:
-            if (aws_mqtt5_encoder_append_packet_encoding(
-                    &client->encoder,
-                    AWS_MQTT5_PT_CONNECT,
-                    &((struct aws_mqtt5_operation_connect *)operation->impl)->options_storage.storage_view)) {
-                return AWS_OP_ERR;
-            }
-            break;
-
-        case AWS_MQTT5_PT_PINGREQ:
-            if (aws_mqtt5_encoder_append_packet_encoding(&client->encoder, AWS_MQTT5_PT_PINGREQ, NULL)) {
-                return AWS_OP_ERR;
-            }
-            break;
-
-        case AWS_MQTT5_PT_SUBSCRIBE:
-            if (aws_mqtt5_encoder_append_packet_encoding(
-                    &client->encoder,
-                    AWS_MQTT5_PT_SUBSCRIBE,
-                    &((struct aws_mqtt5_operation_subscribe *)operation->impl)->options_storage.storage_view)) {
-                return AWS_OP_ERR;
-            }
-            break;
-
-        case AWS_MQTT5_PT_DISCONNECT:
-        case AWS_MQTT5_PT_UNSUBSCRIBE:
-        case AWS_MQTT5_PT_PUBLISH:
-        default:
-            return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
 static int s_aws_mqtt5_client_set_current_operation(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation) {
@@ -1622,6 +1581,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
 
         case AWS_MQTT5_PT_SUBACK:
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: SUBACK received", (void *)client);
+            /* TODO logic handling on SUBACK packet received */
             break;
 
         default:
@@ -2021,6 +1981,11 @@ int aws_mqtt5_client_subscribe(
         goto error;
     }
 
+    /*
+        STEVE CLEAN UP
+        this s_aws_mqtt5_client_set_current_operation function sets client->current_operation to the subscribe_op->base.
+        Bret suggested removing this temp/test-only before committing.
+    */
     if (s_aws_mqtt5_client_set_current_operation(client, &subscribe_op->base)) {
         goto error;
     }

@@ -354,7 +354,7 @@ done:
     return result;
 }
 
-/* decode function for all CONNACK properties */
+/* decode function for all SUBACK properties */
 static int s_read_suback_property(
     struct aws_mqtt5_packet_suback_storage *storage,
     struct aws_byte_cursor *packet_cursor) {
@@ -390,110 +390,6 @@ done:
     return result;
 }
 
-/* decode function for all SUBACK Reason Codes */
-static int s_read_suback_reason_code(
-    struct aws_mqtt5_packet_suback_storage *storage,
-    struct aws_byte_cursor *packet_cursor) {
-    int result = AWS_OP_ERR;
-
-    uint8_t property_type = 0;
-    AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
-
-    switch (property_type) {
-        case AWS_MQTT5_SUBACK_REASON_CODE_GRANTED_QOS_0:
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_GRANTED_QOS_1:
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_GRANTED_QOS_2:
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_UNSPECIFIED_ERROR:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL, "(%p) aws_mqtt5_decoder - SUBACK REASON CODE UNSPECIFIED ERROR", (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_IMPLEMENTATION_SPECIFIC_ERROR:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_decoder - SUBACK REASON CODE IMPLEMENTATION SPECIFIC ERROR",
-                (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_NOT_AUTHORIZED:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL, "(%p) aws_mqtt5_decoder - SUBACK REASON CODE NOT AUTHORIZED", (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_TOPIC_FILTER_INVALID:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_decoder - SUBACK REASON CODE TOPIC FILTER INVALID",
-                (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_PACKET_IDENTIFIER_IN_USE:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_decoder - SUBACK REASON CODE PACKET IDENTIFIER IN USE",
-                (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_QUOTA_EXCEEDED:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL, "(%p) aws_mqtt5_decoder - SUBACK REASON CODE QUOTA EXCEEDED", (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_SHARED_SUBSCRIPTIONS_NOT_SUPPORTED:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_decoder - SUBACK REASON CODE SHARED SUBSCRIPTIONS NOT SUPPORTED",
-                (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_SUBSCRIPTION_IDENTIFIERS_NOT_SUPPORTED:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_decoder - SUBACK REASON CODE SUBSCRIPTION IDENTIFIERS NOT SUPPORTED",
-                (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        case AWS_MQTT5_SUBACK_REASON_CODE_WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED:
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "(%p) aws_mqtt5_decoder - SUBACK REASON CODE WILDCARD SUBSCRIPTIONS NOT SUPPORTED",
-                (void *)storage);
-            result = AWS_OP_ERR;
-            break;
-
-        default:
-            goto done;
-    }
-
-    if (aws_array_list_push_back(&storage->reason_codes.reason_codes, &property_type)) {
-        goto done;
-    }
-
-    result = AWS_OP_SUCCESS;
-
-done:
-
-    if (result != AWS_OP_SUCCESS) {
-        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
-    }
-
-    return result;
-}
-
 /* decodes a SUBACK packet whose data must be in the scratch buffer */
 static int s_aws_mqtt5_decoder_decode_suback(struct aws_mqtt5_decoder *decoder) {
     struct aws_mqtt5_packet_suback_storage storage;
@@ -505,26 +401,28 @@ static int s_aws_mqtt5_decoder_decode_suback(struct aws_mqtt5_decoder *decoder) 
 
     struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
 
-    uint16_t packet_identifier = 0;
-    AWS_MQTT5_DECODE_U16(&packet_cursor, &packet_identifier, done);
-    storage.packet_id = packet_identifier;
+    AWS_MQTT5_DECODE_U16(&packet_cursor, &storage.packet_id, done);
 
     uint32_t property_length = 0;
     AWS_MQTT5_DECODE_VLI(&packet_cursor, &property_length, done);
-
-    if (property_length != 0) {
-        uint32_t reason_code_length = packet_cursor.len - property_length;
-        while (packet_cursor.len > reason_code_length) {
-            if (s_read_suback_property(&storage, &packet_cursor)) {
-                goto done;
-            }
+    struct aws_byte_cursor properties_cursor = aws_byte_cursor_advance(&packet_cursor, property_length);
+    while (properties_cursor.len > 0) {
+        if (s_read_suback_property(&storage, &properties_cursor)) {
+            goto done;
         }
     }
 
     while (packet_cursor.len > 0) {
-        if (s_read_suback_reason_code(&storage, &packet_cursor)) {
-            goto done;
-        }
+        /* STEVE CLEAN UP
+
+        Store the reason codes directly in the storage's byte buffer and then use
+        aws_array_list_init_static to reference the correct memory range within it.
+
+        TODO Clean up the code below to apply the above process
+        */
+        enum aws_mqtt5_suback_reason_code reason_code;
+        AWS_MQTT5_DECODE_U8(&packet_cursor, &reason_code, done);
+        aws_array_list_push_back(&storage.reason_codes, &reason_code);
     }
 
     result = AWS_OP_SUCCESS;

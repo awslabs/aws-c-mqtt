@@ -27,10 +27,6 @@ struct aws_mqtt5_user_property_set {
     struct aws_array_list properties;
 };
 
-struct aws_mqtt5_suback_reason_code_set {
-    struct aws_array_list reason_codes;
-};
-
 struct aws_mqtt5_operation_vtable {
     void (*aws_mqtt5_operation_completion_fn)(
         struct aws_mqtt5_operation *operation,
@@ -186,7 +182,7 @@ struct aws_mqtt5_packet_suback_storage {
 
     struct aws_mqtt5_user_property_set user_properties;
 
-    struct aws_mqtt5_suback_reason_code_set reason_codes;
+    struct aws_array_list reason_codes;
 
     struct aws_byte_buf storage;
 };
@@ -363,25 +359,6 @@ AWS_MQTT_API int aws_mqtt5_user_property_set_get_property(
 AWS_MQTT_API int aws_mqtt5_user_property_set_add_stored_property(
     struct aws_mqtt5_user_property_set *property_set,
     struct aws_mqtt5_user_property *property);
-
-/* Suback Reason Codes */
-
-AWS_MQTT_API int aws_mqtt5_suback_reason_code_set_init_with_storage(
-    struct aws_mqtt5_suback_reason_code_set *suback_reason_code_set,
-    struct aws_allocator *allocator,
-    struct aws_byte_buf *storage,
-    size_t reason_code_count,
-    const uint8_t *reason_codes);
-
-AWS_MQTT_API void aws_mqtt5_suback_reason_code_set_clean_up(struct aws_mqtt5_suback_reason_code_set *reason_code_set);
-
-AWS_MQTT_API size_t
-    aws_mqtt5_suback_reason_code_set_size(const struct aws_mqtt5_suback_reason_code_set *reason_code_set);
-
-AWS_MQTT_API int aws_mqtt5_suback_reason_code_set_get_reason_code(
-    const struct aws_mqtt5_suback_reason_code_set *reason_code_set,
-    size_t index,
-    uint8_t *reason_code_out);
 
 /* Operation base */
 
