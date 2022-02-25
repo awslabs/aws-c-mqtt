@@ -694,8 +694,8 @@ static const struct aws_mqtt5_subscription_view s_subscriptions[] = {
              .len = AWS_ARRAY_SIZE(s_subscription_topic_1) - 1,
          },
      .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
-     .no_local = false,
-     .retain_as_published = false,
+     .no_local = true,
+     .retain_as_published = true,
      .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND},
     {.topic_filter =
          {
@@ -717,22 +717,82 @@ static const struct aws_mqtt5_subscription_view s_subscriptions[] = {
      .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND},
 };
 
+int aws_mqtt5_test_verify_subscriptions_raw(
+    size_t subscription_count,
+    const struct aws_mqtt5_subscription_view *subscriptions,
+    size_t expected_count,
+    const struct aws_mqtt5_subscription_view *expected_subscriptions) {
+
+    ASSERT_UINT_EQUALS(expected_count, subscription_count);
+
+    for (size_t i = 0; i < expected_count; ++i) {
+        const struct aws_mqtt5_subscription_view *expected_subscription = &expected_subscriptions[i];
+        /*
+         struct aws_byte_cursor expected_topic_filter = expected_subscription->topic_filter;
+         enum aws_mqtt5_qos expected_qos = expected_subscription->qos;
+         bool expected_no_local = expected_subscription->no_local;
+         bool expected_retain_as_published = expected_subscription->retain_as_published;
+         enum aws_mqtt5_retain_handling_type expected_retain_handling_type =
+         expected_subscription->retain_handling_type;
+        */
+        ASSERT_BIN_ARRAYS_EQUALS(
+            expected_subscription->topic_filter.ptr,
+            expected_subscription->topic_filter.len,
+            subscriptions[i].topic_filter.ptr,
+            subscriptions[i].topic_filter.len);
+        ASSERT_INT_EQUALS(expected_subscription->qos, subscriptions[i].qos);
+        ASSERT_INT_EQUALS(expected_subscription->no_local, subscriptions[i].no_local);
+        ASSERT_INT_EQUALS(expected_subscription->retain_as_published, subscriptions[i].retain_as_published);
+        ASSERT_INT_EQUALS(expected_subscription->retain_handling_type, subscriptions[i].retain_handling_type);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_on_subscribe_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    struct aws_mqtt5_encode_decode_tester *tester = user_data;
+
+    // STEVE TODO What's this?
+    ++tester->view_count;
+
+    struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet_view;
+    struct aws_mqtt5_packet_subscribe_view *expected_view = tester->expected_views;
+
+    ASSERT_INT_EQUALS(expected_view->packet_id, subscribe_view->packet_id);
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_subscriptions_raw(
+        expected_view->subscription_count,
+        expected_view->subscriptions,
+        subscribe_view->subscription_count,
+        subscribe_view->subscriptions));
+
+    ASSERT_INT_EQUALS(*expected_view->subscription_identifier, *subscribe_view->subscription_identifier);
+
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        expected_view->user_property_count,
+        expected_view->user_properties,
+        subscribe_view->user_property_count,
+        subscribe_view->user_properties));
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_mqtt5_packet_subscribe_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    aws_mqtt5_packet_id_t packet_id = 1;
-    size_t subscription_count = 1;
-    const struct aws_mqtt5_subscription_view *subscriptions;
-    const uint32_t *subscription_identifier;
+    aws_mqtt5_packet_id_t packet_id = 47;
+    uint32_t subscription_identifier = 1;
 
     struct aws_mqtt5_packet_subscribe_view subscribe_view = {
-        .packet_id = &packet_id,
-        .subscription_count = &subscription_count,
-        .subscriptions = &subscriptions,
+        .packet_id = packet_id,
+        .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
+        .subscriptions = &s_subscriptions[0],
         .subscription_identifier = &subscription_identifier,
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = &s_user_properties[0],
     };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
+        allocator, AWS_MQTT5_PT_SUBSCRIBE, &subscribe_view, s_aws_mqtt5_on_subscribe_received_fn));
 
     return AWS_OP_SUCCESS;
 }

@@ -477,10 +477,135 @@ done:
     return result;
 }
 
+/* decode function for subscribe properties.  Movable to test-only code if we switched to a decoding function table */
+static int s_read_subscribe_property(
+    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
+    struct aws_byte_cursor *packet_cursor) {
+    int result = AWS_OP_ERR;
+
+    uint8_t property_type = 0;
+    AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
+
+    switch (property_type) {
+        case AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER:
+            AWS_MQTT5_DECODE_VLI(packet_cursor, &subscribe_storage->subscription_identifier, done);
+            subscribe_storage->subscription_identifier_ptr = &subscribe_storage->subscription_identifier;
+            subscribe_storage->storage_view.subscription_identifier = subscribe_storage->subscription_identifier_ptr;
+
+            break;
+        case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
+            if (aws_mqtt5_decode_user_property(packet_cursor, &subscribe_storage->user_properties)) {
+                goto done;
+            }
+            break;
+
+        default:
+            goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    if (result != AWS_OP_SUCCESS) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+    }
+
+    return result;
+}
+
+/*
+ * Decodes a SUBSCRIBE packet whose data must be in the scratch buffer.
+ */
+static int s_aws_mqtt5_decoder_decode_subscribe(struct aws_mqtt5_decoder *decoder) {
+    struct aws_mqtt5_packet_subscribe_storage subscribe_storage;
+    int result = AWS_OP_ERR;
+
+    if (aws_mqtt5_packet_subscribe_storage_init_from_external_storage(&subscribe_storage, decoder->allocator)) {
+        goto done;
+    }
+
+    /* SUBSCRIBE flags must be 2 by protocol*/
+    uint8_t first_byte = decoder->packet_first_byte;
+    if ((first_byte & 0x0F) != 2) {
+        goto done;
+    }
+
+    struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
+    if (decoder->remaining_length != (uint32_t)packet_cursor.len) {
+        goto done;
+    }
+
+    uint16_t packet_id = 0;
+    AWS_MQTT5_DECODE_U16(&packet_cursor, &packet_id, done);
+    subscribe_storage.storage_view.packet_id = packet_id;
+
+    uint32_t property_length = 0;
+    AWS_MQTT5_DECODE_VLI(&packet_cursor, &property_length, done);
+    if (property_length > packet_cursor.len) {
+        goto done;
+    }
+
+    struct aws_byte_cursor property_cursor = aws_byte_cursor_advance(&packet_cursor, property_length);
+    while (property_cursor.len > 0) {
+        if (s_read_subscribe_property(&subscribe_storage, &property_cursor)) {
+            goto done;
+        }
+    }
+
+    while (packet_cursor.len > 0) {
+        struct aws_mqtt5_subscription_view subscription_view;
+        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &subscription_view.topic_filter, done);
+
+        uint8_t subscription_options = 0;
+        AWS_MQTT5_DECODE_U8(&packet_cursor, &subscription_options, done);
+
+        subscription_view.no_local = (subscription_options & AWS_MQTT5_SUBSCRIBE_FLAGS_NO_LOCAL) != 0;
+        subscription_view.retain_as_published =
+            (subscription_options & AWS_MQTT5_SUBSCRIBE_FLAGS_RETAIN_AS_PUBLISHED) != 0;
+        subscription_view.qos = (enum aws_mqtt5_qos)(
+            (subscription_options >> AWS_MQTT5_SUBSCRIBE_FLAGS_QOS_BIT_POSITION) &
+            AWS_MQTT5_SUBSCRIBE_FLAGS_QOS_BIT_MASK);
+        subscription_view.retain_handling_type = (enum aws_mqtt5_retain_handling_type)(
+            (subscription_options >> AWS_MQTT5_SUBSCRIBE_FLAGS_RETAIN_HANDLING_TYPE_BIT_POSITION) &
+            AWS_MQTT5_SUBSCRIBE_FLAGS_RETAIN_HANDLING_TYPE_BIT_MASK);
+
+        if (aws_array_list_push_back(&subscribe_storage.subscriptions, &subscription_view)) {
+            goto done;
+        }
+    }
+
+    if (packet_cursor.len == 0) {
+        result = AWS_OP_SUCCESS;
+    }
+
+done:
+
+    if (result == AWS_OP_SUCCESS) {
+        if (decoder->options.on_packet_received != NULL) {
+            aws_mqtt5_packet_subscribe_view_init_from_storage(&subscribe_storage.storage_view, &subscribe_storage);
+
+            result = (*decoder->options.on_packet_received)(
+                AWS_MQTT5_PT_CONNECT, &subscribe_storage.storage_view, decoder->options.callback_user_data);
+        }
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_decoder - SUBSCRIBE decode failure",
+            decoder->options.callback_user_data);
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+    }
+
+    aws_mqtt5_packet_subscribe_storage_clean_up(&subscribe_storage);
+
+    return result;
+}
+
 void aws_mqtt5_decode_init_testing_function_table(struct aws_mqtt5_decoder_function_table *function_table) {
     *function_table = *g_aws_mqtt5_default_decoder_table;
     function_table->decoders_by_packet_type[AWS_MQTT5_PT_PINGREQ] = &s_aws_mqtt5_decoder_decode_pingreq;
     function_table->decoders_by_packet_type[AWS_MQTT5_PT_CONNECT] = &s_aws_mqtt5_decoder_decode_connect;
+    function_table->decoders_by_packet_type[AWS_MQTT5_PT_SUBSCRIBE] = &s_aws_mqtt5_decoder_decode_subscribe;
 }
 
 /*******************************************************************************************************************/

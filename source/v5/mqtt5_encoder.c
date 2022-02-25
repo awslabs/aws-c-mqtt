@@ -472,7 +472,7 @@ static int s_compute_subscribe_variable_length_fields(
     if (subscribe_view->subscription_identifier != 0) {
         size_t subscription_identifier_length = 0;
         aws_mqtt5_get_variable_length_encode_size(
-            subscribe_view->subscription_identifier, &subscription_identifier_length);
+            *subscribe_view->subscription_identifier, &subscription_identifier_length);
         subscribe_variable_header_property_length += subscription_identifier_length + 1;
     }
 
@@ -565,7 +565,7 @@ static int s_aws_mqtt5_encoder_begin_subscribe(struct aws_mqtt5_encoder *encoder
      */
     if (subscription_view->subscription_identifier != 0) {
         ADD_ENCODE_STEP_U8(encoder, AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER);
-        ADD_ENCODE_STEP_VLI(encoder, subscription_view->subscription_identifier);
+        ADD_ENCODE_STEP_VLI(encoder, *subscription_view->subscription_identifier);
     }
 
     aws_mqtt5_add_user_property_encoding_steps(

@@ -427,6 +427,37 @@ AWS_MQTT_API void aws_mqtt5_packet_connack_view_init_from_storage(
     struct aws_mqtt5_packet_connack_view *connack_view,
     const struct aws_mqtt5_packet_connack_storage *connack_storage);
 
+/* Subscribe */
+
+AWS_MQTT_API struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
+    const struct aws_mqtt5_subscribe_completion_options *completion_options);
+
+AWS_MQTT_API int aws_mqtt5_packet_subscribe_storage_init(
+    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_options);
+
+AWS_MQTT_API int aws_mqtt5_packet_subscribe_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
+    struct aws_allocator *allocator);
+
+AWS_MQTT_API void aws_mqtt5_packet_subscribe_storage_clean_up(
+    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
+
+AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate(
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    struct aws_mqtt5_client *client);
+
+AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_log(
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    enum aws_log_level level);
+
+AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_init_from_storage(
+    struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    const struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
+
 /* Suback */
 
 AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init_from_external_storage(
@@ -508,33 +539,6 @@ AWS_MQTT_API void aws_mqtt5_packet_publish_view_log(
 AWS_MQTT_API void aws_mqtt5_packet_publish_view_init_from_storage(
     struct aws_mqtt5_packet_publish_view *publish_view,
     const struct aws_mqtt5_packet_publish_storage *publish_storage);
-
-/* Subscribe */
-
-AWS_MQTT_API struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
-    struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
-    const struct aws_mqtt5_subscribe_completion_options *completion_options);
-
-AWS_MQTT_API int aws_mqtt5_packet_subscribe_storage_init(
-    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
-    struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_options);
-
-AWS_MQTT_API void aws_mqtt5_packet_subscribe_storage_clean_up(
-    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
-
-AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    struct aws_mqtt5_client *client);
-
-AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_log(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    enum aws_log_level level);
-
-AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_init_from_storage(
-    struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    const struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
 
 /* Unsubscribe */
 
