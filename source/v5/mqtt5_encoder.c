@@ -465,6 +465,17 @@ static int s_compute_subscribe_variable_length_fields(
     size_t subscribe_variable_header_property_length = aws_mqtt5_compute_user_property_encode_length(
         subscribe_view->user_properties, subscribe_view->user_property_count);
 
+    /*
+     * Add the length of 1 byte for the identifier of a Subscription Identifier property
+     * and the VLI of the subscription_identifier itself
+     */
+    if (subscribe_view->subscription_identifier != 0) {
+        size_t subscription_identifier_length = 0;
+        aws_mqtt5_get_variable_length_encode_size(
+            subscribe_view->subscription_identifier, &subscription_identifier_length);
+        subscribe_variable_header_property_length += subscription_identifier_length + 1;
+    }
+
     *subscribe_properties_length = subscribe_variable_header_property_length;
 
     /* variable header total length =
@@ -546,6 +557,17 @@ static int s_aws_mqtt5_encoder_begin_subscribe(struct aws_mqtt5_encoder *encoder
      */
     ADD_ENCODE_STEP_U16(encoder, (uint16_t)subscription_view->packet_id);
     ADD_ENCODE_STEP_VLI(encoder, subscribe_property_length_u32);
+
+    /*
+     * Subscribe Properties
+     * (optional) Subscription Identifier
+     * (optional) User Properties
+     */
+    if (subscription_view->subscription_identifier != 0) {
+        ADD_ENCODE_STEP_U8(encoder, AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER);
+        ADD_ENCODE_STEP_VLI(encoder, subscription_view->subscription_identifier);
+    }
+
     aws_mqtt5_add_user_property_encoding_steps(
         encoder, subscription_view->user_properties, subscription_view->user_property_count);
 
