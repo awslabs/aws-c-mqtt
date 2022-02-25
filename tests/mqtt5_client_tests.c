@@ -302,6 +302,10 @@ static int s_verify_received_packet_sequence(
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Basic successful connect/disconnect test.  We check expected lifecycle events, internal client state changes,
+ * and server received packets.
+ */
 static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -378,6 +382,10 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
 
 AWS_TEST_CASE(mqtt5_client_direct_connect_success, s_mqtt5_client_direct_connect_success_fn)
 
+/*
+ * Connection failure test infrastructure.  Supplied callbacks are used to modify the way in which the connection
+ * establishment fails.
+ */
 static int s_mqtt5_client_simple_failure_test_fn(
     struct aws_allocator *allocator,
     void (*change_client_test_config_fn)(struct aws_mqtt5_client_mqtt5_mock_test_fixture_options *config),
@@ -452,6 +460,7 @@ static void s_change_client_vtable_synchronous_direct_failure(struct aws_mqtt5_c
     vtable->client_bootstrap_new_socket_channel_fn = s_mqtt5_client_test_synchronous_socket_channel_failure_fn;
 }
 
+/* Connection failure test where direct MQTT channel establishment fails synchronously */
 static int s_mqtt5_client_direct_connect_sync_channel_failure_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -501,6 +510,7 @@ static void s_change_client_vtable_asynchronous_direct_failure(struct aws_mqtt5_
     vtable->client_bootstrap_new_socket_channel_fn = s_mqtt5_client_test_asynchronous_socket_channel_failure_fn;
 }
 
+/* Connection failure test where direct MQTT channel establishment fails asynchronously */
 static int s_mqtt5_client_direct_connect_async_channel_failure_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -536,6 +546,7 @@ static void s_change_client_options_to_websockets(struct aws_mqtt5_client_mqtt5_
     config->client_options->websocket_handshake_transform = s_mqtt5_client_test_websocket_successful_transform;
 }
 
+/* Connection failure test where websocket MQTT channel establishment fails synchronously */
 static int s_mqtt5_client_websocket_connect_sync_channel_failure_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -587,6 +598,7 @@ static void s_change_client_vtable_asynchronous_websocket_failure(struct aws_mqt
     vtable->websocket_connect_fn = s_mqtt5_client_test_asynchronous_websocket_failure_fn;
 }
 
+/* Connection failure test where websocket MQTT channel establishment fails asynchronously */
 static int s_mqtt5_client_websocket_connect_async_channel_failure_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -614,6 +626,7 @@ static void s_change_client_options_to_failed_websocket_transform(
     config->client_options->websocket_handshake_transform = s_mqtt5_client_test_websocket_failed_transform;
 }
 
+/* Connection failure test where websocket MQTT channel establishment fails due to handshake transform failure */
 static int s_mqtt5_client_websocket_connect_handshake_failure_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -640,6 +653,7 @@ static int s_aws_mqtt5_mock_server_handle_connect_always_fail(
     return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
 }
 
+/* Connection failure test where overall connection fails due to a CONNACK error code */
 static int s_mqtt5_client_direct_connect_connack_refusal_fn(struct aws_allocator *allocator, void *ctx) {
 
     aws_mqtt_library_init(allocator);
@@ -696,6 +710,7 @@ static int s_mqtt5_client_direct_connect_connack_refusal_fn(struct aws_allocator
 
 AWS_TEST_CASE(mqtt5_client_direct_connect_connack_refusal, s_mqtt5_client_direct_connect_connack_refusal_fn)
 
+/* Connection failure test where overall connection fails because there's no response to the CONNECT packet */
 static int s_mqtt5_client_direct_connect_connack_timeout_fn(struct aws_allocator *allocator, void *ctx) {
 
     aws_mqtt_library_init(allocator);
@@ -795,6 +810,7 @@ static int s_aws_mqtt5_server_disconnect_on_connect(
     return result;
 }
 
+/* Connection test where we succeed and then the server sends a DISCONNECT */
 static int s_mqtt5_client_direct_connect_from_server_disconnect_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -866,8 +882,14 @@ AWS_TEST_CASE(
     mqtt5_client_direct_connect_from_server_disconnect,
     s_mqtt5_client_direct_connect_from_server_disconnect_fn)
 
-static bool s_received_at_least_five_pingreqs(void *arg) {
-    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+struct aws_mqtt5_client_test_ping_context {
+    size_t required_ping_count;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+};
+
+static bool s_received_at_least_n_pingreqs(void *arg) {
+    struct aws_mqtt5_client_test_ping_context *ping_context = arg;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = ping_context->test_fixture;
 
     size_t ping_count = 0;
     size_t packet_count = aws_array_list_length(&test_fixture->server_received_packets);
@@ -880,13 +902,15 @@ static bool s_received_at_least_five_pingreqs(void *arg) {
         }
     }
 
-    return ping_count >= 5;
+    return ping_count >= ping_context->required_ping_count;
 }
 
-static void s_wait_for_five_pingreqs(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+static void s_wait_for_n_pingreqs(struct aws_mqtt5_client_test_ping_context *ping_context) {
+
+    struct aws_mqtt5_client_mock_test_fixture *test_context = ping_context->test_fixture;
     aws_mutex_lock(&test_context->lock);
     aws_condition_variable_wait_pred(
-        &test_context->signal, &test_context->lock, s_received_at_least_five_pingreqs, test_context);
+        &test_context->signal, &test_context->lock, s_received_at_least_n_pingreqs, ping_context);
     aws_mutex_unlock(&test_context->lock);
 }
 
@@ -959,19 +983,25 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     /* faster ping timeout */
     client_options.ping_timeout_ms = 750;
 
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    struct aws_mqtt5_client_test_ping_context ping_context = {
+        .required_ping_count = 5,
+        .test_fixture = &test_context,
+    };
+
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
         .client_options = &client_options,
         .server_function_table = &server_function_table,
+        .mock_server_user_data = &ping_context,
     };
 
-    struct aws_mqtt5_client_mock_test_fixture test_context;
     ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
 
     struct aws_mqtt5_client *client = test_context.client;
     ASSERT_SUCCESS(aws_mqtt5_client_start(client));
 
     s_wait_for_connected_lifecycle_event(&test_context);
-    s_wait_for_five_pingreqs(&test_context);
+    s_wait_for_n_pingreqs(&ping_context);
 
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
 
