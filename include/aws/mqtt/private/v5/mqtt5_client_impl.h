@@ -280,7 +280,7 @@ struct aws_mqtt5_client {
      *   (qos 1+ publish, sub/unsub)
      *      user (via cross thread task) ->
      *      queued_operations -> (on front of queue)
-     *      current_operation -> (on completely encoded and passed to next handler)
+     *      current_operation (allocate packet id if necessary) -> (on completely encoded and passed to next handler)
      *      unacked_operations && unacked_operations_table -> (on ack received)
      *      release
      *
@@ -373,6 +373,31 @@ AWS_MQTT_API void aws_mqtt5_client_set_vtable(
     const struct aws_mqtt5_client_vtable *vtable);
 
 AWS_MQTT_API const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void);
+
+/*
+ * Sets the packet id, if necessary, on an operation based on the current pending acks table.  The caller is
+ * responsible for adding the operation to the unacked table when the packet has been encoding in an io message.
+ *
+ * There is an argument that the operation should go into the table only on socket write completion, but that breaks
+ * allocation unless an additional, independent table is added, which I'd prefer not to do presently.  Also, socket
+ * write completion callbacks can be a bit delayed which could lead to a situation where the response from a local
+ * server could arrive before the write completion runs which would be a disaster.
+ */
+AWS_MQTT_API int aws_mqtt5_operation_bind_packet_id(
+    struct aws_mqtt5_operation *operation,
+    const struct aws_hash_table *unacked_operations_table,
+    aws_mqtt5_packet_id_t *next_id);
+
+/*
+ * Initialize and clean up of the unacked operations table.  Exposed (privately) to enabled tests to reuse the
+ * init/cleanup used by the client itself.
+ */
+AWS_MQTT_API int aws_mqtt5_client_unacked_operations_table_init(
+    struct aws_hash_table *unacked_operations_table,
+    struct aws_allocator *allocator);
+AWS_MQTT_API int aws_mqtt5_client_unacked_operations_table_clean_up(
+    struct aws_hash_table *unacked_operations_table,
+    void (*cleanup_fn)(struct aws_mqtt5_operation *));
 
 AWS_EXTERN_C_END
 

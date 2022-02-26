@@ -76,6 +76,12 @@ add_test_case(mqtt5_disconnect_storage_new_set_all)
 
 # TODO: suback, unsuback, puback storage tests
 
+add_test_case(mqtt5_operation_bind_packet_id_empty_table)
+add_test_case(mqtt5_operation_bind_packet_id_multiple_with_existing)
+add_test_case(mqtt5_operation_bind_packet_id_multiple_with_wrap_around)
+add_test_case(mqtt5_operation_bind_packet_id_full_table)
+add_test_case(mqtt5_operation_bind_packet_id_not_valid)
+add_test_case(mqtt5_operation_bind_packet_id_already_bound)
 
 add_test_case(mqtt5_negotiated_settings_reset_test)
 add_test_case(mqtt5_negotiated_settings_apply_connack_test)

@@ -2068,3 +2068,89 @@ error:
 
     return AWS_OP_ERR;
 }
+
+static bool s_needs_packet_id(const struct aws_mqtt5_operation *operation) {
+    switch (operation->packet_type) {
+        case AWS_MQTT5_PT_SUBSCRIBE:
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            return aws_mqtt5_operation_get_packet_id(operation) == 0;
+
+        case AWS_MQTT5_PT_PUBLISH: {
+            const struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
+            if (publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE) {
+                return false;
+            }
+
+            return aws_mqtt5_operation_get_packet_id(operation) == 0;
+        }
+
+        default:
+            return false;
+    }
+}
+
+static uint16_t s_next_packet_id(uint16_t current_id) {
+    if (++current_id == 0) {
+        current_id = 1;
+    }
+
+    return current_id;
+}
+
+int aws_mqtt5_operation_bind_packet_id(
+    struct aws_mqtt5_operation *operation,
+    const struct aws_hash_table *unacked_operations_table,
+    aws_mqtt5_packet_id_t *next_id) {
+    if (!s_needs_packet_id(operation)) {
+        return AWS_OP_SUCCESS;
+    }
+
+    uint16_t current_id = *next_id;
+    struct aws_hash_element *elem = NULL;
+    for (uint16_t i = 0; i < UINT16_MAX; ++i) {
+        aws_hash_table_find(unacked_operations_table, &current_id, &elem);
+
+        if (elem == NULL) {
+            aws_mqtt5_operation_set_packet_id(operation, current_id);
+            *next_id = s_next_packet_id(current_id);
+
+            return AWS_OP_SUCCESS;
+        }
+
+        current_id = s_next_packet_id(current_id);
+    }
+
+    aws_raise_error(AWS_ERROR_INVALID_STATE);
+    return AWS_OP_ERR;
+}
+
+int aws_mqtt5_client_unacked_operations_table_init(
+    struct aws_hash_table *unacked_operations_table,
+    struct aws_allocator *allocator) {
+    return aws_hash_table_init(
+        unacked_operations_table,
+        allocator,
+        sizeof(struct aws_mqtt5_operation *),
+        s_hash_uint16_t,
+        s_uint16_t_eq,
+        NULL,
+        NULL);
+}
+
+int aws_mqtt5_client_unacked_operations_table_clean_up(
+    struct aws_hash_table *unacked_operations_table,
+    void (*cleanup_fn)(struct aws_mqtt5_operation *)) {
+    for (struct aws_hash_iter iter = aws_hash_iter_begin(unacked_operations_table); !aws_hash_iter_done(&iter);
+         aws_hash_iter_next(&iter)) {
+
+        struct aws_mqtt5_operation *operation = (struct aws_mqtt5_operation *)iter.element.value;
+
+        if (cleanup_fn != NULL) {
+            (*cleanup_fn)(operation);
+        }
+    }
+
+    aws_hash_table_clean_up(unacked_operations_table);
+
+    return AWS_OP_SUCCESS;
+}
