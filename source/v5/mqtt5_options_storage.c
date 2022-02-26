@@ -460,7 +460,9 @@ void aws_mqtt5_packet_connect_view_log(
         (void *)connect_view,
         (void *)connect_view->will);
 
-    aws_mqtt5_packet_publish_view_log(connect_view->will, level);
+    if (connect_view->will != NULL) {
+        aws_mqtt5_packet_publish_view_log(connect_view->will, level);
+    }
 
     if (connect_view->will_delay_interval_seconds != NULL) {
         AWS_LOGF(
@@ -856,9 +858,9 @@ int aws_mqtt5_packet_connack_storage_init(
         connack_storage->subscription_identifiers_available_ptr = &connack_storage->subscription_identifiers_available;
     }
 
-    if (connack_view->subscription_identifiers_available != NULL) {
-        connack_storage->subscription_identifiers_available = *connack_view->subscription_identifiers_available;
-        connack_storage->subscription_identifiers_available_ptr = &connack_storage->subscription_identifiers_available;
+    if (connack_view->shared_subscriptions_available != NULL) {
+        connack_storage->shared_subscriptions_available = *connack_view->shared_subscriptions_available;
+        connack_storage->shared_subscriptions_available_ptr = &connack_storage->shared_subscriptions_available;
     }
 
     if (connack_view->server_keep_alive != NULL) {
@@ -891,6 +893,15 @@ int aws_mqtt5_packet_connack_storage_init(
         }
 
         connack_storage->authentication_method_ptr = &connack_storage->authentication_method;
+    }
+
+    if (connack_view->authentication_data != NULL) {
+        connack_storage->authentication_data = *connack_view->authentication_data;
+        if (aws_byte_buf_append_and_update(&connack_storage->storage, &connack_storage->authentication_data)) {
+            return AWS_OP_ERR;
+        }
+
+        connack_storage->authentication_data_ptr = &connack_storage->authentication_data;
     }
 
     if (aws_mqtt5_user_property_set_init_with_storage(
@@ -1312,6 +1323,7 @@ int aws_mqtt5_packet_disconnect_storage_init(
 
     if (disconnect_options->session_expiry_interval_seconds != NULL) {
         disconnect_storage->session_expiry_interval_seconds = *disconnect_options->session_expiry_interval_seconds;
+        disconnect_storage->session_expiry_interval_seconds_ptr = &disconnect_storage->session_expiry_interval_seconds;
     }
 
     if (disconnect_options->reason_string != NULL) {
@@ -2234,7 +2246,7 @@ void aws_mqtt5_packet_subscribe_view_log(
 
     s_aws_mqtt5_user_property_set_log(
         subscribe_view->user_properties,
-        subscribe_view->subscription_count,
+        subscribe_view->user_property_count,
         (void *)subscribe_view,
         level,
         "aws_mqtt5_packet_subscribe_view");

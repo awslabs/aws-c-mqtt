@@ -4,7 +4,7 @@ include(AwsLibFuzzer)
 enable_testing()
 
 file(GLOB TEST_HDRS "*.h")
-set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_operation_test.c mqtt5_encoding_tests.c mqtt5_testing_utils.c mqtt5_client_tests.c)
+set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_operation_and_storage_tests.c mqtt5_encoding_tests.c mqtt5_testing_utils.c mqtt5_client_tests.c)
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
@@ -64,6 +64,19 @@ add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
 
 add_test_case(mqtt5_publish_operation_new_set_no_optional)
 add_test_case(mqtt5_publish_operation_new_set_all)
+add_test_case(mqtt5_subscribe_operation_new_set_no_optional)
+add_test_case(mqtt5_subscribe_operation_new_set_all)
+add_test_case(mqtt5_unsubscribe_operation_new_set_all)
+add_test_case(mqtt5_connect_storage_new_set_no_optional)
+add_test_case(mqtt5_connect_storage_new_set_all)
+add_test_case(mqtt5_connack_storage_new_set_no_optional)
+add_test_case(mqtt5_connack_storage_new_set_all)
+add_test_case(mqtt5_disconnect_storage_new_set_no_optional)
+add_test_case(mqtt5_disconnect_storage_new_set_all)
+
+# TODO: suback, unsuback, puback storage tests
+
+
 add_test_case(mqtt5_negotiated_settings_reset_test)
 add_test_case(mqtt5_negotiated_settings_apply_connack_test)
 
