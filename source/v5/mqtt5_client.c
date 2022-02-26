@@ -91,7 +91,7 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     AWS_ASSERT(aws_hash_table_get_entry_count(&client->unacked_operations_table) == 0);
     AWS_ASSERT(client->current_operation == NULL);
 
-    aws_hash_table_clean_up(&client->unacked_operations_table);
+    aws_mqtt5_client_unacked_operations_table_clean_up(&client->unacked_operations_table, NULL);
 
     s_complete_operation_list(client, AWS_ERROR_MQTT5_CLIENT_TERMINATED, &client->queued_operations);
     s_complete_operation_list(client, AWS_ERROR_MQTT5_CLIENT_TERMINATED, &client->write_completion_operations);
@@ -1747,14 +1747,7 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
 
     client->next_mqtt_packet_id = 1;
 
-    if (aws_hash_table_init(
-            &client->unacked_operations_table,
-            allocator,
-            sizeof(struct aws_mqtt5_operation *),
-            s_hash_uint16_t,
-            s_uint16_t_eq,
-            NULL,
-            NULL)) {
+    if (aws_mqtt5_client_unacked_operations_table_init(&client->unacked_operations_table, allocator)) {
         goto on_error;
     }
 
