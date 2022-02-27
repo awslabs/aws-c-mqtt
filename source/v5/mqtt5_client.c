@@ -2361,7 +2361,7 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
         return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_FAILURE);
     }
 
-    /* if io message, send down channel in write direction, handle errors */
+    /* send io_message down channel in write direction, handle errors */
     io_message->on_completion = s_aws_mqtt5_on_socket_write_completion;
     io_message->user_data = client_operational_state->client;
     client_operational_state->pending_write_completion = true;
