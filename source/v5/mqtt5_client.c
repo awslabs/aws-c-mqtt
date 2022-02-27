@@ -2217,9 +2217,9 @@ static bool s_aws_mqtt5_client_flow_control_allows_next_operation(
 /*
  * TODO: factor in flow control state (as a parameter and to helper functions)
  *
- * It's likely that in order for next_reschedule to be in sync with true/false service, we'll need to refactor this
- * to a computation that is time based and returns the current time if we should service now, a future time
- * for scheduling, and a zero for nothing to do.
+ * It's likely that in order for next_reschedule_time calculations to be in sync with true/false service, we'll need
+ * to refactor this to a computation that is time based and returns the current time if we should service now, a future
+ * time for scheduling, and a zero for nothing to do.
  */
 static bool s_aws_mqtt5_client_can_service_operational_state(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
@@ -2299,6 +2299,12 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
             struct aws_mqtt5_operation *next_operation =
                 AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
 
+            /*
+             * TODO: final validation of next_operation against current settings/constraints
+             *
+             * If validation fails, fail the operation, but continue client service
+             */
+
             if (s_aws_mqtt5_client_set_current_operation(client, next_operation)) {
                 process_result = AWS_OP_ERR;
                 break;
@@ -2324,6 +2330,7 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
          */
         if (encoding_result == AWS_MQTT5_ER_FINISHED) {
             if (s_operation_requires_ack(current_operation)) {
+                /* track the operation in the unacked data structures by packet id */
                 AWS_FATAL_ASSERT(aws_mqtt5_operation_get_packet_id(current_operation) != 0);
 
                 aws_hash_table_put(
@@ -2333,6 +2340,7 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                     NULL);
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);
             } else {
+                /* no ack is necessary, just add to socket write completion list */
                 aws_linked_list_push_back(
                     &client_operational_state->write_completion_operations, &current_operation->node);
             }
