@@ -229,6 +229,13 @@ struct aws_mqtt5_client_operational_state {
     struct aws_hash_table unacked_operations_table;
     struct aws_linked_list unacked_operations;
     struct aws_linked_list write_completion_operations;
+
+    /*
+     * Is there an io message in transit (to the socket) that has not invoked its write completion callback yet?
+     * The client implementation only allows one in-transit message at a time, and so if this is true, we don't
+     * send additional ones/
+     */
+    bool pending_write_completion;
 };
 
 struct aws_mqtt5_client {
@@ -276,13 +283,6 @@ struct aws_mqtt5_client {
     /* Channel handler information */
     struct aws_channel_handler handler;
     struct aws_channel_slot *slot;
-
-    /*
-     * Is there an io message in transit (to the socket) that has not invoked its write completion callback yet?
-     * The client implementation only allows one in-transit message at a time, and so if this is true, we don't
-     * send additional ones/
-     */
-    bool pending_write_completion;
 
     /*
      * What state is the client working towards?

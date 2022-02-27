@@ -258,7 +258,7 @@ static uint64_t s_compute_next_service_time_client_mqtt_connect(struct aws_mqtt5
      *
      * Note: no flow control on this.
      */
-    if (client->operational_state.current_operation != NULL && !client->pending_write_completion) {
+    if (client->operational_state.current_operation != NULL && !client->operational_state.pending_write_completion) {
         return now;
     }
 
@@ -846,7 +846,7 @@ static void s_aws_mqtt5_on_socket_write_completion(
     (void)message;
 
     struct aws_mqtt5_client *client = user_data;
-    client->pending_write_completion = false;
+    client->operational_state.pending_write_completion = false;
 
     if (error_code != AWS_ERROR_SUCCESS) {
         AWS_LOGF_INFO(
@@ -881,7 +881,7 @@ static void s_aws_mqtt5_on_socket_write_completion(
 
 /* TODO: refactor into a private API on operational state with vtable support for io message alloc and send */
 static int s_aws_mqtt5_client_write_current_operation_only(struct aws_mqtt5_client *client) {
-    if (client->operational_state.current_operation == NULL || client->pending_write_completion) {
+    if (client->operational_state.current_operation == NULL || client->operational_state.pending_write_completion) {
         return AWS_OP_SUCCESS;
     }
 
@@ -902,7 +902,7 @@ static int s_aws_mqtt5_client_write_current_operation_only(struct aws_mqtt5_clie
     if (result != AWS_MQTT5_ER_ERROR) {
         message->on_completion = s_aws_mqtt5_on_socket_write_completion;
         message->user_data = client;
-        client->pending_write_completion = true;
+        client->operational_state.pending_write_completion = true;
 
         if (aws_channel_slot_send_message(client->slot, message, AWS_CHANNEL_DIR_WRITE)) {
             int error_code = aws_last_error();
@@ -913,7 +913,7 @@ static int s_aws_mqtt5_client_write_current_operation_only(struct aws_mqtt5_clie
                 error_code,
                 aws_error_debug_str(error_code));
 
-            client->pending_write_completion = false;
+            client->operational_state.pending_write_completion = false;
             aws_mem_release(message->allocator, message);
             return AWS_OP_ERR;
         }
@@ -932,7 +932,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     AWS_FATAL_ASSERT(client->operational_state.current_operation == NULL);
 
     client->current_state = AWS_MCS_MQTT_CONNECT;
-    client->pending_write_completion = false;
+    client->operational_state.pending_write_completion = false;
 
     aws_mqtt5_encoder_reset(&client->encoder);
     aws_mqtt5_decoder_reset(&client->decoder);
@@ -1252,7 +1252,7 @@ static void s_service_state_mqtt_connect(struct aws_mqtt5_client *client, uint64
         return;
     }
 
-    if (client->operational_state.current_operation != NULL && !client->pending_write_completion) {
+    if (client->operational_state.current_operation != NULL && !client->operational_state.pending_write_completion) {
         if (s_aws_mqtt5_client_write_current_operation_only(client)) {
             int error_code = aws_last_error();
             AWS_LOGF_ERROR(
@@ -1352,7 +1352,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
     }
 
     /* TODO: flow control, operation queue processing, etc... */
-    if (client->operational_state.current_operation != NULL && !client->pending_write_completion) {
+    if (client->operational_state.current_operation != NULL && !client->operational_state.pending_write_completion) {
         if (s_aws_mqtt5_client_write_current_operation_only(client)) {
             int error_code = aws_last_error();
             AWS_LOGF_ERROR(
