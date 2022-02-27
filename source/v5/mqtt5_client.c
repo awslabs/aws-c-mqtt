@@ -780,9 +780,23 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
 static int s_aws_mqtt5_client_set_current_operation(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation) {
+
+    if (aws_mqtt5_operation_bind_packet_id(operation, &client->operational_state)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: failed to bind mqtt packet id for current operation, with error %d(%s)",
+            (void *)client,
+            error_code,
+            aws_error_debug_str(error_code));
+
+        s_aws_mqtt5_client_shutdown_channel(client, error_code);
+        return AWS_OP_ERR;
+    }
+
     if (aws_mqtt5_encoder_append_packet_encoding(&client->encoder, operation->packet_type, operation->packet_view)) {
         int error_code = aws_last_error();
-        AWS_LOGF_INFO(
+        AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
             "id=%p: failed to append packet encoding sequence for current operation with error %d(%s)",
             (void *)client,
@@ -2149,4 +2163,206 @@ void aws_mqtt5_client_operational_state_reset_offline_queue(
      *      Fail, remove, and release unacked_operations if:
      *          Operation is not Qos 1+ publish
      */
+}
+
+static bool s_aws_mqtt5_client_has_pending_operational_work(
+    const struct aws_mqtt5_client_operational_state *client_operational_state,
+    enum aws_mqtt5_client_state client_state) {
+    if (aws_linked_list_empty(&client_operational_state->queued_operations)) {
+        return false;
+    }
+
+    struct aws_linked_list_node *next_operation_node =
+        aws_linked_list_front(&client_operational_state->queued_operations);
+    struct aws_mqtt5_operation *next_operation =
+        AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
+
+    switch (client_state) {
+        case AWS_MCS_MQTT_CONNECT:
+            /* Only allowed to send a CONNECT packet in this state */
+            return next_operation->packet_type == AWS_MQTT5_PT_CONNECT;
+
+        case AWS_MCS_CLEAN_DISCONNECT:
+            /* Except for finishing the current operation, only allowed to send a DISCONNECT packet in this state */
+            return next_operation->packet_type == AWS_MQTT5_PT_DISCONNECT;
+
+        case AWS_MCS_CONNECTED:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+static bool s_aws_mqtt5_client_flow_control_allows_next_operation(
+    struct aws_mqtt5_operation *operation,
+    enum aws_mqtt5_client_state client_state) {
+    (void)operation;
+
+    switch (client_state) {
+        case AWS_MCS_MQTT_CONNECT:
+        case AWS_MCS_CLEAN_DISCONNECT:
+            return true;
+
+        case AWS_MCS_CONNECTED:
+            /* Need to check mqtt5 flow control, and later, optionally, AWS IoT Core limit flow control */
+            return true;
+
+        default:
+            /* no outbound traffic is allowed outside of the above states */
+            return false;
+    }
+}
+
+/*
+ * TODO: factor in flow control state (as a parameter and to helper functions)
+ *
+ * It's likely that in order for next_reschedule to be in sync with true/false service, we'll need to refactor this
+ * to a computation that is time based and returns the current time if we should service now, a future time
+ * for scheduling, and a zero for nothing to do.
+ */
+static bool s_aws_mqtt5_client_can_service_operational_state(
+    const struct aws_mqtt5_client_operational_state *client_operational_state,
+    enum aws_mqtt5_client_state client_state) {
+    /* If something is in transit, then wait for it to complete */
+    if (client_operational_state->pending_write_completion) {
+        return false;
+    }
+
+    /* TODO: bandwidth flow control check goes here */
+
+    /* If we're in the middle of something, keep going */
+    if (client_operational_state->current_operation != NULL) {
+        return true;
+    }
+
+    /* If we're not in the middle of something, and nothing is queued, then do nothing */
+    if (!s_aws_mqtt5_client_has_pending_operational_work(client_operational_state, client_state)) {
+        return false;
+    }
+
+    AWS_FATAL_ASSERT(!aws_linked_list_empty(&client_operational_state->queued_operations));
+
+    struct aws_linked_list_node *next_operation_node =
+        aws_linked_list_front(&client_operational_state->queued_operations);
+    struct aws_mqtt5_operation *next_operation =
+        AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
+
+    AWS_FATAL_ASSERT(next_operation != NULL);
+
+    /* check the head of the pending operation queue against flow control and client state restrictions */
+    return s_aws_mqtt5_client_flow_control_allows_next_operation(next_operation, client_state);
+}
+
+static bool s_operation_requires_ack(const struct aws_mqtt5_operation *operation) {
+    switch (operation->packet_type) {
+        case AWS_MQTT5_PT_SUBSCRIBE:
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            return true;
+
+        case AWS_MQTT5_PT_PUBLISH: {
+            const struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
+            return publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE;
+        }
+
+        default:
+            return false;
+    }
+}
+
+int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operational_state *client_operational_state) {
+    struct aws_mqtt5_client *client = client_operational_state->client;
+    enum aws_mqtt5_client_state client_state = client->current_state;
+    struct aws_channel_slot *slot = client->slot;
+    const struct aws_mqtt5_client_vtable *vtable = client->vtable;
+
+    /* Should we write data? */
+    bool should_service = s_aws_mqtt5_client_can_service_operational_state(client_operational_state, client_state);
+    if (!should_service) {
+        return AWS_OP_SUCCESS;
+    }
+
+    /* If we're going to write data, we need something to write to */
+    struct aws_io_message *io_message = (*vtable->aws_channel_acquire_message_from_pool_fn)(
+        slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH);
+    if (io_message == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    int process_result = AWS_OP_SUCCESS;
+
+    do {
+        /* if no current operation, pull one in and setup encode */
+        if (client_operational_state->current_operation == NULL) {
+            struct aws_linked_list_node *next_operation_node =
+                aws_linked_list_front(&client_operational_state->queued_operations);
+            struct aws_mqtt5_operation *next_operation =
+                AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
+
+            if (s_aws_mqtt5_client_set_current_operation(client, next_operation)) {
+                process_result = AWS_OP_ERR;
+                break;
+            }
+        }
+
+        struct aws_mqtt5_operation *current_operation = client_operational_state->current_operation;
+        AWS_FATAL_ASSERT(current_operation != NULL);
+
+        /* write current operation to message, handle errors */
+        enum aws_mqtt5_encoding_result encoding_result =
+            aws_mqtt5_encoder_encode_to_buffer(&client->encoder, &io_message->message_data);
+        if (encoding_result == AWS_MQTT5_ER_ERROR) {
+            process_result = AWS_OP_ERR;
+            break;
+        }
+
+        /* if encoding finished:
+         *    push to write completion or unacked
+         *    clear current
+         * else (message full)
+         *    break
+         */
+        if (encoding_result == AWS_MQTT5_ER_FINISHED) {
+            if (s_operation_requires_ack(current_operation)) {
+                AWS_FATAL_ASSERT(aws_mqtt5_operation_get_packet_id(current_operation) != 0);
+
+                aws_hash_table_put(
+                    &client_operational_state->unacked_operations_table,
+                    aws_mqtt5_operation_get_packet_id_address(current_operation),
+                    current_operation,
+                    NULL);
+                aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);
+            } else {
+                aws_linked_list_push_back(
+                    &client_operational_state->write_completion_operations, &current_operation->node);
+            }
+
+            client->operational_state.current_operation = NULL;
+        } else {
+            AWS_FATAL_ASSERT(encoding_result == AWS_MQTT5_ER_OUT_OF_ROOM);
+            break;
+        }
+
+        should_service = s_aws_mqtt5_client_can_service_operational_state(client_operational_state, client_state);
+    } while (should_service);
+
+    AWS_FATAL_ASSERT(io_message != NULL);
+
+    if (process_result != AWS_OP_SUCCESS) {
+        aws_mem_release(io_message->allocator, io_message);
+        return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_FAILURE);
+    }
+
+    /* if io message, send down channel in write direction, handle errors */
+    io_message->on_completion = s_aws_mqtt5_on_socket_write_completion;
+    io_message->user_data = client_operational_state->client;
+    client_operational_state->pending_write_completion = true;
+
+    if ((*vtable->aws_channel_slot_send_message_fn)(slot, io_message, AWS_CHANNEL_DIR_WRITE)) {
+        client_operational_state->pending_write_completion = false;
+        aws_mem_release(io_message->allocator, io_message);
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
 }

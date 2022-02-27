@@ -35,7 +35,7 @@ struct aws_mqtt5_operation_vtable {
         const void *completion_view);
     void (
         *aws_mqtt5_operation_set_packet_id_fn)(struct aws_mqtt5_operation *operation, aws_mqtt5_packet_id_t packet_id);
-    aws_mqtt5_packet_id_t (*aws_mqtt5_operation_get_packet_id_fn)(const struct aws_mqtt5_operation *operation);
+    aws_mqtt5_packet_id_t *(*aws_mqtt5_operation_get_packet_id_address_fn)(const struct aws_mqtt5_operation *operation);
 };
 
 /**
@@ -361,6 +361,9 @@ AWS_MQTT_API void aws_mqtt5_operation_set_packet_id(
     aws_mqtt5_packet_id_t packet_id);
 
 AWS_MQTT_API aws_mqtt5_packet_id_t aws_mqtt5_operation_get_packet_id(const struct aws_mqtt5_operation *operation);
+
+AWS_MQTT_API aws_mqtt5_packet_id_t *aws_mqtt5_operation_get_packet_id_address(
+    const struct aws_mqtt5_operation *operation);
 
 /* Connect */
 
