@@ -1113,10 +1113,6 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
 
 AWS_TEST_CASE(mqtt5_negotiated_settings_apply_connack_test, mqtt5_negotiated_settings_apply_connack_test_fn)
 
-static void s_release_operation(struct aws_mqtt5_operation *operation) {
-    aws_mqtt5_operation_release(operation);
-}
-
 static const struct aws_byte_cursor s_topic = {
     .ptr = (uint8_t *)s_unsub_topic_filter1,
     .len = AWS_ARRAY_SIZE(s_unsub_topic_filter1) - 1,
@@ -1143,30 +1139,29 @@ static int s_mqtt5_operation_bind_packet_id_empty_table_fn(struct aws_allocator 
     struct aws_mqtt5_operation_publish *publish_operation =
         aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
 
-    struct aws_hash_table operation_table;
-    aws_mqtt5_client_unacked_operations_table_init(&operation_table, allocator);
+    struct aws_mqtt5_client_operational_state operational_state;
+    aws_mqtt5_client_operational_state_init(&operational_state, allocator);
+    operational_state.next_mqtt_packet_id = 1;
 
-    aws_mqtt5_packet_id_t next_packet_id = 1;
-
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&publish_operation->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&publish_operation->base, &operational_state));
     ASSERT_UINT_EQUALS(1, aws_mqtt5_operation_get_packet_id(&publish_operation->base));
-    ASSERT_UINT_EQUALS(2, next_packet_id);
+    ASSERT_UINT_EQUALS(2, operational_state.next_mqtt_packet_id);
 
     aws_mqtt5_operation_set_packet_id(&publish_operation->base, 0);
-    next_packet_id = 5;
+    operational_state.next_mqtt_packet_id = 5;
 
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&publish_operation->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&publish_operation->base, &operational_state));
     ASSERT_UINT_EQUALS(5, aws_mqtt5_operation_get_packet_id(&publish_operation->base));
-    ASSERT_UINT_EQUALS(6, next_packet_id);
+    ASSERT_UINT_EQUALS(6, operational_state.next_mqtt_packet_id);
 
     aws_mqtt5_operation_set_packet_id(&publish_operation->base, 0);
-    next_packet_id = 65535;
+    operational_state.next_mqtt_packet_id = 65535;
 
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&publish_operation->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&publish_operation->base, &operational_state));
     ASSERT_UINT_EQUALS(65535, aws_mqtt5_operation_get_packet_id(&publish_operation->base));
-    ASSERT_UINT_EQUALS(1, next_packet_id);
+    ASSERT_UINT_EQUALS(1, operational_state.next_mqtt_packet_id);
 
-    aws_mqtt5_client_unacked_operations_table_clean_up(&operation_table, s_release_operation);
+    aws_mqtt5_client_operational_state_clean_up(&operational_state);
 
     aws_mqtt5_operation_release(&publish_operation->base);
 
@@ -1204,6 +1199,31 @@ static void s_create_operations(
     *unsubscribe_op = aws_mqtt5_operation_unsubscribe_new(allocator, &unsubscribe_view, NULL);
 }
 
+static void s_seed_unacked_operations(
+    struct aws_mqtt5_client_operational_state *operational_state,
+    struct aws_mqtt5_operation_publish *pending_publish,
+    struct aws_mqtt5_operation_subscribe *pending_subscribe,
+    struct aws_mqtt5_operation_unsubscribe *pending_unsubscribe) {
+    aws_hash_table_put(
+        &operational_state->unacked_operations_table,
+        &pending_publish->options_storage.storage_view.packet_id,
+        &pending_publish->base,
+        NULL);
+    aws_linked_list_push_back(&operational_state->unacked_operations, &pending_publish->base.node);
+    aws_hash_table_put(
+        &operational_state->unacked_operations_table,
+        &pending_subscribe->options_storage.storage_view.packet_id,
+        &pending_subscribe->base,
+        NULL);
+    aws_linked_list_push_back(&operational_state->unacked_operations, &pending_subscribe->base.node);
+    aws_hash_table_put(
+        &operational_state->unacked_operations_table,
+        &pending_unsubscribe->options_storage.storage_view.packet_id,
+        &pending_unsubscribe->base,
+        NULL);
+    aws_linked_list_push_back(&operational_state->unacked_operations, &pending_unsubscribe->base.node);
+}
+
 /* test that allocates packet ids from a table with entries that overlap the next id space */
 static int s_mqtt5_operation_bind_packet_id_multiple_with_existing_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1217,39 +1237,29 @@ static int s_mqtt5_operation_bind_packet_id_multiple_with_existing_fn(struct aws
     aws_mqtt5_operation_set_packet_id(&pending_subscribe->base, 3);
     aws_mqtt5_operation_set_packet_id(&pending_unsubscribe->base, 5);
 
-    struct aws_hash_table operation_table;
-    aws_mqtt5_client_unacked_operations_table_init(&operation_table, allocator);
+    struct aws_mqtt5_client_operational_state operational_state;
+    aws_mqtt5_client_operational_state_init(&operational_state, allocator);
 
-    aws_hash_table_put(
-        &operation_table, &pending_publish->options_storage.storage_view.packet_id, &pending_publish->base, NULL);
-    aws_hash_table_put(
-        &operation_table, &pending_subscribe->options_storage.storage_view.packet_id, &pending_subscribe->base, NULL);
-    aws_hash_table_put(
-        &operation_table,
-        &pending_unsubscribe->options_storage.storage_view.packet_id,
-        &pending_unsubscribe->base,
-        NULL);
-
-    aws_mqtt5_packet_id_t next_packet_id = 1;
+    s_seed_unacked_operations(&operational_state, pending_publish, pending_subscribe, pending_unsubscribe);
 
     struct aws_mqtt5_operation_publish *new_publish = NULL;
     struct aws_mqtt5_operation_subscribe *new_subscribe = NULL;
     struct aws_mqtt5_operation_unsubscribe *new_unsubscribe = NULL;
     s_create_operations(allocator, &new_publish, &new_subscribe, &new_unsubscribe);
 
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operational_state));
     ASSERT_UINT_EQUALS(2, aws_mqtt5_operation_get_packet_id(&new_publish->base));
-    ASSERT_UINT_EQUALS(3, next_packet_id);
+    ASSERT_UINT_EQUALS(3, operational_state.next_mqtt_packet_id);
 
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_subscribe->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_subscribe->base, &operational_state));
     ASSERT_UINT_EQUALS(4, aws_mqtt5_operation_get_packet_id(&new_subscribe->base));
-    ASSERT_UINT_EQUALS(5, next_packet_id);
+    ASSERT_UINT_EQUALS(5, operational_state.next_mqtt_packet_id);
 
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_unsubscribe->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_unsubscribe->base, &operational_state));
     ASSERT_UINT_EQUALS(6, aws_mqtt5_operation_get_packet_id(&new_unsubscribe->base));
-    ASSERT_UINT_EQUALS(7, next_packet_id);
+    ASSERT_UINT_EQUALS(7, operational_state.next_mqtt_packet_id);
 
-    aws_mqtt5_client_unacked_operations_table_clean_up(&operation_table, s_release_operation);
+    aws_mqtt5_client_operational_state_clean_up(&operational_state);
     aws_mqtt5_operation_release(&new_publish->base);
     aws_mqtt5_operation_release(&new_subscribe->base);
     aws_mqtt5_operation_release(&new_unsubscribe->base);
@@ -1274,39 +1284,30 @@ static int s_mqtt5_operation_bind_packet_id_multiple_with_wrap_around_fn(struct 
     aws_mqtt5_operation_set_packet_id(&pending_subscribe->base, 65535);
     aws_mqtt5_operation_set_packet_id(&pending_unsubscribe->base, 1);
 
-    struct aws_hash_table operation_table;
-    aws_mqtt5_client_unacked_operations_table_init(&operation_table, allocator);
+    struct aws_mqtt5_client_operational_state operational_state;
+    aws_mqtt5_client_operational_state_init(&operational_state, allocator);
+    operational_state.next_mqtt_packet_id = 65532;
 
-    aws_hash_table_put(
-        &operation_table, &pending_publish->options_storage.storage_view.packet_id, &pending_publish->base, NULL);
-    aws_hash_table_put(
-        &operation_table, &pending_subscribe->options_storage.storage_view.packet_id, &pending_subscribe->base, NULL);
-    aws_hash_table_put(
-        &operation_table,
-        &pending_unsubscribe->options_storage.storage_view.packet_id,
-        &pending_unsubscribe->base,
-        NULL);
-
-    aws_mqtt5_packet_id_t next_packet_id = 65532;
+    s_seed_unacked_operations(&operational_state, pending_publish, pending_subscribe, pending_unsubscribe);
 
     struct aws_mqtt5_operation_publish *new_publish = NULL;
     struct aws_mqtt5_operation_subscribe *new_subscribe = NULL;
     struct aws_mqtt5_operation_unsubscribe *new_unsubscribe = NULL;
     s_create_operations(allocator, &new_publish, &new_subscribe, &new_unsubscribe);
 
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operational_state));
     ASSERT_UINT_EQUALS(65532, aws_mqtt5_operation_get_packet_id(&new_publish->base));
-    ASSERT_UINT_EQUALS(65533, next_packet_id);
+    ASSERT_UINT_EQUALS(65533, operational_state.next_mqtt_packet_id);
 
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_subscribe->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_subscribe->base, &operational_state));
     ASSERT_UINT_EQUALS(65534, aws_mqtt5_operation_get_packet_id(&new_subscribe->base));
-    ASSERT_UINT_EQUALS(65535, next_packet_id);
+    ASSERT_UINT_EQUALS(65535, operational_state.next_mqtt_packet_id);
 
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_unsubscribe->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_unsubscribe->base, &operational_state));
     ASSERT_UINT_EQUALS(2, aws_mqtt5_operation_get_packet_id(&new_unsubscribe->base));
-    ASSERT_UINT_EQUALS(3, next_packet_id);
+    ASSERT_UINT_EQUALS(3, operational_state.next_mqtt_packet_id);
 
-    aws_mqtt5_client_unacked_operations_table_clean_up(&operation_table, s_release_operation);
+    aws_mqtt5_client_operational_state_clean_up(&operational_state);
     aws_mqtt5_operation_release(&new_publish->base);
     aws_mqtt5_operation_release(&new_subscribe->base);
     aws_mqtt5_operation_release(&new_unsubscribe->base);
@@ -1328,8 +1329,8 @@ static int s_mqtt5_operation_bind_packet_id_full_table_fn(struct aws_allocator *
         .payload = s_payload_cursor,
     };
 
-    struct aws_hash_table operation_table;
-    aws_mqtt5_client_unacked_operations_table_init(&operation_table, allocator);
+    struct aws_mqtt5_client_operational_state operational_state;
+    aws_mqtt5_client_operational_state_init(&operational_state, allocator);
 
     for (uint16_t i = 0; i < UINT16_MAX; ++i) {
         struct aws_mqtt5_operation_publish *publish_op =
@@ -1337,17 +1338,19 @@ static int s_mqtt5_operation_bind_packet_id_full_table_fn(struct aws_allocator *
         aws_mqtt5_operation_set_packet_id(&publish_op->base, i + 1);
 
         aws_hash_table_put(
-            &operation_table, &publish_op->options_storage.storage_view.packet_id, &publish_op->base, NULL);
+            &operational_state.unacked_operations_table,
+            &publish_op->options_storage.storage_view.packet_id,
+            &publish_op->base,
+            NULL);
+        aws_linked_list_push_back(&operational_state.unacked_operations, &publish_op->base.node);
     }
 
     struct aws_mqtt5_operation_publish *new_publish = aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
 
-    aws_mqtt5_packet_id_t next_packet_id = 1;
+    ASSERT_FAILS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operational_state));
+    ASSERT_UINT_EQUALS(1, operational_state.next_mqtt_packet_id);
 
-    ASSERT_FAILS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operation_table, &next_packet_id));
-    ASSERT_UINT_EQUALS(1, next_packet_id);
-
-    aws_mqtt5_client_unacked_operations_table_clean_up(&operation_table, s_release_operation);
+    aws_mqtt5_client_operational_state_clean_up(&operational_state);
     aws_mqtt5_operation_release(&new_publish->base);
 
     return AWS_OP_SUCCESS;
@@ -1367,16 +1370,14 @@ static int s_mqtt5_operation_bind_packet_id_not_valid_fn(struct aws_allocator *a
 
     struct aws_mqtt5_operation_publish *new_publish = aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
 
-    struct aws_hash_table operation_table;
-    aws_mqtt5_client_unacked_operations_table_init(&operation_table, allocator);
+    struct aws_mqtt5_client_operational_state operational_state;
+    aws_mqtt5_client_operational_state_init(&operational_state, allocator);
 
-    aws_mqtt5_packet_id_t next_packet_id = 1;
-
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operational_state));
     ASSERT_UINT_EQUALS(0, aws_mqtt5_operation_get_packet_id(&new_publish->base));
-    ASSERT_UINT_EQUALS(1, next_packet_id);
+    ASSERT_UINT_EQUALS(1, operational_state.next_mqtt_packet_id);
 
-    aws_mqtt5_client_unacked_operations_table_clean_up(&operation_table, s_release_operation);
+    aws_mqtt5_client_operational_state_clean_up(&operational_state);
     aws_mqtt5_operation_release(&new_publish->base);
 
     return AWS_OP_SUCCESS;
@@ -1396,16 +1397,14 @@ static int s_mqtt5_operation_bind_packet_id_already_bound_fn(struct aws_allocato
     struct aws_mqtt5_operation_publish *new_publish = aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
     aws_mqtt5_operation_set_packet_id(&new_publish->base, 2);
 
-    struct aws_hash_table operation_table;
-    aws_mqtt5_client_unacked_operations_table_init(&operation_table, allocator);
+    struct aws_mqtt5_client_operational_state operational_state;
+    aws_mqtt5_client_operational_state_init(&operational_state, allocator);
 
-    aws_mqtt5_packet_id_t next_packet_id = 1;
-
-    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operation_table, &next_packet_id));
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operational_state));
     ASSERT_UINT_EQUALS(2, aws_mqtt5_operation_get_packet_id(&new_publish->base));
-    ASSERT_UINT_EQUALS(1, next_packet_id);
+    ASSERT_UINT_EQUALS(1, operational_state.next_mqtt_packet_id);
 
-    aws_mqtt5_client_unacked_operations_table_clean_up(&operation_table, s_release_operation);
+    aws_mqtt5_client_operational_state_clean_up(&operational_state);
     aws_mqtt5_operation_release(&new_publish->base);
 
     return AWS_OP_SUCCESS;
