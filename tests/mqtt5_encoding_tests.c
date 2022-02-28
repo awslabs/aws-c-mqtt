@@ -841,7 +841,7 @@ static int s_mqtt5_packet_suback_round_trip_fn(struct aws_allocator *allocator, 
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = &s_user_properties[0],
         .reason_code_count = 3,
-        .reason_codes = &reason_codes,
+        .reason_codes = &reason_codes[0],
     };
 
     ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
