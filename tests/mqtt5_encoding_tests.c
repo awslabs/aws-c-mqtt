@@ -702,10 +702,10 @@ static const struct aws_mqtt5_subscription_view s_subscriptions[] = {
              .ptr = (uint8_t *)s_subscription_topic_2,
              .len = AWS_ARRAY_SIZE(s_subscription_topic_2) - 1,
          },
-     .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+     .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
      .no_local = false,
-     .retain_as_published = false,
-     .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND},
+     .retain_as_published = true,
+     .retain_handling_type = AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE},
     {.topic_filter =
          {
              .ptr = (uint8_t *)s_subscription_topic_3,
@@ -713,8 +713,8 @@ static const struct aws_mqtt5_subscription_view s_subscriptions[] = {
          },
      .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
      .no_local = false,
-     .retain_as_published = false,
-     .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND},
+     .retain_as_published = true,
+     .retain_handling_type = AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE_IF_NEW},
 };
 
 int aws_mqtt5_test_verify_subscriptions_raw(
@@ -727,14 +727,6 @@ int aws_mqtt5_test_verify_subscriptions_raw(
 
     for (size_t i = 0; i < expected_count; ++i) {
         const struct aws_mqtt5_subscription_view *expected_subscription = &expected_subscriptions[i];
-        /*
-         struct aws_byte_cursor expected_topic_filter = expected_subscription->topic_filter;
-         enum aws_mqtt5_qos expected_qos = expected_subscription->qos;
-         bool expected_no_local = expected_subscription->no_local;
-         bool expected_retain_as_published = expected_subscription->retain_as_published;
-         enum aws_mqtt5_retain_handling_type expected_retain_handling_type =
-         expected_subscription->retain_handling_type;
-        */
         ASSERT_BIN_ARRAYS_EQUALS(
             expected_subscription->topic_filter.ptr,
             expected_subscription->topic_filter.len,
@@ -752,7 +744,6 @@ int aws_mqtt5_test_verify_subscriptions_raw(
 static int s_aws_mqtt5_on_subscribe_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
     struct aws_mqtt5_encode_decode_tester *tester = user_data;
 
-    // STEVE TODO What's this?
     ++tester->view_count;
 
     struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet_view;
@@ -798,3 +789,65 @@ static int s_mqtt5_packet_subscribe_round_trip_fn(struct aws_allocator *allocato
 }
 
 AWS_TEST_CASE(mqtt5_packet_subscribe_round_trip, s_mqtt5_packet_subscribe_round_trip_fn)
+
+static int s_aws_mqtt5_on_suback_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    struct aws_mqtt5_encode_decode_tester *tester = user_data;
+
+    ++tester->view_count;
+
+    ASSERT_INT_EQUALS((uint32_t)AWS_MQTT5_PT_SUBACK, (uint32_t)type);
+
+    struct aws_mqtt5_packet_suback_view *suback_view = packet_view;
+    struct aws_mqtt5_packet_suback_view *expected_view = tester->expected_views;
+
+    ASSERT_INT_EQUALS(expected_view->packet_id, suback_view->packet_id);
+
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->reason_string->ptr,
+        expected_view->reason_string->len,
+        suback_view->reason_string->ptr,
+        suback_view->reason_string->len);
+
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        expected_view->user_property_count,
+        expected_view->user_properties,
+        suback_view->user_property_count,
+        suback_view->user_properties));
+
+    ASSERT_INT_EQUALS(expected_view->reason_code_count, suback_view->reason_code_count);
+    for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
+        ASSERT_INT_EQUALS(expected_view->reason_codes[i], suback_view->reason_codes[i]);
+    }
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_packet_suback_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt5_packet_id_t packet_id = 47;
+    struct aws_byte_cursor reason_string = aws_byte_cursor_from_c_str("Some random reason string");
+    enum aws_mqtt5_suback_reason_code reason_code_1 = AWS_MQTT5_SARC_GRANTED_QOS_0;
+    enum aws_mqtt5_suback_reason_code reason_code_2 = AWS_MQTT5_SARC_GRANTED_QOS_1;
+    enum aws_mqtt5_suback_reason_code reason_code_3 = AWS_MQTT5_SARC_GRANTED_QOS_2;
+    const enum aws_mqtt5_suback_reason_code reason_codes[3] = {
+        reason_code_1,
+        reason_code_2,
+        reason_code_3,
+    };
+
+    struct aws_mqtt5_packet_suback_view suback_view = {
+        .packet_id = packet_id,
+        .reason_string = &reason_string,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+        .reason_code_count = 3,
+        .reason_codes = &reason_codes,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
+        allocator, AWS_MQTT5_PT_SUBACK, &suback_view, s_aws_mqtt5_on_suback_received_fn));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_packet_suback_round_trip, s_mqtt5_packet_suback_round_trip_fn)

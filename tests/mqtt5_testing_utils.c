@@ -181,10 +181,81 @@ int aws_mqtt5_encoder_begin_pingresp(struct aws_mqtt5_encoder *encoder, const vo
     return AWS_OP_SUCCESS;
 }
 
+static int s_compute_suback_variable_length_fields(
+    const struct aws_mqtt5_packet_suback_view *suback_view,
+    uint32_t *total_remaining_length,
+    uint32_t *property_length) {
+    /* User Properties length */
+    size_t local_property_length =
+        aws_mqtt5_compute_user_property_encode_length(suback_view->user_properties, suback_view->user_property_count);
+    /* Optional Reason String */
+    ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(suback_view->reason_string, local_property_length);
+
+    *property_length = (uint32_t)local_property_length;
+
+    size_t local_total_remaining_length = 0;
+    if (aws_mqtt5_get_variable_length_encode_size(local_property_length, &local_total_remaining_length)) {
+        return AWS_OP_ERR;
+    }
+
+    /* Packet Identifier (2 bytes) */
+    local_total_remaining_length += 2;
+
+    /* Reason Codes (1 byte each) */
+    local_total_remaining_length += suback_view->reason_code_count;
+
+    /* Add property length */
+    *total_remaining_length = *property_length + (uint32_t)local_total_remaining_length;
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_encoder_begin_suback(struct aws_mqtt5_encoder *encoder, const void *packet_view) {
+
+    const struct aws_mqtt5_packet_suback_view *suback_view = packet_view;
+
+    uint32_t total_remaining_length = 0;
+    uint32_t property_length = 0;
+    if (s_compute_suback_variable_length_fields(suback_view, &total_remaining_length, &property_length)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) mqtt5 client encoder - failed to compute variable length values for SUBACK packet with error "
+            "%d(%s)",
+            (void *)encoder->config.client,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) mqtt5 client encoder - setting up encode for a SUBACK packet with remaining length %" PRIu32,
+        (void *)encoder->config.client,
+        total_remaining_length);
+
+    ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_SUBACK, 0));
+    ADD_ENCODE_STEP_VLI(encoder, total_remaining_length);
+    ADD_ENCODE_STEP_U16(encoder, suback_view->packet_id);
+    ADD_ENCODE_STEP_VLI(encoder, property_length);
+
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
+        encoder, AWS_MQTT5_PROPERTY_TYPE_REASON_STRING, suback_view->reason_string);
+
+    aws_mqtt5_add_user_property_encoding_steps(encoder, suback_view->user_properties, suback_view->user_property_count);
+
+    for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
+        ADD_ENCODE_STEP_U8(encoder, suback_view->reason_codes[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 void aws_mqtt5_encode_init_testing_function_table(struct aws_mqtt5_encoder_function_table *function_table) {
     *function_table = *g_aws_mqtt5_encoder_default_function_table;
     function_table->encoders_by_packet_type[AWS_MQTT5_PT_PINGRESP] = &aws_mqtt5_encoder_begin_pingresp;
     function_table->encoders_by_packet_type[AWS_MQTT5_PT_CONNACK] = &aws_mqtt5_encoder_begin_connack;
+    function_table->encoders_by_packet_type[AWS_MQTT5_PT_SUBACK] = &aws_mqtt5_encoder_begin_suback;
 }
 
 static int s_aws_mqtt5_decoder_decode_pingreq(struct aws_mqtt5_decoder *decoder) {
