@@ -8,6 +8,7 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/io/retry_strategy.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_allocator;
@@ -88,9 +89,9 @@ struct aws_mqtt5_client_options {
     enum aws_mqtt5_client_offline_queue_behavior_type offline_queue_behavior;
 
     /**
-     * Minimum and maximum amount of time to wait to reconnect after a disconnect.  Basic exponential backoff is
-     * used (double the current delay).
+     * Minimum and maximum amount of time to wait to reconnect after a disconnect.
      */
+    enum aws_exponential_backoff_jitter_mode retry_jitter_mode;
     uint64_t min_reconnect_delay_ms;
     uint64_t max_reconnect_delay_ms;
 

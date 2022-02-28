@@ -2812,6 +2812,13 @@ void aws_mqtt5_client_options_storage_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage reconnect jitter mode set to %d",
+        (void *)options_storage,
+        (int)options_storage->retry_jitter_mode);
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
         "id=%p: mqtt5_client_options_storage reconnect delay min set to %" PRIu64 " ms, max set to %" PRIu64 " ms",
         (void *)options_storage,
         options_storage->min_reconnect_delay_ms,
@@ -2924,6 +2931,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
 
     options_storage->offline_queue_behavior = options->offline_queue_behavior;
+    options_storage->retry_jitter_mode = options->retry_jitter_mode;
     options_storage->min_reconnect_delay_ms = options->min_reconnect_delay_ms;
     options_storage->max_reconnect_delay_ms = options->max_reconnect_delay_ms;
     options_storage->min_connected_time_to_reset_reconnect_delay_ms =

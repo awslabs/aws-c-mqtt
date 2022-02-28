@@ -394,9 +394,10 @@ int main(int argc, char **argv) {
         .outbound_topic_aliasing_behavior = AWS_MQTT5_COTABT_LRU,
         .lifecycle_event_handler = s_lifecycle_event_callback,
         .lifecycle_event_handler_user_data = NULL,
+        .retry_jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
+        .min_reconnect_delay_ms = 1000,
         .max_reconnect_delay_ms = 120000,
         .min_connected_time_to_reset_reconnect_delay_ms = 30000,
-        .min_reconnect_delay_ms = 1000,
         .ping_timeout_ms = 10000,
     };
 

@@ -901,6 +901,14 @@ static void s_on_incoming_channel_setup_fn(
         };
 
         aws_mqtt5_decoder_init(&server_connection->decoder, server_connection->allocator, &decoder_options);
+
+        /*
+         * Just like the tls tests in aws-c-io, it's possible for the server channel setup to execute after the client
+         * channel setup has already posted data to the socket.  In this case, the read notification gets lost because
+         * the server hasn't subscribed to it yet and then we hang and time out.  So do the same thing we do for
+         * tls server channel setup and force a read of the socket after we're fully initialized.
+         */
+        aws_channel_trigger_read(channel);
     }
 }
 

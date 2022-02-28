@@ -94,6 +94,10 @@ add_test_case(mqtt5_client_ping_sequence)
 #add_test_case(mqtt5_client_ping_write_pushout) TODO: we need operation handling logic first
 add_test_case(mqtt5_client_ping_timeout)
 
+add_test_case(mqtt5_client_reconnect_failure_backoff)
+add_test_case(mqtt5_client_reconnect_backoff_insufficient_reset)
+add_test_case(mqtt5_client_reconnect_backoff_sufficient_reset)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)

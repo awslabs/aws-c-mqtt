@@ -341,18 +341,23 @@ struct aws_mqtt5_client {
     /*
      * When should the client next attempt to reconnect?  Only used by PENDING_RECONNECT state.
      */
-    uint64_t next_reconnect_time;
+    uint64_t next_reconnect_time_ns;
 
     /*
-     * How much should we wait before our next reconnect attempt?  TODO: retry strategy?
+     * How many consecutive reconnect failures have we experienced?
      */
-    uint64_t current_reconnect_delay_interval_ms;
+    uint64_t reconnect_count;
+
+    /*
+     * How much should we wait before our next reconnect attempt?
+     */
+    uint64_t current_reconnect_delay_ms;
 
     /*
      * When should the client reset current_reconnect_delay_interval_ms to the minimum value?  Only relevant to the
      * CONNECTED state.
      */
-    uint64_t next_reconnect_delay_interval_reset_time;
+    uint64_t next_reconnect_delay_reset_time_ns;
 
     /*
      * When should we shut down the channel due to failure to receive a CONNACK?  Only relevant during the MQTT_CONNECT
