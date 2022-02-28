@@ -2194,23 +2194,24 @@ static bool s_aws_mqtt5_client_has_pending_operational_work(
     }
 }
 
-static bool s_aws_mqtt5_client_flow_control_allows_next_operation(
+static uint64_t s_aws_mqtt5_client_compute_next_operation_flow_control_service_time(
     struct aws_mqtt5_operation *operation,
-    enum aws_mqtt5_client_state client_state) {
+    enum aws_mqtt5_client_state client_state,
+    uint64_t now) {
     (void)operation;
 
     switch (client_state) {
         case AWS_MCS_MQTT_CONNECT:
         case AWS_MCS_CLEAN_DISCONNECT:
-            return true;
+            return now;
 
         case AWS_MCS_CONNECTED:
-            /* Need to check mqtt5 flow control, and later, optionally, AWS IoT Core limit flow control */
-            return true;
+            /* TODO: check mqtt5 flow control, and later, optionally, AWS IoT Core limit flow control */
+            return now;
 
         default:
             /* no outbound traffic is allowed outside of the above states */
-            return false;
+            return 0;
     }
 }
 
@@ -2221,24 +2222,25 @@ static bool s_aws_mqtt5_client_flow_control_allows_next_operation(
  * to refactor this to a computation that is time based and returns the current time if we should service now, a future
  * time for scheduling, and a zero for nothing to do.
  */
-static bool s_aws_mqtt5_client_can_service_operational_state(
+static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
-    enum aws_mqtt5_client_state client_state) {
+    enum aws_mqtt5_client_state client_state,
+    uint64_t now) {
     /* If something is in transit, then wait for it to complete */
     if (client_operational_state->pending_write_completion) {
-        return false;
+        return 0;
     }
 
-    /* TODO: bandwidth flow control check goes here */
+    /* TODO: bandwidth flow control check goes here.  This could return future timepoints. */
 
     /* If we're in the middle of something, keep going */
     if (client_operational_state->current_operation != NULL) {
-        return true;
+        return now;
     }
 
     /* If we're not in the middle of something, and nothing is queued, then do nothing */
     if (!s_aws_mqtt5_client_has_pending_operational_work(client_operational_state, client_state)) {
-        return false;
+        return 0;
     }
 
     AWS_FATAL_ASSERT(!aws_linked_list_empty(&client_operational_state->queued_operations));
@@ -2251,7 +2253,7 @@ static bool s_aws_mqtt5_client_can_service_operational_state(
     AWS_FATAL_ASSERT(next_operation != NULL);
 
     /* check the head of the pending operation queue against flow control and client state restrictions */
-    return s_aws_mqtt5_client_flow_control_allows_next_operation(next_operation, client_state);
+    return s_aws_mqtt5_client_compute_next_operation_flow_control_service_time(next_operation, client_state, now);
 }
 
 static bool s_operation_requires_ack(const struct aws_mqtt5_operation *operation) {
@@ -2270,14 +2272,25 @@ static bool s_operation_requires_ack(const struct aws_mqtt5_operation *operation
     }
 }
 
+static bool s_aws_mqtt5_client_should_service_operational_state(
+    const struct aws_mqtt5_client_operational_state *client_operational_state,
+    enum aws_mqtt5_client_state client_state,
+    uint64_t now) {
+
+    return now ==
+           s_aws_mqtt5_client_compute_operational_state_service_time(client_operational_state, client_state, now);
+}
+
 int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operational_state *client_operational_state) {
     struct aws_mqtt5_client *client = client_operational_state->client;
     enum aws_mqtt5_client_state client_state = client->current_state;
     struct aws_channel_slot *slot = client->slot;
     const struct aws_mqtt5_client_vtable *vtable = client->vtable;
+    uint64_t now = (*vtable->get_current_time_fn)();
 
     /* Should we write data? */
-    bool should_service = s_aws_mqtt5_client_can_service_operational_state(client_operational_state, client_state);
+    bool should_service =
+        s_aws_mqtt5_client_should_service_operational_state(client_operational_state, client_state, now);
     if (!should_service) {
         return AWS_OP_SUCCESS;
     }
@@ -2333,11 +2346,15 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                 /* track the operation in the unacked data structures by packet id */
                 AWS_FATAL_ASSERT(aws_mqtt5_operation_get_packet_id(current_operation) != 0);
 
-                aws_hash_table_put(
-                    &client_operational_state->unacked_operations_table,
-                    aws_mqtt5_operation_get_packet_id_address(current_operation),
-                    current_operation,
-                    NULL);
+                if (aws_hash_table_put(
+                        &client_operational_state->unacked_operations_table,
+                        aws_mqtt5_operation_get_packet_id_address(current_operation),
+                        current_operation,
+                        NULL)) {
+                    process_result = AWS_OP_ERR;
+                    break;
+                }
+
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);
             } else {
                 /* no ack is necessary, just add to socket write completion list */
@@ -2351,7 +2368,10 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
             break;
         }
 
-        should_service = s_aws_mqtt5_client_can_service_operational_state(client_operational_state, client_state);
+        now = (*vtable->get_current_time_fn)();
+        client_state = client->current_state;
+        should_service =
+            s_aws_mqtt5_client_should_service_operational_state(client_operational_state, client_state, now);
     } while (should_service);
 
     AWS_FATAL_ASSERT(io_message != NULL);
