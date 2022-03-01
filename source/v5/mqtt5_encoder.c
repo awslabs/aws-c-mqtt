@@ -12,6 +12,7 @@
 #include <inttypes.h>
 
 #define INITIAL_ENCODING_STEP_COUNT 64
+#define SUBSCRIBE_PACKET_FIXED_HEADER_RESERVED_BITS 2
 
 int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value) {
     AWS_PRECONDITION(buf);
@@ -426,6 +427,168 @@ static int s_aws_mqtt5_encoder_begin_connect(struct aws_mqtt5_encoder *encoder, 
     return AWS_OP_SUCCESS;
 }
 
+static uint8_t s_aws_mqtt5_subscribe_compute_subscription_flags(
+    const struct aws_mqtt5_subscription_view *subscription_view) {
+
+    uint8_t flags = (uint8_t)subscription_view->qos;
+
+    if (subscription_view->no_local) {
+        flags |= 1 << 2;
+    }
+
+    if (subscription_view->retain_as_published) {
+        flags |= 1 << 3;
+    }
+
+    flags |= ((uint8_t)subscription_view->retain_handling_type) << 4;
+
+    return flags;
+}
+
+static void aws_mqtt5_add_topic_filter_encoding_steps(
+    struct aws_mqtt5_encoder *encoder,
+    const struct aws_mqtt5_subscription_view *subscriptions,
+    size_t subscription_count) {
+    /* https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901169 */
+    for (size_t i = 0; i < subscription_count; ++i) {
+        const struct aws_mqtt5_subscription_view *subscription = &subscriptions[i];
+        ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, subscription->topic_filter);
+        ADD_ENCODE_STEP_U8(encoder, s_aws_mqtt5_subscribe_compute_subscription_flags(subscription));
+    }
+}
+
+static int s_compute_subscribe_variable_length_fields(
+    struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    size_t *total_remaining_length,
+    size_t *subscribe_properties_length) {
+
+    size_t subscribe_variable_header_property_length = aws_mqtt5_compute_user_property_encode_length(
+        subscribe_view->user_properties, subscribe_view->user_property_count);
+
+    /*
+     * Add the length of 1 byte for the identifier of a Subscription Identifier property
+     * and the VLI of the subscription_identifier itself
+     */
+    if (subscribe_view->subscription_identifier != 0) {
+        size_t subscription_identifier_length = 0;
+        aws_mqtt5_get_variable_length_encode_size(
+            *subscribe_view->subscription_identifier, &subscription_identifier_length);
+        subscribe_variable_header_property_length += subscription_identifier_length + 1;
+    }
+
+    *subscribe_properties_length = subscribe_variable_header_property_length;
+
+    /* variable header total length =
+     *    2 bytes for Packet Identifier
+     *  + # bytes (variable_length_encoding(subscribe_variable_header_property_length))
+     *  + subscribe_variable_header_property_length
+     */
+    size_t variable_header_length = 0;
+    if (aws_mqtt5_get_variable_length_encode_size(subscribe_variable_header_property_length, &variable_header_length)) {
+        return AWS_OP_ERR;
+    }
+    variable_header_length += 2 + subscribe_variable_header_property_length;
+
+    size_t payload_length = 0;
+
+    /*
+     *  for each subscription view, in addition to the raw name-value bytes, we also have 2 bytes of
+     *  prefix and one byte suffix required.
+     *   2 bytes for the Topic Filter length
+     *   1 byte for the Subscription Options Flags
+     */
+
+    for (size_t i = 0; i < subscribe_view->subscription_count; ++i) {
+        const struct aws_mqtt5_subscription_view *subscription = &subscribe_view->subscriptions[i];
+        payload_length += subscription->topic_filter.len;
+    }
+    payload_length += (3 * subscribe_view->subscription_count);
+
+    *total_remaining_length = variable_header_length + payload_length;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_encoder_begin_subscribe(struct aws_mqtt5_encoder *encoder, void *view) {
+
+    struct aws_mqtt5_packet_subscribe_view *subscription_view = view;
+
+    size_t total_remaining_length = 0;
+    size_t subscribe_properties_length = 0;
+
+    if (s_compute_subscribe_variable_length_fields(
+            subscription_view, &total_remaining_length, &subscribe_properties_length)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) mqtt5 client encoder - failed to compute variable length values for SUBSCRIBE packet with error "
+            "%d(%s)",
+            (void *)encoder->config.client,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) mqtt5 client encoder - setting up encode for a SUBSCRIBE packet with remaining length %zu",
+        (void *)encoder->config.client,
+        total_remaining_length);
+
+    uint32_t total_remaining_length_u32 = (uint32_t)total_remaining_length;
+    uint32_t subscribe_property_length_u32 = (uint32_t)subscribe_properties_length;
+
+    /*
+     * Fixed Header
+     * byte 1:
+     *  bits 7-4 MQTT Control Packet Type
+     *  bits 3-0 Reserved, must be set to 0, 0, 1, 0
+     * byte 2-x: Remaining Length as Variable Byte Integer (1-4 bytes)
+     */
+    ADD_ENCODE_STEP_U8(
+        encoder,
+        aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_SUBSCRIBE, SUBSCRIBE_PACKET_FIXED_HEADER_RESERVED_BITS));
+    ADD_ENCODE_STEP_VLI(encoder, total_remaining_length_u32);
+
+    /*
+     * Variable Header
+     * byte 1-2: Packet Identifier
+     * byte 3-x: Property Length as Variable Byte Integer (1-4 bytes)
+     */
+    ADD_ENCODE_STEP_U16(encoder, (uint16_t)subscription_view->packet_id);
+    ADD_ENCODE_STEP_VLI(encoder, subscribe_property_length_u32);
+
+    /*
+     * Subscribe Properties
+     * (optional) Subscription Identifier
+     * (optional) User Properties
+     */
+    if (subscription_view->subscription_identifier != 0) {
+        ADD_ENCODE_STEP_U8(encoder, AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER);
+        ADD_ENCODE_STEP_VLI(encoder, *subscription_view->subscription_identifier);
+    }
+
+    aws_mqtt5_add_user_property_encoding_steps(
+        encoder, subscription_view->user_properties, subscription_view->user_property_count);
+
+    /*
+     * Payload
+     * n Topic Filters
+     *  byte 1-2: Length
+     *  byte 3..N: UTF-8 encoded Topic Filter
+     *  byte N+1:
+     *      bits 7-6 Reserved
+     *      bits 5-4 Retain Handling
+     *      bit 3    Retain as Published
+     *      bit 2    No Local
+     *      bits 1-0 Maximum QoS
+     */
+    aws_mqtt5_add_topic_filter_encoding_steps(
+        encoder, subscription_view->subscriptions, subscription_view->subscription_count);
+
+    return AWS_OP_SUCCESS;
+}
+
 static enum aws_mqtt5_encoding_result s_execute_encode_step(
     struct aws_mqtt5_encoder *encoder,
     struct aws_mqtt5_encoding_step *step,
@@ -559,7 +722,7 @@ static struct aws_mqtt5_encoder_function_table s_aws_mqtt5_encoder_default_funct
             NULL,                                  /* PUBREC */
             NULL,                                  /* PUBREL */
             NULL,                                  /* PUBCOMP */
-            NULL,                                  /* SUBSCRIBE */
+            &s_aws_mqtt5_encoder_begin_subscribe,  /* SUBSCRIBE */
             NULL,                                  /* SUBACK */
             NULL,                                  /* UNSUBSCRIBE */
             NULL,                                  /* UNSUBACK */
