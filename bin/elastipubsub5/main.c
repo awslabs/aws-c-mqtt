@@ -156,6 +156,13 @@ static void s_on_subscribe_complete_fn(
     printf("s_on_subscribe_complete_fn");
 }
 
+static void s_on_unsubscribe_complete_fn(
+    const struct aws_mqtt5_packet_unsuback_view *unsuback,
+    int error_code,
+    void *complete_ctx) {
+    printf("s_onunsubscribe_complete_fn");
+}
+
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
 
     switch (event->event_type) {
@@ -238,15 +245,16 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
             .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
         };
 
-        struct aws_mqtt5_subscription_view subscriptions[3];
-        subscriptions[0] = subscription_view_1;
-        subscriptions[1] = subscription_view_2;
-        subscriptions[2] = subscription_view_3;
+        const struct aws_mqtt5_subscription_view subscriptions[3] = {
+            subscription_view_1,
+            subscription_view_2,
+            subscription_view_3,
+        };
 
         struct aws_mqtt5_packet_subscribe_view packet_subscribe_view = {
             .packet_id = 1, // This should automatically be updated elsewhere in logic
             .subscription_count = 3,
-            .subscriptions = &subscriptions,
+            .subscriptions = &subscriptions[0],
             .subscription_identifier = 0, // what is this?
             .user_properties = NULL,
         };
@@ -254,7 +262,27 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
         aws_mqtt5_client_subscribe(client, &packet_subscribe_view, &subscribe_completion_options);
     } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &unsubscribe_cursor)) {
         printf("Unsubscribing from topic!\n");
-        aws_mqtt5_client_unsubscribe(client, NULL, NULL);
+        struct aws_mqtt5_unsubscribe_completion_options unsubscribe_completion_options = {
+            .completion_callback = &s_on_unsubscribe_complete_fn,
+            .completion_user_data = (void *)0xFFFF,
+        };
+
+        const struct aws_byte_cursor unsubscribe_topics[3] = {
+            aws_byte_cursor_from_c_str("test_topic_1"),
+            aws_byte_cursor_from_c_str("test_topic_2"),
+            aws_byte_cursor_from_c_str("test_topic_3"),
+        };
+
+        /* STEVE TODO populate unsubscribe view */
+        struct aws_mqtt5_packet_unsubscribe_view packet_unsubscribe_view = {
+            .packet_id = 2,
+            .topic_count = 3,
+            .topics = &unsubscribe_topics[0],
+            .user_properties = NULL,
+            .user_property_count = 0,
+        };
+
+        aws_mqtt5_client_unsubscribe(client, &packet_unsubscribe_view, &unsubscribe_completion_options);
     }
     return false;
 }
