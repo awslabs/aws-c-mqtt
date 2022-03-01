@@ -458,7 +458,7 @@ static void aws_mqtt5_add_topic_filter_encoding_steps(
 }
 
 static int s_compute_subscribe_variable_length_fields(
-    struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
     size_t *total_remaining_length,
     size_t *subscribe_properties_length) {
 
@@ -509,9 +509,9 @@ static int s_compute_subscribe_variable_length_fields(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_mqtt5_encoder_begin_subscribe(struct aws_mqtt5_encoder *encoder, void *view) {
+static int s_aws_mqtt5_encoder_begin_subscribe(struct aws_mqtt5_encoder *encoder, const void *view) {
 
-    struct aws_mqtt5_packet_subscribe_view *subscription_view = view;
+    const struct aws_mqtt5_packet_subscribe_view *subscription_view = view;
 
     size_t total_remaining_length = 0;
     size_t subscribe_properties_length = 0;
