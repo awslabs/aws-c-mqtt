@@ -636,6 +636,8 @@ static int s_compute_unsubscribe_variable_length_fields(
         payload_length += topic_filter.len;
     }
 
+    payload_length += (2 * unsubscribe_view->topic_count);
+
     *total_remaining_length = variable_header_length + payload_length;
 
     return AWS_OP_SUCCESS;

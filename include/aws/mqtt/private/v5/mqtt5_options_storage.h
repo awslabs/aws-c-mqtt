@@ -555,6 +555,10 @@ AWS_MQTT_API int aws_mqtt5_packet_unsubscribe_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options);
 
+AWS_MQTT_API int aws_mqtt5_packet_unsubscribe_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage,
+    struct aws_allocator *allocator);
+
 AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_storage_clean_up(
     struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
 

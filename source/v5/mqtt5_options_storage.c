@@ -1983,6 +1983,8 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
         return AWS_OP_ERR;
     }
 
+    unsubscribe_storage->storage_view.packet_id = unsubscribe_options->packet_id;
+
     if (s_aws_mqtt5_packet_unsubscribe_build_topic_list(
             unsubscribe_storage, allocator, unsubscribe_options->topic_count, unsubscribe_options->topics)) {
         return AWS_OP_ERR;
@@ -1998,6 +2000,18 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
     }
 
     aws_mqtt5_packet_unsubscribe_view_init_from_storage(&unsubscribe_storage->storage_view, unsubscribe_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_packet_unsubscribe_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*unsubscribe_storage);
+
+    if (aws_mqtt5_user_property_set_init(&unsubscribe_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -2495,7 +2509,7 @@ void aws_mqtt5_packet_suback_view_log(
         (int)suback_view->packet_id);
 
     for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
-        enum aws_mqtt5_unsuback_reason_code reason_code = suback_view->reason_codes[i];
+        enum aws_mqtt5_suback_reason_code reason_code = suback_view->reason_codes[i];
         AWS_LOGF(
             level,
             AWS_LS_MQTT5_GENERAL,

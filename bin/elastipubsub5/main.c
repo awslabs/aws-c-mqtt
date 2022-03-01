@@ -273,7 +273,6 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
             aws_byte_cursor_from_c_str("test_topic_3"),
         };
 
-        /* STEVE TODO populate unsubscribe view */
         struct aws_mqtt5_packet_unsubscribe_view packet_unsubscribe_view = {
             .packet_id = 2,
             .topic_count = 3,
