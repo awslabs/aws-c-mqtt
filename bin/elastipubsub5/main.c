@@ -153,6 +153,11 @@ static void s_on_subscribe_complete_fn(
     const struct aws_mqtt5_packet_suback_view *suback,
     int error_code,
     void *complete_ctx) {
+
+    (void)suback;
+    (void)error_code;
+    (void)complete_ctx;
+
     printf("s_on_subscribe_complete_fn");
 }
 
@@ -244,11 +249,8 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
         subscriptions[2] = subscription_view_3;
 
         struct aws_mqtt5_packet_subscribe_view packet_subscribe_view = {
-            .packet_id = 1, // This should automatically be updated elsewhere in logic
-            .subscription_count = 3,
-            .subscriptions = &subscriptions,
-            .subscription_identifier = 0, // what is this?
-            .user_properties = NULL,
+            .subscription_count = AWS_ARRAY_SIZE(subscriptions),
+            .subscriptions = &subscriptions[0],
         };
 
         aws_mqtt5_client_subscribe(client, &packet_subscribe_view, &subscribe_completion_options);
