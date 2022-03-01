@@ -177,6 +177,67 @@ enum aws_mqtt5_lifecycle_state {
     AWS_MQTT5_LS_CONNECTED,
 };
 
+/*
+ * Operation-related state notes
+ *
+ * operation flow:
+ *   (qos 0 publish, disconnect, connect)
+ *      user (via cross thread task) ->
+ *      queued_operations -> (on front of queue)
+ *      current_operation -> (on completely encoded and passed to next handler)
+ *      write_completion_operations -> (on socket write complete)
+ *      release
+ *
+ *   (qos 1+ publish, sub/unsub)
+ *      user (via cross thread task) ->
+ *      queued_operations -> (on front of queue)
+ *      current_operation (allocate packet id if necessary) -> (on completely encoded and passed to next handler)
+ *      unacked_operations && unacked_operations_table -> (on ack received)
+ *      release
+ *
+ *      QoS 1+ requires both a table and a list holding the same operations in order to support fast lookups by
+ *      mqtt packet id and in-order re-queueing in the case of a disconnection (required by spec)
+ *
+ *   On PUBLISH completely received (and final callback invoked):
+ *      Add PUBACK at head of queued_operations
+ *
+ *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
+ *      If current_operation, move current_operation to head of queued_operations
+ *      If disconnect_queue_policy is fail(x):
+ *          Fail, release, and remove everything in queued_operations with property (x)
+ *          Release and remove: PUBACK, DISCONNECT
+ *      Fail, remove, and release unacked_operations if:
+ *          Operation is not Qos 1+ publish
+ *
+ *   On reconnect (post CONNACK):
+ *      if rejoined_session == false:
+ *          Fail, remove, and release unacked_operations
+ *
+ *      Move-Append unacked_operations to the head of queued_operations
+ *      Clear unacked_operations_table
+ */
+struct aws_mqtt5_client_operational_state {
+
+    /*
+     * One more than the most recently used packet id.  This is the best starting point for a forward search through
+     * the id space for a free id.
+     */
+    aws_mqtt5_packet_id_t next_mqtt_packet_id;
+
+    struct aws_linked_list queued_operations;
+    struct aws_mqtt5_operation *current_operation;
+    struct aws_hash_table unacked_operations_table;
+    struct aws_linked_list unacked_operations;
+    struct aws_linked_list write_completion_operations;
+
+    /*
+     * Is there an io message in transit (to the socket) that has not invoked its write completion callback yet?
+     * The client implementation only allows one in-transit message at a time, and so if this is true, we don't
+     * send additional ones/
+     */
+    bool pending_write_completion;
+};
+
 struct aws_mqtt5_client {
 
     struct aws_allocator *allocator;
@@ -261,56 +322,9 @@ struct aws_mqtt5_client {
     struct aws_http_message *handshake;
 
     /*
-     * One more than the most recently used packet id.  This is the best starting point for a forward search through
-     * the id space for a free id.
+     * Wraps all state related to pending and in-progress MQTT operations within the client.
      */
-    aws_mqtt5_packet_id_t next_mqtt_packet_id;
-
-    /*
-     * Operation-related state notes
-     *
-     * operation flow:
-     *   (qos 0 publish, disconnect, connect)
-     *      user (via cross thread task) ->
-     *      queued_operations -> (on front of queue)
-     *      current_operation -> (on completely encoded and passed to next handler)
-     *      write_completion_operations -> (on socket write complete)
-     *      release
-     *
-     *   (qos 1+ publish, sub/unsub)
-     *      user (via cross thread task) ->
-     *      queued_operations -> (on front of queue)
-     *      current_operation -> (on completely encoded and passed to next handler)
-     *      unacked_operations && unacked_operations_table -> (on ack received)
-     *      release
-     *
-     *      QoS 1+ requires both a table and a list holding the same operations in order to support fast lookups by
-     *      mqtt packet id and in-order re-queueing in the case of a disconnection (required by spec)
-     *
-     *   On PUBLISH completely received (and final callback invoked):
-     *      Add PUBACK at head of queued_operations
-     *
-     *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
-     *      If current_operation, move current_operation to head of queued_operations
-     *      If disconnect_queue_policy is fail(x):
-     *          Fail, release, and remove everything in queued_operations with property (x)
-     *          Release and remove: PUBACK, DISCONNECT
-     *      Fail, remove, and release unacked_operations if:
-     *          Operation is not Qos 1+ publish
-     *
-     *   On reconnect (post CONNACK):
-     *      if rejoined_session == false:
-     *          Fail, remove, and release unacked_operations
-     *
-     *      Move-Append unacked_operations to the head of queued_operations
-     *      Clear unacked_operations_table
-     */
-    struct aws_linked_list queued_operations;
-    struct aws_mqtt5_operation *current_operation;
-    struct aws_hash_table unacked_operations_table;
-    struct aws_linked_list unacked_operations;
-    struct aws_linked_list write_completion_operations;
-    bool pending_write_completion;
+    struct aws_mqtt5_client_operational_state operational_state;
 
     /*
      * TODO: topic alias mappings, from-server and to-server have independent mappings
@@ -368,11 +382,44 @@ struct aws_mqtt5_client {
 
 AWS_EXTERN_C_BEGIN
 
+/*
+ * A number of private APIs which are either set up for mocking parts of the client or testing subsystems within it by
+ * exposing what would normally be static functions internal to the implementation.
+ */
+
 AWS_MQTT_API void aws_mqtt5_client_set_vtable(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_client_vtable *vtable);
 
 AWS_MQTT_API const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void);
+
+/*
+ * Sets the packet id, if necessary, on an operation based on the current pending acks table.  The caller is
+ * responsible for adding the operation to the unacked table when the packet has been encoding in an io message.
+ *
+ * There is an argument that the operation should go into the table only on socket write completion, but that breaks
+ * allocation unless an additional, independent table is added, which I'd prefer not to do presently.  Also, socket
+ * write completion callbacks can be a bit delayed which could lead to a situation where the response from a local
+ * server could arrive before the write completion runs which would be a disaster.
+ */
+AWS_MQTT_API int aws_mqtt5_operation_bind_packet_id(
+    struct aws_mqtt5_operation *operation,
+    struct aws_mqtt5_client_operational_state *client_operational_state);
+
+/*
+ * Initialize and clean up of the client operational state.  Exposed (privately) to enabled tests to reuse the
+ * init/cleanup used by the client itself.
+ */
+AWS_MQTT_API int aws_mqtt5_client_operational_state_init(
+    struct aws_mqtt5_client_operational_state *client_operational_state,
+    struct aws_allocator *allocator);
+
+AWS_MQTT_API void aws_mqtt5_client_operational_state_clean_up(
+    struct aws_mqtt5_client_operational_state *client_operational_state);
+
+AWS_MQTT_API void aws_mqtt5_client_operational_state_reset_offline_queue(
+    struct aws_mqtt5_client_operational_state *client_operational_state,
+    const struct aws_mqtt5_client_options_storage *client_config);
 
 AWS_EXTERN_C_END
 
