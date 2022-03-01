@@ -1830,6 +1830,264 @@ error:
 }
 
 /*********************************************************************************************************************
+ * Unsubscribe
+ ********************************************************************************************************************/
+
+int aws_mqtt5_packet_unsubscribe_view_validate(
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
+    struct aws_mqtt5_client *client) {
+    (void)client;
+
+    if (unsubscribe_view == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "null UNSUBSCRIBE packet options");
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    if (unsubscribe_view->topic_count == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_unsubscribe_view - must contain at least one topic",
+            (void *)unsubscribe_view);
+        return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
+    }
+
+    if (unsubscribe_view->topic_count > AWS_MQTT5_CLIENT_MAXIMUM_TOPICS_PER_UNSUBSCRIBE) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_unsubscribe_view - contains too many topics (%zu)",
+            (void *)unsubscribe_view,
+            unsubscribe_view->topic_count);
+        return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
+    }
+
+    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
+        const struct aws_byte_cursor *topic = &unsubscribe_view->topics[i];
+        if (topic->len > UINT16_MAX) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_unsubscribe_view - topic too long",
+                (void *)unsubscribe_view);
+            return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
+        }
+    }
+
+    if (s_aws_mqtt5_user_property_set_validate(
+            unsubscribe_view->user_properties,
+            unsubscribe_view->user_property_count,
+            "aws_mqtt5_packet_unsubscribe_view",
+            (void *)unsubscribe_view)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_packet_unsubscribe_view_log(
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
+    enum aws_log_level level) {
+    struct aws_logger *temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+        return;
+    }
+
+    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
+
+    size_t topic_count = unsubscribe_view->topic_count;
+    for (size_t i = 0; i < topic_count; ++i) {
+        const struct aws_byte_cursor *topic_cursor = &unsubscribe_view->topics[i];
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_unsubscribe_view topic %zu: \"" PRInSTR "\"",
+            (void *)unsubscribe_view,
+            i,
+            AWS_BYTE_CURSOR_PRI(*topic_cursor));
+    }
+
+    s_aws_mqtt5_user_property_set_log(
+        unsubscribe_view->user_properties,
+        unsubscribe_view->user_property_count,
+        (void *)unsubscribe_view,
+        level,
+        "aws_mqtt5_packet_unsubscribe_view");
+}
+
+void aws_mqtt5_packet_unsubscribe_storage_clean_up(struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage) {
+    if (unsubscribe_storage == NULL) {
+        return;
+    }
+
+    aws_array_list_clean_up(&unsubscribe_storage->topics);
+    aws_mqtt5_user_property_set_clean_up(&unsubscribe_storage->user_properties);
+    aws_byte_buf_clean_up(&unsubscribe_storage->storage);
+}
+
+void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
+    struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
+    const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage) {
+    unsubscribe_view->topic_count = aws_array_list_length(&unsubscribe_storage->topics);
+    unsubscribe_view->topics = unsubscribe_storage->topics.data;
+
+    unsubscribe_view->user_property_count = aws_mqtt5_user_property_set_size(&unsubscribe_storage->user_properties);
+    unsubscribe_view->user_properties = unsubscribe_storage->user_properties.properties.data;
+}
+
+static int s_aws_mqtt5_packet_unsubscribe_build_topic_list(
+    struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage,
+    struct aws_allocator *allocator,
+    size_t topic_count,
+    const struct aws_byte_cursor *topics) {
+
+    if (aws_array_list_init_dynamic(
+            &unsubscribe_storage->topics, allocator, topic_count, sizeof(struct aws_byte_cursor))) {
+        return AWS_OP_ERR;
+    }
+
+    for (size_t i = 0; i < topic_count; ++i) {
+        const struct aws_byte_cursor *topic_cursor_ptr = &topics[i];
+        struct aws_byte_cursor topic_cursor = *topic_cursor_ptr;
+
+        if (aws_byte_buf_append_and_update(&unsubscribe_storage->storage, &topic_cursor)) {
+            return AWS_OP_ERR;
+        }
+
+        if (aws_array_list_push_back(&unsubscribe_storage->topics, &topic_cursor)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static size_t s_aws_mqtt5_packet_unsubscribe_compute_storage_size(
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view) {
+    size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
+        unsubscribe_view->user_properties, unsubscribe_view->user_property_count);
+
+    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
+        const struct aws_byte_cursor *topic = &unsubscribe_view->topics[i];
+        storage_size += topic->len;
+    }
+
+    return storage_size;
+}
+
+int aws_mqtt5_packet_unsubscribe_storage_init(
+    struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options) {
+
+    AWS_ZERO_STRUCT(*unsubscribe_storage);
+    size_t storage_capacity = s_aws_mqtt5_packet_unsubscribe_compute_storage_size(unsubscribe_options);
+    if (aws_byte_buf_init(&unsubscribe_storage->storage, allocator, storage_capacity)) {
+        return AWS_OP_ERR;
+    }
+
+    if (s_aws_mqtt5_packet_unsubscribe_build_topic_list(
+            unsubscribe_storage, allocator, unsubscribe_options->topic_count, unsubscribe_options->topics)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_mqtt5_user_property_set_init_with_storage(
+            &unsubscribe_storage->user_properties,
+            allocator,
+            &unsubscribe_storage->storage,
+            unsubscribe_options->user_property_count,
+            unsubscribe_options->user_properties)) {
+        return AWS_OP_ERR;
+    }
+
+    aws_mqtt5_packet_unsubscribe_view_init_from_storage(&unsubscribe_storage->storage_view, unsubscribe_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt5_operation_unsubscribe_complete(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    const void *completion_view) {
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
+
+    if (unsubscribe_op->completion_options.completion_callback != NULL) {
+        (*unsubscribe_op->completion_options.completion_callback)(
+            completion_view, error_code, unsubscribe_op->completion_options.completion_user_data);
+    }
+}
+
+static void s_aws_mqtt5_operation_unsubscribe_set_packet_id(
+    struct aws_mqtt5_operation *operation,
+    aws_mqtt5_packet_id_t packet_id) {
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
+    unsubscribe_op->options_storage.storage_view.packet_id = packet_id;
+}
+
+static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_unsubscribe_get_packet_id(
+    const struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
+    return unsubscribe_op->options_storage.storage_view.packet_id;
+}
+
+static struct aws_mqtt5_operation_vtable s_unsubscribe_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_unsubscribe_complete,
+    .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_set_packet_id,
+    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_get_packet_id,
+};
+
+static void s_destroy_operation_unsubscribe(void *object) {
+    if (object == NULL) {
+        return;
+    }
+
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = object;
+
+    aws_mqtt5_packet_unsubscribe_storage_clean_up(&unsubscribe_op->options_storage);
+
+    aws_mem_release(unsubscribe_op->allocator, unsubscribe_op);
+}
+
+struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
+    const struct aws_mqtt5_unsubscribe_completion_options *completion_options) {
+    AWS_PRECONDITION(allocator != NULL);
+    AWS_PRECONDITION(unsubscribe_options != NULL);
+
+    if (aws_mqtt5_packet_unsubscribe_view_validate(unsubscribe_options, NULL)) {
+        return NULL;
+    }
+
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_unsubscribe));
+    if (unsubscribe_op == NULL) {
+        return NULL;
+    }
+
+    unsubscribe_op->allocator = allocator;
+    unsubscribe_op->base.vtable = &s_unsubscribe_operation_vtable;
+    unsubscribe_op->base.packet_type = AWS_MQTT5_PT_UNSUBSCRIBE;
+    aws_ref_count_init(&unsubscribe_op->base.ref_count, unsubscribe_op, s_destroy_operation_unsubscribe);
+    unsubscribe_op->base.impl = unsubscribe_op;
+
+    if (aws_mqtt5_packet_unsubscribe_storage_init(&unsubscribe_op->options_storage, allocator, unsubscribe_options)) {
+        goto error;
+    }
+
+    unsubscribe_op->base.packet_view = &unsubscribe_op->options_storage.storage_view;
+
+    if (completion_options != NULL) {
+        unsubscribe_op->completion_options = *completion_options;
+    }
+
+    return unsubscribe_op;
+
+error:
+
+    aws_mqtt5_operation_release(&unsubscribe_op->base);
+
+    return NULL;
+}
+
+/*********************************************************************************************************************
  * Subscribe
  ********************************************************************************************************************/
 
@@ -2268,264 +2526,6 @@ void aws_mqtt5_packet_suback_view_init_from_storage(
 
     suback_view->reason_code_count = aws_array_list_length(&suback_storage->reason_codes);
     suback_view->reason_codes = suback_storage->reason_codes.data;
-}
-
-/*********************************************************************************************************************
- * Unsubscribe
- ********************************************************************************************************************/
-
-int aws_mqtt5_packet_unsubscribe_view_validate(
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
-    struct aws_mqtt5_client *client) {
-    (void)client;
-
-    if (unsubscribe_view == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "null UNSUBSCRIBE packet options");
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
-
-    if (unsubscribe_view->topic_count == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_unsubscribe_view - must contain at least one topic",
-            (void *)unsubscribe_view);
-        return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
-    }
-
-    if (unsubscribe_view->topic_count > AWS_MQTT5_CLIENT_MAXIMUM_TOPICS_PER_UNSUBSCRIBE) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_unsubscribe_view - contains too many topics (%zu)",
-            (void *)unsubscribe_view,
-            unsubscribe_view->topic_count);
-        return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
-    }
-
-    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
-        const struct aws_byte_cursor *topic = &unsubscribe_view->topics[i];
-        if (topic->len > UINT16_MAX) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: aws_mqtt5_packet_unsubscribe_view - topic too long",
-                (void *)unsubscribe_view);
-            return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
-        }
-    }
-
-    if (s_aws_mqtt5_user_property_set_validate(
-            unsubscribe_view->user_properties,
-            unsubscribe_view->user_property_count,
-            "aws_mqtt5_packet_unsubscribe_view",
-            (void *)unsubscribe_view)) {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-void aws_mqtt5_packet_unsubscribe_view_log(
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
-    enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
-        return;
-    }
-
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    size_t topic_count = unsubscribe_view->topic_count;
-    for (size_t i = 0; i < topic_count; ++i) {
-        const struct aws_byte_cursor *topic_cursor = &unsubscribe_view->topics[i];
-
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_unsubscribe_view topic %zu: \"" PRInSTR "\"",
-            (void *)unsubscribe_view,
-            i,
-            AWS_BYTE_CURSOR_PRI(*topic_cursor));
-    }
-
-    s_aws_mqtt5_user_property_set_log(
-        unsubscribe_view->user_properties,
-        unsubscribe_view->user_property_count,
-        (void *)unsubscribe_view,
-        level,
-        "aws_mqtt5_packet_unsubscribe_view");
-}
-
-void aws_mqtt5_packet_unsubscribe_storage_clean_up(struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage) {
-    if (unsubscribe_storage == NULL) {
-        return;
-    }
-
-    aws_array_list_clean_up(&unsubscribe_storage->topics);
-    aws_mqtt5_user_property_set_clean_up(&unsubscribe_storage->user_properties);
-    aws_byte_buf_clean_up(&unsubscribe_storage->storage);
-}
-
-void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
-    struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
-    const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage) {
-    unsubscribe_view->topic_count = aws_array_list_length(&unsubscribe_storage->topics);
-    unsubscribe_view->topics = unsubscribe_storage->topics.data;
-
-    unsubscribe_view->user_property_count = aws_mqtt5_user_property_set_size(&unsubscribe_storage->user_properties);
-    unsubscribe_view->user_properties = unsubscribe_storage->user_properties.properties.data;
-}
-
-static int s_aws_mqtt5_packet_unsubscribe_build_topic_list(
-    struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage,
-    struct aws_allocator *allocator,
-    size_t topic_count,
-    const struct aws_byte_cursor *topics) {
-
-    if (aws_array_list_init_dynamic(
-            &unsubscribe_storage->topics, allocator, topic_count, sizeof(struct aws_byte_cursor))) {
-        return AWS_OP_ERR;
-    }
-
-    for (size_t i = 0; i < topic_count; ++i) {
-        const struct aws_byte_cursor *topic_cursor_ptr = &topics[i];
-        struct aws_byte_cursor topic_cursor = *topic_cursor_ptr;
-
-        if (aws_byte_buf_append_and_update(&unsubscribe_storage->storage, &topic_cursor)) {
-            return AWS_OP_ERR;
-        }
-
-        if (aws_array_list_push_back(&unsubscribe_storage->topics, &topic_cursor)) {
-            return AWS_OP_ERR;
-        }
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-static size_t s_aws_mqtt5_packet_unsubscribe_compute_storage_size(
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view) {
-    size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
-        unsubscribe_view->user_properties, unsubscribe_view->user_property_count);
-
-    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
-        const struct aws_byte_cursor *topic = &unsubscribe_view->topics[i];
-        storage_size += topic->len;
-    }
-
-    return storage_size;
-}
-
-int aws_mqtt5_packet_unsubscribe_storage_init(
-    struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage,
-    struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options) {
-
-    AWS_ZERO_STRUCT(*unsubscribe_storage);
-    size_t storage_capacity = s_aws_mqtt5_packet_unsubscribe_compute_storage_size(unsubscribe_options);
-    if (aws_byte_buf_init(&unsubscribe_storage->storage, allocator, storage_capacity)) {
-        return AWS_OP_ERR;
-    }
-
-    if (s_aws_mqtt5_packet_unsubscribe_build_topic_list(
-            unsubscribe_storage, allocator, unsubscribe_options->topic_count, unsubscribe_options->topics)) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_mqtt5_user_property_set_init_with_storage(
-            &unsubscribe_storage->user_properties,
-            allocator,
-            &unsubscribe_storage->storage,
-            unsubscribe_options->user_property_count,
-            unsubscribe_options->user_properties)) {
-        return AWS_OP_ERR;
-    }
-
-    aws_mqtt5_packet_unsubscribe_view_init_from_storage(&unsubscribe_storage->storage_view, unsubscribe_storage);
-
-    return AWS_OP_SUCCESS;
-}
-
-static void s_aws_mqtt5_operation_unsubscribe_complete(
-    struct aws_mqtt5_operation *operation,
-    int error_code,
-    const void *completion_view) {
-    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
-
-    if (unsubscribe_op->completion_options.completion_callback != NULL) {
-        (*unsubscribe_op->completion_options.completion_callback)(
-            completion_view, error_code, unsubscribe_op->completion_options.completion_user_data);
-    }
-}
-
-static void s_aws_mqtt5_operation_unsubscribe_set_packet_id(
-    struct aws_mqtt5_operation *operation,
-    aws_mqtt5_packet_id_t packet_id) {
-    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
-    unsubscribe_op->options_storage.storage_view.packet_id = packet_id;
-}
-
-static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_unsubscribe_get_packet_id(
-    const struct aws_mqtt5_operation *operation) {
-    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
-    return unsubscribe_op->options_storage.storage_view.packet_id;
-}
-
-static struct aws_mqtt5_operation_vtable s_unsubscribe_operation_vtable = {
-    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_unsubscribe_complete,
-    .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_set_packet_id,
-    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_get_packet_id,
-};
-
-static void s_destroy_operation_unsubscribe(void *object) {
-    if (object == NULL) {
-        return;
-    }
-
-    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = object;
-
-    aws_mqtt5_packet_unsubscribe_storage_clean_up(&unsubscribe_op->options_storage);
-
-    aws_mem_release(unsubscribe_op->allocator, unsubscribe_op);
-}
-
-struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
-    struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
-    const struct aws_mqtt5_unsubscribe_completion_options *completion_options) {
-    AWS_PRECONDITION(allocator != NULL);
-    AWS_PRECONDITION(unsubscribe_options != NULL);
-
-    if (aws_mqtt5_packet_unsubscribe_view_validate(unsubscribe_options, NULL)) {
-        return NULL;
-    }
-
-    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_unsubscribe));
-    if (unsubscribe_op == NULL) {
-        return NULL;
-    }
-
-    unsubscribe_op->allocator = allocator;
-    unsubscribe_op->base.vtable = &s_unsubscribe_operation_vtable;
-    unsubscribe_op->base.packet_type = AWS_MQTT5_PT_UNSUBSCRIBE;
-    aws_ref_count_init(&unsubscribe_op->base.ref_count, unsubscribe_op, s_destroy_operation_unsubscribe);
-    unsubscribe_op->base.impl = unsubscribe_op;
-
-    if (aws_mqtt5_packet_unsubscribe_storage_init(&unsubscribe_op->options_storage, allocator, unsubscribe_options)) {
-        goto error;
-    }
-
-    unsubscribe_op->base.packet_view = &unsubscribe_op->options_storage.storage_view;
-
-    if (completion_options != NULL) {
-        unsubscribe_op->completion_options = *completion_options;
-    }
-
-    return unsubscribe_op;
-
-error:
-
-    aws_mqtt5_operation_release(&unsubscribe_op->base);
-
-    return NULL;
 }
 
 /*********************************************************************************************************************
