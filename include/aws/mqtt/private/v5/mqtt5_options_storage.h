@@ -170,6 +170,24 @@ struct aws_mqtt5_packet_connack_storage {
     struct aws_byte_buf storage;
 };
 
+struct aws_mqtt5_packet_suback_storage {
+
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt5_packet_suback_view storage_view;
+
+    aws_mqtt5_packet_id_t packet_id;
+
+    struct aws_byte_cursor reason_string;
+    struct aws_byte_cursor *reason_string_ptr;
+
+    struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_array_list reason_codes;
+
+    struct aws_byte_buf storage;
+};
+
 struct aws_mqtt5_packet_publish_storage {
     struct aws_mqtt5_packet_publish_view storage_view;
 
@@ -493,6 +511,10 @@ AWS_MQTT_API int aws_mqtt5_packet_subscribe_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_subscribe_view *subscribe_options);
 
+AWS_MQTT_API int aws_mqtt5_packet_subscribe_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
+    struct aws_allocator *allocator);
+
 AWS_MQTT_API void aws_mqtt5_packet_subscribe_storage_clean_up(
     struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
 
@@ -507,6 +529,22 @@ AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_log(
 AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_init_from_storage(
     struct aws_mqtt5_packet_subscribe_view *subscribe_view,
     const struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
+
+/* Suback */
+
+AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_suback_storage *suback_storage,
+    struct aws_allocator *allocator);
+
+AWS_MQTT_API void aws_mqtt5_packet_suback_storage_clean_up(struct aws_mqtt5_packet_suback_storage *suback_storage);
+
+AWS_MQTT_API void aws_mqtt5_packet_suback_view_log(
+    const struct aws_mqtt5_packet_suback_view *suback_view,
+    enum aws_log_level level);
+
+AWS_MQTT_API void aws_mqtt5_packet_suback_view_init_from_storage(
+    struct aws_mqtt5_packet_suback_view *suback_view,
+    const struct aws_mqtt5_packet_suback_storage *suback_storage);
 
 /* Unsubscribe */
 
