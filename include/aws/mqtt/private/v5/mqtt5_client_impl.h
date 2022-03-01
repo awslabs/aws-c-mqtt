@@ -138,14 +138,19 @@ struct aws_mqtt5_client_vtable {
         enum aws_mqtt5_client_state new_state,
         void *vtable_user_data);
 
-    /*
-     * Potential additional candidates:
-     *
-     * aws_channel_slot_remove
-     * aws_websocket_release
-     * aws_websocket_get_channel
-     * aws_websocket_convert_to_midchannel_handler
-     */
+    /* aws_channel_acquire_message_from_pool */
+    struct aws_io_message *(*aws_channel_acquire_message_from_pool_fn)(
+        struct aws_channel *channel,
+        enum aws_io_message_type message_type,
+        size_t size_hint,
+        void *user_data);
+
+    /* aws_channel_slot_send_message */
+    int (*aws_channel_slot_send_message_fn)(
+        struct aws_channel_slot *slot,
+        struct aws_io_message *message,
+        enum aws_channel_direction dir,
+        void *user_data);
 
     void *vtable_user_data;
 };
@@ -217,6 +222,9 @@ enum aws_mqtt5_lifecycle_state {
  *      Clear unacked_operations_table
  */
 struct aws_mqtt5_client_operational_state {
+
+    /* back pointer to the client */
+    struct aws_mqtt5_client *client;
 
     /*
      * One more than the most recently used packet id.  This is the best starting point for a forward search through
@@ -412,14 +420,31 @@ AWS_MQTT_API int aws_mqtt5_operation_bind_packet_id(
  */
 AWS_MQTT_API int aws_mqtt5_client_operational_state_init(
     struct aws_mqtt5_client_operational_state *client_operational_state,
-    struct aws_allocator *allocator);
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_client *client);
 
 AWS_MQTT_API void aws_mqtt5_client_operational_state_clean_up(
     struct aws_mqtt5_client_operational_state *client_operational_state);
 
+/*
+ * Resets the client's operational state based on a disconnection:
+ *
+ *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
+ *      If current_operation, move current_operation to head of queued_operations
+ *      If disconnect_queue_policy is fail(x):
+ *          Fail, release, and remove everything in queued_operations with property (x)
+ *          Release and remove: PUBACK, DISCONNECT
+ *      Fail, remove, and release unacked_operations if:
+ *          Operation is not Qos 1+ publish
+ */
 AWS_MQTT_API void aws_mqtt5_client_operational_state_reset_offline_queue(
-    struct aws_mqtt5_client_operational_state *client_operational_state,
-    const struct aws_mqtt5_client_options_storage *client_config);
+    struct aws_mqtt5_client_operational_state *client_operational_state);
+
+/*
+ * Processes the pending operation queue based on the current state of the associated client
+ */
+AWS_MQTT_API int aws_mqtt5_client_service_operational_state(
+    struct aws_mqtt5_client_operational_state *client_operational_state);
 
 AWS_EXTERN_C_END
 
