@@ -1412,6 +1412,13 @@ static int s_mqtt5_operation_bind_packet_id_already_bound_fn(struct aws_allocato
 
 AWS_TEST_CASE(mqtt5_operation_bind_packet_id_already_bound, s_mqtt5_operation_bind_packet_id_already_bound_fn)
 
+/*
+ * A large suit of test infrastructure oriented towards exercising and checking the result of servicing an mqtt5
+ * client's operational state
+ *
+ * We mock io message acquisition/sending, but no other mocks are needed.  We use a dummy
+ * hand-initialized client to hold additional state (current_state) needed by the operational processing logic.
+ */
 struct aws_mqtt5_operation_processing_test_context {
     struct aws_allocator *allocator;
     struct aws_mqtt5_client dummy_client;
@@ -1422,6 +1429,8 @@ struct aws_mqtt5_operation_processing_test_context {
     struct aws_array_list output_io_messages;
     void *failed_io_message_buffer;
 };
+
+/* io message mocks */
 
 static struct aws_io_message *s_aws_channel_acquire_message_from_pool_success_fn(
     struct aws_channel *channel,
@@ -1473,19 +1482,6 @@ static struct aws_io_message *s_aws_channel_acquire_message_from_pool_success_se
     return new_message;
 }
 
-static int s_aws_channel_slot_send_message_success_fn(
-    struct aws_channel_slot *slot,
-    struct aws_io_message *message,
-    enum aws_channel_direction dir,
-    void *user_data) {
-
-    struct aws_mqtt5_operation_processing_test_context *test_context = user_data;
-
-    aws_array_list_push_back(&test_context->output_io_messages, &message);
-
-    return AWS_OP_SUCCESS;
-}
-
 static struct aws_io_message *s_aws_channel_acquire_message_from_pool_failure_fn(
     struct aws_channel *channel,
     enum aws_io_message_type message_type,
@@ -1498,6 +1494,19 @@ static struct aws_io_message *s_aws_channel_acquire_message_from_pool_failure_fn
 
     aws_raise_error(AWS_ERROR_INVALID_STATE);
     return NULL;
+}
+
+static int s_aws_channel_slot_send_message_success_fn(
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message,
+    enum aws_channel_direction dir,
+    void *user_data) {
+
+    struct aws_mqtt5_operation_processing_test_context *test_context = user_data;
+
+    aws_array_list_push_back(&test_context->output_io_messages, &message);
+
+    return AWS_OP_SUCCESS;
 }
 
 static int s_aws_channel_slot_send_message_failure_fn(
@@ -1571,6 +1580,7 @@ static void s_aws_mqtt5_operation_processing_test_context_enqueue_op(
     aws_linked_list_push_back(&test_context->dummy_client.operational_state.queued_operations, &operation->node);
 }
 
+/* Test that just runs the operational processing logic with an empty operation queue */
 static int s_mqtt5_operation_processing_nothing_empty_queue_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1601,6 +1611,10 @@ static struct aws_mqtt5_operation_subscribe *s_make_simple_subscribe_operation(s
     return aws_mqtt5_operation_subscribe_new(allocator, &subscribe_view, NULL);
 }
 
+/*
+ * Test that runs the operational processing logic for the MQTT_CONNECT state where the pending operation
+ * is not valid to be sent by this state (a SUBSCRIBE)
+ */
 static int s_mqtt5_operation_processing_nothing_mqtt_connect_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1622,6 +1636,10 @@ static int s_mqtt5_operation_processing_nothing_mqtt_connect_fn(struct aws_alloc
 
 AWS_TEST_CASE(mqtt5_operation_processing_nothing_mqtt_connect, s_mqtt5_operation_processing_nothing_mqtt_connect_fn)
 
+/*
+ * Test that runs the operational processing logic for the CLEAN_DISCONNECT state where the pending operation
+ * is not valid to be sent by this state (a SUBSCRIBE)
+ */
 static int s_mqtt5_operation_processing_nothing_clean_disconnect_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1653,6 +1671,10 @@ static struct aws_mqtt5_operation_connect *s_make_simple_connect_operation(struc
     return aws_mqtt5_operation_connect_new(allocator, &connect_view);
 }
 
+/*
+ * Test that runs the operational processing logic for the MQTT_CONNECT state with a valid CONNECT operation, but
+ * the pending_write_completion flag is set and should block any further processing
+ */
 static int s_mqtt5_operation_processing_nothing_pending_write_completion_mqtt_connect_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1679,6 +1701,10 @@ AWS_TEST_CASE(
     mqtt5_operation_processing_nothing_pending_write_completion_mqtt_connect,
     s_mqtt5_operation_processing_nothing_pending_write_completion_mqtt_connect_fn)
 
+/*
+ * Test that runs the operational processing logic for the CONNECTED state with a valid SUSBCRIBE operation, but
+ * the pending_write_completion flag is set and should block any further processing
+ */
 static int s_mqtt5_operation_processing_nothing_pending_write_completion_connected_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1713,6 +1739,10 @@ static struct aws_mqtt5_operation_disconnect *s_make_simple_disconnect_operation
     return aws_mqtt5_operation_disconnect_new(allocator, &disconnect_view);
 }
 
+/*
+ * Test that runs the operational processing logic for the CLEAN_DISCONNECT state with a valid DISCONNECT operation,
+ * but the pending_write_completion flag is set and should block any further processing
+ */
 static int s_mqtt5_operation_processing_nothing_pending_write_completion_clean_disconnect_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1739,6 +1769,10 @@ AWS_TEST_CASE(
     mqtt5_operation_processing_nothing_pending_write_completion_clean_disconnect,
     s_mqtt5_operation_processing_nothing_pending_write_completion_clean_disconnect_fn)
 
+/*
+ * Test that runs the operational processing logic for the CONNECTED state with a valid SUBSCRIBE operation,
+ * but the io message acquisition call fails
+ */
 static int s_mqtt5_operation_processing_failure_message_allocation_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1763,6 +1797,10 @@ AWS_TEST_CASE(
     mqtt5_operation_processing_failure_message_allocation,
     s_mqtt5_operation_processing_failure_message_allocation_fn)
 
+/*
+ * Test that runs the operational processing logic for the CONNECTED state with a valid SUBSCRIBE operation,
+ * but the io message send call fails
+ */
 static int s_mqtt5_operation_processing_failure_message_send_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1826,23 +1864,30 @@ struct aws_mqtt5_simple_operation_processing_write_test_context {
     size_t expected_queued_size;
 };
 
+/*
+ * Basic success test with actual output via 1 or more io messages
+ */
 static int s_do_simple_operation_processing_io_message_write_test(
     struct aws_allocator *allocator,
     struct aws_mqtt5_operation_processing_test_context *test_context,
     struct aws_mqtt5_simple_operation_processing_write_test_context *write_context) {
 
+    /* add operations to the pending queue */
     for (size_t i = 0; i < write_context->initial_operations_size; ++i) {
         s_aws_mqtt5_operation_processing_test_context_enqueue_op(test_context, write_context->initial_operations[i]);
     }
 
+    /* service the operational state the requested number of times.  reset pending write completion between calls */
     for (size_t i = 0; i < write_context->requested_service_count; ++i) {
         ASSERT_SUCCESS(aws_mqtt5_client_service_operational_state(&test_context->dummy_client.operational_state));
         test_context->dummy_client.operational_state.pending_write_completion = false;
     }
 
+    /* # of outputted io messages should match the request number of service calls */
     ASSERT_UINT_EQUALS(
         write_context->requested_service_count, aws_array_list_length(&test_context->output_io_messages));
 
+    /* encode all of the messages that we expect to have sent as a result of processing into one large buffer */
     struct aws_byte_buf verification_buffer;
     aws_byte_buf_init(&verification_buffer, allocator, 4096);
 
@@ -1854,6 +1899,7 @@ static int s_do_simple_operation_processing_io_message_write_test(
         aws_mqtt5_encoder_encode_to_buffer(&test_context->verification_encoder, &verification_buffer);
     }
 
+    /* concatenate all of the sent io message buffers into a single buffer */
     struct aws_byte_buf concatenated_message_buffers;
     aws_byte_buf_init(&concatenated_message_buffers, allocator, 4096);
 
@@ -1865,6 +1911,10 @@ static int s_do_simple_operation_processing_io_message_write_test(
         aws_byte_buf_append_dynamic(&concatenated_message_buffers, &message_cursor);
     }
 
+    /*
+     * verify that what we sent out (in 1 or more io messages) matches the sequential encoding of the operations
+     * that we expected to go out
+     */
     ASSERT_BIN_ARRAYS_EQUALS(
         verification_buffer.buffer,
         verification_buffer.len,
@@ -1874,16 +1924,19 @@ static int s_do_simple_operation_processing_io_message_write_test(
     aws_byte_buf_clean_up(&verification_buffer);
     aws_byte_buf_clean_up(&concatenated_message_buffers);
 
+    /* verify that operations we expected to *NOT* be processed are still in the queue in order */
     ASSERT_SUCCESS(s_verify_operation_list_versus_expected(
         &test_context->dummy_client.operational_state.queued_operations,
         write_context->expected_queued,
         write_context->expected_queued_size));
 
+    /* verify that the operations we expected to be placed into the write completion list are there, in order */
     ASSERT_SUCCESS(s_verify_operation_list_versus_expected(
         &test_context->dummy_client.operational_state.write_completion_operations,
         write_context->expected_write_completions,
         write_context->expected_write_completions_size));
 
+    /* verify that the operations we expected to be in the unacked operation list are there, in order */
     ASSERT_SUCCESS(s_verify_operation_list_versus_expected(
         &test_context->dummy_client.operational_state.unacked_operations,
         write_context->expected_pending_acks,
@@ -1893,6 +1946,7 @@ static int s_do_simple_operation_processing_io_message_write_test(
         write_context->expected_pending_acks_size,
         aws_hash_table_get_entry_count(&test_context->dummy_client.operational_state.unacked_operations_table));
 
+    /* verify that every operation that should be in pending ack has a packet id and is in the pending ack table */
     for (size_t i = 0; i < write_context->expected_pending_acks_size; ++i) {
         struct aws_mqtt5_operation *operation = write_context->expected_pending_acks[i];
 

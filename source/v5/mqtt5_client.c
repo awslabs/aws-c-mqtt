@@ -2170,7 +2170,7 @@ int aws_mqtt5_client_operational_state_init(
 
 void aws_mqtt5_client_operational_state_clean_up(struct aws_mqtt5_client_operational_state *client_operational_state) {
 
-    AWS_ASSERT(client->current_operation == NULL);
+    AWS_ASSERT(client_operational_state->current_operation == NULL);
 
     s_aws_mqtt5_client_operational_state_reset(client_operational_state, AWS_ERROR_MQTT5_CLIENT_TERMINATED, true);
 }
@@ -2246,10 +2246,6 @@ static uint64_t s_aws_mqtt5_client_compute_next_operation_flow_control_service_t
 
 /*
  * TODO: factor in flow control state (as a parameter and to helper functions)
- *
- * It's likely that in order for next_reschedule_time calculations to be in sync with true/false service, we'll need
- * to refactor this to a computation that is time based and returns the current time if we should service now, a future
- * time for scheduling, and a zero for nothing to do.
  */
 static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
@@ -2281,7 +2277,11 @@ static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
 
     AWS_FATAL_ASSERT(next_operation != NULL);
 
-    /* check the head of the pending operation queue against flow control and client state restrictions */
+    /*
+     * Check the head of the pending operation queue against flow control and client state restrictions
+     *
+     * Eventually this could return future timepoints.
+     */
     return s_aws_mqtt5_client_compute_next_operation_flow_control_service_time(next_operation, client_state, now);
 }
 
