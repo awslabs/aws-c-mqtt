@@ -1583,7 +1583,7 @@ static void s_aws_mqtt5_client_log_received_packet(
             break;
 
         case AWS_MQTT5_PT_SUBACK:
-            /* TODO: suback view not impl yet */
+            aws_mqtt5_packet_suback_view_log(packet_view, AWS_LL_TRACE);
             break;
 
         case AWS_MQTT5_PT_UNSUBACK:
@@ -1635,6 +1635,11 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: shutting down channel due to DISCONNECT", (void *)client);
 
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DISCONNECT_RECEIVED);
+            break;
+
+        case AWS_MQTT5_PT_SUBACK:
+            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: SUBACK received", (void *)client);
+            /* TODO logic handling on SUBACK packet received */
             break;
 
         default:
@@ -2025,11 +2030,21 @@ int aws_mqtt5_client_subscribe(
 
     struct aws_mqtt5_operation_subscribe *subscribe_op =
         aws_mqtt5_operation_subscribe_new(client->allocator, subscribe_options, completion_options);
+
     if (subscribe_op == NULL) {
         return AWS_OP_ERR;
     }
 
     if (s_submit_operation(client, &subscribe_op->base)) {
+        goto error;
+    }
+
+    /*
+        STEVE CLEAN UP
+        this s_aws_mqtt5_client_set_current_operation function sets client->current_operation to the subscribe_op->base.
+        Bret suggested removing this temp/test-only before committing.
+    */
+    if (s_aws_mqtt5_client_set_current_operation(client, &subscribe_op->base)) {
         goto error;
     }
 
