@@ -2033,6 +2033,7 @@ int aws_mqtt5_client_unsubscribe(
 
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
         aws_mqtt5_operation_unsubscribe_new(client->allocator, unsubscribe_options, completion_options);
+
     if (unsubscribe_op == NULL) {
         return AWS_OP_ERR;
     }
@@ -2139,8 +2140,7 @@ int aws_mqtt5_client_operational_state_init(
 }
 
 void aws_mqtt5_client_operational_state_clean_up(struct aws_mqtt5_client_operational_state *client_operational_state) {
-
-    AWS_ASSERT(client->current_operation == NULL);
+    AWS_ASSERT(client_operational_state->current_operation == NULL);
 
     s_aws_mqtt5_client_operational_state_reset(client_operational_state, AWS_ERROR_MQTT5_CLIENT_TERMINATED, true);
 }
