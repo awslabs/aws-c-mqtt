@@ -1131,446 +1131,6 @@ void aws_mqtt5_packet_connack_view_init_from_storage(
     connack_view->authentication_method = connack_storage->authentication_method_ptr;
     connack_view->authentication_data = connack_storage->authentication_data_ptr;
 }
-/*********************************************************************************************************************
- * Subscribe
- ********************************************************************************************************************/
-
-static int s_aws_mqtt5_validate_subscription(
-    const struct aws_mqtt5_subscription_view *subscription,
-    struct aws_mqtt5_client *client,
-    void *log_context) {
-    (void)client;
-
-    if (!aws_mqtt_is_valid_topic_filter(&subscription->topic_filter)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view - invalid topic filter \"" PRInSTR "\" in subscription",
-            log_context,
-            AWS_BYTE_CURSOR_PRI(subscription->topic_filter));
-        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-    }
-
-    if (subscription->topic_filter.len > UINT16_MAX) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view - subscription contains too-long topic filter",
-            log_context);
-        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-    }
-
-    if (subscription->qos < AWS_MQTT5_QOS_AT_MOST_ONCE || subscription->qos > AWS_MQTT5_QOS_AT_LEAST_ONCE) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view - unsupported QoS value: %d",
-            log_context,
-            (int)subscription->qos);
-        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-    }
-
-    if (subscription->retain_handling_type < AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE ||
-        subscription->retain_handling_type > AWS_MQTT5_RHT_DONT_SEND) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view - unsupported retain handling value: %d",
-            log_context,
-            (int)subscription->retain_handling_type);
-        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-int aws_mqtt5_packet_subscribe_view_validate(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    struct aws_mqtt5_client *client) {
-    (void)client;
-
-    if (subscribe_view == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "null SUBSCRIBE packet options");
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
-
-    if (subscribe_view->subscription_count == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view - must contain at least one subscription",
-            (void *)subscribe_view);
-        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-    }
-
-    if (subscribe_view->subscription_count > AWS_MQTT5_CLIENT_MAXIMUM_SUBSCRIPTIONS_PER_SUBSCRIBE) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view - too many subscriptions",
-            (void *)subscribe_view);
-        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-    }
-
-    for (size_t i = 0; i < subscribe_view->subscription_count; ++i) {
-        const struct aws_mqtt5_subscription_view *subscription = &subscribe_view->subscriptions[i];
-        if (s_aws_mqtt5_validate_subscription(subscription, client, (void *)subscribe_view)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: aws_mqtt5_packet_subscribe_view - invalid subscription",
-                (void *)subscribe_view);
-            return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-        }
-    }
-
-    if (subscribe_view->subscription_identifier != NULL) {
-        if (*subscribe_view->subscription_identifier > AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: aws_mqtt5_packet_subscribe_view - subscription identifier (%" PRIu32 ") too large",
-                (void *)subscribe_view,
-                *subscribe_view->subscription_identifier);
-            return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-        }
-    }
-
-    if (s_aws_mqtt5_user_property_set_validate(
-            subscribe_view->user_properties,
-            subscribe_view->user_property_count,
-            "aws_mqtt5_packet_subscribe_view",
-            (void *)subscribe_view)) {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-void aws_mqtt5_packet_subscribe_view_log(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
-        return;
-    }
-
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    size_t subscription_count = subscribe_view->subscription_count;
-    for (size_t i = 0; i < subscription_count; ++i) {
-        const struct aws_mqtt5_subscription_view *view = &subscribe_view->subscriptions[i];
-
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view subscription %zu: topic filter \"" PRInSTR
-            "\", qos %d, no local %d, retain as "
-            "published %d, retain handling %d(%s)",
-            (void *)subscribe_view,
-            i,
-            AWS_BYTE_CURSOR_PRI(view->topic_filter),
-            (int)view->qos,
-            (int)view->no_local,
-            (int)view->retain_as_published,
-            (int)view->retain_handling_type,
-            aws_mqtt5_retain_handling_type_to_c_string(view->retain_handling_type));
-    }
-
-    if (subscribe_view->subscription_identifier != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view subscription identifier set to %" PRIu32,
-            (void *)subscribe_view,
-            *subscribe_view->subscription_identifier);
-    }
-
-    s_aws_mqtt5_user_property_set_log(
-        subscribe_view->user_properties,
-        subscribe_view->subscription_count,
-        (void *)subscribe_view,
-        level,
-        "aws_mqtt5_packet_subscribe_view");
-}
-
-void aws_mqtt5_packet_subscribe_storage_clean_up(struct aws_mqtt5_packet_subscribe_storage *subscribe_storage) {
-    if (subscribe_storage == NULL) {
-        return;
-    }
-
-    aws_array_list_clean_up(&subscribe_storage->subscriptions);
-
-    aws_mqtt5_user_property_set_clean_up(&subscribe_storage->user_properties);
-    aws_byte_buf_clean_up(&subscribe_storage->storage);
-}
-
-void aws_mqtt5_packet_subscribe_view_init_from_storage(
-    struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    const struct aws_mqtt5_packet_subscribe_storage *subscribe_storage) {
-    subscribe_view->packet_id = subscribe_storage->storage_view.packet_id;
-    subscribe_view->subscription_identifier = subscribe_storage->subscription_identifier_ptr;
-
-    subscribe_view->subscription_count = aws_array_list_length(&subscribe_storage->subscriptions);
-    subscribe_view->subscriptions = subscribe_storage->subscriptions.data;
-
-    subscribe_view->user_property_count = aws_mqtt5_user_property_set_size(&subscribe_storage->user_properties);
-    subscribe_view->user_properties = subscribe_storage->user_properties.properties.data;
-}
-
-static int s_aws_mqtt5_packet_subscribe_storage_init_subscriptions(
-    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
-    struct aws_allocator *allocator,
-    size_t subscription_count,
-    const struct aws_mqtt5_subscription_view *subscriptions) {
-
-    if (aws_array_list_init_dynamic(
-            &subscribe_storage->subscriptions,
-            allocator,
-            subscription_count,
-            sizeof(struct aws_mqtt5_subscription_view))) {
-        return AWS_OP_ERR;
-    }
-
-    for (size_t i = 0; i < subscription_count; ++i) {
-        const struct aws_mqtt5_subscription_view *source = &subscriptions[i];
-        struct aws_mqtt5_subscription_view copy = *source;
-
-        if (aws_byte_buf_append_and_update(&subscribe_storage->storage, &copy.topic_filter)) {
-            return AWS_OP_ERR;
-        }
-
-        if (aws_array_list_push_back(&subscribe_storage->subscriptions, &copy)) {
-            return AWS_OP_ERR;
-        }
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-static size_t s_aws_mqtt5_packet_subscribe_compute_storage_size(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view) {
-    size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
-        subscribe_view->user_properties, subscribe_view->user_property_count);
-
-    for (size_t i = 0; i < subscribe_view->subscription_count; ++i) {
-        const struct aws_mqtt5_subscription_view *subscription = &subscribe_view->subscriptions[i];
-        storage_size += subscription->topic_filter.len;
-    }
-
-    return storage_size;
-}
-
-int aws_mqtt5_packet_subscribe_storage_init(
-    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
-    struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_options) {
-
-    AWS_ZERO_STRUCT(*subscribe_storage);
-    size_t storage_capacity = s_aws_mqtt5_packet_subscribe_compute_storage_size(subscribe_options);
-    if (aws_byte_buf_init(&subscribe_storage->storage, allocator, storage_capacity)) {
-        return AWS_OP_ERR;
-    }
-
-    subscribe_storage->storage_view.packet_id = subscribe_options->packet_id;
-
-    if (subscribe_options->subscription_identifier != NULL) {
-        subscribe_storage->subscription_identifier = *subscribe_options->subscription_identifier;
-        subscribe_storage->subscription_identifier_ptr = &subscribe_storage->subscription_identifier;
-    }
-
-    if (s_aws_mqtt5_packet_subscribe_storage_init_subscriptions(
-            subscribe_storage, allocator, subscribe_options->subscription_count, subscribe_options->subscriptions)) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_mqtt5_user_property_set_init_with_storage(
-            &subscribe_storage->user_properties,
-            allocator,
-            &subscribe_storage->storage,
-            subscribe_options->user_property_count,
-            subscribe_options->user_properties)) {
-        return AWS_OP_ERR;
-    }
-    aws_mqtt5_packet_subscribe_view_init_from_storage(&subscribe_storage->storage_view, subscribe_storage);
-
-    return AWS_OP_SUCCESS;
-}
-
-int aws_mqtt5_packet_subscribe_storage_init_from_external_storage(
-    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
-    struct aws_allocator *allocator) {
-    AWS_ZERO_STRUCT(*subscribe_storage);
-
-    if (aws_mqtt5_user_property_set_init(&subscribe_storage->user_properties, allocator)) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_array_list_init_dynamic(
-            &subscribe_storage->subscriptions, allocator, 0, sizeof(struct aws_mqtt5_subscription_view))) {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-static void s_aws_mqtt5_operation_subscribe_complete(
-    struct aws_mqtt5_operation *operation,
-    int error_code,
-    const void *completion_view) {
-    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
-
-    if (subscribe_op->completion_options.completion_callback != NULL) {
-        (*subscribe_op->completion_options.completion_callback)(
-            completion_view, error_code, subscribe_op->completion_options.completion_user_data);
-    }
-}
-
-static void s_aws_mqtt5_operation_subscribe_set_packet_id(
-    struct aws_mqtt5_operation *operation,
-    aws_mqtt5_packet_id_t packet_id) {
-    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
-    subscribe_op->options_storage.storage_view.packet_id = packet_id;
-}
-
-static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_subscribe_get_packet_id(
-    const struct aws_mqtt5_operation *operation) {
-    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
-    return subscribe_op->options_storage.storage_view.packet_id;
-}
-
-static struct aws_mqtt5_operation_vtable s_subscribe_operation_vtable = {
-    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_subscribe_complete,
-    .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_subscribe_set_packet_id,
-    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_subscribe_get_packet_id,
-};
-
-static void s_destroy_operation_subscribe(void *object) {
-    if (object == NULL) {
-        return;
-    }
-
-    struct aws_mqtt5_operation_subscribe *subscribe_op = object;
-
-    aws_mqtt5_packet_subscribe_storage_clean_up(&subscribe_op->options_storage);
-
-    aws_mem_release(subscribe_op->allocator, subscribe_op);
-}
-
-struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
-    struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
-    const struct aws_mqtt5_subscribe_completion_options *completion_options) {
-    AWS_PRECONDITION(allocator != NULL);
-    AWS_PRECONDITION(subscribe_options != NULL);
-
-    if (aws_mqtt5_packet_subscribe_view_validate(subscribe_options, NULL)) {
-        return NULL;
-    }
-
-    struct aws_mqtt5_operation_subscribe *subscribe_op =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_subscribe));
-    if (subscribe_op == NULL) {
-        return NULL;
-    }
-
-    subscribe_op->allocator = allocator;
-    subscribe_op->base.vtable = &s_subscribe_operation_vtable;
-    subscribe_op->base.packet_type = AWS_MQTT5_PT_SUBSCRIBE;
-    aws_ref_count_init(&subscribe_op->base.ref_count, subscribe_op, s_destroy_operation_subscribe);
-    subscribe_op->base.impl = subscribe_op;
-
-    if (aws_mqtt5_packet_subscribe_storage_init(&subscribe_op->options_storage, allocator, subscribe_options)) {
-        goto error;
-    }
-
-    subscribe_op->base.packet_view = &subscribe_op->options_storage.storage_view;
-
-    if (completion_options != NULL) {
-        subscribe_op->completion_options = *completion_options;
-    }
-
-    return subscribe_op;
-
-error:
-
-    aws_mqtt5_operation_release(&subscribe_op->base);
-
-    return NULL;
-}
-
-/*********************************************************************************************************************
- * Suback
- ********************************************************************************************************************/
-
-int aws_mqtt5_packet_suback_storage_init_from_external_storage(
-    struct aws_mqtt5_packet_suback_storage *suback_storage,
-    struct aws_allocator *allocator) {
-    AWS_ZERO_STRUCT(*suback_storage);
-
-    if (aws_mqtt5_user_property_set_init(&suback_storage->user_properties, allocator)) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_array_list_init_dynamic(
-            &suback_storage->reason_codes, allocator, 0, sizeof(enum aws_mqtt5_suback_reason_code))) {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-void aws_mqtt5_packet_suback_storage_clean_up(struct aws_mqtt5_packet_suback_storage *suback_storage) {
-    if (suback_storage == NULL) {
-        return;
-    }
-    aws_mqtt5_user_property_set_clean_up(&suback_storage->user_properties);
-
-    aws_array_list_clean_up(&suback_storage->reason_codes);
-
-    aws_byte_buf_clean_up(&suback_storage->storage);
-}
-
-void aws_mqtt5_packet_suback_view_log(
-    const struct aws_mqtt5_packet_suback_view *suback_view,
-    enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
-        return;
-    }
-
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    AWS_LOGF(
-        level,
-        AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_packet_suback_view packet id set to %d",
-        (void *)suback_view,
-        (int)suback_view->packet_id);
-
-    for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
-        enum aws_mqtt5_unsuback_reason_code reason_code = suback_view->reason_codes[i];
-        AWS_LOGF(
-            level,
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: topic %zu reason code:%d %s",
-            (void *)suback_view,
-            i,
-            (int)reason_code,
-            aws_mqtt5_suback_reason_code_to_c_string(reason_code));
-    }
-
-    s_aws_mqtt5_user_property_set_log(
-        suback_view->user_properties,
-        suback_view->user_property_count,
-        (void *)suback_view,
-        level,
-        "aws_mqtt5_packet_suback_view");
-}
-
-void aws_mqtt5_packet_suback_view_init_from_storage(
-    struct aws_mqtt5_packet_suback_view *suback_view,
-    const struct aws_mqtt5_packet_suback_storage *suback_storage) {
-
-    suback_view->packet_id = suback_storage->packet_id;
-    suback_view->reason_string = suback_storage->reason_string_ptr;
-
-    suback_view->user_property_count = aws_mqtt5_user_property_set_size(&suback_storage->user_properties);
-    suback_view->user_properties = suback_storage->user_properties.properties.data;
-
-    suback_view->reason_code_count = aws_array_list_length(&suback_storage->reason_codes);
-    suback_view->reason_codes = suback_storage->reason_codes.data;
-}
 
 /*********************************************************************************************************************
  * Disconnect
@@ -2267,6 +1827,447 @@ error:
     aws_mqtt5_operation_release(&publish_op->base);
 
     return NULL;
+}
+
+/*********************************************************************************************************************
+ * Subscribe
+ ********************************************************************************************************************/
+
+static int s_aws_mqtt5_validate_subscription(
+    const struct aws_mqtt5_subscription_view *subscription,
+    struct aws_mqtt5_client *client,
+    void *log_context) {
+    (void)client;
+
+    if (!aws_mqtt_is_valid_topic_filter(&subscription->topic_filter)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view - invalid topic filter \"" PRInSTR "\" in subscription",
+            log_context,
+            AWS_BYTE_CURSOR_PRI(subscription->topic_filter));
+        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+    }
+
+    if (subscription->topic_filter.len > UINT16_MAX) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view - subscription contains too-long topic filter",
+            log_context);
+        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+    }
+
+    if (subscription->qos < AWS_MQTT5_QOS_AT_MOST_ONCE || subscription->qos > AWS_MQTT5_QOS_AT_LEAST_ONCE) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view - unsupported QoS value: %d",
+            log_context,
+            (int)subscription->qos);
+        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+    }
+
+    if (subscription->retain_handling_type < AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE ||
+        subscription->retain_handling_type > AWS_MQTT5_RHT_DONT_SEND) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view - unsupported retain handling value: %d",
+            log_context,
+            (int)subscription->retain_handling_type);
+        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_packet_subscribe_view_validate(
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    struct aws_mqtt5_client *client) {
+    (void)client;
+
+    if (subscribe_view == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "null SUBSCRIBE packet options");
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    if (subscribe_view->subscription_count == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view - must contain at least one subscription",
+            (void *)subscribe_view);
+        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+    }
+
+    if (subscribe_view->subscription_count > AWS_MQTT5_CLIENT_MAXIMUM_SUBSCRIPTIONS_PER_SUBSCRIBE) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view - too many subscriptions",
+            (void *)subscribe_view);
+        return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+    }
+
+    for (size_t i = 0; i < subscribe_view->subscription_count; ++i) {
+        const struct aws_mqtt5_subscription_view *subscription = &subscribe_view->subscriptions[i];
+        if (s_aws_mqtt5_validate_subscription(subscription, client, (void *)subscribe_view)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_subscribe_view - invalid subscription",
+                (void *)subscribe_view);
+            return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+        }
+    }
+
+    if (subscribe_view->subscription_identifier != NULL) {
+        if (*subscribe_view->subscription_identifier > AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_subscribe_view - subscription identifier (%" PRIu32 ") too large",
+                (void *)subscribe_view,
+                *subscribe_view->subscription_identifier);
+            return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+        }
+    }
+
+    if (s_aws_mqtt5_user_property_set_validate(
+            subscribe_view->user_properties,
+            subscribe_view->user_property_count,
+            "aws_mqtt5_packet_subscribe_view",
+            (void *)subscribe_view)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_packet_subscribe_view_log(
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    enum aws_log_level level) {
+    struct aws_logger *temp_logger = aws_logger_get();
+    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+        return;
+    }
+
+    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
+
+    size_t subscription_count = subscribe_view->subscription_count;
+    for (size_t i = 0; i < subscription_count; ++i) {
+        const struct aws_mqtt5_subscription_view *view = &subscribe_view->subscriptions[i];
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view subscription %zu: topic filter \"" PRInSTR
+            "\", qos %d, no local %d, retain as "
+            "published %d, retain handling %d(%s)",
+            (void *)subscribe_view,
+            i,
+            AWS_BYTE_CURSOR_PRI(view->topic_filter),
+            (int)view->qos,
+            (int)view->no_local,
+            (int)view->retain_as_published,
+            (int)view->retain_handling_type,
+            aws_mqtt5_retain_handling_type_to_c_string(view->retain_handling_type));
+    }
+
+    if (subscribe_view->subscription_identifier != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view subscription identifier set to %" PRIu32,
+            (void *)subscribe_view,
+            *subscribe_view->subscription_identifier);
+    }
+
+    s_aws_mqtt5_user_property_set_log(
+        subscribe_view->user_properties,
+        subscribe_view->subscription_count,
+        (void *)subscribe_view,
+        level,
+        "aws_mqtt5_packet_subscribe_view");
+}
+
+void aws_mqtt5_packet_subscribe_storage_clean_up(struct aws_mqtt5_packet_subscribe_storage *subscribe_storage) {
+    if (subscribe_storage == NULL) {
+        return;
+    }
+
+    aws_array_list_clean_up(&subscribe_storage->subscriptions);
+
+    aws_mqtt5_user_property_set_clean_up(&subscribe_storage->user_properties);
+    aws_byte_buf_clean_up(&subscribe_storage->storage);
+}
+
+void aws_mqtt5_packet_subscribe_view_init_from_storage(
+    struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    const struct aws_mqtt5_packet_subscribe_storage *subscribe_storage) {
+    subscribe_view->packet_id = subscribe_storage->storage_view.packet_id;
+    subscribe_view->subscription_identifier = subscribe_storage->subscription_identifier_ptr;
+
+    subscribe_view->subscription_count = aws_array_list_length(&subscribe_storage->subscriptions);
+    subscribe_view->subscriptions = subscribe_storage->subscriptions.data;
+
+    subscribe_view->user_property_count = aws_mqtt5_user_property_set_size(&subscribe_storage->user_properties);
+    subscribe_view->user_properties = subscribe_storage->user_properties.properties.data;
+}
+
+static int s_aws_mqtt5_packet_subscribe_storage_init_subscriptions(
+    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
+    struct aws_allocator *allocator,
+    size_t subscription_count,
+    const struct aws_mqtt5_subscription_view *subscriptions) {
+
+    if (aws_array_list_init_dynamic(
+            &subscribe_storage->subscriptions,
+            allocator,
+            subscription_count,
+            sizeof(struct aws_mqtt5_subscription_view))) {
+        return AWS_OP_ERR;
+    }
+
+    for (size_t i = 0; i < subscription_count; ++i) {
+        const struct aws_mqtt5_subscription_view *source = &subscriptions[i];
+        struct aws_mqtt5_subscription_view copy = *source;
+
+        if (aws_byte_buf_append_and_update(&subscribe_storage->storage, &copy.topic_filter)) {
+            return AWS_OP_ERR;
+        }
+
+        if (aws_array_list_push_back(&subscribe_storage->subscriptions, &copy)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static size_t s_aws_mqtt5_packet_subscribe_compute_storage_size(
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view) {
+    size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
+        subscribe_view->user_properties, subscribe_view->user_property_count);
+
+    for (size_t i = 0; i < subscribe_view->subscription_count; ++i) {
+        const struct aws_mqtt5_subscription_view *subscription = &subscribe_view->subscriptions[i];
+        storage_size += subscription->topic_filter.len;
+    }
+
+    return storage_size;
+}
+
+int aws_mqtt5_packet_subscribe_storage_init(
+    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_options) {
+
+    AWS_ZERO_STRUCT(*subscribe_storage);
+    size_t storage_capacity = s_aws_mqtt5_packet_subscribe_compute_storage_size(subscribe_options);
+    if (aws_byte_buf_init(&subscribe_storage->storage, allocator, storage_capacity)) {
+        return AWS_OP_ERR;
+    }
+
+    subscribe_storage->storage_view.packet_id = subscribe_options->packet_id;
+
+    if (subscribe_options->subscription_identifier != NULL) {
+        subscribe_storage->subscription_identifier = *subscribe_options->subscription_identifier;
+        subscribe_storage->subscription_identifier_ptr = &subscribe_storage->subscription_identifier;
+    }
+
+    if (s_aws_mqtt5_packet_subscribe_storage_init_subscriptions(
+            subscribe_storage, allocator, subscribe_options->subscription_count, subscribe_options->subscriptions)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_mqtt5_user_property_set_init_with_storage(
+            &subscribe_storage->user_properties,
+            allocator,
+            &subscribe_storage->storage,
+            subscribe_options->user_property_count,
+            subscribe_options->user_properties)) {
+        return AWS_OP_ERR;
+    }
+    aws_mqtt5_packet_subscribe_view_init_from_storage(&subscribe_storage->storage_view, subscribe_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_packet_subscribe_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*subscribe_storage);
+
+    if (aws_mqtt5_user_property_set_init(&subscribe_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_array_list_init_dynamic(
+            &subscribe_storage->subscriptions, allocator, 0, sizeof(struct aws_mqtt5_subscription_view))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt5_operation_subscribe_complete(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    const void *completion_view) {
+    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
+
+    if (subscribe_op->completion_options.completion_callback != NULL) {
+        (*subscribe_op->completion_options.completion_callback)(
+            completion_view, error_code, subscribe_op->completion_options.completion_user_data);
+    }
+}
+
+static void s_aws_mqtt5_operation_subscribe_set_packet_id(
+    struct aws_mqtt5_operation *operation,
+    aws_mqtt5_packet_id_t packet_id) {
+    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
+    subscribe_op->options_storage.storage_view.packet_id = packet_id;
+}
+
+static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_subscribe_get_packet_id(
+    const struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
+    return subscribe_op->options_storage.storage_view.packet_id;
+}
+
+static struct aws_mqtt5_operation_vtable s_subscribe_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_subscribe_complete,
+    .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_subscribe_set_packet_id,
+    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_subscribe_get_packet_id,
+};
+
+static void s_destroy_operation_subscribe(void *object) {
+    if (object == NULL) {
+        return;
+    }
+
+    struct aws_mqtt5_operation_subscribe *subscribe_op = object;
+
+    aws_mqtt5_packet_subscribe_storage_clean_up(&subscribe_op->options_storage);
+
+    aws_mem_release(subscribe_op->allocator, subscribe_op);
+}
+
+struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
+    const struct aws_mqtt5_subscribe_completion_options *completion_options) {
+    AWS_PRECONDITION(allocator != NULL);
+    AWS_PRECONDITION(subscribe_options != NULL);
+
+    if (aws_mqtt5_packet_subscribe_view_validate(subscribe_options, NULL)) {
+        return NULL;
+    }
+
+    struct aws_mqtt5_operation_subscribe *subscribe_op =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_subscribe));
+    if (subscribe_op == NULL) {
+        return NULL;
+    }
+
+    subscribe_op->allocator = allocator;
+    subscribe_op->base.vtable = &s_subscribe_operation_vtable;
+    subscribe_op->base.packet_type = AWS_MQTT5_PT_SUBSCRIBE;
+    aws_ref_count_init(&subscribe_op->base.ref_count, subscribe_op, s_destroy_operation_subscribe);
+    subscribe_op->base.impl = subscribe_op;
+
+    if (aws_mqtt5_packet_subscribe_storage_init(&subscribe_op->options_storage, allocator, subscribe_options)) {
+        goto error;
+    }
+
+    subscribe_op->base.packet_view = &subscribe_op->options_storage.storage_view;
+
+    if (completion_options != NULL) {
+        subscribe_op->completion_options = *completion_options;
+    }
+
+    return subscribe_op;
+
+error:
+
+    aws_mqtt5_operation_release(&subscribe_op->base);
+
+    return NULL;
+}
+
+/*********************************************************************************************************************
+ * Suback
+ ********************************************************************************************************************/
+
+int aws_mqtt5_packet_suback_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_suback_storage *suback_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*suback_storage);
+
+    if (aws_mqtt5_user_property_set_init(&suback_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_array_list_init_dynamic(
+            &suback_storage->reason_codes, allocator, 0, sizeof(enum aws_mqtt5_suback_reason_code))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_packet_suback_storage_clean_up(struct aws_mqtt5_packet_suback_storage *suback_storage) {
+    if (suback_storage == NULL) {
+        return;
+    }
+    aws_mqtt5_user_property_set_clean_up(&suback_storage->user_properties);
+
+    aws_array_list_clean_up(&suback_storage->reason_codes);
+
+    aws_byte_buf_clean_up(&suback_storage->storage);
+}
+
+void aws_mqtt5_packet_suback_view_log(
+    const struct aws_mqtt5_packet_suback_view *suback_view,
+    enum aws_log_level level) {
+    struct aws_logger *logger = aws_logger_get();
+    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+        return;
+    }
+
+    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_packet_suback_view packet id set to %d",
+        (void *)suback_view,
+        (int)suback_view->packet_id);
+
+    for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
+        enum aws_mqtt5_unsuback_reason_code reason_code = suback_view->reason_codes[i];
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: topic %zu reason code:%d %s",
+            (void *)suback_view,
+            i,
+            (int)reason_code,
+            aws_mqtt5_suback_reason_code_to_c_string(reason_code));
+    }
+
+    s_aws_mqtt5_user_property_set_log(
+        suback_view->user_properties,
+        suback_view->user_property_count,
+        (void *)suback_view,
+        level,
+        "aws_mqtt5_packet_suback_view");
+}
+
+void aws_mqtt5_packet_suback_view_init_from_storage(
+    struct aws_mqtt5_packet_suback_view *suback_view,
+    const struct aws_mqtt5_packet_suback_storage *suback_storage) {
+
+    suback_view->packet_id = suback_storage->packet_id;
+    suback_view->reason_string = suback_storage->reason_string_ptr;
+
+    suback_view->user_property_count = aws_mqtt5_user_property_set_size(&suback_storage->user_properties);
+    suback_view->user_properties = suback_storage->user_properties.properties.data;
+
+    suback_view->reason_code_count = aws_array_list_length(&suback_storage->reason_codes);
+    suback_view->reason_codes = suback_storage->reason_codes.data;
 }
 
 /*********************************************************************************************************************
