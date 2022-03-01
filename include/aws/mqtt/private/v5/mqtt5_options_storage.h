@@ -593,7 +593,7 @@ AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
     const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
 
 /* Unsuback */
-/* STEVE IMPLEMENT THESE FUNCTIONS */
+
 AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init_from_external_storage(
     struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
     struct aws_allocator *allocator);

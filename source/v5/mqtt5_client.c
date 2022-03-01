@@ -1575,7 +1575,7 @@ static void s_aws_mqtt5_client_log_received_packet(
             break;
 
         case AWS_MQTT5_PT_UNSUBACK:
-            /* TODO: unsuback view not impl yet */
+            aws_mqtt5_packet_unsuback_view_log(packet_view, AWS_LL_TRACE);
             break;
 
         case AWS_MQTT5_PT_PINGRESP:
