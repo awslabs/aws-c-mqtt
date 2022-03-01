@@ -2543,6 +2543,89 @@ void aws_mqtt5_packet_suback_view_init_from_storage(
 }
 
 /*********************************************************************************************************************
+ * Unsuback
+ ********************************************************************************************************************/
+
+int aws_mqtt5_packet_unsuback_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*unsuback_storage);
+
+    if (aws_mqtt5_user_property_set_init(&unsuback_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_array_list_init_dynamic(
+            &unsuback_storage->reason_codes, allocator, 0, sizeof(enum aws_mqtt5_unsuback_reason_code))) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_packet_unsuback_storage_clean_up(struct aws_mqtt5_packet_unsuback_storage *unsuback_storage) {
+    if (unsuback_storage == NULL) {
+        return;
+    }
+    aws_mqtt5_user_property_set_clean_up(&unsuback_storage->user_properties);
+
+    aws_array_list_clean_up(&unsuback_storage->reason_codes);
+
+    aws_byte_buf_clean_up(&unsuback_storage->storage);
+}
+
+void aws_mqtt5_packet_unsuback_view_log(
+    const struct aws_mqtt5_packet_unsuback_view *unsuback_view,
+    enum aws_log_level level) {
+    struct aws_logger *logger = aws_logger_get();
+    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+        return;
+    }
+
+    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_packet_unsuback_view packet id set to %d",
+        (void *)unsuback_view,
+        (int)unsuback_view->packet_id);
+
+    for (size_t i = 0; i < unsuback_view->reason_code_count; ++i) {
+        enum aws_mqtt5_unsuback_reason_code reason_code = unsuback_view->reason_codes[i];
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: topic %zu reason code:%d %s",
+            (void *)unsuback_view,
+            i,
+            (int)reason_code,
+            aws_mqtt5_unsuback_reason_code_to_c_string(reason_code));
+    }
+
+    s_aws_mqtt5_user_property_set_log(
+        unsuback_view->user_properties,
+        unsuback_view->user_property_count,
+        (void *)unsuback_view,
+        level,
+        "aws_mqtt5_packet_unsuback_view");
+}
+
+void aws_mqtt5_packet_unsuback_view_init_from_storage(
+    struct aws_mqtt5_packet_unsuback_view *unsuback_view,
+    const struct aws_mqtt5_packet_unsuback_storage *unsuback_storage) {
+
+    unsuback_view->packet_id = unsuback_storage->packet_id;
+    unsuback_view->reason_string = unsuback_storage->reason_string_ptr;
+
+    unsuback_view->user_property_count = aws_mqtt5_user_property_set_size(&unsuback_storage->user_properties);
+    unsuback_view->user_properties = unsuback_storage->user_properties.properties.data;
+
+    unsuback_view->reason_code_count = aws_array_list_length(&unsuback_storage->reason_codes);
+    unsuback_view->reason_codes = unsuback_storage->reason_codes.data;
+}
+
+/*********************************************************************************************************************
  * PINGREQ
  ********************************************************************************************************************/
 

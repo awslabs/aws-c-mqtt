@@ -188,6 +188,24 @@ struct aws_mqtt5_packet_suback_storage {
     struct aws_byte_buf storage;
 };
 
+struct aws_mqtt5_packet_unsuback_storage {
+
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt5_packet_unsuback_view storage_view;
+
+    aws_mqtt5_packet_id_t packet_id;
+
+    struct aws_byte_cursor reason_string;
+    struct aws_byte_cursor *reason_string_ptr;
+
+    struct aws_mqtt5_user_property_set user_properties;
+
+    struct aws_array_list reason_codes;
+
+    struct aws_byte_buf storage;
+};
+
 struct aws_mqtt5_packet_publish_storage {
     struct aws_mqtt5_packet_publish_view storage_view;
 
@@ -573,6 +591,23 @@ AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_log(
 AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
     struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
     const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
+
+/* Unsuback */
+/* STEVE IMPLEMENT THESE FUNCTIONS */
+AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
+    struct aws_allocator *allocator);
+
+AWS_MQTT_API void aws_mqtt5_packet_unsuback_storage_clean_up(
+    struct aws_mqtt5_packet_unsuback_storage *unsuback_storage);
+
+AWS_MQTT_API void aws_mqtt5_packet_unsuback_view_log(
+    const struct aws_mqtt5_packet_unsuback_view *unsuback_view,
+    enum aws_log_level level);
+
+AWS_MQTT_API void aws_mqtt5_packet_unsuback_view_init_from_storage(
+    struct aws_mqtt5_packet_unsuback_view *unsuback_view,
+    const struct aws_mqtt5_packet_unsuback_storage *unsuback_storage);
 
 /* PINGREQ */
 
