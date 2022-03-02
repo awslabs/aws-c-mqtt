@@ -1737,3 +1737,127 @@ static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_alloc
 }
 
 AWS_TEST_CASE(mqtt5_client_reconnect_backoff_sufficient_reset, s_mqtt5_client_reconnect_backoff_sufficient_reset_fn)
+
+static const char s_topic_filter1[] = "some/topic/+";
+
+static struct aws_mqtt5_subscription_view s_subscriptions[] = {
+    {
+        .topic_filter =
+            {
+                .ptr = (uint8_t *)s_topic_filter1,
+                .len = AWS_ARRAY_SIZE(s_topic_filter1) - 1,
+            },
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .no_local = false,
+        .retain_as_published = false,
+        .retain_handling_type = AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE,
+    },
+};
+
+static enum aws_mqtt5_suback_reason_code s_suback_reason_codes[] = {
+    AWS_MQTT5_SARC_GRANTED_QOS_1,
+};
+
+void s_aws_mqtt5_subscribe_complete_fn(
+    const struct aws_mqtt5_packet_suback_view *suback,
+    int error_code,
+    void *complete_ctx) {
+
+    (void)suback;
+    (void)error_code;
+
+    struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
+
+    aws_mutex_lock(&test_context->lock);
+    test_context->suback_received = true;
+    aws_mutex_unlock(&test_context->lock);
+    aws_condition_variable_notify_all(&test_context->signal);
+}
+
+static bool s_received_suback(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_context = arg;
+
+    return test_context->suback_received;
+}
+
+static void s_wait_for_suback_received(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(&test_context->signal, &test_context->lock, s_received_suback, test_context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+static int s_aws_mqtt5_server_send_suback_on_subscribe(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet;
+
+    struct aws_mqtt5_packet_suback_view suback_view = {
+        .packet_id = subscribe_view->packet_id,
+        .reason_code_count = AWS_ARRAY_SIZE(s_suback_reason_codes),
+        .reason_codes = s_suback_reason_codes,
+    };
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view);
+}
+
+/* Connection test where we succeed, send a SUBSCRIBE, and wait for a SUBACK */
+static int s_mqtt5_client_subscribe_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] = s_aws_mqtt5_server_send_suback_on_subscribe;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
+        .subscriptions = s_subscriptions,
+        .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
+    };
+
+    struct aws_mqtt5_subscribe_completion_options completion_options = {
+        .completion_callback = s_aws_mqtt5_subscribe_complete_fn,
+        .completion_user_data = &test_context,
+    };
+    aws_mqtt5_client_subscribe(client, &subscribe_view, &completion_options);
+
+    s_wait_for_suback_received(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_subscribe_success, s_mqtt5_client_subscribe_success_fn)
