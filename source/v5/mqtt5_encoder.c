@@ -711,6 +711,112 @@ static int s_aws_mqtt5_encoder_begin_unsubscribe(struct aws_mqtt5_encoder *encod
     return AWS_OP_SUCCESS;
 }
 
+/* STEVE TODO Implement Publish Encoding */
+
+static int s_compute_publish_variable_length_fields(
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    size_t *total_remaining_length,
+    size_t *publish_properties_length) {
+
+    return AWS_OP_SUCCESS;
+}
+
+static uint8_t s_aws_mqtt5_publish_compute_publish_flags(const struct aws_mqtt5_packet_publish_view *publish_view) {
+    uint8_t flags = 0;
+
+    if (publish_view->redelivery_attempt) {
+        flags |= 1 << 3;
+    }
+
+    flags |= ((uint8_t)publish_view->qos) << 2;
+
+    if (publish_view->retain) {
+        flags |= 1;
+    }
+
+    return flags;
+}
+
+static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, const void *view) {
+
+    const struct aws_mqtt5_packet_publish_view *publish_view = view;
+
+    size_t total_remaining_length = 0;
+    size_t publish_properties_length = 0;
+
+    if (s_compute_publish_variable_length_fields(publish_view, &total_remaining_length, &publish_properties_length)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) mqtt5 client encoder - failed to compute variable length values for PUBLISH packet with error "
+            "%d(%s)",
+            (void *)encoder->config.client,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) mqtt5 client encoder - setting up encode for a PUBLISH packet with remaining length %zu",
+        (void *)encoder->config.client,
+        total_remaining_length);
+
+    uint32_t total_remaining_length_u32 = (uint32_t)total_remaining_length;
+    uint32_t publish_property_length_u32 = (uint32_t)publish_properties_length;
+
+    /*
+     * Fixed Header
+     * byte 1:
+     *  bits 4-7: MQTT Control Packet Type
+     *  bit 3: DUP flag
+     *  bit 1-2: QoS level
+     *  bit 0: RETAIN
+     * byte 2-x: Remaining Length as Variable Byte Integer (1-4 bytes)
+     */
+
+    ADD_ENCODE_STEP_U8(
+        encoder,
+        aws_mqtt5_compute_fixed_header_byte1(
+            AWS_MQTT5_PT_PUBLISH, s_aws_mqtt5_publish_compute_publish_flags(publish_view)));
+    ADD_ENCODE_STEP_VLI(encoder, total_remaining_length_u32);
+
+    /*
+     * Variable Header
+     * UTF-8 Encoded Topic Name
+     * 2 byte Packet Identifier
+     * 1-4 byte Property Length as Variable Byte Integer
+     * n bytes Properties
+     */
+
+    ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, publish_view->topic);
+    ADD_ENCODE_STEP_U16(encoder, (uint16_t)publish_view->packet_id);
+    ADD_ENCODE_STEP_VLI(encoder, publish_property_length_u32);
+
+    ADD_ENCODE_STEP_OPTIONAL_U8_PROPERTY(
+        encoder, AWS_MQTT5_PROPERTY_TYPE_PAYLOAD_FORMAT_INDICATOR, publish_view->payload_format);
+    ADD_ENCODE_STEP_OPTIONAL_U32_PROPERTY(
+        encoder, AWS_MQTT5_PROPERTY_TYPE_MESSAGE_EXPIRY_INTERVAL, publish_view->message_expiry_interval_seconds);
+    ADD_ENCODE_STEP_OPTIONAL_U16_PROPERTY(encoder, AWS_MQTT5_PROPERTY_TYPE_TOPIC_ALIAS, publish_view->topic_alias);
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
+        encoder, AWS_MQTT5_PROPERTY_TYPE_RESPONSE_TOPIC, publish_view->response_topic);
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
+        encoder, AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA, publish_view->correlation_data);
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(encoder, AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE, publish_view->content_type);
+
+    aws_mqtt5_add_user_property_encoding_steps(
+        encoder, publish_view->user_properties, publish_view->user_property_count);
+
+    /*
+     * Payload
+     * Content and format of data is application specific
+     */
+
+    ADD_ENCODE_STEP_CURSOR(encoder, publish_view->payload);
+
+    return AWS_OP_SUCCESS;
+}
+
 static enum aws_mqtt5_encoding_result s_execute_encode_step(
     struct aws_mqtt5_encoder *encoder,
     struct aws_mqtt5_encoding_step *step,
@@ -839,7 +945,7 @@ static struct aws_mqtt5_encoder_function_table s_aws_mqtt5_encoder_default_funct
             NULL,                                   /* RESERVED = 0 */
             &s_aws_mqtt5_encoder_begin_connect,     /* CONNECT */
             NULL,                                   /* CONNACK */
-            NULL,                                   /* PUBLISH */
+            &s_aws_mqtt5_encoder_begin_publish,     /* PUBLISH */
             NULL,                                   /* PUBACK */
             NULL,                                   /* PUBREC */
             NULL,                                   /* PUBREL */
