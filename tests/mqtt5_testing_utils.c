@@ -251,21 +251,6 @@ int aws_mqtt5_encoder_begin_suback(struct aws_mqtt5_encoder *encoder, const void
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_encoder_begin_pingresp(struct aws_mqtt5_encoder *encoder, const void *packet_view) {
-    (void)packet_view;
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL,
-        "(%p) mqtt5 client encoder - setting up encode for a PINGRESP packet",
-        (void *)encoder->config.client);
-
-    /* A ping response is just a fixed header with a 0-valued remaining length which we encode as a 0 u8 */
-    ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_PINGRESP, 0));
-    ADD_ENCODE_STEP_U8(encoder, 0);
-
-    return AWS_OP_SUCCESS;
-}
-
 /* STEVE TODO IMPlEMENT FUNCTS */
 
 static int s_compute_unsuback_variable_length_fields(
@@ -323,16 +308,17 @@ int aws_mqtt5_encoder_begin_unsuback(struct aws_mqtt5_encoder *encoder, const vo
 
     ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_UNSUBACK, 0));
     ADD_ENCODE_STEP_VLI(encoder, total_remaining_length);
-    ADD_ENCODE_STEP_U16(encoder, suback_view->packet_id);
+    ADD_ENCODE_STEP_U16(encoder, unsuback_view->packet_id);
     ADD_ENCODE_STEP_VLI(encoder, property_length);
 
     ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
-        encoder, AWS_MQTT5_PROPERTY_TYPE_REASON_STRING, suback_view->reason_string);
+        encoder, AWS_MQTT5_PROPERTY_TYPE_REASON_STRING, unsuback_view->reason_string);
 
-    aws_mqtt5_add_user_property_encoding_steps(encoder, suback_view->user_properties, suback_view->user_property_count);
+    aws_mqtt5_add_user_property_encoding_steps(
+        encoder, unsuback_view->user_properties, unsuback_view->user_property_count);
 
-    for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
-        ADD_ENCODE_STEP_U8(encoder, suback_view->reason_codes[i]);
+    for (size_t i = 0; i < unsuback_view->reason_code_count; ++i) {
+        ADD_ENCODE_STEP_U8(encoder, unsuback_view->reason_codes[i]);
     }
 
     return AWS_OP_SUCCESS;

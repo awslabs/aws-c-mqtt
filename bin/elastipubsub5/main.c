@@ -242,6 +242,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
             .retain_as_published = false,
             .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
         };
+
         struct aws_mqtt5_subscription_view subscription_view_3 = {
             .topic_filter = aws_byte_cursor_from_c_str("test_topic_3"),
             .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
@@ -249,8 +250,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
             .retain_as_published = false,
             .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
         };
-
-        const struct aws_mqtt5_subscription_view subscriptions[3] = {
+        const struct aws_mqtt5_subscription_view subscriptions[2] = {
             subscription_view_1,
             subscription_view_2,
             subscription_view_3,
@@ -262,6 +262,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
         };
 
         aws_mqtt5_client_subscribe(client, &packet_subscribe_view, &subscribe_completion_options);
+
     } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &unsubscribe_cursor)) {
         printf("Unsubscribing from topic!\n");
         struct aws_mqtt5_unsubscribe_completion_options unsubscribe_completion_options = {
@@ -276,8 +277,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
         };
 
         struct aws_mqtt5_packet_unsubscribe_view packet_unsubscribe_view = {
-            .packet_id = 2,
-            .topic_count = 3,
+            .topic_count = AWS_ARRAY_SIZE(unsubscribe_topics),
             .topics = &unsubscribe_topics[0],
             .user_properties = NULL,
             .user_property_count = 0,
