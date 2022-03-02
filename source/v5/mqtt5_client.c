@@ -2431,7 +2431,7 @@ void aws_mqtt5_client_operational_state_handle_ack(
     aws_linked_list_remove(&operation->node);
     aws_hash_table_remove(&client_operational_state->unacked_operations_table, &packet_id, NULL, NULL);
 
-    /* TODO: we may need to propagate errors here, but for multi-op things like SUBSCIBE that doesn't make sense */
+    /* TODO: we may need to propagate errors here, but for multi-op things like SUBSCRIBE that doesn't make sense */
     aws_mqtt5_operation_complete(operation, AWS_ERROR_SUCCESS, packet_view);
 
     aws_mqtt5_operation_release(operation);
