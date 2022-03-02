@@ -223,17 +223,30 @@ void aws_mqtt5_operation_set_packet_id(struct aws_mqtt5_operation *operation, aw
 
 aws_mqtt5_packet_id_t aws_mqtt5_operation_get_packet_id(const struct aws_mqtt5_operation *operation) {
     AWS_FATAL_ASSERT(operation->vtable != NULL);
-    if (operation->vtable->aws_mqtt5_operation_get_packet_id_fn != NULL) {
-        return (*operation->vtable->aws_mqtt5_operation_get_packet_id_fn)(operation);
+    if (operation->vtable->aws_mqtt5_operation_get_packet_id_address_fn != NULL) {
+        aws_mqtt5_packet_id_t *packet_id_ptr =
+            (*operation->vtable->aws_mqtt5_operation_get_packet_id_address_fn)(operation);
+        if (packet_id_ptr != NULL) {
+            return *packet_id_ptr;
+        }
     }
 
     return 0;
 }
 
+aws_mqtt5_packet_id_t *aws_mqtt5_operation_get_packet_id_address(const struct aws_mqtt5_operation *operation) {
+    AWS_FATAL_ASSERT(operation->vtable != NULL);
+    if (operation->vtable->aws_mqtt5_operation_get_packet_id_address_fn != NULL) {
+        return (*operation->vtable->aws_mqtt5_operation_get_packet_id_address_fn)(operation);
+    }
+
+    return NULL;
+}
+
 static struct aws_mqtt5_operation_vtable s_empty_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = NULL,
     .aws_mqtt5_operation_set_packet_id_fn = NULL,
-    .aws_mqtt5_operation_get_packet_id_fn = NULL,
+    .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
 };
 
 /*********************************************************************************************************************
@@ -1776,15 +1789,16 @@ static void s_aws_mqtt5_operation_publish_set_packet_id(
     publish_op->options_storage.storage_view.packet_id = packet_id;
 }
 
-static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_publish_get_packet_id(const struct aws_mqtt5_operation *operation) {
+static aws_mqtt5_packet_id_t *s_aws_mqtt5_operation_publish_get_packet_id_address(
+    const struct aws_mqtt5_operation *operation) {
     struct aws_mqtt5_operation_publish *publish_op = operation->impl;
-    return publish_op->options_storage.storage_view.packet_id;
+    return &publish_op->options_storage.storage_view.packet_id;
 }
 
 static struct aws_mqtt5_operation_vtable s_publish_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_publish_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_publish_set_packet_id,
-    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_publish_get_packet_id,
+    .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_publish_get_packet_id_address,
 };
 
 static void s_destroy_operation_publish(void *object) {
@@ -2033,16 +2047,16 @@ static void s_aws_mqtt5_operation_unsubscribe_set_packet_id(
     unsubscribe_op->options_storage.storage_view.packet_id = packet_id;
 }
 
-static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_unsubscribe_get_packet_id(
+static aws_mqtt5_packet_id_t *s_aws_mqtt5_operation_unsubscribe_get_packet_id_address(
     const struct aws_mqtt5_operation *operation) {
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
-    return unsubscribe_op->options_storage.storage_view.packet_id;
+    return &unsubscribe_op->options_storage.storage_view.packet_id;
 }
 
 static struct aws_mqtt5_operation_vtable s_unsubscribe_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_unsubscribe_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_set_packet_id,
-    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_get_packet_id,
+    .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_unsubscribe_get_packet_id_address,
 };
 
 static void s_destroy_operation_unsubscribe(void *object) {
@@ -2391,16 +2405,16 @@ static void s_aws_mqtt5_operation_subscribe_set_packet_id(
     subscribe_op->options_storage.storage_view.packet_id = packet_id;
 }
 
-static aws_mqtt5_packet_id_t s_aws_mqtt5_operation_subscribe_get_packet_id(
+static aws_mqtt5_packet_id_t *s_aws_mqtt5_operation_subscribe_get_packet_id_address(
     const struct aws_mqtt5_operation *operation) {
     struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
-    return subscribe_op->options_storage.storage_view.packet_id;
+    return &subscribe_op->options_storage.storage_view.packet_id;
 }
 
 static struct aws_mqtt5_operation_vtable s_subscribe_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_subscribe_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_subscribe_set_packet_id,
-    .aws_mqtt5_operation_get_packet_id_fn = s_aws_mqtt5_operation_subscribe_get_packet_id,
+    .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_subscribe_get_packet_id_address,
 };
 
 static void s_destroy_operation_subscribe(void *object) {
