@@ -657,7 +657,7 @@ done:
             aws_mqtt5_packet_subscribe_view_init_from_storage(&subscribe_storage.storage_view, &subscribe_storage);
 
             result = (*decoder->options.on_packet_received)(
-                AWS_MQTT5_PT_CONNECT, &subscribe_storage.storage_view, decoder->options.callback_user_data);
+                AWS_MQTT5_PT_SUBSCRIBE, &subscribe_storage.storage_view, decoder->options.callback_user_data);
         }
     } else {
         AWS_LOGF_ERROR(
