@@ -251,8 +251,6 @@ int aws_mqtt5_encoder_begin_suback(struct aws_mqtt5_encoder *encoder, const void
     return AWS_OP_SUCCESS;
 }
 
-/* STEVE TODO IMPlEMENT FUNCTS */
-
 static int s_compute_unsuback_variable_length_fields(
     const struct aws_mqtt5_packet_unsuback_view *unsuback_view,
     uint32_t *total_remaining_length,
@@ -745,8 +743,6 @@ done:
 
     return result;
 }
-
-/* STEVE TODO IMPLEMENT THESE */
 
 /* decode function for unsubscribe properties.  Movable to test-only code if we switched to a decoding function table */
 static int s_read_unsubscribe_property(
@@ -1283,8 +1279,16 @@ static void s_destroy_packet_storage(
             aws_mqtt5_packet_subscribe_storage_clean_up(packet_storage);
             break;
 
+        case AWS_MQTT5_PT_SUBACK:
+            aws_mqtt5_packet_suback_storage_clean_up(packet_storage);
+            break;
+
         case AWS_MQTT5_PT_UNSUBSCRIBE:
             aws_mqtt5_packet_unsubscribe_storage_clean_up(packet_storage);
+            break;
+
+        case AWS_MQTT5_PT_UNSUBACK:
+            aws_mqtt5_packet_unsuback_storage_clean_up(packet_storage);
             break;
 
         case AWS_MQTT5_PT_PUBLISH:

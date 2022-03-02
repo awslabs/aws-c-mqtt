@@ -250,7 +250,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
             .retain_as_published = false,
             .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
         };
-        const struct aws_mqtt5_subscription_view subscriptions[2] = {
+        const struct aws_mqtt5_subscription_view subscriptions[3] = {
             subscription_view_1,
             subscription_view_2,
             subscription_view_3,

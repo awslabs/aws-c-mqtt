@@ -856,7 +856,6 @@ static char s_unsubscribe_topic_1[] = "test_topic_1";
 static char s_unsubscribe_topic_2[] = "test_topic_2";
 static char s_unsubscribe_topic_3[] = "test_topic_3";
 
-static size_t s_unsubscribe_topics_count = 3;
 static const struct aws_byte_cursor s_unsubscribe_topics[] = {
     {
         .ptr = (uint8_t *)s_unsubscribe_topic_1,
@@ -884,7 +883,7 @@ static int s_aws_mqtt5_on_unsubscribe_received_fn(enum aws_mqtt5_packet_type typ
 
     ASSERT_INT_EQUALS(expected_view->topic_count, unsubscribe_view->topic_count);
 
-    for (size_t i = 0; i < s_unsubscribe_topics_count; ++i) {
+    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
         const struct aws_byte_cursor unsubscribe_topic = unsubscribe_view->topics[i];
         const struct aws_byte_cursor expected_topic = expected_view->topics[i];
         ASSERT_BIN_ARRAYS_EQUALS(expected_topic.ptr, expected_topic.len, unsubscribe_topic.ptr, unsubscribe_topic.len);
@@ -906,7 +905,7 @@ static int s_mqtt5_packet_unsubscribe_round_trip_fn(struct aws_allocator *alloca
 
     struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
         .packet_id = packet_id,
-        .topic_count = s_unsubscribe_topics_count,
+        .topic_count = AWS_ARRAY_SIZE(s_unsubscribe_topics),
         .topics = &s_unsubscribe_topics[0],
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = &s_user_properties[0],
@@ -919,8 +918,6 @@ static int s_mqtt5_packet_unsubscribe_round_trip_fn(struct aws_allocator *alloca
 }
 
 AWS_TEST_CASE(mqtt5_packet_unsubscribe_round_trip, s_mqtt5_packet_unsubscribe_round_trip_fn)
-
-/*******************************************************************************************************************/
 
 static int s_aws_mqtt5_on_unsuback_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
     struct aws_mqtt5_encode_decode_tester *tester = user_data;
@@ -972,7 +969,7 @@ static int s_mqtt5_packet_unsuback_round_trip_fn(struct aws_allocator *allocator
         .reason_string = &reason_string,
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = &s_user_properties[0],
-        .reason_code_count = 3,
+        .reason_code_count = AWS_ARRAY_SIZE(reason_codes),
         .reason_codes = &reason_codes[0],
     };
 
