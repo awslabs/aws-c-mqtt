@@ -427,7 +427,7 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_clean_up(
     struct aws_mqtt5_client_operational_state *client_operational_state);
 
 /*
- * Resets the client's operational state based on a disconnection:
+ * Resets the client's operational state based on a disconnection (from above comment):
  *
  *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
  *      If current_operation, move current_operation to head of queued_operations
@@ -445,6 +445,11 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_reset_offline_queue(
  */
 AWS_MQTT_API int aws_mqtt5_client_service_operational_state(
     struct aws_mqtt5_client_operational_state *client_operational_state);
+
+AWS_MQTT_API void aws_mqtt5_client_operational_state_handle_ack(
+    struct aws_mqtt5_client_operational_state *client_operational_state,
+    aws_mqtt5_packet_id_t packet_id,
+    const void *packet_view);
 
 AWS_EXTERN_C_END
 

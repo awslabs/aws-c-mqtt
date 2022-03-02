@@ -123,8 +123,9 @@ add_test_case(mqtt5_client_direct_connect_connack_refusal)
 add_test_case(mqtt5_client_direct_connect_connack_timeout)
 add_test_case(mqtt5_client_direct_connect_from_server_disconnect)
 
+add_test_case(mqtt5_client_subscribe_success)
+
 add_test_case(mqtt5_client_ping_sequence)
-#add_test_case(mqtt5_client_ping_write_pushout) TODO: we need operation handling logic first
 add_test_case(mqtt5_client_ping_timeout)
 
 add_test_case(mqtt5_client_reconnect_failure_backoff)
