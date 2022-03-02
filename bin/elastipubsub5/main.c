@@ -276,8 +276,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
         };
 
         struct aws_mqtt5_packet_unsubscribe_view packet_unsubscribe_view = {
-            .packet_id = 2,
-            .topic_count = 3,
+            .topic_count = AWS_ARRAY_SIZE(unsubscribe_topics),
             .topics = &unsubscribe_topics[0],
             .user_properties = NULL,
             .user_property_count = 0,
