@@ -2009,8 +2009,6 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
         return AWS_OP_ERR;
     }
 
-    unsubscribe_storage->storage_view.packet_id = unsubscribe_options->packet_id;
-
     if (s_aws_mqtt5_packet_unsubscribe_build_topic_list(
             unsubscribe_storage, allocator, unsubscribe_options->topic_count, unsubscribe_options->topics)) {
         return AWS_OP_ERR;
@@ -2036,6 +2034,10 @@ int aws_mqtt5_packet_unsubscribe_storage_init_from_external_storage(
     AWS_ZERO_STRUCT(*unsubscribe_storage);
 
     if (aws_mqtt5_user_property_set_init(&unsubscribe_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_array_list_init_dynamic(&unsubscribe_storage->topics, allocator, 0, sizeof(struct aws_byte_cursor))) {
         return AWS_OP_ERR;
     }
 
@@ -2622,7 +2624,7 @@ void aws_mqtt5_packet_unsuback_view_log(
         AWS_LOGF(
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: topic %zu reason code:%d %s",
+            "id=%p: aws_mqtt5_packet_unsuback_view topic %zu reason code:%d %s",
             (void *)unsuback_view,
             i,
             (int)reason_code,

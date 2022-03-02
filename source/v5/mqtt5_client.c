@@ -2043,15 +2043,6 @@ int aws_mqtt5_client_unsubscribe(
         return AWS_OP_ERR;
     }
 
-    /*
-     * STEVE CLEAN UP
-        this s_aws_mqtt5_client_set_current_operation function sets client->current_operation to the subscribe_op->base.
-        Bret suggested removing this temp/test-only before committing.
-     */
-    if (s_aws_mqtt5_client_set_current_operation(client, &unsubscribe_op->base)) {
-        goto error;
-    }
-
     if (s_submit_operation(client, &unsubscribe_op->base)) {
         goto error;
     }
