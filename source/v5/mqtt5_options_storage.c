@@ -2039,6 +2039,10 @@ int aws_mqtt5_packet_unsubscribe_storage_init_from_external_storage(
         return AWS_OP_ERR;
     }
 
+    if (aws_array_list_init_dynamic(&unsubscribe_storage->topics, allocator, 0, sizeof(struct aws_byte_cursor))) {
+        return AWS_OP_ERR;
+    }
+
     return AWS_OP_SUCCESS;
 }
 
