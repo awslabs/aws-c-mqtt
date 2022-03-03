@@ -73,8 +73,12 @@ add_test_case(mqtt5_connack_storage_new_set_no_optional)
 add_test_case(mqtt5_connack_storage_new_set_all)
 add_test_case(mqtt5_disconnect_storage_new_set_no_optional)
 add_test_case(mqtt5_disconnect_storage_new_set_all)
+add_test_case(mqtt5_suback_storage_new_set_no_optional)
+add_test_case(mqtt5_suback_storage_new_set_all)
+add_test_case(mqtt5_unsuback_storage_new_set_no_optional)
+add_test_case(mqtt5_unsuback_storage_new_set_all)
 
-# TODO: suback, unsuback, puback storage tests
+# TODO: puback storage tests
 
 add_test_case(mqtt5_operation_bind_packet_id_empty_table)
 add_test_case(mqtt5_operation_bind_packet_id_multiple_with_existing)
