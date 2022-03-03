@@ -1555,7 +1555,7 @@ static void s_aws_mqtt5_client_log_received_packet(
             break;
 
         case AWS_MQTT5_PT_UNSUBACK:
-            /* TODO: unsuback view not impl yet */
+            aws_mqtt5_packet_unsuback_view_log(packet_view, AWS_LL_TRACE);
             break;
 
         case AWS_MQTT5_PT_PINGRESP:
@@ -2038,6 +2038,7 @@ int aws_mqtt5_client_unsubscribe(
 
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
         aws_mqtt5_operation_unsubscribe_new(client->allocator, unsubscribe_options, completion_options);
+
     if (unsubscribe_op == NULL) {
         return AWS_OP_ERR;
     }
@@ -2137,7 +2138,6 @@ int aws_mqtt5_client_operational_state_init(
 }
 
 void aws_mqtt5_client_operational_state_clean_up(struct aws_mqtt5_client_operational_state *client_operational_state) {
-
     AWS_ASSERT(client_operational_state->current_operation == NULL);
 
     s_aws_mqtt5_client_operational_state_reset(client_operational_state, AWS_ERROR_MQTT5_CLIENT_TERMINATED, true);
