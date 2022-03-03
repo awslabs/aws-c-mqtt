@@ -153,6 +153,7 @@ static void s_on_subscribe_complete_fn(
     const struct aws_mqtt5_packet_suback_view *suback,
     int error_code,
     void *complete_ctx) {
+    printf("s_on_subscribe_complete_fn");
 
     (void)suback;
     (void)error_code;
@@ -166,6 +167,19 @@ static void s_on_unsubscribe_complete_fn(
     int error_code,
     void *complete_ctx) {
     printf("s_onunsubscribe_complete_fn");
+    (void)unsuback;
+    (void)error_code;
+    (void)complete_ctx;
+}
+
+static void s_on_publish_complete_fn(
+    const struct aws_mqtt5_packet_publish_view *publish,
+    int error_code,
+    void *complete_ctx) {
+    printf("s_on_publish_complete_fn");
+    (void)publish;
+    (void)error_code;
+    (void)complete_ctx;
 }
 
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
@@ -208,6 +222,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
     struct aws_byte_cursor stop_cursor = aws_byte_cursor_from_c_str("stop");
     struct aws_byte_cursor subscribe_cursor = aws_byte_cursor_from_c_str("subscribe");
     struct aws_byte_cursor unsubscribe_cursor = aws_byte_cursor_from_c_str("unsubscribe");
+    struct aws_byte_cursor publish_cursor = aws_byte_cursor_from_c_str("publish");
 
     struct aws_byte_cursor line_cursor = aws_byte_cursor_from_c_str(input_line);
     line_cursor = aws_byte_cursor_trim_pred(&line_cursor, &s_skip_whitespace);
@@ -284,6 +299,19 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
         };
 
         aws_mqtt5_client_unsubscribe(client, &packet_unsubscribe_view, &unsubscribe_completion_options);
+    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &publish_cursor)) {
+        /* STEVE TODO WORKING ON PUBLISH HERE*/
+        printf("Publishing!\n");
+        struct aws_mqtt5_publish_completion_options publish_completion_options = {
+            .completion_callback = &s_on_publish_complete_fn,
+            .completion_user_data = (void *)0xFFFF,
+        };
+
+        const struct aws_mqtt5_packet_publish_view packet_publish_view = {
+
+        };
+
+        aws_mqtt5_client_publish(client, &packet_publish_view, &publish_completion_options);
     }
     return false;
 }
