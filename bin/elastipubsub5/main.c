@@ -21,6 +21,7 @@
 #include <aws/io/tls_channel_handler.h>
 #include <aws/io/uri.h>
 
+#include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
@@ -51,7 +52,7 @@ struct app_ctx {
 
 static void s_usage(int exit_code) {
 
-    fprintf(stderr, "usage: elastipubsub [options] endpoint\n");
+    fprintf(stderr, "usage: elastipubsub5 [options] endpoint\n");
     fprintf(stderr, " endpoint: url to connect to\n");
     fprintf(stderr, "\n Options:\n\n");
     fprintf(stderr, "      --cacert FILE: path to a CA certficate file.\n");
@@ -158,7 +159,11 @@ static void s_on_subscribe_complete_fn(
     (void)error_code;
     (void)complete_ctx;
 
-    printf("s_on_subscribe_complete_fn");
+    printf("SUBACK received!\n");
+    for (size_t i = 0; i < suback->reason_code_count; ++i) {
+        printf("Subscription %d: %s\n", (int)i, aws_mqtt5_suback_reason_code_to_c_string(suback->reason_codes[i]));
+    }
+    fflush(stdout);
 }
 
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
@@ -194,7 +199,80 @@ static bool s_skip_whitespace(uint8_t value) {
     return value == '\n' || value == '\r' || value == '\t' || value == ' ';
 }
 
-static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_line) {
+static void s_split_command_line(struct aws_byte_cursor cursor, struct aws_array_list *words) {
+    struct aws_byte_cursor split_cursor;
+    AWS_ZERO_STRUCT(split_cursor);
+
+    while (aws_byte_cursor_next_split(&cursor, ' ', &split_cursor)) {
+        struct aws_byte_cursor word_cursor = aws_byte_cursor_trim_pred(&split_cursor, &s_skip_whitespace);
+        if (word_cursor.len > 0) {
+            aws_array_list_push_back(words, &word_cursor);
+        }
+    }
+}
+
+static void s_handle_subscribe(
+    struct aws_mqtt5_client *client,
+    struct aws_allocator *allocator,
+    struct aws_array_list *arguments) {
+    struct aws_mqtt5_subscribe_completion_options subscribe_completion_options = {
+        .completion_callback = &s_on_subscribe_complete_fn,
+        .completion_user_data = NULL,
+    };
+
+    size_t argument_count = aws_array_list_length(arguments) - 1;
+    if (argument_count < 2) {
+        printf("invalid subscribe options\n");
+        printf("subscribe <qos: [0, 1, 2]> topic1 topic2 ....\n");
+        return;
+    }
+
+    struct aws_byte_cursor qos_cursor;
+    AWS_ZERO_STRUCT(qos_cursor);
+    aws_array_list_get_at(arguments, &qos_cursor, 1);
+
+    struct aws_string *qos_string = aws_string_new_from_cursor(allocator, &qos_cursor);
+
+    int qos_value = atoi((const char *)qos_string->bytes);
+    enum aws_mqtt5_qos qos = qos_value;
+
+    size_t topic_count = aws_array_list_length(arguments) - 2;
+
+    struct aws_array_list subscriptions;
+    aws_array_list_init_dynamic(&subscriptions, allocator, topic_count, sizeof(struct aws_mqtt5_subscription_view));
+
+    printf("Subscribing to:\n");
+
+    for (size_t i = 0; i < topic_count; ++i) {
+        size_t topic_index = i + 2;
+        struct aws_byte_cursor topic_filter_cursor;
+
+        aws_array_list_get_at(arguments, &topic_filter_cursor, topic_index);
+
+        struct aws_mqtt5_subscription_view subscription = {
+            .topic_filter = topic_filter_cursor,
+            .qos = qos,
+            .no_local = false,
+            .retain_as_published = false,
+            .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
+        };
+
+        printf(" %d:" PRInSTR "\n", (int)i, AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
+        aws_array_list_push_back(&subscriptions, &subscription);
+    }
+
+    struct aws_mqtt5_packet_subscribe_view packet_subscribe_view = {
+        .subscription_count = aws_array_list_length(&subscriptions),
+        .subscriptions = subscriptions.data,
+    };
+
+    aws_mqtt5_client_subscribe(client, &packet_subscribe_view, &subscribe_completion_options);
+
+    aws_array_list_clean_up(&subscriptions);
+    aws_string_destroy(qos_string);
+}
+
+static bool s_handle_input(struct aws_mqtt5_client *client, struct aws_allocator *allocator, const char *input_line) {
 
     struct aws_byte_cursor quit_cursor = aws_byte_cursor_from_c_str("quit");
     struct aws_byte_cursor start_cursor = aws_byte_cursor_from_c_str("start");
@@ -202,69 +280,53 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
     struct aws_byte_cursor subscribe_cursor = aws_byte_cursor_from_c_str("subscribe");
     struct aws_byte_cursor unsubscribe_cursor = aws_byte_cursor_from_c_str("unsubscribe");
 
+    struct aws_array_list words;
+    aws_array_list_init_dynamic(&words, allocator, 10, sizeof(struct aws_byte_cursor));
+
     struct aws_byte_cursor line_cursor = aws_byte_cursor_from_c_str(input_line);
     line_cursor = aws_byte_cursor_trim_pred(&line_cursor, &s_skip_whitespace);
 
-    if (aws_byte_cursor_eq_ignore_case(&line_cursor, &quit_cursor)) {
+    bool done = false;
+
+    s_split_command_line(line_cursor, &words);
+    if (aws_array_list_length(&words) == 0) {
+        printf("Empty command line\n");
+        goto done;
+    }
+
+    struct aws_byte_cursor command_cursor;
+    AWS_ZERO_STRUCT(command_cursor);
+    aws_array_list_get_at(&words, &command_cursor, 0);
+
+    if (aws_byte_cursor_eq_ignore_case(&command_cursor, &quit_cursor)) {
         printf("Quitting!\n");
-        return true;
-    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &start_cursor)) {
+        done = true;
+    } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &start_cursor)) {
         printf("Starting client!\n");
         aws_mqtt5_client_start(client);
-    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &stop_cursor)) {
+    } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &stop_cursor)) {
         printf("Stopping client!\n");
         aws_mqtt5_client_stop(client, NULL);
-    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &subscribe_cursor)) {
-        printf("Subscribing to topic!\n");
-        struct aws_mqtt5_subscribe_completion_options subscribe_completion_options = {
-            .completion_callback = &s_on_subscribe_complete_fn,
-            .completion_user_data = (void *)0xFFFF,
-        };
-
-        struct aws_mqtt5_subscription_view subscription_view_1 = {
-            .topic_filter = aws_byte_cursor_from_c_str("test_topic_1"),
-            .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
-            .no_local = false,
-            .retain_as_published = false,
-            .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
-        };
-        struct aws_mqtt5_subscription_view subscription_view_2 = {
-            .topic_filter = aws_byte_cursor_from_c_str("test_topic_2"),
-            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
-            .no_local = false,
-            .retain_as_published = false,
-            .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
-        };
-        struct aws_mqtt5_subscription_view subscription_view_3 = {
-            .topic_filter = aws_byte_cursor_from_c_str("test_topic_3"),
-            .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
-            .no_local = false,
-            .retain_as_published = false,
-            .retain_handling_type = AWS_MQTT5_RHT_DONT_SEND,
-        };
-
-        struct aws_mqtt5_subscription_view subscriptions[3];
-        subscriptions[0] = subscription_view_1;
-        subscriptions[1] = subscription_view_2;
-        subscriptions[2] = subscription_view_3;
-
-        struct aws_mqtt5_packet_subscribe_view packet_subscribe_view = {
-            .subscription_count = AWS_ARRAY_SIZE(subscriptions),
-            .subscriptions = &subscriptions[0],
-        };
-
-        aws_mqtt5_client_subscribe(client, &packet_subscribe_view, &subscribe_completion_options);
-    } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &unsubscribe_cursor)) {
+    } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &subscribe_cursor)) {
+        s_handle_subscribe(client, allocator, &words);
+    } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &unsubscribe_cursor)) {
         printf("Unsubscribing from topic!\n");
         aws_mqtt5_client_unsubscribe(client, NULL, NULL);
+    } else {
+        printf("Unknown command: " PRInSTR "\n", AWS_BYTE_CURSOR_PRI(command_cursor));
     }
-    return false;
+
+done:
+
+    aws_array_list_clean_up(&words);
+
+    return done;
 }
 
 AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "HelloWorld");
 
 int main(int argc, char **argv) {
-    struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), NULL, AWS_MEMTRACE_STACKS, 8);
+    struct aws_allocator *allocator = aws_mem_tracer_new(aws_default_allocator(), NULL, AWS_MEMTRACE_STACKS, 15);
 
     aws_mqtt_library_init(allocator);
 
@@ -413,7 +475,7 @@ int main(int argc, char **argv) {
         char *line = NULL;
         size_t len = 0;
         getline(&line, &len, stdin);
-        done = s_handle_input(client, line);
+        done = s_handle_input(client, allocator, line);
         free(line);
     }
 
