@@ -1983,6 +1983,7 @@ int aws_mqtt5_client_publish(
 
     struct aws_mqtt5_operation_publish *publish_op =
         aws_mqtt5_operation_publish_new(client->allocator, publish_options, completion_options);
+
     if (publish_op == NULL) {
         return AWS_OP_ERR;
     }

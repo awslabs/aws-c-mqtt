@@ -300,15 +300,22 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
 
         aws_mqtt5_client_unsubscribe(client, &packet_unsubscribe_view, &unsubscribe_completion_options);
     } else if (aws_byte_cursor_eq_ignore_case(&line_cursor, &publish_cursor)) {
-        /* STEVE TODO WORKING ON PUBLISH HERE*/
+
         printf("Publishing!\n");
         struct aws_mqtt5_publish_completion_options publish_completion_options = {
             .completion_callback = &s_on_publish_complete_fn,
             .completion_user_data = (void *)0xFFFF,
         };
 
-        const struct aws_mqtt5_packet_publish_view packet_publish_view = {
+        enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
 
+        const struct aws_mqtt5_packet_publish_view packet_publish_view = {
+            .payload = aws_byte_cursor_from_c_str("PAYLOAD CONTENTS"),
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .redelivery_attempt = false,
+            .retain = false,
+            .topic = aws_byte_cursor_from_c_str("test_topic_1"),
+            .payload_format = &payload_format,
         };
 
         aws_mqtt5_client_publish(client, &packet_publish_view, &publish_completion_options);

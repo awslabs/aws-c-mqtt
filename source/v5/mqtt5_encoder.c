@@ -711,30 +711,55 @@ static int s_aws_mqtt5_encoder_begin_unsubscribe(struct aws_mqtt5_encoder *encod
     return AWS_OP_SUCCESS;
 }
 
-/* STEVE TODO Implement Publish Encoding */
-
 static int s_compute_publish_variable_length_fields(
     const struct aws_mqtt5_packet_publish_view *publish_view,
     size_t *total_remaining_length,
     size_t *publish_properties_length) {
 
+    size_t publish_property_section_length =
+        aws_mqtt5_compute_user_property_encode_length(publish_view->user_properties, publish_view->user_property_count);
+
+    ADD_OPTIONAL_U8_PROPERTY_LENGTH(publish_view->payload_format, publish_property_section_length);
+    ADD_OPTIONAL_U32_PROPERTY_LENGTH(publish_view->message_expiry_interval_seconds, publish_property_section_length);
+    ADD_OPTIONAL_U16_PROPERTY_LENGTH(publish_view->topic_alias, publish_property_section_length);
+    ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->response_topic, publish_property_section_length);
+    ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->correlation_data, publish_property_section_length);
+
+    *publish_properties_length = (uint32_t)publish_property_section_length;
+
+    /*
+     * Remaining Length:
+     * Variable Header
+     *  - Topic Name
+     *  - Packet Identifier
+     *  - Property Length as VLI x
+     *  - All Properties x
+     * Payload
+     */
+
+    size_t remaining_length = 0;
+    /* Topic name */
+    remaining_length += 2 + publish_view->topic.len;
+
+    /* Property Length VLI size */
+    if (aws_mqtt5_get_variable_length_encode_size(publish_property_section_length, &remaining_length)) {
+        return AWS_OP_ERR;
+    }
+
+    /* Optional packet id */
+    if ((publish_view->packet_id) != NULL) {
+        remaining_length += 2;
+    }
+
+    /* Properties */
+    remaining_length += publish_property_section_length;
+
+    /* Payload */
+    remaining_length += 2 + publish_view->payload.len;
+
+    *total_remaining_length = remaining_length;
+
     return AWS_OP_SUCCESS;
-}
-
-static uint8_t s_aws_mqtt5_publish_compute_publish_flags(const struct aws_mqtt5_packet_publish_view *publish_view) {
-    uint8_t flags = 0;
-
-    if (publish_view->redelivery_attempt) {
-        flags |= 1 << 3;
-    }
-
-    flags |= ((uint8_t)publish_view->qos) << 2;
-
-    if (publish_view->retain) {
-        flags |= 1;
-    }
-
-    return flags;
 }
 
 static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, const void *view) {
@@ -775,10 +800,22 @@ static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, 
      * byte 2-x: Remaining Length as Variable Byte Integer (1-4 bytes)
      */
 
-    ADD_ENCODE_STEP_U8(
-        encoder,
-        aws_mqtt5_compute_fixed_header_byte1(
-            AWS_MQTT5_PT_PUBLISH, s_aws_mqtt5_publish_compute_publish_flags(publish_view)));
+    uint8_t flags = 0;
+
+    if (publish_view->redelivery_attempt) {
+        flags |= 1 << 3;
+    }
+
+    flags |= ((uint8_t)publish_view->qos) << 2;
+
+    if (publish_view->retain) {
+        flags |= 1;
+    }
+
+    return flags;
+
+    ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_PUBLISH, flags));
+
     ADD_ENCODE_STEP_VLI(encoder, total_remaining_length_u32);
 
     /*
@@ -790,7 +827,9 @@ static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, 
      */
 
     ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, publish_view->topic);
-    ADD_ENCODE_STEP_U16(encoder, (uint16_t)publish_view->packet_id);
+    if ((publish_view->packet_id) != NULL) {
+        ADD_ENCODE_STEP_U16(encoder, (uint16_t)publish_view->packet_id);
+    }
     ADD_ENCODE_STEP_VLI(encoder, publish_property_length_u32);
 
     ADD_ENCODE_STEP_OPTIONAL_U8_PROPERTY(
