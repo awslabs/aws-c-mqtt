@@ -251,11 +251,83 @@ int aws_mqtt5_encoder_begin_suback(struct aws_mqtt5_encoder *encoder, const void
     return AWS_OP_SUCCESS;
 }
 
+static int s_compute_unsuback_variable_length_fields(
+    const struct aws_mqtt5_packet_unsuback_view *unsuback_view,
+    uint32_t *total_remaining_length,
+    uint32_t *property_length) {
+    /* User Properties length */
+    size_t local_property_length = aws_mqtt5_compute_user_property_encode_length(
+        unsuback_view->user_properties, unsuback_view->user_property_count);
+    /* Optional Reason String */
+    ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(unsuback_view->reason_string, local_property_length);
+
+    *property_length = (uint32_t)local_property_length;
+
+    size_t local_total_remaining_length = 0;
+    if (aws_mqtt5_get_variable_length_encode_size(local_property_length, &local_total_remaining_length)) {
+        return AWS_OP_ERR;
+    }
+
+    /* Packet Identifier (2 bytes) */
+    local_total_remaining_length += 2;
+
+    /* Reason Codes (1 byte each) */
+    local_total_remaining_length += unsuback_view->reason_code_count;
+
+    /* Add property length */
+    *total_remaining_length = *property_length + (uint32_t)local_total_remaining_length;
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_encoder_begin_unsuback(struct aws_mqtt5_encoder *encoder, const void *packet_view) {
+
+    const struct aws_mqtt5_packet_unsuback_view *unsuback_view = packet_view;
+
+    uint32_t total_remaining_length = 0;
+    uint32_t property_length = 0;
+    if (s_compute_unsuback_variable_length_fields(unsuback_view, &total_remaining_length, &property_length)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) mqtt5 client encoder - failed to compute variable length values for UNSUBACK packet with error "
+            "%d(%s)",
+            (void *)encoder->config.client,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) mqtt5 client encoder - setting up encode for an UNSUBACK packet with remaining length %" PRIu32,
+        (void *)encoder->config.client,
+        total_remaining_length);
+
+    ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_UNSUBACK, 0));
+    ADD_ENCODE_STEP_VLI(encoder, total_remaining_length);
+    ADD_ENCODE_STEP_U16(encoder, unsuback_view->packet_id);
+    ADD_ENCODE_STEP_VLI(encoder, property_length);
+
+    ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
+        encoder, AWS_MQTT5_PROPERTY_TYPE_REASON_STRING, unsuback_view->reason_string);
+
+    aws_mqtt5_add_user_property_encoding_steps(
+        encoder, unsuback_view->user_properties, unsuback_view->user_property_count);
+
+    for (size_t i = 0; i < unsuback_view->reason_code_count; ++i) {
+        ADD_ENCODE_STEP_U8(encoder, unsuback_view->reason_codes[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 void aws_mqtt5_encode_init_testing_function_table(struct aws_mqtt5_encoder_function_table *function_table) {
     *function_table = *g_aws_mqtt5_encoder_default_function_table;
     function_table->encoders_by_packet_type[AWS_MQTT5_PT_PINGRESP] = &aws_mqtt5_encoder_begin_pingresp;
     function_table->encoders_by_packet_type[AWS_MQTT5_PT_CONNACK] = &aws_mqtt5_encoder_begin_connack;
     function_table->encoders_by_packet_type[AWS_MQTT5_PT_SUBACK] = &aws_mqtt5_encoder_begin_suback;
+    function_table->encoders_by_packet_type[AWS_MQTT5_PT_UNSUBACK] = &aws_mqtt5_encoder_begin_unsuback;
 }
 
 static int s_aws_mqtt5_decoder_decode_pingreq(struct aws_mqtt5_decoder *decoder) {
@@ -672,14 +744,118 @@ done:
     return result;
 }
 
+/* decode function for unsubscribe properties.  Movable to test-only code if we switched to a decoding function table */
+static int s_read_unsubscribe_property(
+    struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage,
+    struct aws_byte_cursor *packet_cursor) {
+    int result = AWS_OP_ERR;
+
+    uint8_t property_type = 0;
+    AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
+
+    switch (property_type) {
+        case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
+            if (aws_mqtt5_decode_user_property(packet_cursor, &unsubscribe_storage->user_properties)) {
+                goto done;
+            }
+            break;
+
+        default:
+            goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    if (result != AWS_OP_SUCCESS) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+    }
+
+    return result;
+}
+
+/*
+ * Decodes an UNSUBSCRIBE packet whose data must be in the scratch buffer.
+ */
+static int s_aws_mqtt5_decoder_decode_unsubscribe(struct aws_mqtt5_decoder *decoder) {
+    struct aws_mqtt5_packet_unsubscribe_storage unsubscribe_storage;
+    int result = AWS_OP_ERR;
+
+    if (aws_mqtt5_packet_unsubscribe_storage_init_from_external_storage(&unsubscribe_storage, decoder->allocator)) {
+        goto done;
+    }
+
+    /* UNSUBSCRIBE flags must be 2 by protocol*/
+    uint8_t first_byte = decoder->packet_first_byte;
+    if ((first_byte & 0x0F) != 2) {
+        goto done;
+    }
+
+    struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
+    if (decoder->remaining_length != (uint32_t)packet_cursor.len) {
+        goto done;
+    }
+
+    uint16_t packet_id = 0;
+    AWS_MQTT5_DECODE_U16(&packet_cursor, &packet_id, done);
+    unsubscribe_storage.storage_view.packet_id = packet_id;
+
+    uint32_t property_length = 0;
+    AWS_MQTT5_DECODE_VLI(&packet_cursor, &property_length, done);
+    if (property_length > packet_cursor.len) {
+        goto done;
+    }
+
+    struct aws_byte_cursor property_cursor = aws_byte_cursor_advance(&packet_cursor, property_length);
+    while (property_cursor.len > 0) {
+        if (s_read_unsubscribe_property(&unsubscribe_storage, &property_cursor)) {
+            goto done;
+        }
+    }
+
+    while (packet_cursor.len > 0) {
+        struct aws_byte_cursor topic;
+        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &topic, done);
+        if (aws_array_list_push_back(&unsubscribe_storage.topics, &topic)) {
+            goto done;
+        }
+    }
+
+    if (packet_cursor.len == 0) {
+        result = AWS_OP_SUCCESS;
+    }
+
+done:
+
+    if (result == AWS_OP_SUCCESS) {
+        if (decoder->options.on_packet_received != NULL) {
+            aws_mqtt5_packet_unsubscribe_view_init_from_storage(
+                &unsubscribe_storage.storage_view, &unsubscribe_storage);
+
+            result = (*decoder->options.on_packet_received)(
+                AWS_MQTT5_PT_UNSUBSCRIBE, &unsubscribe_storage.storage_view, decoder->options.callback_user_data);
+        }
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) aws_mqtt5_decoder - UNSUBSCRIBE decode failure",
+            decoder->options.callback_user_data);
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+    }
+
+    aws_mqtt5_packet_unsubscribe_storage_clean_up(&unsubscribe_storage);
+
+    return result;
+}
+
 void aws_mqtt5_decode_init_testing_function_table(struct aws_mqtt5_decoder_function_table *function_table) {
     *function_table = *g_aws_mqtt5_default_decoder_table;
     function_table->decoders_by_packet_type[AWS_MQTT5_PT_PINGREQ] = &s_aws_mqtt5_decoder_decode_pingreq;
     function_table->decoders_by_packet_type[AWS_MQTT5_PT_CONNECT] = &s_aws_mqtt5_decoder_decode_connect;
     function_table->decoders_by_packet_type[AWS_MQTT5_PT_SUBSCRIBE] = &s_aws_mqtt5_decoder_decode_subscribe;
+    function_table->decoders_by_packet_type[AWS_MQTT5_PT_UNSUBSCRIBE] = &s_aws_mqtt5_decoder_decode_unsubscribe;
 }
-
-/*******************************************************************************************************************/
 
 static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
     enum aws_mqtt5_packet_type type,
@@ -1103,8 +1279,16 @@ static void s_destroy_packet_storage(
             aws_mqtt5_packet_subscribe_storage_clean_up(packet_storage);
             break;
 
+        case AWS_MQTT5_PT_SUBACK:
+            aws_mqtt5_packet_suback_storage_clean_up(packet_storage);
+            break;
+
         case AWS_MQTT5_PT_UNSUBSCRIBE:
             aws_mqtt5_packet_unsubscribe_storage_clean_up(packet_storage);
+            break;
+
+        case AWS_MQTT5_PT_UNSUBACK:
+            aws_mqtt5_packet_unsuback_storage_clean_up(packet_storage);
             break;
 
         case AWS_MQTT5_PT_PUBLISH:

@@ -13,6 +13,7 @@
 
 #define INITIAL_ENCODING_STEP_COUNT 64
 #define SUBSCRIBE_PACKET_FIXED_HEADER_RESERVED_BITS 2
+#define UNSUBSCRIBE_PACKET_FIXED_HEADER_RESERVED_BITS 2
 
 int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value) {
     AWS_PRECONDITION(buf);
@@ -445,7 +446,7 @@ static uint8_t s_aws_mqtt5_subscribe_compute_subscription_flags(
     return flags;
 }
 
-static void aws_mqtt5_add_topic_filter_encoding_steps(
+static void aws_mqtt5_add_subscribe_topic_filter_encoding_steps(
     struct aws_mqtt5_encoder *encoder,
     const struct aws_mqtt5_subscription_view *subscriptions,
     size_t subscription_count) {
@@ -454,6 +455,17 @@ static void aws_mqtt5_add_topic_filter_encoding_steps(
         const struct aws_mqtt5_subscription_view *subscription = &subscriptions[i];
         ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, subscription->topic_filter);
         ADD_ENCODE_STEP_U8(encoder, s_aws_mqtt5_subscribe_compute_subscription_flags(subscription));
+    }
+}
+
+static void aws_mqtt5_add_unsubscribe_topic_filter_encoding_steps(
+    struct aws_mqtt5_encoder *encoder,
+    const struct aws_byte_cursor *topics,
+    size_t unsubscription_count) {
+    /* https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901185 */
+    for (size_t i = 0; i < unsubscription_count; ++i) {
+        const struct aws_byte_cursor topic_filter = topics[i];
+        ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, topic_filter);
     }
 }
 
@@ -583,8 +595,118 @@ static int s_aws_mqtt5_encoder_begin_subscribe(struct aws_mqtt5_encoder *encoder
      *      bit 2    No Local
      *      bits 1-0 Maximum QoS
      */
-    aws_mqtt5_add_topic_filter_encoding_steps(
+    aws_mqtt5_add_subscribe_topic_filter_encoding_steps(
         encoder, subscription_view->subscriptions, subscription_view->subscription_count);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_compute_unsubscribe_variable_length_fields(
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
+    size_t *total_remaining_length,
+    size_t *unsubscribe_properties_length) {
+
+    size_t unsubscribe_variable_header_property_length = aws_mqtt5_compute_user_property_encode_length(
+        unsubscribe_view->user_properties, unsubscribe_view->user_property_count);
+
+    *unsubscribe_properties_length = unsubscribe_variable_header_property_length;
+
+    /* variable header total length =
+     *    2 bytes for Packet Identifier
+     *  + # bytes (variable_length_encoding(subscribe_variable_header_property_length))
+     *  + unsubscribe_variable_header_property_length
+     */
+    size_t variable_header_length = 0;
+    if (aws_mqtt5_get_variable_length_encode_size(
+            unsubscribe_variable_header_property_length, &variable_header_length)) {
+        return AWS_OP_ERR;
+    }
+    variable_header_length += 2 + unsubscribe_variable_header_property_length;
+
+    size_t payload_length = 0;
+
+    /*
+     *  for each unsubscribe topic filter
+     *   2 bytes for the Topic Filter length
+     *   n bytes for Topic Filter
+     */
+
+    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
+        const struct aws_byte_cursor topic_filter = unsubscribe_view->topics[i];
+        payload_length += topic_filter.len;
+    }
+
+    payload_length += (2 * unsubscribe_view->topic_count);
+
+    *total_remaining_length = variable_header_length + payload_length;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_encoder_begin_unsubscribe(struct aws_mqtt5_encoder *encoder, const void *view) {
+
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view = view;
+
+    size_t total_remaining_length = 0;
+    size_t unsubscribe_properties_length = 0;
+
+    if (s_compute_unsubscribe_variable_length_fields(
+            unsubscribe_view, &total_remaining_length, &unsubscribe_properties_length)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "(%p) mqtt5 client encoder - failed to compute variable length values for UNSUBSCRIBE packet with error "
+            "%d(%s)",
+            (void *)encoder->config.client,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) mqtt5 client encoder - setting up encode for a UNSUBSCRIBE packet with remaining length %zu",
+        (void *)encoder->config.client,
+        total_remaining_length);
+
+    uint32_t total_remaining_length_u32 = (uint32_t)total_remaining_length;
+    uint32_t unsubscribe_property_length_u32 = (uint32_t)unsubscribe_properties_length;
+
+    /*
+     * Fixed Header
+     * byte 1:
+     *  bits 7-4 MQTT Control Packet type (10)
+     *  bits 3-0 Reserved, must be set to 0, 0, 1, 0
+     * byte 2-x: Remaining Length as Variable Byte Integer (1-4 bytes)
+     */
+    ADD_ENCODE_STEP_U8(
+        encoder,
+        aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_UNSUBSCRIBE, UNSUBSCRIBE_PACKET_FIXED_HEADER_RESERVED_BITS));
+    ADD_ENCODE_STEP_VLI(encoder, total_remaining_length_u32);
+
+    /*
+     * Variable Header
+     * byte 1-2 Packet Identifier
+     * byte 3-x Properties length as Variable Byte Integer (1-4 bytes)
+     */
+    ADD_ENCODE_STEP_U16(encoder, (uint16_t)unsubscribe_view->packet_id);
+    ADD_ENCODE_STEP_VLI(encoder, unsubscribe_property_length_u32);
+
+    /*
+     * (optional) User Properties
+     */
+    aws_mqtt5_add_user_property_encoding_steps(
+        encoder, unsubscribe_view->user_properties, unsubscribe_view->user_property_count);
+
+    /*
+     * Payload
+     * n Topic Filters
+     *  byte 1-2: Length
+     *  byte 3..N: UTF-8 encoded Topic Filter
+     */
+
+    aws_mqtt5_add_unsubscribe_topic_filter_encoding_steps(
+        encoder, unsubscribe_view->topics, unsubscribe_view->topic_count);
 
     return AWS_OP_SUCCESS;
 }
@@ -714,22 +836,22 @@ enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
 static struct aws_mqtt5_encoder_function_table s_aws_mqtt5_encoder_default_function_table = {
     .encoders_by_packet_type =
         {
-            NULL,                                  /* RESERVED = 0 */
-            &s_aws_mqtt5_encoder_begin_connect,    /* CONNECT */
-            NULL,                                  /* CONNACK */
-            NULL,                                  /* PUBLISH */
-            NULL,                                  /* PUBACK */
-            NULL,                                  /* PUBREC */
-            NULL,                                  /* PUBREL */
-            NULL,                                  /* PUBCOMP */
-            &s_aws_mqtt5_encoder_begin_subscribe,  /* SUBSCRIBE */
-            NULL,                                  /* SUBACK */
-            NULL,                                  /* UNSUBSCRIBE */
-            NULL,                                  /* UNSUBACK */
-            &s_aws_mqtt5_encoder_begin_pingreq,    /* PINGREQ */
-            NULL,                                  /* PINGRESP */
-            &s_aws_mqtt5_encoder_begin_disconnect, /* DISCONNECT */
-            NULL                                   /* AUTH */
+            NULL,                                   /* RESERVED = 0 */
+            &s_aws_mqtt5_encoder_begin_connect,     /* CONNECT */
+            NULL,                                   /* CONNACK */
+            NULL,                                   /* PUBLISH */
+            NULL,                                   /* PUBACK */
+            NULL,                                   /* PUBREC */
+            NULL,                                   /* PUBREL */
+            NULL,                                   /* PUBCOMP */
+            &s_aws_mqtt5_encoder_begin_subscribe,   /* SUBSCRIBE */
+            NULL,                                   /* SUBACK */
+            &s_aws_mqtt5_encoder_begin_unsubscribe, /* UNSUBSCRIBE */
+            NULL,                                   /* UNSUBACK */
+            &s_aws_mqtt5_encoder_begin_pingreq,     /* PINGREQ */
+            NULL,                                   /* PINGRESP */
+            &s_aws_mqtt5_encoder_begin_disconnect,  /* DISCONNECT */
+            NULL                                    /* AUTH */
         },
 };
 

@@ -155,13 +155,27 @@ static void s_on_subscribe_complete_fn(
     int error_code,
     void *complete_ctx) {
 
-    (void)suback;
     (void)error_code;
     (void)complete_ctx;
 
     printf("SUBACK received!\n");
     for (size_t i = 0; i < suback->reason_code_count; ++i) {
         printf("Subscription %d: %s\n", (int)i, aws_mqtt5_suback_reason_code_to_c_string(suback->reason_codes[i]));
+    }
+    fflush(stdout);
+}
+
+static void s_on_unsubscribe_complete_fn(
+    const struct aws_mqtt5_packet_unsuback_view *unsuback,
+    int error_code,
+    void *complete_ctx) {
+
+    (void)error_code;
+    (void)complete_ctx;
+
+    printf("UNSUBACK received!\n");
+    for (size_t i = 0; i < unsuback->reason_code_count; ++i) {
+        printf("Topic Filter %d: %s\n", (int)i, aws_mqtt5_unsuback_reason_code_to_c_string(unsuback->reason_codes[i]));
     }
     fflush(stdout);
 }
@@ -222,8 +236,8 @@ static void s_handle_subscribe(
 
     size_t argument_count = aws_array_list_length(arguments) - 1;
     if (argument_count < 2) {
-        printf("invalid subscribe options\n");
-        printf("subscribe <qos: [0, 1, 2]> topic1 topic2 ....\n");
+        printf("invalid subscribe options:\n");
+        printf("  subscribe <qos: [0, 1, 2]> topic1 topic2 ....\n");
         return;
     }
 
@@ -272,6 +286,42 @@ static void s_handle_subscribe(
     aws_string_destroy(qos_string);
 }
 
+static void s_handle_unsubscribe(
+    struct aws_mqtt5_client *client,
+    struct aws_array_list *arguments) {
+    struct aws_mqtt5_unsubscribe_completion_options unsubscribe_completion_options = {
+        .completion_callback = &s_on_unsubscribe_complete_fn,
+        .completion_user_data = NULL,
+    };
+
+    size_t argument_count = aws_array_list_length(arguments) - 1;
+    if (argument_count < 1) {
+        printf("invalid unsubscribe options:\n");
+        printf("  unsubscribe topic1 topic2 ....\n");
+        return;
+    }
+
+    size_t topic_count = aws_array_list_length(arguments) - 1;
+
+    printf("Unsubscribing to:\n");
+
+    for (size_t i = 0; i < topic_count; ++i) {
+        size_t topic_index = i + 1;
+        struct aws_byte_cursor topic_filter_cursor;
+
+        aws_array_list_get_at(arguments, &topic_filter_cursor, topic_index);
+
+        printf(" %d:" PRInSTR "\n", (int)i, AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
+    }
+
+    struct aws_mqtt5_packet_unsubscribe_view packet_unsubscribe_view = {
+        .topic_count = topic_count,
+        .topics = ((struct aws_byte_cursor *)arguments->data) + 1,
+    };
+
+    aws_mqtt5_client_unsubscribe(client, &packet_unsubscribe_view, &unsubscribe_completion_options);
+}
+
 static bool s_handle_input(struct aws_mqtt5_client *client, struct aws_allocator *allocator, const char *input_line) {
 
     struct aws_byte_cursor quit_cursor = aws_byte_cursor_from_c_str("quit");
@@ -310,8 +360,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, struct aws_allocator
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &subscribe_cursor)) {
         s_handle_subscribe(client, allocator, &words);
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &unsubscribe_cursor)) {
-        printf("Unsubscribing from topic!\n");
-        aws_mqtt5_client_unsubscribe(client, NULL, NULL);
+        s_handle_unsubscribe(client, &words);
     } else {
         printf("Unknown command: " PRInSTR "\n", AWS_BYTE_CURSOR_PRI(command_cursor));
     }

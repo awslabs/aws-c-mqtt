@@ -1555,7 +1555,7 @@ static void s_aws_mqtt5_client_log_received_packet(
             break;
 
         case AWS_MQTT5_PT_UNSUBACK:
-            /* TODO: unsuback view not impl yet */
+            aws_mqtt5_packet_unsuback_view_log(packet_view, AWS_LL_TRACE);
             break;
 
         case AWS_MQTT5_PT_PINGRESP:
@@ -1605,12 +1605,19 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DISCONNECT_RECEIVED);
             break;
 
-        case AWS_MQTT5_PT_SUBACK:
+        case AWS_MQTT5_PT_SUBACK: {
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: SUBACK received", (void *)client);
-            /* TODO logic handling on SUBACK packet received */
             uint16_t packet_id = ((const struct aws_mqtt5_packet_suback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(&client->operational_state, packet_id, packet_view);
             break;
+        }
+
+        case AWS_MQTT5_PT_UNSUBACK: {
+            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: UNSUBACK received", (void *)client);
+            uint16_t packet_id = ((const struct aws_mqtt5_packet_unsuback_view *)packet_view)->packet_id;
+            aws_mqtt5_client_operational_state_handle_ack(&client->operational_state, packet_id, packet_view);
+            break;
+        }
 
         default:
             break;
@@ -2038,6 +2045,7 @@ int aws_mqtt5_client_unsubscribe(
 
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
         aws_mqtt5_operation_unsubscribe_new(client->allocator, unsubscribe_options, completion_options);
+
     if (unsubscribe_op == NULL) {
         return AWS_OP_ERR;
     }
@@ -2137,7 +2145,6 @@ int aws_mqtt5_client_operational_state_init(
 }
 
 void aws_mqtt5_client_operational_state_clean_up(struct aws_mqtt5_client_operational_state *client_operational_state) {
-
     AWS_ASSERT(client_operational_state->current_operation == NULL);
 
     s_aws_mqtt5_client_operational_state_reset(client_operational_state, AWS_ERROR_MQTT5_CLIENT_TERMINATED, true);
