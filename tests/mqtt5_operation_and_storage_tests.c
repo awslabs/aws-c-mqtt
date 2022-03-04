@@ -927,6 +927,214 @@ static int s_mqtt5_disconnect_storage_new_set_all_fn(struct aws_allocator *alloc
 
 AWS_TEST_CASE(mqtt5_disconnect_storage_new_set_all, s_mqtt5_disconnect_storage_new_set_all_fn)
 
+static const enum aws_mqtt5_suback_reason_code s_suback_reason_codes[] = {
+    AWS_MQTT5_SARC_GRANTED_QOS_0,
+    AWS_MQTT5_SARC_GRANTED_QOS_2,
+    AWS_MQTT5_SARC_NOT_AUTHORIZED,
+};
+
+static int s_verify_suback_reason_codes_raw(
+    const enum aws_mqtt5_suback_reason_code *reason_codes,
+    size_t reason_code_count,
+    const struct aws_mqtt5_packet_suback_view *original_view) {
+    ASSERT_UINT_EQUALS(reason_code_count, original_view->reason_code_count);
+
+    for (size_t i = 0; i < reason_code_count; ++i) {
+        ASSERT_UINT_EQUALS(reason_codes[i], original_view->reason_codes[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_verify_suback_reason_codes(
+    const struct aws_mqtt5_packet_suback_storage *suback_storage,
+    const struct aws_mqtt5_packet_suback_view *original_view) {
+
+    ASSERT_SUCCESS(s_verify_suback_reason_codes_raw(
+        suback_storage->reason_codes.data, aws_array_list_length(&suback_storage->reason_codes), original_view));
+
+    const struct aws_mqtt5_packet_suback_view *storage_view = &suback_storage->storage_view;
+    ASSERT_SUCCESS(
+        s_verify_suback_reason_codes_raw(storage_view->reason_codes, storage_view->reason_code_count, original_view));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_suback_storage_new_set_no_optional_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_packet_suback_view suback_options = {
+        .reason_codes = s_suback_reason_codes,
+        .reason_code_count = AWS_ARRAY_SIZE(s_suback_reason_codes),
+    };
+
+    struct aws_mqtt5_packet_suback_storage suback_storage;
+    AWS_ZERO_STRUCT(suback_storage);
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_suback_storage_init(&suback_storage, allocator, &suback_options));
+
+    struct aws_mqtt5_packet_suback_view *stored_view = &suback_storage.storage_view;
+
+    ASSERT_SUCCESS(s_verify_suback_reason_codes(&suback_storage, &suback_options));
+
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&suback_storage, reason_string);
+
+    ASSERT_SUCCESS(s_verify_user_properties(&suback_storage.user_properties, 0, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        stored_view->user_property_count, stored_view->user_properties, 0, NULL));
+
+    aws_mqtt5_packet_suback_view_log(stored_view, AWS_LL_DEBUG);
+
+    aws_mqtt5_packet_suback_storage_clean_up(&suback_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_suback_storage_new_set_no_optional, s_mqtt5_suback_storage_new_set_no_optional_fn)
+
+static int s_mqtt5_suback_storage_new_set_all_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_packet_suback_view suback_options = {
+        .reason_string = &s_reason_string_cursor,
+        .reason_codes = s_suback_reason_codes,
+        .reason_code_count = AWS_ARRAY_SIZE(s_suback_reason_codes),
+        .user_properties = s_user_properties,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+    };
+
+    struct aws_mqtt5_packet_suback_storage suback_storage;
+    AWS_ZERO_STRUCT(suback_storage);
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_suback_storage_init(&suback_storage, allocator, &suback_options));
+
+    struct aws_mqtt5_packet_suback_view *stored_view = &suback_storage.storage_view;
+
+    ASSERT_SUCCESS(s_verify_suback_reason_codes(&suback_storage, &suback_options));
+
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&suback_storage, &suback_options, reason_string);
+
+    ASSERT_SUCCESS(s_verify_user_properties(
+        &suback_storage.user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        stored_view->user_property_count,
+        stored_view->user_properties,
+        AWS_ARRAY_SIZE(s_user_properties),
+        s_user_properties));
+
+    aws_mqtt5_packet_suback_view_log(stored_view, AWS_LL_DEBUG);
+
+    aws_mqtt5_packet_suback_storage_clean_up(&suback_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_suback_storage_new_set_all, s_mqtt5_suback_storage_new_set_all_fn)
+
+static const enum aws_mqtt5_unsuback_reason_code s_unsuback_reason_codes[] = {
+    AWS_MQTT5_UARC_NOT_AUTHORIZED,
+    AWS_MQTT5_UARC_SUCCESS,
+    AWS_MQTT5_UARC_NO_SUBSCRIPTION_EXISTED,
+};
+
+static int s_verify_unsuback_reason_codes_raw(
+    const enum aws_mqtt5_unsuback_reason_code *reason_codes,
+    size_t reason_code_count,
+    const struct aws_mqtt5_packet_unsuback_view *original_view) {
+    ASSERT_UINT_EQUALS(reason_code_count, original_view->reason_code_count);
+
+    for (size_t i = 0; i < reason_code_count; ++i) {
+        ASSERT_UINT_EQUALS(reason_codes[i], original_view->reason_codes[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_verify_unsuback_reason_codes(
+    const struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
+    const struct aws_mqtt5_packet_unsuback_view *original_view) {
+
+    ASSERT_SUCCESS(s_verify_unsuback_reason_codes_raw(
+        unsuback_storage->reason_codes.data, aws_array_list_length(&unsuback_storage->reason_codes), original_view));
+
+    const struct aws_mqtt5_packet_unsuback_view *storage_view = &unsuback_storage->storage_view;
+    ASSERT_SUCCESS(
+        s_verify_unsuback_reason_codes_raw(storage_view->reason_codes, storage_view->reason_code_count, original_view));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_unsuback_storage_new_set_no_optional_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_packet_unsuback_view unsuback_options = {
+        .reason_codes = s_unsuback_reason_codes,
+        .reason_code_count = AWS_ARRAY_SIZE(s_unsuback_reason_codes),
+    };
+
+    struct aws_mqtt5_packet_unsuback_storage unsuback_storage;
+    AWS_ZERO_STRUCT(unsuback_storage);
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_unsuback_storage_init(&unsuback_storage, allocator, &unsuback_options));
+
+    struct aws_mqtt5_packet_unsuback_view *stored_view = &unsuback_storage.storage_view;
+
+    ASSERT_SUCCESS(s_verify_unsuback_reason_codes(&unsuback_storage, &unsuback_options));
+
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&unsuback_storage, reason_string);
+
+    ASSERT_SUCCESS(s_verify_user_properties(&unsuback_storage.user_properties, 0, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        stored_view->user_property_count, stored_view->user_properties, 0, NULL));
+
+    aws_mqtt5_packet_unsuback_view_log(stored_view, AWS_LL_DEBUG);
+
+    aws_mqtt5_packet_unsuback_storage_clean_up(&unsuback_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_unsuback_storage_new_set_no_optional, s_mqtt5_unsuback_storage_new_set_no_optional_fn)
+
+static int s_mqtt5_unsuback_storage_new_set_all_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_packet_unsuback_view unsuback_options = {
+        .reason_string = &s_reason_string_cursor,
+        .reason_codes = s_unsuback_reason_codes,
+        .reason_code_count = AWS_ARRAY_SIZE(s_unsuback_reason_codes),
+        .user_properties = s_user_properties,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+    };
+
+    struct aws_mqtt5_packet_unsuback_storage unsuback_storage;
+    AWS_ZERO_STRUCT(unsuback_storage);
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_unsuback_storage_init(&unsuback_storage, allocator, &unsuback_options));
+
+    struct aws_mqtt5_packet_unsuback_view *stored_view = &unsuback_storage.storage_view;
+
+    ASSERT_SUCCESS(s_verify_unsuback_reason_codes(&unsuback_storage, &unsuback_options));
+
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&unsuback_storage, &unsuback_options, reason_string);
+
+    ASSERT_SUCCESS(s_verify_user_properties(
+        &unsuback_storage.user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        stored_view->user_property_count,
+        stored_view->user_properties,
+        AWS_ARRAY_SIZE(s_user_properties),
+        s_user_properties));
+
+    aws_mqtt5_packet_unsuback_view_log(stored_view, AWS_LL_DEBUG);
+
+    aws_mqtt5_packet_unsuback_storage_clean_up(&unsuback_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_unsuback_storage_new_set_all, s_mqtt5_unsuback_storage_new_set_all_fn)
+
 static const enum aws_mqtt5_qos s_maximum_qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;
 static const uint16_t s_keep_alive_interval_seconds = 999;
 static const uint32_t s_session_expiry_interval = 999;

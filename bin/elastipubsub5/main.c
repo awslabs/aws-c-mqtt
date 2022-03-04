@@ -286,9 +286,7 @@ static void s_handle_subscribe(
     aws_string_destroy(qos_string);
 }
 
-static void s_handle_unsubscribe(
-    struct aws_mqtt5_client *client,
-    struct aws_array_list *arguments) {
+static void s_handle_unsubscribe(struct aws_mqtt5_client *client, struct aws_array_list *arguments) {
     struct aws_mqtt5_unsubscribe_completion_options unsubscribe_completion_options = {
         .completion_callback = &s_on_unsubscribe_complete_fn,
         .completion_user_data = NULL,

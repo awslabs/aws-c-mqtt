@@ -550,6 +550,11 @@ AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_init_from_storage(
 
 /* Suback */
 
+AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init(
+    struct aws_mqtt5_packet_suback_storage *suback_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_suback_view *suback_view);
+
 AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init_from_external_storage(
     struct aws_mqtt5_packet_suback_storage *suback_storage,
     struct aws_allocator *allocator);
@@ -596,6 +601,11 @@ AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
     const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
 
 /* Unsuback */
+
+AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init(
+    struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_unsuback_view *unsuback_view);
 
 AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init_from_external_storage(
     struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
