@@ -217,9 +217,9 @@ static void s_aws_mqtt5_client_emit_final_lifecycle_event(
 }
 
 /*
- * next_service_time == 0 means to not service the client, i.e. a state that only cares about async events
+ * next_service_time == 0 means to not service the client, i.e. a state that only cares about external events
  *
- * This includes connecting, disconnecting.  Terminated is also included, but it's a state that only exists
+ * This includes connecting and channel shutdown.  Terminated is also included, but it's a state that only exists
  * instantaneously before final destruction.
  */
 static uint64_t s_compute_next_service_time_client_stopped(struct aws_mqtt5_client *client, uint64_t now) {
