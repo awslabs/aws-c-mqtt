@@ -1636,6 +1636,8 @@ struct aws_mqtt5_operation_processing_test_context {
     struct aws_mqtt5_encoder verification_encoder;
     struct aws_array_list output_io_messages;
     void *failed_io_message_buffer;
+
+    struct aws_array_list completed_operation_error_codes;
 };
 
 /* io message mocks */
@@ -1763,6 +1765,8 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
     };
 
     aws_mqtt5_encoder_init(&test_context->verification_encoder, allocator, &verification_encoder_options);
+
+    aws_array_list_init_dynamic(&test_context->completed_operation_error_codes, allocator, 0, sizeof(int));
 }
 
 static void s_aws_mqtt5_operation_processing_test_context_clean_up(
@@ -1780,6 +1784,8 @@ static void s_aws_mqtt5_operation_processing_test_context_clean_up(
 
     aws_mqtt5_encoder_clean_up(&test_context->dummy_client.encoder);
     aws_mqtt5_client_operational_state_clean_up(&test_context->dummy_client.operational_state);
+
+    aws_array_list_clean_up(&test_context->completed_operation_error_codes);
 }
 
 static void s_aws_mqtt5_operation_processing_test_context_enqueue_op(
@@ -2331,3 +2337,216 @@ static int s_mqtt5_operation_processing_something_connected_overflow_fn(struct a
 AWS_TEST_CASE(
     mqtt5_operation_processing_something_connected_overflow,
     s_mqtt5_operation_processing_something_connected_overflow_fn)
+
+void s_on_subscribe_operation_complete(
+    const struct aws_mqtt5_packet_suback_view *suback,
+    int error_code,
+    void *complete_ctx) {
+
+    struct aws_mqtt5_operation_processing_test_context *test_context = complete_ctx;
+
+    aws_array_list_push_back(&test_context->completed_operation_error_codes, &error_code);
+}
+
+static struct aws_mqtt5_operation_subscribe *s_make_completable_subscribe_operation(
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_operation_processing_test_context *test_context) {
+    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
+        .subscriptions = s_subscriptions,
+        .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
+    };
+
+    struct aws_mqtt5_subscribe_completion_options completion_options = {
+        .completion_callback = s_on_subscribe_operation_complete,
+        .completion_user_data = test_context,
+    };
+
+    return aws_mqtt5_operation_subscribe_new(allocator, &subscribe_view, &completion_options);
+}
+
+void s_on_publish_operation_complete(
+    const struct aws_mqtt5_packet_puback_view *puback,
+    int error_code,
+    void *complete_ctx) {
+
+    struct aws_mqtt5_operation_processing_test_context *test_context = complete_ctx;
+
+    aws_array_list_push_back(&test_context->completed_operation_error_codes, &error_code);
+}
+
+static struct aws_mqtt5_operation_publish *s_make_completable_publish_operation(
+    struct aws_allocator *allocator,
+    enum aws_mqtt5_qos qos,
+    struct aws_mqtt5_operation_processing_test_context *test_context) {
+    struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD);
+
+    struct aws_mqtt5_packet_publish_view publish_options = {
+        .payload = payload_cursor,
+        .qos = qos,
+        .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
+    };
+
+    struct aws_mqtt5_publish_completion_options completion_options = {
+        .completion_callback = s_on_publish_operation_complete,
+        .completion_user_data = test_context,
+    };
+
+    return aws_mqtt5_operation_publish_new(allocator, &publish_options, &completion_options);
+}
+
+static int s_setup_unacked_operation(
+    struct aws_mqtt5_client_operational_state *operational_state,
+    struct aws_mqtt5_operation *operation) {
+    ASSERT_SUCCESS(aws_mqtt5_operation_bind_packet_id(operation, operational_state));
+    aws_linked_list_push_back(&operational_state->unacked_operations, &operation->node);
+
+    aws_mqtt5_packet_id_t *packet_id_ptr = aws_mqtt5_operation_get_packet_id_address(operation);
+    aws_hash_table_put(&operational_state->unacked_operations_table, packet_id_ptr, operation, NULL);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_operation_processing_disconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_operation_processing_test_context test_context;
+    s_aws_mqtt5_operation_processing_test_context_init(&test_context, allocator);
+
+    test_context.dummy_client.current_state = AWS_MCS_CONNECTED;
+
+    struct aws_mqtt5_operation *subscribe1_op = &s_make_completable_subscribe_operation(allocator, &test_context)->base;
+    struct aws_mqtt5_operation *subscribe2_op = &s_make_completable_subscribe_operation(allocator, &test_context)->base;
+    struct aws_mqtt5_operation *subscribe3_op = &s_make_completable_subscribe_operation(allocator, &test_context)->base;
+    struct aws_mqtt5_operation *publish1_op =
+        &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;
+    struct aws_mqtt5_operation *publish2_op =
+        &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_MOST_ONCE, &test_context)->base;
+
+    aws_linked_list_push_back(&test_context.dummy_client.operational_state.queued_operations, &subscribe3_op->node);
+    aws_linked_list_push_back(
+        &test_context.dummy_client.operational_state.write_completion_operations, &publish2_op->node);
+
+    ASSERT_SUCCESS(s_setup_unacked_operation(&test_context.dummy_client.operational_state, subscribe1_op));
+    ASSERT_SUCCESS(s_setup_unacked_operation(&test_context.dummy_client.operational_state, publish1_op));
+    ASSERT_SUCCESS(s_setup_unacked_operation(&test_context.dummy_client.operational_state, subscribe2_op));
+
+    aws_mqtt5_client_on_disconnection_update_operational_state(&test_context.dummy_client);
+
+    /* Should have been failed: publish2_op, subscribe1_op, subscribe2_op, subscribe3_op */
+    /* Should still be in unacked list/table: publish1_op */
+    ASSERT_UINT_EQUALS(4, aws_array_list_length(&test_context.completed_operation_error_codes));
+    for (size_t i = 0; i < aws_array_list_length(&test_context.completed_operation_error_codes); ++i) {
+        int error_code = 0;
+        aws_array_list_get_at(&test_context.completed_operation_error_codes, &error_code, i);
+
+        ASSERT_INT_EQUALS(AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT, error_code);
+    }
+
+    ASSERT_TRUE(aws_linked_list_empty(&test_context.dummy_client.operational_state.queued_operations));
+    ASSERT_TRUE(aws_linked_list_empty(&test_context.dummy_client.operational_state.write_completion_operations));
+
+    struct aws_mqtt5_operation *expected_post_disconnect_pending_acks[] = {publish1_op};
+
+    /* verify that the operations we expected to be in the unacked operation list are there, in order */
+    ASSERT_SUCCESS(s_verify_operation_list_versus_expected(
+        &test_context.dummy_client.operational_state.unacked_operations,
+        expected_post_disconnect_pending_acks,
+        AWS_ARRAY_SIZE(expected_post_disconnect_pending_acks)));
+
+    ASSERT_UINT_EQUALS(
+        AWS_ARRAY_SIZE(expected_post_disconnect_pending_acks),
+        aws_hash_table_get_entry_count(&test_context.dummy_client.operational_state.unacked_operations_table));
+
+    s_aws_mqtt5_operation_processing_test_context_clean_up(&test_context);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_operation_processing_disconnect, s_mqtt5_operation_processing_disconnect_fn)
+
+static int s_mqtt5_operation_processing_reconnect_rejoin_session_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_operation_processing_test_context test_context;
+    s_aws_mqtt5_operation_processing_test_context_init(&test_context, allocator);
+
+    test_context.dummy_client.current_state = AWS_MCS_MQTT_CONNECT;
+
+    struct aws_mqtt5_operation *publish1_op =
+        &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;
+    struct aws_mqtt5_operation *publish2_op =
+        &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;
+
+    ASSERT_SUCCESS(s_setup_unacked_operation(&test_context.dummy_client.operational_state, publish1_op));
+    ASSERT_SUCCESS(s_setup_unacked_operation(&test_context.dummy_client.operational_state, publish2_op));
+
+    test_context.dummy_client.negotiated_settings.rejoined_session = true;
+
+    aws_mqtt5_client_on_connection_update_operational_state(&test_context.dummy_client);
+
+    /* Nothing should have failed */
+    ASSERT_UINT_EQUALS(0, aws_array_list_length(&test_context.completed_operation_error_codes));
+
+    ASSERT_TRUE(aws_linked_list_empty(&test_context.dummy_client.operational_state.unacked_operations));
+    ASSERT_TRUE(aws_linked_list_empty(&test_context.dummy_client.operational_state.write_completion_operations));
+    ASSERT_UINT_EQUALS(
+        0, aws_hash_table_get_entry_count(&test_context.dummy_client.operational_state.unacked_operations_table));
+
+    struct aws_mqtt5_operation *expected_queued_operations[] = {publish1_op, publish2_op};
+
+    /* verify that the operations we expected to be in the unacked operation list are there, in order */
+    ASSERT_SUCCESS(s_verify_operation_list_versus_expected(
+        &test_context.dummy_client.operational_state.queued_operations,
+        expected_queued_operations,
+        AWS_ARRAY_SIZE(expected_queued_operations)));
+
+    s_aws_mqtt5_operation_processing_test_context_clean_up(&test_context);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_operation_processing_reconnect_rejoin_session,
+    s_mqtt5_operation_processing_reconnect_rejoin_session_fn)
+
+static int s_mqtt5_operation_processing_reconnect_no_session_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_operation_processing_test_context test_context;
+    s_aws_mqtt5_operation_processing_test_context_init(&test_context, allocator);
+
+    test_context.dummy_client.current_state = AWS_MCS_MQTT_CONNECT;
+
+    struct aws_mqtt5_operation *publish1_op =
+        &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;
+    struct aws_mqtt5_operation *publish2_op =
+        &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;
+
+    ASSERT_SUCCESS(s_setup_unacked_operation(&test_context.dummy_client.operational_state, publish1_op));
+    ASSERT_SUCCESS(s_setup_unacked_operation(&test_context.dummy_client.operational_state, publish2_op));
+
+    test_context.dummy_client.negotiated_settings.rejoined_session = false;
+
+    aws_mqtt5_client_on_connection_update_operational_state(&test_context.dummy_client);
+
+    /* Both should have failed */
+    ASSERT_UINT_EQUALS(2, aws_array_list_length(&test_context.completed_operation_error_codes));
+    for (size_t i = 0; i < aws_array_list_length(&test_context.completed_operation_error_codes); ++i) {
+        int error_code = 0;
+        aws_array_list_get_at(&test_context.completed_operation_error_codes, &error_code, i);
+
+        ASSERT_INT_EQUALS(AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION, error_code);
+    }
+
+    ASSERT_TRUE(aws_linked_list_empty(&test_context.dummy_client.operational_state.unacked_operations));
+    ASSERT_TRUE(aws_linked_list_empty(&test_context.dummy_client.operational_state.write_completion_operations));
+    ASSERT_UINT_EQUALS(
+        0, aws_hash_table_get_entry_count(&test_context.dummy_client.operational_state.unacked_operations_table));
+    ASSERT_TRUE(aws_linked_list_empty(&test_context.dummy_client.operational_state.queued_operations));
+
+    s_aws_mqtt5_operation_processing_test_context_clean_up(&test_context);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_operation_processing_reconnect_no_session, s_mqtt5_operation_processing_reconnect_no_session_fn)
