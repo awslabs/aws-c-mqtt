@@ -152,15 +152,6 @@ AWS_MQTT_API const char *aws_mqtt5_suback_reason_code_to_c_string(enum aws_mqtt5
 AWS_MQTT_API const char *aws_mqtt5_unsuback_reason_code_to_c_string(enum aws_mqtt5_unsuback_reason_code reason_code);
 
 /**
- * Converts an offline queue behavior type value to a readable description.
- *
- * @param offline_queue_behavior type of offline queue behavior
- * @return short string describing the offline queue behavior
- */
-AWS_MQTT_API const char *aws_mqtt5_client_offline_queue_behavior_type_to_c_string(
-    enum aws_mqtt5_client_offline_queue_behavior_type offline_queue_behavior);
-
-/**
  * Converts a session behavior type value to a readable description.
  *
  * @param session_behavior type of session behavior

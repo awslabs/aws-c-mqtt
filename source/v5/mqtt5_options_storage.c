@@ -2493,6 +2493,75 @@ error:
  * Suback
  ********************************************************************************************************************/
 
+static size_t s_aws_mqtt5_packet_suback_compute_storage_size(const struct aws_mqtt5_packet_suback_view *suback_view) {
+    size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
+        suback_view->user_properties, suback_view->user_property_count);
+
+    if (suback_view->reason_string != NULL) {
+        storage_size += suback_view->reason_string->len;
+    }
+
+    return storage_size;
+}
+
+static int s_aws_mqtt5_packet_suback_storage_init_reason_codes(
+    struct aws_mqtt5_packet_suback_storage *suback_storage,
+    struct aws_allocator *allocator,
+    size_t reason_code_count,
+    const enum aws_mqtt5_suback_reason_code *reason_codes) {
+
+    if (aws_array_list_init_dynamic(
+            &suback_storage->reason_codes, allocator, reason_code_count, sizeof(enum aws_mqtt5_suback_reason_code))) {
+        return AWS_OP_ERR;
+    }
+
+    for (size_t i = 0; i < reason_code_count; ++i) {
+        aws_array_list_push_back(&suback_storage->reason_codes, &reason_codes[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init(
+    struct aws_mqtt5_packet_suback_storage *suback_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_suback_view *suback_view) {
+    AWS_ZERO_STRUCT(*suback_storage);
+    size_t storage_capacity = s_aws_mqtt5_packet_suback_compute_storage_size(suback_view);
+    if (aws_byte_buf_init(&suback_storage->storage, allocator, storage_capacity)) {
+        return AWS_OP_ERR;
+    }
+
+    suback_storage->storage_view.packet_id = suback_storage->packet_id;
+
+    if (suback_view->reason_string != NULL) {
+        suback_storage->reason_string = *suback_view->reason_string;
+        if (aws_byte_buf_append_and_update(&suback_storage->storage, &suback_storage->reason_string)) {
+            return AWS_OP_ERR;
+        }
+
+        suback_storage->reason_string_ptr = &suback_storage->reason_string;
+    }
+
+    if (s_aws_mqtt5_packet_suback_storage_init_reason_codes(
+            suback_storage, allocator, suback_view->reason_code_count, suback_view->reason_codes)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_mqtt5_user_property_set_init_with_storage(
+            &suback_storage->user_properties,
+            allocator,
+            &suback_storage->storage,
+            suback_view->user_property_count,
+            suback_view->user_properties)) {
+        return AWS_OP_ERR;
+    }
+
+    aws_mqtt5_packet_suback_view_init_from_storage(&suback_storage->storage_view, suback_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_mqtt5_packet_suback_storage_init_from_external_storage(
     struct aws_mqtt5_packet_suback_storage *suback_storage,
     struct aws_allocator *allocator) {
@@ -2575,6 +2644,79 @@ void aws_mqtt5_packet_suback_view_init_from_storage(
 /*********************************************************************************************************************
  * Unsuback
  ********************************************************************************************************************/
+
+static size_t s_aws_mqtt5_packet_unsuback_compute_storage_size(
+    const struct aws_mqtt5_packet_unsuback_view *unsuback_view) {
+    size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
+        unsuback_view->user_properties, unsuback_view->user_property_count);
+
+    if (unsuback_view->reason_string != NULL) {
+        storage_size += unsuback_view->reason_string->len;
+    }
+
+    return storage_size;
+}
+
+static int s_aws_mqtt5_packet_unsuback_storage_init_reason_codes(
+    struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
+    struct aws_allocator *allocator,
+    size_t reason_code_count,
+    const enum aws_mqtt5_unsuback_reason_code *reason_codes) {
+
+    if (aws_array_list_init_dynamic(
+            &unsuback_storage->reason_codes,
+            allocator,
+            reason_code_count,
+            sizeof(enum aws_mqtt5_unsuback_reason_code))) {
+        return AWS_OP_ERR;
+    }
+
+    for (size_t i = 0; i < reason_code_count; ++i) {
+        aws_array_list_push_back(&unsuback_storage->reason_codes, &reason_codes[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init(
+    struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_unsuback_view *unsuback_view) {
+    AWS_ZERO_STRUCT(*unsuback_storage);
+    size_t storage_capacity = s_aws_mqtt5_packet_unsuback_compute_storage_size(unsuback_view);
+    if (aws_byte_buf_init(&unsuback_storage->storage, allocator, storage_capacity)) {
+        return AWS_OP_ERR;
+    }
+
+    unsuback_storage->storage_view.packet_id = unsuback_storage->packet_id;
+
+    if (unsuback_view->reason_string != NULL) {
+        unsuback_storage->reason_string = *unsuback_view->reason_string;
+        if (aws_byte_buf_append_and_update(&unsuback_storage->storage, &unsuback_storage->reason_string)) {
+            return AWS_OP_ERR;
+        }
+
+        unsuback_storage->reason_string_ptr = &unsuback_storage->reason_string;
+    }
+
+    if (s_aws_mqtt5_packet_unsuback_storage_init_reason_codes(
+            unsuback_storage, allocator, unsuback_view->reason_code_count, unsuback_view->reason_codes)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_mqtt5_user_property_set_init_with_storage(
+            &unsuback_storage->user_properties,
+            allocator,
+            &unsuback_storage->storage,
+            unsuback_view->user_property_count,
+            unsuback_view->user_properties)) {
+        return AWS_OP_ERR;
+    }
+
+    aws_mqtt5_packet_unsuback_view_init_from_storage(&unsuback_storage->storage_view, unsuback_storage);
+
+    return AWS_OP_SUCCESS;
+}
 
 int aws_mqtt5_packet_unsuback_storage_init_from_external_storage(
     struct aws_mqtt5_packet_unsuback_storage *unsuback_storage,
@@ -2932,14 +3074,6 @@ void aws_mqtt5_client_options_storage_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage offline queue behavior set to %d(%s)",
-        (void *)options_storage,
-        (int)options_storage->offline_queue_behavior,
-        aws_mqtt5_client_offline_queue_behavior_type_to_c_string(options_storage->offline_queue_behavior));
-
-    AWS_LOGF(
-        level,
-        AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage reconnect jitter mode set to %d",
         (void *)options_storage,
         (int)options_storage->retry_jitter_mode);
@@ -3058,7 +3192,6 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->session_behavior = options->session_behavior;
     options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
 
-    options_storage->offline_queue_behavior = options->offline_queue_behavior;
     options_storage->retry_jitter_mode = options->retry_jitter_mode;
     options_storage->min_reconnect_delay_ms = options->min_reconnect_delay_ms;
     options_storage->max_reconnect_delay_ms = options->max_reconnect_delay_ms;
