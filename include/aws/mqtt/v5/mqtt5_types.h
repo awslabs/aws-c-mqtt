@@ -221,23 +221,6 @@ typedef void(aws_mqtt5_transform_websocket_handshake_fn)(
     void *complete_ctx);
 
 /**
- * Enum governing how the mqtt client should treat queued (and current) operations when going offline and
- * while offline
- */
-enum aws_mqtt5_client_offline_queue_behavior_type {
-    /* Every operation that has not been fully sent (and if appropriate, acked) should be failed and forgotten */
-    AWS_MQTT5_COQBT_FAIL_ALL,
-
-    /* All operations should be kept */
-    AWS_MQTT5_COQBT_FAIL_NONE,
-
-    /* All operations that were in-progress or pending write completion or pending ack (non-qos1+-publish) */
-    AWS_MQTT5_COQBT_FAIL_PARTIAL_COMPLETION,
-
-    /* TODO: beyond very simple heuristics, should we include a callback-based acceptor? */
-};
-
-/**
  * Controls how the mqtt client should behave with respect to mqtt sessions.
  */
 enum aws_mqtt5_client_session_behavior_type {

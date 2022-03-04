@@ -3072,14 +3072,6 @@ void aws_mqtt5_client_options_storage_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage offline queue behavior set to %d(%s)",
-        (void *)options_storage,
-        (int)options_storage->offline_queue_behavior,
-        aws_mqtt5_client_offline_queue_behavior_type_to_c_string(options_storage->offline_queue_behavior));
-
-    AWS_LOGF(
-        level,
-        AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage reconnect jitter mode set to %d",
         (void *)options_storage,
         (int)options_storage->retry_jitter_mode);
@@ -3198,7 +3190,6 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->session_behavior = options->session_behavior;
     options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
 
-    options_storage->offline_queue_behavior = options->offline_queue_behavior;
     options_storage->retry_jitter_mode = options->retry_jitter_mode;
     options_storage->min_reconnect_delay_ms = options->min_reconnect_delay_ms;
     options_storage->max_reconnect_delay_ms = options->max_reconnect_delay_ms;

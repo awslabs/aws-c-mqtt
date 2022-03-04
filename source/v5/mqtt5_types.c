@@ -253,20 +253,6 @@ const char *aws_mqtt5_unsuback_reason_code_to_c_string(enum aws_mqtt5_unsuback_r
     return s_unknown_reason;
 }
 
-const char *aws_mqtt5_client_offline_queue_behavior_type_to_c_string(
-    enum aws_mqtt5_client_offline_queue_behavior_type offline_queue_behavior) {
-    switch (offline_queue_behavior) {
-        case AWS_MQTT5_COQBT_FAIL_ALL:
-            return "Fail all queued operations";
-        case AWS_MQTT5_COQBT_FAIL_NONE:
-            return "Fail nothing";
-        case AWS_MQTT5_COQBT_FAIL_PARTIAL_COMPLETION:
-            return "Fail all partially complete operations";
-    }
-
-    return "Unknown offline queue behavior";
-}
-
 const char *aws_mqtt5_client_session_behavior_type_to_c_string(
     enum aws_mqtt5_client_session_behavior_type session_behavior) {
     switch (session_behavior) {

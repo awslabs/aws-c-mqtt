@@ -458,6 +458,8 @@ static void s_mqtt5_client_shutdown(
         client->slot = NULL;
     }
 
+    aws_mqtt5_client_on_disconnection_update_operational_state(client);
+
     if (client->desired_state == AWS_MCS_CONNECTED) {
         s_change_current_state(client, AWS_MCS_PENDING_RECONNECT);
     } else {
@@ -1018,27 +1020,12 @@ static void s_reset_reconnection_delay_time(struct aws_mqtt5_client *client) {
         client->next_reconnect_delay_reset_time_ns);
 }
 
-static void s_aws_mqtt5_client_reset_operations_for_new_connection(struct aws_mqtt5_client *client) {
-    (void)client;
-
-    /*
-     * TODO:
-     *
-     *   On reconnect (post CONNACK):
-     *      if rejoined_session == false:
-     *          Fail, remove, and release unacked_operations
-     *
-     *      Move-Append unacked_operations to the head of queued_operations
-     *      Clear unacked_operations_table
-     */
-}
-
 static void s_change_current_state_to_connected(struct aws_mqtt5_client *client) {
     AWS_FATAL_ASSERT(client->current_state == AWS_MCS_MQTT_CONNECT);
 
     client->current_state = AWS_MCS_CONNECTED;
 
-    s_aws_mqtt5_client_reset_operations_for_new_connection(client);
+    aws_mqtt5_client_on_connection_update_operational_state(client);
 
     client->next_ping_timeout_time = 0;
     s_reset_ping(client);
@@ -1061,8 +1048,6 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
         current_state == AWS_MCS_CONNECTED || current_state == AWS_MCS_CLEAN_DISCONNECT);
 
     client->current_state = AWS_MCS_CHANNEL_SHUTDOWN;
-
-    aws_mqtt5_client_operational_state_reset_offline_queue(&client->operational_state);
 
     /*
      * Critical requirement: The caller must invoke the channel shutdown function themselves (with the desired error
@@ -1162,8 +1147,6 @@ static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client 
     client->current_state = AWS_MCS_PENDING_RECONNECT;
 
     s_update_reconnect_delay_for_pending_reconnect(client);
-
-    aws_mqtt5_client_operational_state_reset_offline_queue(&client->operational_state);
 }
 
 static void s_change_current_state_to_terminated(struct aws_mqtt5_client *client) {
@@ -1639,10 +1622,10 @@ static int s_aws_mqtt5_client_on_packet_received(
             break;
 
         case AWS_MCS_CONNECTED:
+        case AWS_MCS_CLEAN_DISCONNECT:
             s_aws_mqtt5_client_connected_on_packet_received(client, type, packet_view);
             break;
 
-        /* TODO: all other cases */
         default:
             break;
     }
@@ -1946,14 +1929,17 @@ static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, e
     }
 
     aws_mqtt5_operation_acquire(submit_operation_task->operation);
+
+    /* newly-submitted operations must have a 0 packet id */
+    aws_mqtt5_operation_set_packet_id(submit_operation_task->operation, 0);
+
     s_enqueue_operation(submit_operation_task->client, submit_operation_task->operation);
 
     goto done;
 
 error:
 
-    /* TODO: any failure or cancel should also result in errored completion callback on the operation */
-    ;
+    aws_mqtt5_operation_complete(submit_operation_task->operation, AWS_ERROR_MQTT5_CLIENT_TERMINATED, NULL);
 
 done:
 
@@ -2150,23 +2136,65 @@ void aws_mqtt5_client_operational_state_clean_up(struct aws_mqtt5_client_operati
     s_aws_mqtt5_client_operational_state_reset(client_operational_state, AWS_ERROR_MQTT5_CLIENT_TERMINATED, true);
 }
 
-void aws_mqtt5_client_operational_state_reset_offline_queue(
-    struct aws_mqtt5_client_operational_state *client_operational_state) {
+void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5_client *client) {
+    struct aws_mqtt5_client_operational_state *client_operational_state = &client->operational_state;
 
+    /* fail everything in pending write completion */
+    s_complete_operation_list(
+        &client_operational_state->write_completion_operations, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT);
+
+    /* fail everything in pending ack except QoS 1+ PUBLISH */
+    struct aws_linked_list *pending_ack_list = &client_operational_state->unacked_operations;
+    struct aws_linked_list_node *node = aws_linked_list_begin(pending_ack_list);
+    while (node != aws_linked_list_end(pending_ack_list)) {
+        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
+
+        /* get next before potentially removing current node */
+        node = aws_linked_list_next(node);
+
+        bool is_qos1_publish = false;
+        if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
+            const struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
+            is_qos1_publish = publish_view->qos >= AWS_MQTT5_QOS_AT_LEAST_ONCE;
+        }
+
+        if (!is_qos1_publish) {
+            aws_linked_list_remove(&operation->node);
+
+            aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
+            aws_hash_table_remove(&client_operational_state->unacked_operations_table, &packet_id, NULL, NULL);
+
+            aws_mqtt5_operation_complete(operation, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT, NULL);
+            aws_mqtt5_operation_release(operation);
+        }
+    }
+
+    /* fail current operation */
     if (client_operational_state->current_operation != NULL) {
-        aws_linked_list_push_front(
-            &client_operational_state->queued_operations, &client_operational_state->current_operation->node);
+        aws_mqtt5_operation_complete(
+            client_operational_state->current_operation, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT, NULL);
+        aws_mqtt5_operation_release(client_operational_state->current_operation);
         client_operational_state->current_operation = NULL;
     }
 
-    /*
-     * TODO:
-     *      If disconnect_queue_policy is fail(x):
-     *          Fail, release, and remove everything in queued_operations with property (x)
-     *          Release and remove: PUBACK, DISCONNECT
-     *      Fail, remove, and release unacked_operations if:
-     *          Operation is not Qos 1+ publish
-     */
+    /* fail everything in the pending queue */
+    s_complete_operation_list(
+        &client_operational_state->queued_operations, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT);
+}
+
+void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_client *client) {
+
+    if (client->negotiated_settings.rejoined_session) {
+        /* append unacked_operations to the front of queued_operations */
+        aws_linked_list_move_all_front(
+            &client->operational_state.queued_operations, &client->operational_state.unacked_operations);
+    } else {
+        /* fail all unacked_operations */
+        s_complete_operation_list(
+            &client->operational_state.unacked_operations, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION);
+    }
+
+    aws_hash_table_clear(&client->operational_state.unacked_operations_table);
 }
 
 static bool s_aws_mqtt5_client_has_pending_operational_work(
