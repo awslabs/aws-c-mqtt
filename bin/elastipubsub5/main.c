@@ -153,31 +153,31 @@ static void s_on_subscribe_complete_fn(
     const struct aws_mqtt5_packet_suback_view *suback,
     int error_code,
     void *complete_ctx) {
-    printf("s_on_subscribe_complete_fn");
+    printf("s_on_subscribe_complete_fn\n");
 
     (void)suback;
     (void)error_code;
     (void)complete_ctx;
-
-    printf("s_on_subscribe_complete_fn");
 }
 
 static void s_on_unsubscribe_complete_fn(
     const struct aws_mqtt5_packet_unsuback_view *unsuback,
     int error_code,
     void *complete_ctx) {
-    printf("s_onunsubscribe_complete_fn");
+    printf("s_onunsubscribe_complete_fn\n");
+
     (void)unsuback;
     (void)error_code;
     (void)complete_ctx;
 }
 
 static void s_on_publish_complete_fn(
-    const struct aws_mqtt5_packet_publish_view *publish,
+    const struct aws_mqtt5_packet_puback_view *puback,
     int error_code,
     void *complete_ctx) {
-    printf("s_on_publish_complete_fn");
-    (void)publish;
+    printf("s_on_publish_complete_fn\n");
+
+    (void)puback;
     (void)error_code;
     (void)complete_ctx;
 }
@@ -311,9 +311,9 @@ static bool s_handle_input(struct aws_mqtt5_client *client, const char *input_li
 
         const struct aws_mqtt5_packet_publish_view packet_publish_view = {
             .payload = aws_byte_cursor_from_c_str("PAYLOAD CONTENTS"),
-            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
-            .redelivery_attempt = false,
-            .retain = false,
+            .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+            .duplicate = false,
+            .retain = true,
             .topic = aws_byte_cursor_from_c_str("test_topic_1"),
             .payload_format = &payload_format,
         };

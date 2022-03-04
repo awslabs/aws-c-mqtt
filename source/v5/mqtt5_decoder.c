@@ -354,6 +354,81 @@ done:
     return result;
 }
 
+/* decodes a PUBLISH packet whose data must be in the scratch buffer */
+/* STEVE TODO Implement PUBLISH DECODE */
+static int s_aws_mqtt5_decoder_decode_publish(struct aws_mqtt5_decoder *decoder) {
+    struct aws_mqtt5_packet_publish_storage storage;
+    if (aws_mqtt5_packet_publish_storage_init_from_external_storage(&storage, decoder->allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    int result = AWS_OP_ERR;
+
+    /*
+     * Fixed Header
+     * byte 1:
+     *  bits 4-7: MQTT Control Packet Type
+     *  bit 3: DUP flag
+     *  bit 1-2: QoS level
+     *  bit 0: RETAIN
+     * byte 2-x: Remaining Length as Variable Byte Integer (1-4 bytes)
+     */
+
+    uint8_t first_byte = decoder->packet_first_byte;
+    if ((first_byte & 0x08) != 0) {
+        storage.dup = true;
+    }
+    if ((first_byte & 0x01) != 0) {
+        storage.retain = true;
+    }
+    storage.qos = (enum aws_mqtt5_qos)((first_byte >> 1) & 0x03);
+
+    struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
+    uint32_t remaining_length = decoder->remaining_length;
+    if (remaining_length != (uint32_t)packet_cursor.len) {
+        goto done;
+    }
+
+/*
+
+    storage.session_present = (connect_flags & 0x01) != 0;
+
+    uint8_t reason_code = 0;
+    AWS_MQTT5_DECODE_U8(&packet_cursor, &reason_code, done);
+    storage.reason_code = reason_code;
+
+    uint32_t property_length = 0;
+    AWS_MQTT5_DECODE_VLI(&packet_cursor, &property_length, done);
+    if (property_length != (uint32_t)packet_cursor.len) {
+        goto done;
+    }
+
+    while (packet_cursor.len > 0) {
+        if (s_read_connack_property(&storage, &packet_cursor)) {
+            goto done;
+        }
+    }
+
+    result = AWS_OP_SUCCESS;
+*/
+done:
+
+    if (result == AWS_OP_SUCCESS) {
+        if (decoder->options.on_packet_received != NULL) {
+            aws_mqtt5_packet_publish_view_init_from_storage(&storage.storage_view, &storage);
+            result = (*decoder->options.on_packet_received)(
+                AWS_MQTT5_PT_PUBLISH, &storage.storage_view, decoder->options.callback_user_data);
+        }
+    } else {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: PUBLISH decode failure", decoder->options.callback_user_data);
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+    }
+
+    aws_mqtt5_packet_publish_storage_clean_up(&storage);
+
+    return result;
+}
+
 /* decode function for all SUBACK properties */
 static int s_read_suback_property(
     struct aws_mqtt5_packet_suback_storage *storage,
@@ -776,7 +851,7 @@ static struct aws_mqtt5_decoder_function_table s_aws_mqtt5_decoder_default_funct
             NULL,                                   /* RESERVED = 0 */
             NULL,                                   /* CONNECT */
             &s_aws_mqtt5_decoder_decode_connack,    /* CONNACK */
-            NULL,                                   /* PUBLISH */
+            &s_aws_mqtt5_decoder_decode_publish,    /* PUBLISH */
             NULL,                                   /* PUBACK */
             NULL,                                   /* PUBREC */
             NULL,                                   /* PUBREL */

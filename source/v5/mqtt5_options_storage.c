@@ -1639,6 +1639,7 @@ void aws_mqtt5_packet_publish_view_init_from_storage(
     publish_view->payload = publish_storage->payload;
     publish_view->qos = publish_storage->qos;
     publish_view->retain = publish_storage->retain;
+    publish_view->duplicate = publish_storage->duplicate;
     publish_view->topic = publish_storage->topic;
     publish_view->payload_format = publish_storage->payload_format_ptr;
     publish_view->message_expiry_interval_seconds = publish_storage->message_expiry_interval_seconds_ptr;
@@ -1691,6 +1692,7 @@ int aws_mqtt5_packet_publish_storage_init(
 
     publish_storage->qos = publish_options->qos;
     publish_storage->retain = publish_options->retain;
+    publish_storage->duplicate = publish_options->duplicate;
 
     publish_storage->topic = publish_options->topic;
     if (aws_byte_buf_append_and_update(&publish_storage->storage, &publish_storage->topic)) {
@@ -1792,7 +1794,7 @@ static void s_aws_mqtt5_operation_publish_set_packet_id(
 static aws_mqtt5_packet_id_t *s_aws_mqtt5_operation_publish_get_packet_id_address(
     const struct aws_mqtt5_operation *operation) {
     struct aws_mqtt5_operation_publish *publish_op = operation->impl;
-    return &publish_op->options_storage.storage_view.packet_id;
+    return publish_op->options_storage.storage_view.packet_id;
 }
 
 static struct aws_mqtt5_operation_vtable s_publish_operation_vtable = {

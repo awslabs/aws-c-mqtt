@@ -738,16 +738,17 @@ static int s_compute_publish_variable_length_fields(
      */
 
     size_t remaining_length = 0;
-    /* Topic name */
-    remaining_length += 2 + publish_view->topic.len;
 
     /* Property Length VLI size */
     if (aws_mqtt5_get_variable_length_encode_size(publish_property_section_length, &remaining_length)) {
         return AWS_OP_ERR;
     }
 
+    /* Topic name */
+    remaining_length += 2 + publish_view->topic.len;
+
     /* Optional packet id */
-    if ((publish_view->packet_id) != NULL) {
+    if (publish_view->packet_id != 0) {
         remaining_length += 2;
     }
 
@@ -802,17 +803,15 @@ static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, 
 
     uint8_t flags = 0;
 
-    if (publish_view->redelivery_attempt) {
+    if (publish_view->duplicate) {
         flags |= 1 << 3;
     }
 
-    flags |= ((uint8_t)publish_view->qos) << 2;
+    flags |= ((uint8_t)publish_view->qos) << 1;
 
     if (publish_view->retain) {
         flags |= 1;
     }
-
-    return flags;
 
     ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_PUBLISH, flags));
 
@@ -827,7 +826,7 @@ static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, 
      */
 
     ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, publish_view->topic);
-    if ((publish_view->packet_id) != NULL) {
+    if (publish_view->packet_id != 0) {
         ADD_ENCODE_STEP_U16(encoder, (uint16_t)publish_view->packet_id);
     }
     ADD_ENCODE_STEP_VLI(encoder, publish_property_length_u32);

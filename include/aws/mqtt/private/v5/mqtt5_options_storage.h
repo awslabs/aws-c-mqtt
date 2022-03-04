@@ -215,6 +215,7 @@ struct aws_mqtt5_packet_publish_storage {
     bool dup;
     enum aws_mqtt5_qos qos;
     bool retain;
+    bool duplicate;
     struct aws_byte_cursor topic;
 
     enum aws_mqtt5_payload_format_indicator payload_format;
