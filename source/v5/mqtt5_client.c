@@ -2155,8 +2155,9 @@ void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5
 
         bool is_qos1_publish = false;
         if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
-            const struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
+            struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
             is_qos1_publish = publish_view->qos >= AWS_MQTT5_QOS_AT_LEAST_ONCE;
+            publish_view->duplicate = true;
         }
 
         if (!is_qos1_publish) {
