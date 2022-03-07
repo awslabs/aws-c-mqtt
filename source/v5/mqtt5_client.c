@@ -92,7 +92,6 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 
     aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
 
-    aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
     aws_http_message_release(client->handshake);
 
     aws_mqtt5_encoder_clean_up(&client->encoder);
@@ -730,7 +729,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
     AWS_ASSERT(client->current_state == AWS_MCS_STOPPED || client->current_state == AWS_MCS_PENDING_RECONNECT);
 
     client->current_state = AWS_MCS_CONNECTING;
-    client->disconnect_operation = aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
+    client->clean_disconnect_error_code = AWS_ERROR_SUCCESS;
 
     s_aws_mqtt5_client_emit_connecting_lifecycle_event(client);
 
@@ -1332,9 +1331,18 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
 }
 
 static void s_service_state_clean_disconnect(struct aws_mqtt5_client *client) {
-    (void)client;
+    if (aws_mqtt5_client_service_operational_state(&client->operational_state)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: failed to service CLEAN_DISCONNECT operation queue with error %d(%s)",
+            (void *)client,
+            error_code,
+            aws_error_debug_str(error_code));
 
-    /* TODO: everything */
+        s_aws_mqtt5_client_shutdown_channel(client, error_code);
+        return;
+    }
 }
 
 static void s_service_state_channel_shutdown(struct aws_mqtt5_client *client) {
@@ -1810,8 +1818,15 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
             s_aws_mqtt5_client_state_to_c_str(desired_state));
 
         client->desired_state = desired_state;
-        aws_mqtt5_operation_disconnect_release(client->disconnect_operation);
-        client->disconnect_operation = aws_mqtt5_operation_disconnect_acquire(change_state_task->disconnect_operation);
+
+        struct aws_mqtt5_operation_disconnect *disconnect_op = change_state_task->disconnect_operation;
+        if (desired_state == AWS_MCS_STOPPED && disconnect_op != NULL &&
+            (client->current_state == AWS_MCS_CONNECTED || client->current_state == AWS_MCS_MQTT_CONNECT)) {
+            aws_linked_list_push_front(&client->operational_state.queued_operations, &disconnect_op->base.node);
+            aws_mqtt5_operation_disconnect_acquire(disconnect_op);
+            client->clean_disconnect_error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP;
+            s_change_current_state(client, AWS_MCS_CLEAN_DISCONNECT);
+        }
 
         s_reevaluate_service_task(client);
     }
@@ -1895,10 +1910,26 @@ int aws_mqtt5_client_start(struct aws_mqtt5_client *client) {
     return s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_CONNECTED, NULL);
 }
 
-int aws_mqtt5_client_stop(struct aws_mqtt5_client *client, const struct aws_mqtt5_packet_disconnect_view *options) {
+static void s_on_disconnect_operation_complete(int error_code, void *user_data) {
+    struct aws_mqtt5_client *client = user_data;
+
+    s_aws_mqtt5_client_shutdown_channel(
+        client, (error_code != AWS_ERROR_SUCCESS) ? error_code : client->clean_disconnect_error_code);
+}
+
+int aws_mqtt5_client_stop(
+    struct aws_mqtt5_client *client,
+    const struct aws_mqtt5_packet_disconnect_view *options,
+    const struct aws_mqtt5_disconnect_completion_options *completion_options) {
     struct aws_mqtt5_operation_disconnect *disconnect_op = NULL;
     if (options != NULL) {
-        disconnect_op = aws_mqtt5_operation_disconnect_new(client->allocator, options);
+        struct aws_mqtt5_disconnect_completion_options internal_completion_options = {
+            .completion_callback = s_on_disconnect_operation_complete,
+            .completion_user_data = client,
+        };
+
+        disconnect_op = aws_mqtt5_operation_disconnect_new(
+            client->allocator, options, completion_options, &internal_completion_options);
         if (disconnect_op == NULL) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT, "id=%p: failed to create requested DISCONNECT operation", (void *)client);

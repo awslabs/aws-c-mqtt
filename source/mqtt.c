@@ -201,6 +201,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT,
                 "Mqtt5 operation failed due to a disconnection event."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION,
+                "Mqtt5 operation failed due to inability to rejoin previous session"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

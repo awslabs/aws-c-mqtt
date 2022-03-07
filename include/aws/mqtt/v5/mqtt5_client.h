@@ -175,7 +175,8 @@ int aws_mqtt5_client_start(struct aws_mqtt5_client *client);
 AWS_MQTT_API
 int aws_mqtt5_client_stop(
     struct aws_mqtt5_client *client,
-    const struct aws_mqtt5_packet_disconnect_view *disconnect_options);
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_options,
+    const struct aws_mqtt5_disconnect_completion_options *completion_options);
 
 /**
  * Queues a Publish operation in an mqtt5 client

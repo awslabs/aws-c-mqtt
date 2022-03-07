@@ -329,7 +329,7 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
 
     s_wait_for_connected_lifecycle_event(&test_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -421,7 +421,7 @@ static int s_mqtt5_client_simple_failure_test_fn(
 
     s_wait_for_connection_failure_lifecycle_event(&test_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -679,7 +679,7 @@ static int s_mqtt5_client_direct_connect_connack_refusal_fn(struct aws_allocator
 
     s_wait_for_connection_failure_lifecycle_event(&test_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -738,7 +738,7 @@ static int s_mqtt5_client_direct_connect_connack_timeout_fn(struct aws_allocator
 
     s_wait_for_connection_failure_lifecycle_event(&test_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -845,7 +845,7 @@ static int s_mqtt5_client_direct_connect_from_server_disconnect_fn(struct aws_al
 
     s_wait_for_disconnection_lifecycle_event(&test_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -1003,7 +1003,7 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     s_wait_for_connected_lifecycle_event(&test_context);
     s_wait_for_n_pingreqs(&ping_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -1165,7 +1165,7 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
     s_wait_for_connected_lifecycle_event(&test_context);
     s_wait_for_disconnection_lifecycle_event(&test_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -1317,7 +1317,7 @@ static int s_mqtt5_client_reconnect_failure_backoff_fn(struct aws_allocator *all
 
     s_wait_for_n_connection_failure_lifecycle_events(&test_context, 6);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -1537,7 +1537,7 @@ static int s_mqtt5_client_reconnect_backoff_insufficient_reset_fn(struct aws_all
 
     s_wait_for_n_connection_failure_lifecycle_events(&test_context, 7);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -1659,7 +1659,7 @@ static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_alloc
 
     s_wait_for_n_connection_failure_lifecycle_events(&test_context, 7);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -1850,7 +1850,7 @@ static int s_mqtt5_client_subscribe_success_fn(struct aws_allocator *allocator, 
 
     s_wait_for_suback_received(&test_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 

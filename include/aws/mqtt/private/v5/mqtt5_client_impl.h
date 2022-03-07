@@ -321,12 +321,14 @@ struct aws_mqtt5_client {
     /*
      * Temporary state-related data.
      *
-     * disconnect_operation exists from Stop invocation until clean disconnect completes or is skipped/failed.
+     * clean_disconnect_error_code - the CLEAN_DISCONNECT state takes time to complete and we want to be able
+     * to pass an error code from a prior event to the channel shutdown.  This holds the "override" error code
+     * that we'd like to shutdown the channel with while CLEAN_DISCONNECT is processed.
      *
      * handshake exists on websocket-configured clients between the transform completion timepoint and the
      * websocket setup callback.
      */
-    struct aws_mqtt5_operation_disconnect *disconnect_operation;
+    int clean_disconnect_error_code;
     struct aws_http_message *handshake;
 
     /*
