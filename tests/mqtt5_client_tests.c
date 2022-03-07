@@ -151,6 +151,16 @@ static int s_aws_mqtt5_client_test_init_default_connect_storage(
     return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
 }
 
+static int s_aws_mqtt5_client_test_init_default_disconnect_storage(
+    struct aws_mqtt5_packet_disconnect_storage *storage,
+    struct aws_allocator *allocator) {
+    struct aws_mqtt5_packet_disconnect_view disconnect_view = {
+        .reason_code = AWS_MQTT5_DRC_NORMAL_DISCONNECTION,
+    };
+
+    return aws_mqtt5_packet_disconnect_storage_init(storage, allocator, &disconnect_view);
+}
+
 static bool s_last_life_cycle_event_is(
     struct aws_mqtt5_client_mock_test_fixture *test_fixture,
     enum aws_mqtt5_client_lifecycle_event_type event_type) {
@@ -355,6 +365,7 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
         AWS_MCS_CONNECTING,
         AWS_MCS_MQTT_CONNECT,
         AWS_MCS_CONNECTED,
+        AWS_MCS_CLEAN_DISCONNECT,
         AWS_MCS_CHANNEL_SHUTDOWN,
         AWS_MCS_STOPPED,
     };
@@ -363,12 +374,17 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
     struct aws_mqtt5_packet_connect_storage expected_connect_storage;
     ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_connect_storage(&expected_connect_storage, allocator));
 
-    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {
-        {
-            .packet_type = AWS_MQTT5_PT_CONNECT,
-            .packet_storage = &expected_connect_storage,
-        },
-    };
+    struct aws_mqtt5_packet_disconnect_storage expected_disconnect_storage;
+    ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_disconnect_storage(&expected_disconnect_storage, allocator));
+
+    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {{
+                                                                         .packet_type = AWS_MQTT5_PT_CONNECT,
+                                                                         .packet_storage = &expected_connect_storage,
+                                                                     },
+                                                                     {
+                                                                         .packet_type = AWS_MQTT5_PT_DISCONNECT,
+                                                                         .packet_storage = &expected_disconnect_storage,
+                                                                     }};
     ASSERT_SUCCESS(
         s_verify_received_packet_sequence(&test_context, expected_packets, AWS_ARRAY_SIZE(expected_packets)));
 
@@ -757,6 +773,7 @@ static int s_mqtt5_client_direct_connect_connack_timeout_fn(struct aws_allocator
     enum aws_mqtt5_client_state expected_states[] = {
         AWS_MCS_CONNECTING,
         AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CLEAN_DISCONNECT,
         AWS_MCS_CHANNEL_SHUTDOWN,
     };
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
@@ -930,15 +947,15 @@ static int s_verify_ping_sequence_timing(struct aws_mqtt5_client_mock_test_fixtu
             ASSERT_INT_EQUALS(record->packet_type, AWS_MQTT5_PT_CONNECT);
             last_packet_time = record->timestamp;
         } else {
-            ASSERT_INT_EQUALS(record->packet_type, AWS_MQTT5_PT_PINGREQ);
+            if (record->packet_type == AWS_MQTT5_PT_PINGREQ) {
+                uint64_t time_delta_ns = record->timestamp - last_packet_time;
+                uint64_t time_delta_millis =
+                    aws_timestamp_convert(time_delta_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
 
-            uint64_t time_delta_ns = record->timestamp - last_packet_time;
-            uint64_t time_delta_millis =
-                aws_timestamp_convert(time_delta_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+                ASSERT_TRUE(s_is_within_percentage_of(TEST_PING_INTERVAL_MS, time_delta_millis, .1));
 
-            ASSERT_TRUE(s_is_within_percentage_of(TEST_PING_INTERVAL_MS, time_delta_millis, .1));
-
-            last_packet_time = record->timestamp;
+                last_packet_time = record->timestamp;
+            }
         }
     }
     aws_mutex_unlock(&test_context->lock);
@@ -1029,6 +1046,7 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
         AWS_MCS_CONNECTING,
         AWS_MCS_MQTT_CONNECT,
         AWS_MCS_CONNECTED,
+        AWS_MCS_CLEAN_DISCONNECT,
         AWS_MCS_CHANNEL_SHUTDOWN,
         AWS_MCS_STOPPED,
     };
@@ -1037,27 +1055,32 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     struct aws_mqtt5_packet_connect_storage expected_connect_storage;
     ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_ping_test_connect_storage(&expected_connect_storage, allocator));
 
-    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {
-        {
-            .packet_type = AWS_MQTT5_PT_CONNECT,
-            .packet_storage = &expected_connect_storage,
-        },
-        {
-            .packet_type = AWS_MQTT5_PT_PINGREQ,
-        },
-        {
-            .packet_type = AWS_MQTT5_PT_PINGREQ,
-        },
-        {
-            .packet_type = AWS_MQTT5_PT_PINGREQ,
-        },
-        {
-            .packet_type = AWS_MQTT5_PT_PINGREQ,
-        },
-        {
-            .packet_type = AWS_MQTT5_PT_PINGREQ,
-        },
-    };
+    struct aws_mqtt5_packet_disconnect_storage expected_disconnect_storage;
+    ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_disconnect_storage(&expected_disconnect_storage, allocator));
+
+    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {{
+                                                                         .packet_type = AWS_MQTT5_PT_CONNECT,
+                                                                         .packet_storage = &expected_connect_storage,
+                                                                     },
+                                                                     {
+                                                                         .packet_type = AWS_MQTT5_PT_PINGREQ,
+                                                                     },
+                                                                     {
+                                                                         .packet_type = AWS_MQTT5_PT_PINGREQ,
+                                                                     },
+                                                                     {
+                                                                         .packet_type = AWS_MQTT5_PT_PINGREQ,
+                                                                     },
+                                                                     {
+                                                                         .packet_type = AWS_MQTT5_PT_PINGREQ,
+                                                                     },
+                                                                     {
+                                                                         .packet_type = AWS_MQTT5_PT_PINGREQ,
+                                                                     },
+                                                                     {
+                                                                         .packet_type = AWS_MQTT5_PT_DISCONNECT,
+                                                                         .packet_storage = &expected_disconnect_storage,
+                                                                     }};
     ASSERT_SUCCESS(
         s_verify_received_packet_sequence(&test_context, expected_packets, AWS_ARRAY_SIZE(expected_packets)));
 
@@ -1193,6 +1216,7 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
         AWS_MCS_CONNECTING,
         AWS_MCS_MQTT_CONNECT,
         AWS_MCS_CONNECTED,
+        AWS_MCS_CLEAN_DISCONNECT,
         AWS_MCS_CHANNEL_SHUTDOWN,
         AWS_MCS_STOPPED,
     };
