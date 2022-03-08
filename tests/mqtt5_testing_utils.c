@@ -1416,6 +1416,22 @@ static bool s_aws_connect_packets_equal(
     return true;
 }
 
+static bool s_aws_disconnect_packets_equal(
+    const struct aws_mqtt5_packet_disconnect_view *lhs,
+    const struct aws_mqtt5_packet_disconnect_view *rhs) {
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->reason_code, rhs->reason_code);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->reason_string, rhs->reason_string);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(
+        lhs->session_expiry_interval_seconds, rhs->session_expiry_interval_seconds);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->server_reference, rhs->server_reference);
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
+        lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
+
+    return true;
+}
+
 bool aws_mqtt5_client_test_are_packets_equal(
     enum aws_mqtt5_packet_type packet_type,
     void *lhs_packet_storage,
@@ -1425,6 +1441,11 @@ bool aws_mqtt5_client_test_are_packets_equal(
             return s_aws_connect_packets_equal(
                 &((struct aws_mqtt5_packet_connect_storage *)lhs_packet_storage)->storage_view,
                 &((struct aws_mqtt5_packet_connect_storage *)rhs_packet_storage)->storage_view);
+
+        case AWS_MQTT5_PT_DISCONNECT:
+            return s_aws_disconnect_packets_equal(
+                &((struct aws_mqtt5_packet_disconnect_storage *)lhs_packet_storage)->storage_view,
+                &((struct aws_mqtt5_packet_disconnect_storage *)rhs_packet_storage)->storage_view);
 
         case AWS_MQTT5_PT_PINGREQ:
         case AWS_MQTT5_PT_PINGRESP:

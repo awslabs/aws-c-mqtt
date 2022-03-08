@@ -33,8 +33,10 @@ struct aws_mqtt5_operation_vtable {
         struct aws_mqtt5_operation *operation,
         int error_code,
         const void *completion_view);
+
     void (
         *aws_mqtt5_operation_set_packet_id_fn)(struct aws_mqtt5_operation *operation, aws_mqtt5_packet_id_t packet_id);
+
     aws_mqtt5_packet_id_t *(*aws_mqtt5_operation_get_packet_id_address_fn)(const struct aws_mqtt5_operation *operation);
 };
 
@@ -44,11 +46,12 @@ struct aws_mqtt5_operation_vtable {
  */
 struct aws_mqtt5_operation {
     const struct aws_mqtt5_operation_vtable *vtable;
-    enum aws_mqtt5_packet_type packet_type;
     struct aws_ref_count ref_count;
     struct aws_linked_list_node node;
-    void *impl;
+    enum aws_mqtt5_packet_type packet_type;
     const void *packet_view;
+
+    void *impl;
 };
 
 struct aws_mqtt5_packet_connect_storage {
@@ -274,6 +277,9 @@ struct aws_mqtt5_operation_disconnect {
     struct aws_allocator *allocator;
 
     struct aws_mqtt5_packet_disconnect_storage options_storage;
+
+    struct aws_mqtt5_disconnect_completion_options external_completion_options;
+    struct aws_mqtt5_disconnect_completion_options internal_completion_options;
 };
 
 struct aws_mqtt5_packet_subscribe_storage {
@@ -454,7 +460,9 @@ AWS_MQTT_API void aws_mqtt5_packet_connack_view_init_from_storage(
 
 AWS_MQTT_API struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_disconnect_view *disconnect_options);
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_options,
+    const struct aws_mqtt5_disconnect_completion_options *external_completion_options,
+    const struct aws_mqtt5_disconnect_completion_options *internal_completion_options);
 
 AWS_MQTT_API struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_acquire(
     struct aws_mqtt5_operation_disconnect *disconnect_op);

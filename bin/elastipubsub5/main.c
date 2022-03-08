@@ -320,6 +320,60 @@ static void s_handle_unsubscribe(struct aws_mqtt5_client *client, struct aws_arr
     aws_mqtt5_client_unsubscribe(client, &packet_unsubscribe_view, &unsubscribe_completion_options);
 }
 
+static void s_on_disconnect_completion(int error_code, void *user_data) {
+    (void)user_data;
+
+    printf("DISCONNECT complete with error code %d(%s)!", error_code, aws_error_debug_str(error_code));
+    fflush(stdout);
+}
+
+static void s_handle_stop(
+    struct aws_mqtt5_client *client,
+    struct aws_allocator *allocator,
+    struct aws_array_list *arguments) {
+
+    size_t argument_count = aws_array_list_length(arguments) - 1;
+    switch (argument_count) {
+        case 0:
+            printf("Stopping client by shutting down channel!\n");
+            aws_mqtt5_client_stop(client, NULL, NULL);
+            break;
+
+        case 1: {
+            struct aws_byte_cursor reason_code_cursor;
+            AWS_ZERO_STRUCT(reason_code_cursor);
+            aws_array_list_get_at(arguments, &reason_code_cursor, 1);
+
+            struct aws_string *reason_code_string = aws_string_new_from_cursor(allocator, &reason_code_cursor);
+
+            int reason_code_value = atoi((const char *)reason_code_string->bytes);
+            enum aws_mqtt5_disconnect_reason_code reason_code = reason_code_value;
+            aws_string_destroy(reason_code_string);
+
+            struct aws_mqtt5_packet_disconnect_view disconnect_options = {
+                .reason_code = reason_code,
+            };
+
+            struct aws_mqtt5_disconnect_completion_options completion_options = {
+                .completion_callback = s_on_disconnect_completion,
+                .completion_user_data = client,
+            };
+
+            printf(
+                "Stopping client cleanly by sending DISCONNECT packet with reason code %d(%s)!\n",
+                reason_code_value,
+                aws_mqtt5_disconnect_reason_code_to_c_string(reason_code, NULL));
+            aws_mqtt5_client_stop(client, &disconnect_options, &completion_options);
+            break;
+        }
+
+        default:
+            printf("invalid stop options:\n");
+            printf("  stop [optional int: reason_code]\n");
+            break;
+    }
+}
+
 static bool s_handle_input(struct aws_mqtt5_client *client, struct aws_allocator *allocator, const char *input_line) {
 
     struct aws_byte_cursor quit_cursor = aws_byte_cursor_from_c_str("quit");
@@ -354,8 +408,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, struct aws_allocator
         printf("Starting client!\n");
         aws_mqtt5_client_start(client);
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &stop_cursor)) {
-        printf("Stopping client!\n");
-        aws_mqtt5_client_stop(client, NULL);
+        s_handle_stop(client, allocator, &words);
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &subscribe_cursor)) {
         s_handle_subscribe(client, allocator, &words);
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &unsubscribe_cursor)) {

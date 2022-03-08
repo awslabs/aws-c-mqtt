@@ -1950,7 +1950,7 @@ static struct aws_mqtt5_operation_disconnect *s_make_simple_disconnect_operation
         .reason_code = AWS_MQTT5_DRC_ADMINISTRATIVE_ACTION,
     };
 
-    return aws_mqtt5_operation_disconnect_new(allocator, &disconnect_view);
+    return aws_mqtt5_operation_disconnect_new(allocator, &disconnect_view, NULL, NULL);
 }
 
 /*

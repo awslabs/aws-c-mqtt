@@ -545,7 +545,7 @@ struct aws_mqtt5_packet_unsuback_view {
 /**
  * Signature of callback to invoke on Publish success/failure.
  */
-typedef void(aws_mqtt5_publish_complete_fn)(
+typedef void(aws_mqtt5_publish_completion_fn)(
     const struct aws_mqtt5_packet_puback_view *puback,
     int error_code,
     void *complete_ctx);
@@ -553,7 +553,7 @@ typedef void(aws_mqtt5_publish_complete_fn)(
 /**
  * Signature of callback to invoke on Subscribe success/failure.
  */
-typedef void(aws_mqtt5_subscribe_complete_fn)(
+typedef void(aws_mqtt5_subscribe_completion_fn)(
     const struct aws_mqtt5_packet_suback_view *suback,
     int error_code,
     void *complete_ctx);
@@ -561,16 +561,21 @@ typedef void(aws_mqtt5_subscribe_complete_fn)(
 /**
  * Signature of callback to invoke on Unsubscribe success/failure.
  */
-typedef void(aws_mqtt5_unsubscribe_complete_fn)(
+typedef void(aws_mqtt5_unsubscribe_completion_fn)(
     const struct aws_mqtt5_packet_unsuback_view *unsuback,
     int error_code,
     void *complete_ctx);
 
 /**
+ * Signature of callback to invoke when a DISCONNECT is fully written to the socket (or fails to be)
+ */
+typedef void(aws_mqtt5_disconnect_completion_fn)(int error_code, void *complete_ctx);
+
+/**
  * Completion callback options for the Publish operation
  */
 struct aws_mqtt5_publish_completion_options {
-    aws_mqtt5_publish_complete_fn *completion_callback;
+    aws_mqtt5_publish_completion_fn *completion_callback;
     void *completion_user_data;
 };
 
@@ -578,7 +583,7 @@ struct aws_mqtt5_publish_completion_options {
  * Completion callback options for the Subscribe operation
  */
 struct aws_mqtt5_subscribe_completion_options {
-    aws_mqtt5_subscribe_complete_fn *completion_callback;
+    aws_mqtt5_subscribe_completion_fn *completion_callback;
     void *completion_user_data;
 };
 
@@ -586,7 +591,15 @@ struct aws_mqtt5_subscribe_completion_options {
  * Completion callback options for the Unsubscribe operation
  */
 struct aws_mqtt5_unsubscribe_completion_options {
-    aws_mqtt5_unsubscribe_complete_fn *completion_callback;
+    aws_mqtt5_unsubscribe_completion_fn *completion_callback;
+    void *completion_user_data;
+};
+
+/**
+ * Public completion callback options for the a DISCONNECT operation
+ */
+struct aws_mqtt5_disconnect_completion_options {
+    aws_mqtt5_disconnect_completion_fn *completion_callback;
     void *completion_user_data;
 };
 
