@@ -1395,9 +1395,37 @@ static void s_destroy_operation_disconnect(void *object) {
     aws_mem_release(disconnect_op->allocator, disconnect_op);
 }
 
+static void s_aws_mqtt5_disconnect_operation_completion(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    const void *completion_view) {
+
+    (void)completion_view;
+
+    struct aws_mqtt5_operation_disconnect *disconnect_op = operation->impl;
+
+    if (disconnect_op->internal_completion_options.completion_callback != NULL) {
+        (*disconnect_op->internal_completion_options.completion_callback)(
+            error_code, disconnect_op->internal_completion_options.completion_user_data);
+    }
+
+    if (disconnect_op->external_completion_options.completion_callback != NULL) {
+        (*disconnect_op->external_completion_options.completion_callback)(
+            error_code, disconnect_op->external_completion_options.completion_user_data);
+    }
+}
+
+static struct aws_mqtt5_operation_vtable s_disconnect_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_disconnect_operation_completion,
+    .aws_mqtt5_operation_set_packet_id_fn = NULL,
+    .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
+};
+
 struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_disconnect_view *disconnect_options) {
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_options,
+    const struct aws_mqtt5_disconnect_completion_options *external_completion_options,
+    const struct aws_mqtt5_disconnect_completion_options *internal_completion_options) {
     AWS_PRECONDITION(allocator != NULL);
 
     if (aws_mqtt5_packet_disconnect_view_validate(disconnect_options, NULL)) {
@@ -1411,7 +1439,7 @@ struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     }
 
     disconnect_op->allocator = allocator;
-    disconnect_op->base.vtable = &s_empty_operation_vtable;
+    disconnect_op->base.vtable = &s_disconnect_operation_vtable;
     disconnect_op->base.packet_type = AWS_MQTT5_PT_DISCONNECT;
     aws_ref_count_init(&disconnect_op->base.ref_count, disconnect_op, s_destroy_operation_disconnect);
     disconnect_op->base.impl = disconnect_op;
@@ -1421,6 +1449,13 @@ struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     }
 
     disconnect_op->base.packet_view = &disconnect_op->options_storage.storage_view;
+    if (external_completion_options != NULL) {
+        disconnect_op->external_completion_options = *external_completion_options;
+    }
+
+    if (internal_completion_options != NULL) {
+        disconnect_op->internal_completion_options = *internal_completion_options;
+    }
 
     return disconnect_op;
 
