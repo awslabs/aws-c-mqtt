@@ -180,6 +180,20 @@ static void s_on_unsubscribe_complete_fn(
     fflush(stdout);
 }
 
+static void s_on_publish_complete_fn(
+    const struct aws_mqtt5_packet_puback_view *puback,
+    int error_code,
+    void *complete_ctx) {
+    (void)error_code;
+    (void)complete_ctx;
+
+    printf("PUBACK received!\n");
+    /* STEVE TODO FIND OUT WHY THIS IS BROKEN*/
+    // printf("SUBACK id:%d %s\n", puback->packet_id, aws_mqtt5_puback_reason_code_to_c_string(puback->reason_code));
+
+    fflush(stdout);
+}
+
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
 
     switch (event->event_type) {
@@ -320,6 +334,82 @@ static void s_handle_unsubscribe(struct aws_mqtt5_client *client, struct aws_arr
     aws_mqtt5_client_unsubscribe(client, &packet_unsubscribe_view, &unsubscribe_completion_options);
 }
 
+static void s_handle_publish(
+    struct aws_mqtt5_client *client,
+    struct aws_allocator *allocator,
+    struct aws_array_list *arguments) {
+    struct aws_mqtt5_publish_completion_options publish_completion_options = {
+        .completion_callback = &s_on_publish_complete_fn,
+        .completion_user_data = NULL,
+    };
+
+    size_t argument_count = aws_array_list_length(arguments) - 1;
+    if (argument_count < 2) {
+        printf("invalid publish call:\n");
+        printf("  publish <qos: [0, 1, 2]> topic <text to publish>\n");
+        return;
+    }
+
+    /* QoS  */
+    struct aws_byte_cursor qos_cursor;
+    AWS_ZERO_STRUCT(qos_cursor);
+    aws_array_list_get_at(arguments, &qos_cursor, 1);
+    struct aws_string *qos_string = aws_string_new_from_cursor(allocator, &qos_cursor);
+    int qos_value = atoi((const char *)qos_string->bytes);
+    enum aws_mqtt5_qos qos = qos_value;
+
+    /* TOPIC */
+    struct aws_byte_cursor topic_cursor;
+    AWS_ZERO_STRUCT(topic_cursor);
+    aws_array_list_get_at(arguments, &topic_cursor, 2);
+
+    /* PAYLOAD */
+    size_t payload_count = aws_array_list_length(arguments) - 3;
+    /* spaces */
+    size_t payload_length = payload_count - 1;
+    /* length of char array */
+    for (size_t i = 0; i < payload_count; ++i) {
+        struct aws_byte_cursor current_word;
+        AWS_ZERO_STRUCT(current_word);
+        aws_array_list_get_at(arguments, &current_word, i + 3);
+        payload_length += current_word.len;
+    }
+    char payload_char[payload_length];
+    size_t payload_char_index = 0;
+
+    for (size_t i = 0; i < payload_count; ++i) {
+        struct aws_byte_cursor current_word_cursor;
+        AWS_ZERO_STRUCT(current_word_cursor);
+        aws_array_list_get_at(arguments, &current_word_cursor, i + 3);
+        while (current_word_cursor.len > 0) {
+            uint8_t decoded_char = 0;
+            aws_byte_cursor_read_u8(&current_word_cursor, &decoded_char);
+            payload_char[payload_char_index] = decoded_char;
+            ++payload_char_index;
+        }
+        if (i + 1 < payload_count) {
+            payload_char[payload_char_index] = ' ';
+            ++payload_char_index;
+        }
+    }
+
+    struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_array(&payload_char, payload_length);
+    enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
+
+    struct aws_mqtt5_packet_publish_view packet_publish_view = {
+        .qos = qos,
+        .topic = topic_cursor,
+        .retain = false,
+        .duplicate = false,
+        .payload_format = &payload_format,
+        .payload = payload_cursor,
+    };
+
+    aws_mqtt5_client_publish(client, &packet_publish_view, &publish_completion_options);
+
+    aws_string_destroy(qos_string);
+}
+
 static void s_on_disconnect_completion(int error_code, void *user_data) {
     (void)user_data;
 
@@ -413,6 +503,8 @@ static bool s_handle_input(struct aws_mqtt5_client *client, struct aws_allocator
         s_handle_subscribe(client, allocator, &words);
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &unsubscribe_cursor)) {
         s_handle_unsubscribe(client, &words);
+    } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &publish_cursor)) {
+        s_handle_publish(client, allocator, &words);
     } else {
         printf("Unknown command: " PRInSTR "\n", AWS_BYTE_CURSOR_PRI(command_cursor));
     }
@@ -420,7 +512,6 @@ static bool s_handle_input(struct aws_mqtt5_client *client, struct aws_allocator
 done:
 
     aws_array_list_clean_up(&words);
-
     return done;
 }
 
