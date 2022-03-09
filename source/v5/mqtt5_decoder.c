@@ -400,11 +400,11 @@ static int s_read_publish_property(
             }
             break;
 
-        case AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER:
+        case AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER: {
             uint32_t subscription_identifier = 0;
-            AWS_MQTT5_DECODE_VLI(packet_cursor, subscription_identifier, done);
+            AWS_MQTT5_DECODE_VLI(packet_cursor, &subscription_identifier, done);
             aws_array_list_push_back(&storage->subscription_identifiers, &subscription_identifier);
-            break;
+        } break;
 
         case AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE:
             AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(

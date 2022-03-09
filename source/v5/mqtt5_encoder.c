@@ -849,8 +849,9 @@ static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, 
      * Payload
      * Content and format of data is application specific
      */
-
-    ADD_ENCODE_STEP_CURSOR(encoder, publish_view->payload);
+    if (publish_view->payload.len > 0) {
+        ADD_ENCODE_STEP_CURSOR(encoder, publish_view->payload);
+    }
 
     return AWS_OP_SUCCESS;
 }

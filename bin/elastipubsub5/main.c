@@ -343,7 +343,8 @@ static void s_handle_unsubscribe(struct aws_mqtt5_client *client, struct aws_arr
 static void s_handle_publish(
     struct aws_mqtt5_client *client,
     struct aws_allocator *allocator,
-    struct aws_array_list *arguments) {
+    struct aws_array_list *arguments,
+    struct aws_byte_cursor *full_argument) {
     struct aws_mqtt5_publish_completion_options publish_completion_options = {
         .completion_callback = &s_on_publish_complete_fn,
         .completion_user_data = NULL,
@@ -370,36 +371,19 @@ static void s_handle_publish(
     aws_array_list_get_at(arguments, &topic_cursor, 2);
 
     /* PAYLOAD */
-    size_t payload_count = aws_array_list_length(arguments) - 3;
-    /* spaces */
-    size_t payload_length = payload_count - 1;
-    /* length of char array */
-    for (size_t i = 0; i < payload_count; ++i) {
-        struct aws_byte_cursor current_word;
-        AWS_ZERO_STRUCT(current_word);
-        aws_array_list_get_at(arguments, &current_word, i + 3);
-        payload_length += current_word.len;
-    }
-    char payload_char[payload_length];
-    size_t payload_char_index = 0;
-
-    for (size_t i = 0; i < payload_count; ++i) {
-        struct aws_byte_cursor current_word_cursor;
-        AWS_ZERO_STRUCT(current_word_cursor);
-        aws_array_list_get_at(arguments, &current_word_cursor, i + 3);
-        while (current_word_cursor.len > 0) {
-            uint8_t decoded_char = 0;
-            aws_byte_cursor_read_u8(&current_word_cursor, &decoded_char);
-            payload_char[payload_char_index] = decoded_char;
-            ++payload_char_index;
-        }
-        if (i + 1 < payload_count) {
-            payload_char[payload_char_index] = ' ';
-            ++payload_char_index;
+    struct aws_byte_cursor payload_cursor;
+    AWS_ZERO_STRUCT(payload_cursor);
+    /* account for empty payload */
+    if (argument_count > 2) {
+        aws_array_list_get_at(arguments, &payload_cursor, 3);
+        uint8_t *payload_ptr = payload_cursor.ptr;
+        payload_cursor.ptr = full_argument->ptr;
+        payload_cursor.len = full_argument->len;
+        while (payload_cursor.len > 0 && payload_cursor.ptr != payload_ptr) {
+            aws_byte_cursor_advance(&payload_cursor, 1);
         }
     }
 
-    struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_array(&payload_char, payload_length);
     enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
 
     printf(
@@ -515,7 +499,7 @@ static bool s_handle_input(struct aws_mqtt5_client *client, struct aws_allocator
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &unsubscribe_cursor)) {
         s_handle_unsubscribe(client, &words);
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &publish_cursor)) {
-        s_handle_publish(client, allocator, &words);
+        s_handle_publish(client, allocator, &words, &line_cursor);
     } else {
         printf("Unknown command: " PRInSTR "\n", AWS_BYTE_CURSOR_PRI(command_cursor));
     }
