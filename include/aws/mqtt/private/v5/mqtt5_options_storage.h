@@ -215,6 +215,8 @@ struct aws_mqtt5_packet_publish_storage {
     /* This field is always empty on received messages */
     struct aws_byte_cursor payload;
 
+    /* packet_id is only set for QoS 1 and QoS 2 */
+    aws_mqtt5_packet_id_t packet_id;
     bool dup;
     enum aws_mqtt5_qos qos;
     bool retain;
@@ -240,6 +242,7 @@ struct aws_mqtt5_packet_publish_storage {
     struct aws_byte_cursor *content_type_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
+    struct aws_array_list subscription_identifiers;
 
     struct aws_byte_buf storage;
 };

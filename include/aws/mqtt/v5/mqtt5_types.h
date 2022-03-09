@@ -393,7 +393,7 @@ struct aws_mqtt5_packet_publish_view {
     /* This field is always empty on received messages */
     struct aws_byte_cursor payload;
 
-    /* packet_id is only encoded for QoS 1 and QoS 2 */
+    /* packet_id is only set for QoS 1 and QoS 2 */
     aws_mqtt5_packet_id_t packet_id;
     enum aws_mqtt5_qos qos;
     /*

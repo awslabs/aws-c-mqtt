@@ -189,7 +189,13 @@ static void s_on_publish_complete_fn(
 
     printf("PUBACK received!\n");
     /* STEVE TODO FIND OUT WHY THIS IS BROKEN*/
-    // printf("SUBACK id:%d %s\n", puback->packet_id, aws_mqtt5_puback_reason_code_to_c_string(puback->reason_code));
+    if (puback != NULL) {
+        printf("PUBACK IS RECEIVED\n");
+        // printf("PUBACK id:%d %s\n", puback->packet_id,
+        // aws_mqtt5_puback_reason_code_to_c_string(puback->reason_code));
+    } else {
+        printf("PUBACK IS NULL\n");
+    }
 
     fflush(stdout);
 }
@@ -395,6 +401,11 @@ static void s_handle_publish(
 
     struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_array(&payload_char, payload_length);
     enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
+
+    printf(
+        "Publishing:\"" PRInSTR "\" to Topic:" PRInSTR "\n",
+        AWS_BYTE_CURSOR_PRI(payload_cursor),
+        AWS_BYTE_CURSOR_PRI(topic_cursor));
 
     struct aws_mqtt5_packet_publish_view packet_publish_view = {
         .qos = qos,

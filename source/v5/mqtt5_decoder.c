@@ -354,6 +354,78 @@ done:
     return result;
 }
 
+/* decode function for all PUBLISH properties */
+static int s_read_publish_property(
+    struct aws_mqtt5_packet_publish_storage *storage,
+    struct aws_byte_cursor *packet_cursor) {
+    int result = AWS_OP_ERR;
+
+    uint8_t property_type = 0;
+    AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
+
+    switch (property_type) {
+        case AWS_MQTT5_PROPERTY_TYPE_PAYLOAD_FORMAT_INDICATOR:
+            AWS_MQTT5_DECODE_U8_OPTIONAL(packet_cursor, &storage->payload_format, &storage->payload_format_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_MESSAGE_EXPIRY_INTERVAL:
+            AWS_MQTT5_DECODE_U32_OPTIONAL(
+                packet_cursor,
+                &storage->message_expiry_interval_seconds,
+                &storage->message_expiry_interval_seconds_ptr,
+                done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_TOPIC_ALIAS:
+            AWS_MQTT5_DECODE_U16_OPTIONAL(packet_cursor, &storage->topic_alias, &storage->topic_alias_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_RESPONSE_TOPIC:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->response_topic, &storage->response_topic_ptr, done);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA:
+            /* STEVE TODO
+             * Unsure how to determine how to get corrrelation data. It states it's Binary Data
+             * but I can't tell whether the length is provided before the binary data or if this
+             * needs to be something that already exists somewhere locally to get the length from
+             * to check against.
+             */
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
+            if (aws_mqtt5_decode_user_property(packet_cursor, &storage->user_properties)) {
+                goto done;
+            }
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER:
+            uint32_t subscription_identifier = 0;
+            AWS_MQTT5_DECODE_VLI(packet_cursor, subscription_identifier, done);
+            aws_array_list_push_back(&storage->subscription_identifiers, &subscription_identifier);
+            break;
+
+        case AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE:
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->content_type, &storage->content_type_ptr, done);
+            break;
+
+        default:
+            goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    if (result != AWS_OP_SUCCESS) {
+        aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+    }
+
+    return result;
+}
+
 /* decodes a PUBLISH packet whose data must be in the scratch buffer */
 /* STEVE TODO Implement PUBLISH DECODE */
 static int s_aws_mqtt5_decoder_decode_publish(struct aws_mqtt5_decoder *decoder) {
@@ -389,6 +461,33 @@ static int s_aws_mqtt5_decoder_decode_publish(struct aws_mqtt5_decoder *decoder)
         goto done;
     }
 
+    /*
+     * Topic Name
+     * Packet Identifier (only present for > QoS 0)
+     * Properties
+     *  - Property Length
+     *  - Properties
+     * Payload
+     */
+    AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &storage.topic, done);
+
+    if (storage.qos > 0) {
+        AWS_MQTT5_DECODE_U16(&packet_cursor, &storage.packet_id, done);
+    }
+
+    uint32_t property_length = 0;
+    AWS_MQTT5_DECODE_VLI(&packet_cursor, &property_length, done);
+    if (property_length > (uint32_t)packet_cursor.len) {
+        goto done;
+    }
+
+    while (packet_cursor.len > 0) {
+        if (s_read_publish_property(&storage, &packet_cursor)) {
+            goto done;
+        }
+    }
+
+    /* DECODE PACKET */
 /*
 
     storage.session_present = (connect_flags & 0x01) != 0;
