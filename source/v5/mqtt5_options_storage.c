@@ -1835,7 +1835,7 @@ static void s_aws_mqtt5_operation_publish_set_packet_id(
 static aws_mqtt5_packet_id_t *s_aws_mqtt5_operation_publish_get_packet_id_address(
     const struct aws_mqtt5_operation *operation) {
     struct aws_mqtt5_operation_publish *publish_op = operation->impl;
-    return publish_op->options_storage.storage_view.packet_id;
+    return &publish_op->options_storage.storage_view.packet_id;
 }
 
 static struct aws_mqtt5_operation_vtable s_publish_operation_vtable = {

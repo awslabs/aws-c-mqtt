@@ -497,6 +497,8 @@ static int s_aws_mqtt5_decoder_decode_publish(struct aws_mqtt5_decoder *decoder)
 
     storage.payload = payload_cursor;
 
+    result = AWS_OP_SUCCESS;
+
 done:
 
     if (result == AWS_OP_SUCCESS) {
@@ -574,9 +576,14 @@ static int s_aws_mqtt5_decoder_decode_puback(struct aws_mqtt5_decoder *decoder) 
     AWS_MQTT5_DECODE_U16(&packet_cursor, &storage.packet_id, done);
 
     uint8_t reason_code;
+    if (remaining_length == 2) {
+        storage.reason_code = AWS_MQTT5_PARC_SUCCESS;
+        result = AWS_OP_SUCCESS;
+        goto done;
+    }
+
     AWS_MQTT5_DECODE_U8(&packet_cursor, &reason_code, done);
-    enum aws_mqtt5_puback_reason_code reason_code_enum = reason_code;
-    storage.reason_code = reason_code_enum;
+    storage.reason_code = reason_code;
 
     while (packet_cursor.len > 0) {
         if (s_read_puback_property(&storage, &packet_cursor)) {

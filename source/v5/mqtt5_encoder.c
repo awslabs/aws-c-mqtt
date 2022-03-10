@@ -826,7 +826,7 @@ static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, 
      */
 
     ADD_ENCODE_STEP_LENGTH_PREFIXED_CURSOR(encoder, publish_view->topic);
-    if (publish_view->packet_id != 0) {
+    if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
         ADD_ENCODE_STEP_U16(encoder, (uint16_t)publish_view->packet_id);
     }
     ADD_ENCODE_STEP_VLI(encoder, publish_property_length_u32);

@@ -1575,6 +1575,15 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             break;
         }
 
+        /* STEVE TODO Implement receive for publish and puback */
+        case AWS_MQTT5_PT_PUBLISH: {
+            printf("PUBLISH PACKET RECEIVED\n");
+        }
+
+        case AWS_MQTT5_PT_PUBACK: {
+            printf("PUBACK PACKET RECEIVED\n");
+        }
+
         default:
             break;
     }
@@ -1617,6 +1626,7 @@ static int s_aws_mqtt5_client_on_publish_payload_received(
     (void)decoder_callback_user_data;
 
     /* TODO: implement */
+    printf("s_aws_mqtt5_client_on_publish_payload_received not implemented yet\n");
 
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }

@@ -387,9 +387,9 @@ static void s_handle_publish(
     enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
 
     printf(
-        "Publishing:\"" PRInSTR "\" to Topic:" PRInSTR "\n",
-        AWS_BYTE_CURSOR_PRI(payload_cursor),
-        AWS_BYTE_CURSOR_PRI(topic_cursor));
+        "Publishing to Topic:" PRInSTR " Payload:" PRInSTR "\n",
+        AWS_BYTE_CURSOR_PRI(topic_cursor),
+        AWS_BYTE_CURSOR_PRI(payload_cursor));
 
     struct aws_mqtt5_packet_publish_view packet_publish_view = {
         .qos = qos,
