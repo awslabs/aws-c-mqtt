@@ -2032,6 +2032,51 @@ void aws_mqtt5_packet_puback_view_init_from_storage(
     puback_view->user_properties = puback_storage->user_properties.properties.data;
 }
 
+static void s_destroy_operation_puback(void *object) {
+    if (object == NULL) {
+        return;
+    }
+
+    struct aws_mqtt5_operation_puback *puback_op = object;
+
+    aws_mqtt5_packet_puback_storage_clean_up(&puback_op->options_storage);
+
+    aws_mem_release(puback_op->allocator, puback_op);
+}
+
+struct aws_mqtt5_operation_puback *aws_mqtt5_operation_puback_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_puback_view *puback_options) {
+    AWS_PRECONDITION(allocator != NULL);
+    AWS_PRECONDITION(puback_options != NULL);
+
+    struct aws_mqtt5_operation_puback *puback_op =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_puback));
+    if (puback_op == NULL) {
+        return NULL;
+    }
+
+    puback_op->allocator = allocator;
+    puback_op->base.vtable = &s_empty_operation_vtable;
+    puback_op->base.packet_type = AWS_MQTT5_PT_PUBACK;
+    aws_ref_count_init(&puback_op->base.ref_count, puback_op, s_destroy_operation_puback);
+    puback_op->base.impl = puback_op;
+
+    if (aws_mqtt5_packet_puback_storage_init(&puback_op->options_storage, allocator, puback_options)) {
+        goto error;
+    }
+
+    puback_op->base.packet_view = &puback_op->options_storage.storage_view;
+
+    return puback_op;
+
+error:
+
+    aws_mqtt5_operation_release(&puback_op->base);
+
+    return NULL;
+}
+
 /*********************************************************************************************************************
  * Unsubscribe
  ********************************************************************************************************************/

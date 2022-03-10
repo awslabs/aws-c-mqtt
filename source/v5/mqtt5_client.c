@@ -1577,11 +1577,11 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
 
         case AWS_MQTT5_PT_PUBLISH: {
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBLISH received", (void *)client);
-            if (((const struct aws_mqtt5_packet_publish_view *)packet_view)->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
-                uint16_t packet_id = ((const struct aws_mqtt5_packet_publish_view *)packet_view)->packet_id;
-                aws_mqtt5_client_operational_state_handle_ack(&client->operational_state, packet_id, packet_view);
+            const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
+            /* Send a puback if necessary */
+            if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
+                /* STEVE SEND PUBACK */
             }
-
             break;
         }
 

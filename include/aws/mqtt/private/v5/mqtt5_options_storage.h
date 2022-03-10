@@ -272,6 +272,12 @@ struct aws_mqtt5_operation_publish {
     struct aws_mqtt5_publish_completion_options completion_options;
 };
 
+struct aws_mqtt5_operation_puback {
+    struct aws_mqtt5_operation base;
+    struct aws_allocator *allocator;
+    struct aws_mqtt5_packet_puback_storage options_storage;
+};
+
 struct aws_mqtt5_packet_disconnect_storage {
     struct aws_mqtt5_packet_disconnect_view storage_view;
 
@@ -544,6 +550,10 @@ AWS_MQTT_API void aws_mqtt5_packet_publish_view_init_from_storage(
     const struct aws_mqtt5_packet_publish_storage *publish_storage);
 
 /* Puback */
+
+AWS_MQTT_API struct aws_mqtt5_operation_puback *aws_mqtt5_operation_puback_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_puback_view *puback_options);
 
 AWS_MQTT_API int aws_mqtt5_packet_puback_storage_init(
     struct aws_mqtt5_packet_puback_storage *puback_storage,
