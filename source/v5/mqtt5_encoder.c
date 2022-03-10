@@ -933,9 +933,7 @@ static int s_aws_mqtt5_encoder_begin_puback(struct aws_mqtt5_encoder *encoder, c
      * byte 2-x: Remaining Length as a Variable Byte Integer (1-4 bytes)
      */
 
-    ADD_ENCODE_STEP_U8(
-        encoder,
-        aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_PUBACK, 0);
+    ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_PUBACK, 0));
     ADD_ENCODE_STEP_VLI(encoder, total_remaining_length_u32);
 
     /*
@@ -946,11 +944,11 @@ static int s_aws_mqtt5_encoder_begin_puback(struct aws_mqtt5_encoder *encoder, c
      * Properties
      */
     ADD_ENCODE_STEP_U16(encoder, (uint16_t)puback_view->packet_id);
-    /* 
+    /*
      * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901124
      * If Reason Code is success and there are no properties, PUBACK ends with the packet id
      */
-    if(total_remaining_length == 2){
+    if (total_remaining_length == 2) {
         return AWS_OP_SUCCESS;
     }
 
@@ -959,16 +957,15 @@ static int s_aws_mqtt5_encoder_begin_puback(struct aws_mqtt5_encoder *encoder, c
     /*
      * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901126
      * If remaining length < 4 there is no property length
-    */
-    if(total_remaining_length < 4){
+     */
+    if (total_remaining_length < 4) {
         return AWS_OP_SUCCESS;
     }
 
     ADD_ENCODE_STEP_VLI(encoder, puback_property_length_u32);
     ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
-            encoder, AWS_MQTT5_PROPERTY_TYPE_REASON_STRING, puback_view->reason_string);
-    aws_mqtt5_add_user_property_encoding_steps(
-            encoder, disconnect_view->user_properties, disconnect_view->user_property_count);
+        encoder, AWS_MQTT5_PROPERTY_TYPE_REASON_STRING, puback_view->reason_string);
+    aws_mqtt5_add_user_property_encoding_steps(encoder, puback_view->user_properties, puback_view->user_property_count);
 
     return AWS_OP_SUCCESS;
 }
