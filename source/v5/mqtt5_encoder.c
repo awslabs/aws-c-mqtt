@@ -756,7 +756,7 @@ static int s_compute_publish_variable_length_fields(
     remaining_length += publish_property_section_length;
 
     /* Payload */
-    remaining_length += 2 + publish_view->payload.len;
+    remaining_length += publish_view->payload.len;
 
     *total_remaining_length = remaining_length;
 

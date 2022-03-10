@@ -1678,6 +1678,7 @@ void aws_mqtt5_packet_publish_view_init_from_storage(
     const struct aws_mqtt5_packet_publish_storage *publish_storage) {
 
     publish_view->payload = publish_storage->payload;
+    publish_view->packet_id = publish_storage->packet_id;
     publish_view->qos = publish_storage->qos;
     publish_view->retain = publish_storage->retain;
     publish_view->duplicate = publish_storage->duplicate;
@@ -1996,7 +1997,7 @@ void aws_mqtt5_packet_puback_view_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: puback %zu reason code: %s",
+        "id=%p: puback %d reason code: %s",
         (void *)puback_view,
         (int)reason_code,
         aws_mqtt5_puback_reason_code_to_c_string(reason_code));
