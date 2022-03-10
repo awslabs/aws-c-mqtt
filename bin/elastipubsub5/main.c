@@ -43,6 +43,7 @@ struct app_ctx {
     const char *cert;
     const char *key;
     int connect_timeout;
+    bool use_websockets;
 
     struct aws_tls_connection_options tls_connection_options;
 
@@ -61,6 +62,7 @@ static void s_usage(int exit_code) {
     fprintf(stderr, "      --connect-timeout INT: time in milliseconds to wait for a connection.\n");
     fprintf(stderr, "  -l, --log FILE: dumps logs to FILE instead of stderr.\n");
     fprintf(stderr, "  -v, --verbose: ERROR|INFO|DEBUG|TRACE: log level to configure. Default is none.\n");
+    fprintf(stderr, "  -w, --websockets: use mqtt-over-websockets rather than direct mqtt\n");
     fprintf(stderr, "  -h, --help\n");
     fprintf(stderr, "            Display this message and quit.\n");
     exit(exit_code);
@@ -73,6 +75,7 @@ static struct aws_cli_option s_long_options[] = {
     {"connect-timeout", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'f'},
     {"log", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'l'},
     {"verbose", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'v'},
+    {"websockets", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'w'},
     {"help", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'h'},
     /* Per getopt(3) the last element of the array has to be filled with all zeros */
     {NULL, AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 0},
@@ -83,7 +86,7 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
 
     while (true) {
         int option_index = 0;
-        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:h", s_long_options, &option_index);
+        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wh", s_long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -123,6 +126,9 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
                 break;
             case 'h':
                 s_usage(0);
+                break;
+            case 'w':
+                ctx->use_websockets = true;
                 break;
             case 0x02: {
                 struct aws_byte_cursor uri_cursor = aws_byte_cursor_from_c_str(aws_cli_positional_arg);
@@ -423,6 +429,17 @@ done:
     return done;
 }
 
+static void s_aws_mqtt5_transform_websocket_handshake_fn(
+    struct aws_http_message *request,
+    void *user_data,
+    aws_mqtt5_transform_websocket_handshake_complete_fn *complete_fn,
+    void *complete_ctx) {
+
+    (void)user_data;
+
+    (*complete_fn)(request, AWS_ERROR_SUCCESS, complete_ctx);
+}
+
 AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "HelloWorld");
 
 int main(int argc, char **argv) {
@@ -547,6 +564,12 @@ int main(int argc, char **argv) {
         .receive_maximum = &receive_maximum,
     };
 
+    aws_mqtt5_transform_websocket_handshake_fn *websocket_handshake_transform = NULL;
+    void *websocket_handshake_transform_user_data = NULL;
+    if (app_ctx.use_websockets) {
+        websocket_handshake_transform = &s_aws_mqtt5_transform_websocket_handshake_fn;
+    }
+
     struct aws_mqtt5_client_options client_options = {
         .host_name = app_ctx.uri.host_name,
         .port = app_ctx.port,
@@ -563,6 +586,8 @@ int main(int argc, char **argv) {
         .max_reconnect_delay_ms = 120000,
         .min_connected_time_to_reset_reconnect_delay_ms = 30000,
         .ping_timeout_ms = 10000,
+        .websocket_handshake_transform = websocket_handshake_transform,
+        .websocket_handshake_transform_user_data = websocket_handshake_transform_user_data,
     };
 
     struct aws_mqtt5_client *client = aws_mqtt5_client_new(allocator, &client_options);
