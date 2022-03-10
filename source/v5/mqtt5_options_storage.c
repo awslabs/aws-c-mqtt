@@ -1586,6 +1586,12 @@ void aws_mqtt5_packet_publish_view_log(
     }
 
     /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_packet_publish_view packet id set to %d",
+        (void *)publish_view,
+        (int)publish_view->packet_id);
 
     AWS_LOGF(
         level,
@@ -1890,6 +1896,139 @@ error:
     aws_mqtt5_operation_release(&publish_op->base);
 
     return NULL;
+}
+
+/*********************************************************************************************************************
+ * Puback
+ ********************************************************************************************************************/
+
+static size_t s_aws_mqtt5_packet_puback_compute_storage_size(const struct aws_mqtt5_packet_puback_view *puback_view) {
+    size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
+        puback_view->user_properties, puback_view->user_property_count);
+
+    if (puback_view->reason_string != NULL) {
+        storage_size += puback_view->reason_string->len;
+    }
+
+    return storage_size;
+}
+
+AWS_MQTT_API int aws_mqtt5_packet_puback_storage_init(
+    struct aws_mqtt5_packet_puback_storage *puback_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_puback_view *puback_view) {
+    AWS_ZERO_STRUCT(*puback_storage);
+    size_t storage_capacity = s_aws_mqtt5_packet_puback_compute_storage_size(puback_view);
+    if (aws_byte_buf_init(&puback_storage->storage, allocator, storage_capacity)) {
+        return AWS_OP_ERR;
+    }
+    /* STEVE NOTE aws_mqtt5_packet_puback_view_init_from_storage uses storage's packet_id. We should be setting it as
+     * well */
+    puback_storage->packet_id = puback_view->packet_id;
+    puback_storage->storage_view.packet_id = puback_view->packet_id;
+
+    puback_storage->reason_code = puback_view->reason_code;
+
+    if (puback_view->reason_string != NULL) {
+        puback_storage->reason_string = *puback_view->reason_string;
+        if (aws_byte_buf_append_and_update(&puback_storage->storage, &puback_storage->reason_string)) {
+            return AWS_OP_ERR;
+        }
+
+        puback_storage->reason_string_ptr = &puback_storage->reason_string;
+    }
+
+    if (aws_mqtt5_user_property_set_init_with_storage(
+            &puback_storage->user_properties,
+            allocator,
+            &puback_storage->storage,
+            puback_view->user_property_count,
+            puback_view->user_properties)) {
+        return AWS_OP_ERR;
+    }
+
+    aws_mqtt5_packet_puback_view_init_from_storage(&puback_storage->storage_view, puback_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_packet_puback_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_puback_storage *puback_storage,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*puback_storage);
+
+    if (aws_mqtt5_user_property_set_init(&puback_storage->user_properties, allocator)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_packet_puback_storage_clean_up(struct aws_mqtt5_packet_puback_storage *puback_storage) {
+
+    if (puback_storage == NULL) {
+        return;
+    }
+
+    aws_mqtt5_user_property_set_clean_up(&puback_storage->user_properties);
+
+    aws_byte_buf_clean_up(&puback_storage->storage);
+}
+
+void aws_mqtt5_packet_puback_view_log(
+    const struct aws_mqtt5_packet_puback_view *puback_view,
+    enum aws_log_level level) {
+    struct aws_logger *logger = aws_logger_get();
+    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+        return;
+    }
+
+    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "(%p) aws_mqtt5_packet_puback_view packet id set to %d",
+        (void *)puback_view,
+        (int)puback_view->packet_id);
+
+    enum aws_mqtt5_puback_reason_code reason_code = puback_view->reason_code;
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: puback %zu reason code: %s",
+        (void *)puback_view,
+        (int)reason_code,
+        aws_mqtt5_puback_reason_code_to_c_string(reason_code));
+
+    if (puback_view->reason_string != NULL) {
+        AWS_LOGF(
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_puback_view reason string set to \"" PRInSTR "\"",
+            (void *)puback_view,
+            AWS_BYTE_CURSOR_PRI(*puback_view->reason_string));
+    }
+
+    s_aws_mqtt5_user_property_set_log(
+        puback_view->user_properties,
+        puback_view->user_property_count,
+        (void *)puback_view,
+        level,
+        "aws_mqtt5_packet_puback_view");
+}
+
+void aws_mqtt5_packet_puback_view_init_from_storage(
+    struct aws_mqtt5_packet_puback_view *puback_view,
+    const struct aws_mqtt5_packet_puback_storage *puback_storage) {
+    puback_view->packet_id = puback_storage->packet_id;
+
+    puback_view->reason_code = puback_storage->reason_code;
+
+    puback_view->reason_string = puback_storage->reason_string_ptr;
+
+    puback_view->user_property_count = aws_mqtt5_user_property_set_size(&puback_storage->user_properties);
+    puback_view->user_properties = puback_storage->user_properties.properties.data;
 }
 
 /*********************************************************************************************************************

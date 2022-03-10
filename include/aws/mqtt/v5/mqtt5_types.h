@@ -395,6 +395,7 @@ struct aws_mqtt5_packet_publish_view {
 
     /* packet_id is only set for QoS 1 and QoS 2 */
     aws_mqtt5_packet_id_t packet_id;
+
     enum aws_mqtt5_qos qos;
     /*
      * Used to set the duplicate flag on QoS 1+ re-delivery attempts.
