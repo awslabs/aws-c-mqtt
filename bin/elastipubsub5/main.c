@@ -187,15 +187,8 @@ static void s_on_publish_complete_fn(
     (void)error_code;
     (void)complete_ctx;
 
-    printf("PUBACK received!\n");
-    /* STEVE TODO FIND OUT WHY THIS IS BROKEN*/
-    if (puback != NULL) {
-        printf("PUBACK IS RECEIVED\n");
-        // printf("PUBACK id:%d %s\n", puback->packet_id,
-        // aws_mqtt5_puback_reason_code_to_c_string(puback->reason_code));
-    } else {
-        printf("PUBACK IS NULL\n");
-    }
+    // printf("PUBACK received!\n");
+    // printf("PUBACK id:%d %s\n", puback->packet_id, aws_mqtt5_puback_reason_code_to_c_string(puback->reason_code));
 
     fflush(stdout);
 }

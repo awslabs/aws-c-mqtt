@@ -1575,13 +1575,21 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             break;
         }
 
-        /* STEVE TODO Implement receive for publish and puback */
         case AWS_MQTT5_PT_PUBLISH: {
-            printf("PUBLISH PACKET RECEIVED\n");
+            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBLISH received", (void *)client);
+            if (((const struct aws_mqtt5_packet_publish_view *)packet_view)->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
+                uint16_t packet_id = ((const struct aws_mqtt5_packet_publish_view *)packet_view)->packet_id;
+                aws_mqtt5_client_operational_state_handle_ack(&client->operational_state, packet_id, packet_view);
+            }
+
+            break;
         }
 
         case AWS_MQTT5_PT_PUBACK: {
-            printf("PUBACK PACKET RECEIVED\n");
+            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBACK received", (void *)client);
+            uint16_t packet_id = ((const struct aws_mqtt5_packet_puback_view *)packet_view)->packet_id;
+            aws_mqtt5_client_operational_state_handle_ack(&client->operational_state, packet_id, packet_view);
+            break;
         }
 
         default:
@@ -2454,9 +2462,16 @@ void aws_mqtt5_client_operational_state_handle_ack(
     if (elem == NULL || elem->value == NULL) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "id=%p: received an ACK for an unknown operation",
-            (void *)client_operational_state->client);
+            "id=%p: received an ACK for an unknown operation with id %d",
+            (void *)client_operational_state->client,
+            packet_id);
         return;
+    } else {
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: Processing ACK with id %d",
+            (void *)client_operational_state->client,
+            packet_id);
     }
 
     struct aws_mqtt5_operation *operation = elem->value;
