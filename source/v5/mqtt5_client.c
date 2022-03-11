@@ -67,6 +67,8 @@ static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
     uint64_t now);
 
+int aws_mqtt5_client_puback(struct aws_mqtt5_client *client, const struct aws_mqtt5_packet_puback_view *puback_options);
+
 static void s_complete_operation_list(struct aws_linked_list *operation_list, int error_code) {
 
     struct aws_linked_list_node *node = aws_linked_list_begin(operation_list);
@@ -1580,6 +1582,12 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
             /* Send a puback if necessary */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
+                const struct aws_mqtt5_packet_puback_view puback_view = {
+                    .packet_id = publish_view->packet_id,
+                    .reason_code = AWS_MQTT5_PARC_SUCCESS,
+                };
+
+                aws_mqtt5_client_puback(client, &puback_view);
                 /* STEVE SEND PUBACK */
             }
             break;
@@ -1994,6 +2002,30 @@ int aws_mqtt5_client_publish(
 error:
 
     aws_mqtt5_operation_release(&publish_op->base);
+
+    return AWS_OP_ERR;
+}
+
+int aws_mqtt5_client_puback(
+    struct aws_mqtt5_client *client,
+    const struct aws_mqtt5_packet_puback_view *puback_options) {
+
+    AWS_PRECONDITION(client != NULL);
+    AWS_PRECONDITION(puback_options != NULL);
+
+    struct aws_mqtt5_operation_puback *puback_op = aws_mqtt5_operation_puback_new(client->allocator, puback_options);
+
+    if (puback_op == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    if (s_submit_operation(client, &puback_op->base)) {
+        goto error;
+    }
+
+    return AWS_OP_SUCCESS;
+
+error:
 
     return AWS_OP_ERR;
 }
