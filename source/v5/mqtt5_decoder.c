@@ -386,12 +386,8 @@ static int s_read_publish_property(
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA:
-            /* STEVE TODO
-             * Unsure how to determine how to get corrrelation data. It states it's Binary Data
-             * but I can't tell whether the length is provided before the binary data or if this
-             * needs to be something that already exists somewhere locally to get the length from
-             * to check against.
-             */
+            AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
+                packet_cursor, &storage->correlation_data, &storage->correlation_data_ptr, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:

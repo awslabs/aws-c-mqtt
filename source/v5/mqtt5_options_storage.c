@@ -1923,8 +1923,6 @@ AWS_MQTT_API int aws_mqtt5_packet_puback_storage_init(
     if (aws_byte_buf_init(&puback_storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
     }
-    /* STEVE NOTE aws_mqtt5_packet_puback_view_init_from_storage uses storage's packet_id. We should be setting it as
-     * well */
     puback_storage->packet_id = puback_view->packet_id;
     puback_storage->storage_view.packet_id = puback_view->packet_id;
 
