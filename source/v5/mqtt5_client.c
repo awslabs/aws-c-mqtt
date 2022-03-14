@@ -1580,7 +1580,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         case AWS_MQTT5_PT_PUBLISH: {
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBLISH received", (void *)client);
             const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
-            /* Send a puback if necessary */
+            /* Send a puback if QoS 1+ */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
                 const struct aws_mqtt5_packet_puback_view puback_view = {
                     .packet_id = publish_view->packet_id,
@@ -1588,7 +1588,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
                 };
 
                 aws_mqtt5_client_puback(client, &puback_view);
-                /* STEVE SEND PUBACK */
             }
             break;
         }
