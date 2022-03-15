@@ -67,7 +67,7 @@ static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
     uint64_t now);
 
-int aws_mqtt5_client_puback(struct aws_mqtt5_client *client, const struct aws_mqtt5_packet_puback_view *puback_options);
+static int s_submit_operation(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation);
 
 static void s_complete_operation_list(struct aws_linked_list *operation_list, int error_code) {
 
@@ -363,16 +363,28 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
     client->next_service_task_run_time = next_service_time;
 }
 
-static void s_enqueue_operation(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+static void s_enqueue_operation_back(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
     /* TODO: when statistics are added, we'll need to update them here */
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "id=%p: enqueuing %s operation",
+        "id=%p: enqueuing %s operation to back",
         (void *)client,
         aws_mqtt5_packet_type_to_c_string(operation->packet_type));
 
     aws_linked_list_push_back(&client->operational_state.queued_operations, &operation->node);
+
+    s_reevaluate_service_task(client);
+}
+
+static void s_enqueue_operation_front(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: enqueuing %s operation to front",
+        (void *)client,
+        aws_mqtt5_packet_type_to_c_string(operation->packet_type));
+
+    aws_linked_list_push_front(&client->operational_state.queued_operations, &operation->node);
 
     s_reevaluate_service_task(client);
 }
@@ -957,7 +969,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         return;
     }
 
-    s_enqueue_operation(client, &connect_op->base);
+    s_enqueue_operation_back(client, &connect_op->base);
 
     uint32_t timeout_ms = client->config->connack_timeout_ms;
     if (timeout_ms == 0) {
@@ -1226,7 +1238,7 @@ static int s_aws_mqtt5_client_queue_ping(struct aws_mqtt5_client *client) {
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: queuing PINGREQ", (void *)client);
 
     struct aws_mqtt5_operation_pingreq *pingreq_op = aws_mqtt5_operation_pingreq_new(client->allocator);
-    s_enqueue_operation(client, &pingreq_op->base);
+    s_enqueue_operation_back(client, &pingreq_op->base);
 
     return AWS_OP_SUCCESS;
 }
@@ -1542,6 +1554,24 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
     }
 }
 
+static int s_aws_mqtt5_client_puback(
+    struct aws_mqtt5_client *client,
+    const struct aws_mqtt5_packet_puback_view *puback_options) {
+
+    AWS_PRECONDITION(client != NULL);
+    AWS_PRECONDITION(puback_options != NULL);
+
+    struct aws_mqtt5_operation_puback *puback_op = aws_mqtt5_operation_puback_new(client->allocator, puback_options);
+
+    if (puback_op == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    s_enqueue_operation_front(client, &puback_op->base);
+
+    return AWS_OP_SUCCESS;
+}
+
 static void s_aws_mqtt5_client_connected_on_packet_received(
     struct aws_mqtt5_client *client,
     enum aws_mqtt5_packet_type type,
@@ -1580,6 +1610,12 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         case AWS_MQTT5_PT_PUBLISH: {
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBLISH received", (void *)client);
             const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: PUBLISH Topic:" PRInSTR " Payload:" PRInSTR,
+                (void *)client,
+                AWS_BYTE_CURSOR_PRI(publish_view->topic),
+                AWS_BYTE_CURSOR_PRI(publish_view->payload));
             /* Send a puback if QoS 1+ */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
                 const struct aws_mqtt5_packet_puback_view puback_view = {
@@ -1587,7 +1623,18 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
                     .reason_code = AWS_MQTT5_PARC_SUCCESS,
                 };
 
-                aws_mqtt5_client_puback(client, &puback_view);
+                int result = s_aws_mqtt5_client_puback(client, &puback_view);
+                if (result != AWS_OP_SUCCESS) {
+                    int error_code = aws_last_error();
+                    AWS_LOGF_ERROR(
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: decode failure with error %d(%s)",
+                        (void *)client,
+                        error_code,
+                        aws_error_debug_str(error_code));
+
+                    s_aws_mqtt5_client_shutdown_channel(client, error_code);
+                }
             }
             break;
         }
@@ -1641,7 +1688,6 @@ static int s_aws_mqtt5_client_on_publish_payload_received(
     (void)decoder_callback_user_data;
 
     /* TODO: STEVE implement */
-    printf("s_aws_mqtt5_client_on_publish_payload_received not implemented yet\n");
 
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }
@@ -1944,7 +1990,7 @@ static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, e
     /* newly-submitted operations must have a 0 packet id */
     aws_mqtt5_operation_set_packet_id(submit_operation_task->operation, 0);
 
-    s_enqueue_operation(submit_operation_task->client, submit_operation_task->operation);
+    s_enqueue_operation_back(submit_operation_task->client, submit_operation_task->operation);
 
     goto done;
 
@@ -2001,30 +2047,6 @@ int aws_mqtt5_client_publish(
 error:
 
     aws_mqtt5_operation_release(&publish_op->base);
-
-    return AWS_OP_ERR;
-}
-
-int aws_mqtt5_client_puback(
-    struct aws_mqtt5_client *client,
-    const struct aws_mqtt5_packet_puback_view *puback_options) {
-
-    AWS_PRECONDITION(client != NULL);
-    AWS_PRECONDITION(puback_options != NULL);
-
-    struct aws_mqtt5_operation_puback *puback_op = aws_mqtt5_operation_puback_new(client->allocator, puback_options);
-
-    if (puback_op == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    if (s_submit_operation(client, &puback_op->base)) {
-        goto error;
-    }
-
-    return AWS_OP_SUCCESS;
-
-error:
 
     return AWS_OP_ERR;
 }
@@ -2495,14 +2517,14 @@ void aws_mqtt5_client_operational_state_handle_ack(
             AWS_LS_MQTT5_CLIENT,
             "id=%p: received an ACK for an unknown operation with id %d",
             (void *)client_operational_state->client,
-            packet_id);
+            (int)packet_id);
         return;
     } else {
         AWS_LOGF_TRACE(
             AWS_LS_MQTT5_CLIENT,
             "id=%p: Processing ACK with id %d",
             (void *)client_operational_state->client,
-            packet_id);
+            (int)packet_id);
     }
 
     struct aws_mqtt5_operation *operation = elem->value;

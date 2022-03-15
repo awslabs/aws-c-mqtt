@@ -193,8 +193,12 @@ static void s_on_publish_complete_fn(
     (void)error_code;
     (void)complete_ctx;
 
-    // printf("PUBACK received!\n");
-    // printf("PUBACK id:%d %s\n", puback->packet_id, aws_mqtt5_puback_reason_code_to_c_string(puback->reason_code));
+    if (puback) {
+        printf("PUBACK received!\n");
+        printf("PUBACK id:%d %s\n", puback->packet_id, aws_mqtt5_puback_reason_code_to_c_string(puback->reason_code));
+    } else {
+        printf("PUBLISH Complete with no PUBACK\n");
+    }
 
     fflush(stdout);
 }
@@ -369,21 +373,17 @@ static void s_handle_publish(
     AWS_ZERO_STRUCT(topic_cursor);
     aws_array_list_get_at(arguments, &topic_cursor, 2);
 
+    printf("Publishing to Topic:" PRInSTR, AWS_BYTE_CURSOR_PRI(topic_cursor));
+
     /* PAYLOAD */
     struct aws_byte_cursor payload_cursor;
     AWS_ZERO_STRUCT(payload_cursor);
     /* account for empty payload */
+
     if (argument_count > 2) {
         aws_array_list_get_at(arguments, &payload_cursor, 3);
-        uint8_t *payload_ptr = payload_cursor.ptr;
-        payload_cursor.ptr = full_argument->ptr;
-        payload_cursor.len = full_argument->len;
-        while (payload_cursor.len > 0 && payload_cursor.ptr != payload_ptr) {
-            aws_byte_cursor_advance(&payload_cursor, 1);
-        }
+        payload_cursor.len = (size_t)(full_argument->ptr + full_argument->len - payload_cursor.ptr);
     }
-
-    enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
 
     printf(
         "Publishing to Topic:" PRInSTR " Payload:" PRInSTR "\n",
@@ -395,7 +395,6 @@ static void s_handle_publish(
         .topic = topic_cursor,
         .retain = false,
         .duplicate = false,
-        .payload_format = &payload_format,
         .payload = payload_cursor,
     };
 

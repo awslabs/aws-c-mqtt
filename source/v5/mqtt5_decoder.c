@@ -8,6 +8,9 @@
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 
 #define AWS_MQTT5_DECODER_BUFFER_START_SIZE 2048
+#define PUBLISH_PACKET_FIXED_HEADER_DUPLICATE_FLAG 8
+#define PUBLISH_PACKET_FIXED_HEADER_RETAIN_FLAG 1
+#define PUBLISH_PACKET_FIXED_HEADER_QOS_FLAG 3
 
 static void s_reset_decoder_for_new_packet(struct aws_mqtt5_decoder *decoder) {
     aws_byte_buf_reset(&decoder->scratch_space, false);
@@ -442,13 +445,13 @@ static int s_aws_mqtt5_decoder_decode_publish(struct aws_mqtt5_decoder *decoder)
      */
 
     uint8_t first_byte = decoder->packet_first_byte;
-    if ((first_byte & 0x08) != 0) {
+    if ((first_byte & PUBLISH_PACKET_FIXED_HEADER_DUPLICATE_FLAG) != 0) {
         storage.dup = true;
     }
-    if ((first_byte & 0x01) != 0) {
+    if ((first_byte & PUBLISH_PACKET_FIXED_HEADER_RETAIN_FLAG) != 0) {
         storage.retain = true;
     }
-    storage.qos = (enum aws_mqtt5_qos)((first_byte >> 1) & 0x03);
+    storage.qos = (enum aws_mqtt5_qos)((first_byte >> 1) & PUBLISH_PACKET_FIXED_HEADER_QOS_FLAG);
 
     struct aws_byte_cursor packet_cursor = decoder->packet_cursor;
     uint32_t remaining_length = decoder->remaining_length;
@@ -483,15 +486,7 @@ static int s_aws_mqtt5_decoder_decode_publish(struct aws_mqtt5_decoder *decoder)
         }
     }
 
-    struct aws_byte_cursor payload_cursor;
-    AWS_ZERO_STRUCT(payload_cursor);
-
-    if (packet_cursor.len > 0) {
-        payload_cursor.ptr = packet_cursor.ptr;
-        payload_cursor.len = packet_cursor.len;
-    }
-
-    storage.payload = payload_cursor;
+    storage.payload = packet_cursor;
 
     result = AWS_OP_SUCCESS;
 
@@ -571,21 +566,27 @@ static int s_aws_mqtt5_decoder_decode_puback(struct aws_mqtt5_decoder *decoder) 
 
     AWS_MQTT5_DECODE_U16(&packet_cursor, &storage.packet_id, done);
 
-    uint8_t reason_code;
-    if (remaining_length == 2) {
-        storage.reason_code = AWS_MQTT5_PARC_SUCCESS;
-        result = AWS_OP_SUCCESS;
-        goto done;
-    }
+    /* Packet can end immediately following packet id with default success reason code */
+    uint8_t reason_code = 0;
+    if (packet_cursor.len > 0) {
+        AWS_MQTT5_DECODE_U8(&packet_cursor, &reason_code, done);
 
-    AWS_MQTT5_DECODE_U8(&packet_cursor, &reason_code, done);
-    storage.reason_code = reason_code;
-
-    while (packet_cursor.len > 0) {
-        if (s_read_puback_property(&storage, &packet_cursor)) {
-            goto done;
+        /* Packet can end immediately following reason code */
+        if (packet_cursor.len > 0) {
+            uint32_t property_length = 0;
+            AWS_MQTT5_DECODE_VLI(&packet_cursor, &property_length, done);
+            if (property_length != (uint32_t)packet_cursor.len) {
+                goto done;
+            }
+            while (packet_cursor.len > 0) {
+                if (s_read_puback_property(&storage, &packet_cursor)) {
+                    goto done;
+                }
+            }
         }
     }
+
+    storage.reason_code = reason_code;
 
     result = AWS_OP_SUCCESS;
 
