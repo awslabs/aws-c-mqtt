@@ -393,8 +393,15 @@ struct aws_mqtt5_packet_publish_view {
     /* This field is always empty on received messages */
     struct aws_byte_cursor payload;
 
+    /* packet_id is only set for QoS 1 and QoS 2 */
     aws_mqtt5_packet_id_t packet_id;
+
     enum aws_mqtt5_qos qos;
+    /*
+     * Used to set the duplicate flag on QoS 1+ re-delivery attempts.
+     * Set to false on all first attempts or QoS 0. Set to true on any re-delivery.
+     */
+    bool duplicate;
     bool retain;
     struct aws_byte_cursor topic;
     enum aws_mqtt5_payload_format_indicator *payload_format;

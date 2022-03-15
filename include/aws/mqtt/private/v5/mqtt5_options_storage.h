@@ -215,9 +215,13 @@ struct aws_mqtt5_packet_publish_storage {
     /* This field is always empty on received messages */
     struct aws_byte_cursor payload;
 
+    /* packet_id is only set for QoS 1 and QoS 2 */
+    aws_mqtt5_packet_id_t packet_id;
+
     bool dup;
     enum aws_mqtt5_qos qos;
     bool retain;
+    bool duplicate;
     struct aws_byte_cursor topic;
 
     enum aws_mqtt5_payload_format_indicator payload_format;
@@ -239,6 +243,22 @@ struct aws_mqtt5_packet_publish_storage {
     struct aws_byte_cursor *content_type_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
+    struct aws_array_list subscription_identifiers;
+
+    struct aws_byte_buf storage;
+};
+
+struct aws_mqtt5_packet_puback_storage {
+    struct aws_mqtt5_packet_puback_view storage_view;
+
+    aws_mqtt5_packet_id_t packet_id;
+
+    enum aws_mqtt5_puback_reason_code reason_code;
+
+    struct aws_byte_cursor reason_string;
+    struct aws_byte_cursor *reason_string_ptr;
+
+    struct aws_mqtt5_user_property_set user_properties;
 
     struct aws_byte_buf storage;
 };
@@ -250,6 +270,12 @@ struct aws_mqtt5_operation_publish {
     struct aws_mqtt5_packet_publish_storage options_storage;
 
     struct aws_mqtt5_publish_completion_options completion_options;
+};
+
+struct aws_mqtt5_operation_puback {
+    struct aws_mqtt5_operation base;
+    struct aws_allocator *allocator;
+    struct aws_mqtt5_packet_puback_storage options_storage;
 };
 
 struct aws_mqtt5_packet_disconnect_storage {
@@ -522,6 +548,31 @@ AWS_MQTT_API void aws_mqtt5_packet_publish_view_log(
 AWS_MQTT_API void aws_mqtt5_packet_publish_view_init_from_storage(
     struct aws_mqtt5_packet_publish_view *publish_view,
     const struct aws_mqtt5_packet_publish_storage *publish_storage);
+
+/* Puback */
+
+AWS_MQTT_API struct aws_mqtt5_operation_puback *aws_mqtt5_operation_puback_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_puback_view *puback_options);
+
+AWS_MQTT_API int aws_mqtt5_packet_puback_storage_init(
+    struct aws_mqtt5_packet_puback_storage *puback_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_packet_puback_view *puback_view);
+
+AWS_MQTT_API int aws_mqtt5_packet_puback_storage_init_from_external_storage(
+    struct aws_mqtt5_packet_puback_storage *puback_storage,
+    struct aws_allocator *allocator);
+
+AWS_MQTT_API void aws_mqtt5_packet_puback_storage_clean_up(struct aws_mqtt5_packet_puback_storage *puback_storage);
+
+AWS_MQTT_API void aws_mqtt5_packet_puback_view_log(
+    const struct aws_mqtt5_packet_puback_view *puback_view,
+    enum aws_log_level level);
+
+AWS_MQTT_API void aws_mqtt5_packet_puback_view_init_from_storage(
+    struct aws_mqtt5_packet_puback_view *puback_view,
+    const struct aws_mqtt5_packet_puback_storage *puback_storage);
 
 /* Subscribe */
 
