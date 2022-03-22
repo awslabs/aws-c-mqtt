@@ -73,10 +73,10 @@ static void s_complete_operation_list(struct aws_linked_list *operation_list, in
     while (node != aws_linked_list_end(operation_list)) {
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
 
+        node = aws_linked_list_next(node);
+
         aws_mqtt5_operation_complete(operation, error_code, NULL);
         aws_mqtt5_operation_release(operation);
-
-        node = aws_linked_list_next(node);
     }
 
     /* we've released everything, so reset the list to empty */
