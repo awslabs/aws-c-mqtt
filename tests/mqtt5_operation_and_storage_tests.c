@@ -1169,7 +1169,7 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
@@ -1196,7 +1196,6 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, connect_view.keep_alive_interval_seconds);
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connect_view.session_expiry_interval_seconds);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, *connect_view.maximum_packet_size_bytes);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, *connect_view.topic_alias_maximum);
 
@@ -1233,7 +1232,7 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
@@ -1276,7 +1275,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
@@ -1306,7 +1305,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
     ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos);
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connack_view.session_expiry_interval);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, *connack_view.receive_maximum);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, *connack_view.maximum_packet_size);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, *connack_view.maximum_packet_size);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, *connack_view.server_keep_alive);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, *connack_view.topic_alias_maximum);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);

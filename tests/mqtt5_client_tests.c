@@ -1055,7 +1055,11 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     s_wait_for_connected_lifecycle_event(&test_context);
     s_wait_for_n_pingreqs(&ping_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+    struct aws_mqtt5_packet_disconnect_view disconnect_view = {
+        .reason_code = AWS_MQTT5_DRC_NORMAL_DISCONNECTION,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, &disconnect_view, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 

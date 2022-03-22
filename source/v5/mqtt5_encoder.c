@@ -174,8 +174,8 @@ static int s_aws_mqtt5_encoder_begin_pingreq(struct aws_mqtt5_encoder *encoder, 
 
 static int s_compute_disconnect_variable_length_fields(
     const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
-    uint32_t *total_remaining_length,
-    uint32_t *property_length) {
+    size_t *total_remaining_length,
+    size_t *property_length) {
     size_t local_property_length = aws_mqtt5_compute_user_property_encode_length(
         disconnect_view->user_properties, disconnect_view->user_property_count);
 
@@ -183,7 +183,7 @@ static int s_compute_disconnect_variable_length_fields(
     ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(disconnect_view->server_reference, local_property_length);
     ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(disconnect_view->reason_string, local_property_length);
 
-    *property_length = (uint32_t)local_property_length;
+    *property_length = local_property_length;
 
     size_t property_length_encoding_length = 0;
     if (aws_mqtt5_get_variable_length_encode_size(local_property_length, &property_length_encoding_length)) {
@@ -191,7 +191,7 @@ static int s_compute_disconnect_variable_length_fields(
     }
 
     /* reason code is the only other thing to worry about */
-    *total_remaining_length = 1 + *property_length + (uint32_t)property_length_encoding_length;
+    *total_remaining_length = 1 + *property_length + property_length_encoding_length;
 
     return AWS_OP_SUCCESS;
 }
@@ -200,8 +200,8 @@ static int s_aws_mqtt5_encoder_begin_disconnect(struct aws_mqtt5_encoder *encode
 
     const struct aws_mqtt5_packet_disconnect_view *disconnect_view = view;
 
-    uint32_t total_remaining_length = 0;
-    uint32_t property_length = 0;
+    size_t total_remaining_length = 0;
+    size_t property_length = 0;
     if (s_compute_disconnect_variable_length_fields(disconnect_view, &total_remaining_length, &property_length)) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -214,16 +214,19 @@ static int s_aws_mqtt5_encoder_begin_disconnect(struct aws_mqtt5_encoder *encode
         return AWS_OP_ERR;
     }
 
+    uint32_t total_remaining_length_u32 = (uint32_t)total_remaining_length;
+    uint32_t property_length_u32 = (uint32_t)property_length;
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
         "id=%p: setting up encode for a DISCONNECT packet with remaining length %" PRIu32,
         (void *)encoder->config.client,
-        total_remaining_length);
+        total_remaining_length_u32);
 
     ADD_ENCODE_STEP_U8(encoder, aws_mqtt5_compute_fixed_header_byte1(AWS_MQTT5_PT_DISCONNECT, 0));
-    ADD_ENCODE_STEP_VLI(encoder, total_remaining_length);
+    ADD_ENCODE_STEP_VLI(encoder, total_remaining_length_u32);
     ADD_ENCODE_STEP_U8(encoder, (uint8_t)disconnect_view->reason_code);
-    ADD_ENCODE_STEP_VLI(encoder, property_length);
+    ADD_ENCODE_STEP_VLI(encoder, property_length_u32);
 
     if (property_length > 0) {
         ADD_ENCODE_STEP_OPTIONAL_U32_PROPERTY(
@@ -1156,4 +1159,72 @@ int aws_mqtt5_encoder_append_packet_encoding(
     }
 
     return (*encoding_fn)(encoder, packet_view);
+}
+
+static int s_compute_packet_size(uint32_t total_remaining_length, size_t *packet_size) {
+    /* 1 (packet type + flags) + vli_length(total_remaining_length) + total_remaining_length */
+    size_t encode_size = 0;
+    if (aws_mqtt5_get_variable_length_encode_size(total_remaining_length, &encode_size)) {
+        return AWS_OP_ERR;
+    }
+
+    size_t prefix = 1 + (uint32_t)encode_size;
+
+    if (aws_add_size_checked(prefix, total_remaining_length, packet_size)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_packet_publish_get_packet_size(
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    size_t *packet_size) {
+    size_t total_remaining_length = 0;
+    size_t properties_length = 0;
+
+    if (s_compute_publish_variable_length_fields(publish_view, &total_remaining_length, &properties_length)) {
+        return AWS_OP_ERR;
+    }
+
+    return s_compute_packet_size(total_remaining_length, packet_size);
+}
+
+int aws_mqtt5_packet_subscribe_get_packet_size(
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    size_t *packet_size) {
+    size_t total_remaining_length = 0;
+    size_t properties_length = 0;
+
+    if (s_compute_subscribe_variable_length_fields(subscribe_view, &total_remaining_length, &properties_length)) {
+        return AWS_OP_ERR;
+    }
+
+    return s_compute_packet_size(total_remaining_length, packet_size);
+}
+
+int aws_mqtt5_packet_unsubscribe_get_packet_size(
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
+    size_t *packet_size) {
+    size_t total_remaining_length = 0;
+    size_t properties_length = 0;
+
+    if (s_compute_unsubscribe_variable_length_fields(unsubscribe_view, &total_remaining_length, &properties_length)) {
+        return AWS_OP_ERR;
+    }
+
+    return s_compute_packet_size(total_remaining_length, packet_size);
+}
+
+int aws_mqtt5_packet_disconnect_get_packet_size(
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
+    size_t *packet_size) {
+    size_t total_remaining_length = 0;
+    size_t properties_length = 0;
+
+    if (s_compute_disconnect_variable_length_fields(disconnect_view, &total_remaining_length, &properties_length)) {
+        return AWS_OP_ERR;
+    }
+
+    return s_compute_packet_size(total_remaining_length, packet_size);
 }

@@ -612,7 +612,7 @@ struct aws_mqtt5_negotiated_settings {
 
     uint32_t session_expiry_interval;
     uint16_t receive_maximum_from_server;
-    uint32_t maximum_packet_size;
+    uint32_t maximum_packet_size_to_server;
     uint16_t topic_alias_maximum_to_server;
     uint16_t topic_alias_maximum_to_client;
     uint16_t server_keep_alive;

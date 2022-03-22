@@ -1249,8 +1249,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
         s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, NULL, NULL);
 
         AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: channel shutdown due to user Stop request", (void *)client);
-        s_aws_mqtt5_client_shutdown_channel_clean(
-            client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, AWS_MQTT5_DRC_NORMAL_DISCONNECTION);
+        s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP);
         return;
     }
 
@@ -2205,7 +2204,8 @@ void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5
 
         bool is_qos1_publish = false;
         if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
-            struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
+            struct aws_mqtt5_packet_publish_view *publish_view =
+                (struct aws_mqtt5_packet_publish_view *)operation->packet_view;
             is_qos1_publish = publish_view->qos >= AWS_MQTT5_QOS_AT_LEAST_ONCE;
             publish_view->duplicate = true;
         }

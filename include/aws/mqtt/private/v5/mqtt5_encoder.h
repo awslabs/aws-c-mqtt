@@ -207,6 +207,22 @@ AWS_EXTERN_C_END
 
 AWS_EXTERN_C_BEGIN
 
+AWS_MQTT_API int aws_mqtt5_packet_publish_get_packet_size(
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    size_t *packet_size);
+
+AWS_MQTT_API int aws_mqtt5_packet_subscribe_get_packet_size(
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
+    size_t *packet_size);
+
+AWS_MQTT_API int aws_mqtt5_packet_unsubscribe_get_packet_size(
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
+    size_t *packet_size);
+
+AWS_MQTT_API int aws_mqtt5_packet_disconnect_get_packet_size(
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
+    size_t *packet_size);
+
 /**
  * Encodes a variable length integer to a buffer.  Assumes the buffer has been checked for sufficient room (this
  * is not a streaming/resumable operation)
