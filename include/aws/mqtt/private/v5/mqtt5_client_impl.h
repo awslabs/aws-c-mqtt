@@ -459,7 +459,7 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_handle_ack(
     aws_mqtt5_packet_id_t packet_id,
     const void *packet_view);
 
-AWS_MQTT_API bool aws_mqtt5_client_are_negotiated_settings_valid(struct aws_mqtt5_client *client);
+AWS_MQTT_API bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client);
 
 AWS_EXTERN_C_END
 

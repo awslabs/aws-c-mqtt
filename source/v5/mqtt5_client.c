@@ -846,7 +846,6 @@ static int s_aws_mqtt5_client_set_current_operation(
             error_code,
             aws_error_debug_str(error_code));
 
-        s_aws_mqtt5_client_shutdown_channel(client, error_code);
         return AWS_OP_ERR;
     }
 
@@ -859,7 +858,6 @@ static int s_aws_mqtt5_client_set_current_operation(
             error_code,
             aws_error_debug_str(error_code));
 
-        s_aws_mqtt5_client_shutdown_channel(client, error_code);
         return AWS_OP_ERR;
     }
 
@@ -2389,7 +2387,7 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
         return AWS_OP_ERR;
     }
 
-    int process_result = AWS_OP_SUCCESS;
+    int operational_error_code = AWS_ERROR_SUCCESS;
 
     do {
         /* if no current operation, pull one in and setup encode */
@@ -2406,19 +2404,25 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                 struct aws_mqtt5_operation *operation =
                     AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
 
-                if (aws_mqtt5_operation_validate_vs_settings(operation, client)) {
-                    int validation_error_code = aws_last_error();
-                    aws_mqtt5_operation_complete(operation, validation_error_code, NULL);
-                    aws_mqtt5_operation_release(operation);
-                    continue;
+                if (!aws_mqtt5_operation_validate_vs_connection_settings(operation, client)) {
+                    next_operation = operation;
+                    break;
                 }
 
-                next_operation = operation;
-                break;
+                enum aws_mqtt5_packet_type packet_type = operation->packet_type;
+                int validation_error_code = aws_last_error();
+                aws_mqtt5_operation_complete(operation, validation_error_code, NULL);
+                aws_mqtt5_operation_release(operation);
+
+                /* A DISCONNECT packet failing dynamic validation should shut down the whole channel */
+                if (packet_type == AWS_MQTT5_PT_DISCONNECT) {
+                    operational_error_code = AWS_ERROR_MQTT5_OPERATION_PROCESSING_FAILURE;
+                    break;
+                }
             }
 
             if (next_operation != NULL && s_aws_mqtt5_client_set_current_operation(client, next_operation)) {
-                process_result = AWS_OP_ERR;
+                operational_error_code = AWS_ERROR_MQTT5_OPERATION_PROCESSING_FAILURE;
                 break;
             }
         }
@@ -2432,7 +2436,7 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
         enum aws_mqtt5_encoding_result encoding_result =
             aws_mqtt5_encoder_encode_to_buffer(&client->encoder, &io_message->message_data);
         if (encoding_result == AWS_MQTT5_ER_ERROR) {
-            process_result = AWS_OP_ERR;
+            operational_error_code = AWS_ERROR_MQTT5_ENCODE_FAILURE;
             break;
         }
 
@@ -2452,7 +2456,7 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                         aws_mqtt5_operation_get_packet_id_address(current_operation),
                         current_operation,
                         NULL)) {
-                    process_result = AWS_OP_ERR;
+                    operational_error_code = aws_last_error();
                     break;
                 }
 
@@ -2490,9 +2494,9 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
         should_service = s_aws_mqtt5_client_should_service_operational_state(client_operational_state, now);
     } while (should_service);
 
-    if (process_result != AWS_OP_SUCCESS) {
+    if (operational_error_code != AWS_ERROR_SUCCESS) {
         aws_mem_release(io_message->allocator, io_message);
-        return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_FAILURE);
+        return aws_raise_error(operational_error_code);
     }
 
     /* It's possible for there to be no data if we serviced operations that failed validation */
@@ -2549,6 +2553,6 @@ void aws_mqtt5_client_operational_state_handle_ack(
     aws_mqtt5_operation_release(operation);
 }
 
-bool aws_mqtt5_client_are_negotiated_settings_valid(struct aws_mqtt5_client *client) {
+bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client) {
     return client->current_state == AWS_MCS_CONNECTED || client->current_state == AWS_MCS_CLEAN_DISCONNECT;
 }

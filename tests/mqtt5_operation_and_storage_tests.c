@@ -1756,6 +1756,8 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
 
     /* this keeps the operation processing logic from crashing when dereferencing client->slot->channel */
     test_context->dummy_client.slot = &test_context->dummy_slot;
+
+    /* this keeps operation processing tests from failing operations due to a 0 maximum packet size */
     test_context->dummy_client.negotiated_settings.maximum_packet_size_to_server = AWS_MQTT5_MAXIMUM_PACKET_SIZE;
 
     aws_array_list_init_dynamic(&test_context->output_io_messages, allocator, 0, sizeof(struct aws_io_message *));

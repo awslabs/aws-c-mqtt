@@ -1183,6 +1183,11 @@ int aws_mqtt5_packet_view_get_encoded_size(
     size_t total_remaining_length = 0;
     size_t properties_length = 0;
 
+    if (packet_type == AWS_MQTT5_PT_PINGREQ) {
+        *packet_size = AWS_MQTT5_PINGREQ_ENCODED_SIZE;
+        return AWS_OP_SUCCESS;
+    }
+
     switch (packet_type) {
         case AWS_MQTT5_PT_PUBLISH:
             if (s_compute_publish_variable_length_fields(packet_view, &total_remaining_length, &properties_length)) {
