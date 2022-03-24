@@ -244,19 +244,29 @@ aws_mqtt5_packet_id_t *aws_mqtt5_operation_get_packet_id_address(const struct aw
     return NULL;
 }
 
+int aws_mqtt5_operation_validate_vs_settings(
+    const struct aws_mqtt5_operation *operation,
+    struct aws_mqtt5_client *client) {
+    AWS_FATAL_ASSERT(operation->vtable != NULL);
+    if (operation->vtable->aws_mqtt5_operation_validate_vs_settings_fn != NULL) {
+        return (*operation->vtable->aws_mqtt5_operation_validate_vs_settings_fn)(operation->packet_view, client);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static struct aws_mqtt5_operation_vtable s_empty_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = NULL,
     .aws_mqtt5_operation_set_packet_id_fn = NULL,
     .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
+    .aws_mqtt5_operation_validate_vs_settings_fn = NULL,
 };
 
 /*********************************************************************************************************************
  * Connect
  ********************************************************************************************************************/
 
-int aws_mqtt5_packet_connect_view_validate(
-    const struct aws_mqtt5_packet_connect_view *connect_options,
-    struct aws_mqtt5_client *client) {
+int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect_view *connect_options) {
     if (connect_options == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "Null CONNECT options");
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
@@ -311,7 +321,7 @@ int aws_mqtt5_packet_connect_view_validate(
 
     if (connect_options->will != NULL) {
         const struct aws_mqtt5_packet_publish_view *will_options = connect_options->will;
-        if (aws_mqtt5_packet_publish_view_validate(will_options, client)) {
+        if (aws_mqtt5_packet_publish_view_validate(will_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_connect_view - CONNECT packet Will message failed validation",
@@ -364,6 +374,17 @@ int aws_mqtt5_packet_connect_view_validate(
             (void *)connect_options);
         return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
     }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_packet_connect_view_validate_vs_settings(
+    const void *packet_view,
+    struct aws_mqtt5_client *client) {
+    (void)packet_view;
+    (void)client;
+
+    /* TODO: packet size vs. MQTT limit? */
 
     return AWS_OP_SUCCESS;
 }
@@ -720,13 +741,20 @@ static void s_destroy_operation_connect(void *object) {
     aws_mem_release(connect_op->allocator, connect_op);
 }
 
+static struct aws_mqtt5_operation_vtable s_connect_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = NULL,
+    .aws_mqtt5_operation_set_packet_id_fn = NULL,
+    .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
+    .aws_mqtt5_operation_validate_vs_settings_fn = s_aws_mqtt5_packet_connect_view_validate_vs_settings,
+};
+
 struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_connect_view *connect_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(connect_options != NULL);
 
-    if (aws_mqtt5_packet_connect_view_validate(connect_options, NULL)) {
+    if (aws_mqtt5_packet_connect_view_validate(connect_options)) {
         return NULL;
     }
 
@@ -737,7 +765,7 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     }
 
     connect_op->allocator = allocator;
-    connect_op->base.vtable = &s_empty_operation_vtable;
+    connect_op->base.vtable = &s_connect_operation_vtable;
     connect_op->base.packet_type = AWS_MQTT5_PT_CONNECT;
     aws_ref_count_init(&connect_op->base.ref_count, connect_op, s_destroy_operation_connect);
     connect_op->base.impl = connect_op;
@@ -1161,10 +1189,7 @@ void aws_mqtt5_packet_connack_view_init_from_storage(
  * Disconnect
  ********************************************************************************************************************/
 
-int aws_mqtt5_packet_disconnect_view_validate(
-    const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
-    struct aws_mqtt5_client *client) {
-    (void)client;
+int aws_mqtt5_packet_disconnect_view_validate(const struct aws_mqtt5_packet_disconnect_view *disconnect_view) {
 
     if (disconnect_view == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "null DISCONNECT packet options");
@@ -1180,26 +1205,6 @@ int aws_mqtt5_packet_disconnect_view_validate(
             (void *)disconnect_view,
             (int)disconnect_view->reason_code);
         return aws_raise_error(AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION);
-    }
-
-    if (disconnect_view->session_expiry_interval_seconds != NULL) {
-        if (client != NULL) {
-            /*
-             * By spec (https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901211), you
-             * cannot set a non-zero value here if you sent a 0-value or no value in the CONNECT (presumably allows
-             * the server to skip tracking session state, and we can't undo that now)
-             */
-            const uint32_t *session_expiry_ptr = client->config->connect.storage_view.session_expiry_interval_seconds;
-            if (session_expiry_ptr == NULL || *session_expiry_ptr == 0) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_disconnect_view - cannot specify a positive session expiry after "
-                    "committing "
-                    "to 0-valued session expiry in CONNECT",
-                    (void *)disconnect_view);
-                return aws_raise_error(AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION);
-            }
-        }
     }
 
     if (disconnect_view->reason_string != NULL) {
@@ -1229,37 +1234,59 @@ int aws_mqtt5_packet_disconnect_view_validate(
         return AWS_OP_ERR;
     }
 
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_packet_disconnect_view_validate_vs_settings(
+    const void *packet_view,
+    struct aws_mqtt5_client *client) {
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_view = packet_view;
+
+    AWS_FATAL_ASSERT(client->loop == NULL || aws_event_loop_thread_is_callers_thread(client->loop));
+
+    if (disconnect_view->session_expiry_interval_seconds != NULL) {
+        /*
+         * By spec (https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901211), you
+         * cannot set a non-zero value here if you sent a 0-value or no value in the CONNECT (presumably allows
+         * the server to skip tracking session state, and we can't undo that now)
+         */
+        const uint32_t *session_expiry_ptr = client->config->connect.storage_view.session_expiry_interval_seconds;
+        if (session_expiry_ptr == NULL || *session_expiry_ptr == 0) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_disconnect_view - cannot specify a positive session expiry after "
+                "committing "
+                "to 0-valued session expiry in CONNECT",
+                (void *)disconnect_view);
+            return aws_raise_error(AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION);
+        }
+    }
+
     /* If we have valid negotiated settings, check against them as well */
-    if (client != NULL) {
-        if (client->loop != NULL) {
-            AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
+    if (aws_mqtt5_client_are_negotiated_settings_valid(client)) {
+        struct aws_mqtt5_negotiated_settings *settings = &client->negotiated_settings;
+
+        size_t packet_size_in_bytes = 0;
+        if (aws_mqtt5_packet_view_get_encoded_size(AWS_MQTT5_PT_DISCONNECT, disconnect_view, &packet_size_in_bytes)) {
+            int error_code = aws_last_error();
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_disconnect_view - error %d(%s) computing packet size",
+                (void *)disconnect_view,
+                error_code,
+                aws_error_debug_str(error_code));
+            return aws_raise_error(AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION);
         }
 
-        if (client->current_state == AWS_MCS_CONNECTED || client->current_state == AWS_MCS_CLEAN_DISCONNECT) {
-            struct aws_mqtt5_negotiated_settings *settings = &client->negotiated_settings;
-
-            size_t packet_size_in_bytes = 0;
-            if (aws_mqtt5_packet_disconnect_get_packet_size(disconnect_view, &packet_size_in_bytes)) {
-                int error_code = aws_last_error();
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_disconnect_view - error %d(%s) computing packet size",
-                    (void *)disconnect_view,
-                    error_code,
-                    aws_error_debug_str(error_code));
-                return aws_raise_error(AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION);
-            }
-
-            if (packet_size_in_bytes > settings->maximum_packet_size_to_server) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_disconnect_view - encoded packet size (%zu) exceeds server's maximum "
-                    "packet size (%" PRIu32 ")",
-                    (void *)disconnect_view,
-                    packet_size_in_bytes,
-                    settings->maximum_packet_size_to_server);
-                return aws_raise_error(AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION);
-            }
+        if (packet_size_in_bytes > settings->maximum_packet_size_to_server) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_disconnect_view - encoded packet size (%zu) exceeds server's maximum "
+                "packet size (%" PRIu32 ")",
+                (void *)disconnect_view,
+                packet_size_in_bytes,
+                settings->maximum_packet_size_to_server);
+            return aws_raise_error(AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION);
         }
     }
 
@@ -1454,6 +1481,7 @@ static struct aws_mqtt5_operation_vtable s_disconnect_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_disconnect_operation_completion,
     .aws_mqtt5_operation_set_packet_id_fn = NULL,
     .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
+    .aws_mqtt5_operation_validate_vs_settings_fn = s_aws_mqtt5_packet_disconnect_view_validate_vs_settings,
 };
 
 struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
@@ -1463,7 +1491,7 @@ struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     const struct aws_mqtt5_disconnect_completion_options *internal_completion_options) {
     AWS_PRECONDITION(allocator != NULL);
 
-    if (aws_mqtt5_packet_disconnect_view_validate(disconnect_options, NULL)) {
+    if (aws_mqtt5_packet_disconnect_view_validate(disconnect_options)) {
         return NULL;
     }
 
@@ -1505,9 +1533,7 @@ error:
  * Publish
  ********************************************************************************************************************/
 
-int aws_mqtt5_packet_publish_view_validate(
-    const struct aws_mqtt5_packet_publish_view *publish_view,
-    struct aws_mqtt5_client *client) {
+int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish_view *publish_view) {
 
     if (publish_view == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "null PUBLISH packet options");
@@ -1609,12 +1635,18 @@ int aws_mqtt5_packet_publish_view_validate(
         return AWS_OP_ERR;
     }
 
-    /* If we have valid negotiated settings, check against them as well */
-    if (client != NULL) {
-        if (client->loop != NULL) {
-            AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
-        }
+    return AWS_OP_SUCCESS;
+}
 
+static int s_aws_mqtt5_packet_publish_view_validate_vs_settings(
+    const void *packet_view,
+    struct aws_mqtt5_client *client) {
+    const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
+
+    AWS_FATAL_ASSERT(client->loop == NULL || aws_event_loop_thread_is_callers_thread(client->loop));
+
+    /* If we have valid negotiated settings, check against them as well */
+    if (aws_mqtt5_client_are_negotiated_settings_valid(client)) {
         if (client->current_state == AWS_MCS_CONNECTED || client->current_state == AWS_MCS_CLEAN_DISCONNECT) {
             struct aws_mqtt5_negotiated_settings *settings = &client->negotiated_settings;
 
@@ -1642,7 +1674,7 @@ int aws_mqtt5_packet_publish_view_validate(
             }
 
             size_t packet_size_in_bytes = 0;
-            if (aws_mqtt5_packet_publish_get_packet_size(publish_view, &packet_size_in_bytes)) {
+            if (aws_mqtt5_packet_view_get_encoded_size(AWS_MQTT5_PT_PUBLISH, publish_view, &packet_size_in_bytes)) {
                 int error_code = aws_last_error();
                 AWS_LOGF_ERROR(
                     AWS_LS_MQTT5_GENERAL,
@@ -1935,6 +1967,7 @@ static struct aws_mqtt5_operation_vtable s_publish_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_publish_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_publish_set_packet_id,
     .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_publish_get_packet_id_address,
+    .aws_mqtt5_operation_validate_vs_settings_fn = s_aws_mqtt5_packet_publish_view_validate_vs_settings,
 };
 
 static void s_destroy_operation_publish(void *object) {
@@ -1955,6 +1988,10 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     const struct aws_mqtt5_publish_completion_options *completion_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(publish_options != NULL);
+
+    if (aws_mqtt5_packet_publish_view_validate(publish_options)) {
+        return NULL;
+    }
 
     struct aws_mqtt5_operation_publish *publish_op =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_publish));
@@ -2167,9 +2204,7 @@ error:
  * Unsubscribe
  ********************************************************************************************************************/
 
-int aws_mqtt5_packet_unsubscribe_view_validate(
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
-    struct aws_mqtt5_client *client) {
+int aws_mqtt5_packet_unsubscribe_view_validate(const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view) {
 
     if (unsubscribe_view == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "null UNSUBSCRIBE packet options");
@@ -2212,37 +2247,41 @@ int aws_mqtt5_packet_unsubscribe_view_validate(
         return AWS_OP_ERR;
     }
 
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_packet_unsubscribe_view_validate_vs_settings(
+    const void *packet_view,
+    struct aws_mqtt5_client *client) {
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view = packet_view;
+
+    AWS_FATAL_ASSERT(client->loop == NULL || aws_event_loop_thread_is_callers_thread(client->loop));
+
     /* If we have valid negotiated settings, check against them as well */
-    if (client != NULL) {
-        if (client->loop != NULL) {
-            AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
+    if (aws_mqtt5_client_are_negotiated_settings_valid(client)) {
+        struct aws_mqtt5_negotiated_settings *settings = &client->negotiated_settings;
+
+        size_t packet_size_in_bytes = 0;
+        if (aws_mqtt5_packet_view_get_encoded_size(AWS_MQTT5_PT_UNSUBSCRIBE, unsubscribe_view, &packet_size_in_bytes)) {
+            int error_code = aws_last_error();
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_unsubscribe_view - error %d(%s) computing packet size",
+                (void *)unsubscribe_view,
+                error_code,
+                aws_error_debug_str(error_code));
+            return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
         }
 
-        if (client->current_state == AWS_MCS_CONNECTED || client->current_state == AWS_MCS_CLEAN_DISCONNECT) {
-            struct aws_mqtt5_negotiated_settings *settings = &client->negotiated_settings;
-
-            size_t packet_size_in_bytes = 0;
-            if (aws_mqtt5_packet_unsubscribe_get_packet_size(unsubscribe_view, &packet_size_in_bytes)) {
-                int error_code = aws_last_error();
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_unsubscribe_view - error %d(%s) computing packet size",
-                    (void *)unsubscribe_view,
-                    error_code,
-                    aws_error_debug_str(error_code));
-                return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
-            }
-
-            if (packet_size_in_bytes > settings->maximum_packet_size_to_server) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_unsubscribe_view - encoded packet size (%zu) exceeds server's maximum "
-                    "packet size (%" PRIu32 ")",
-                    (void *)unsubscribe_view,
-                    packet_size_in_bytes,
-                    settings->maximum_packet_size_to_server);
-                return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
-            }
+        if (packet_size_in_bytes > settings->maximum_packet_size_to_server) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_unsubscribe_view - encoded packet size (%zu) exceeds server's maximum "
+                "packet size (%" PRIu32 ")",
+                (void *)unsubscribe_view,
+                packet_size_in_bytes,
+                settings->maximum_packet_size_to_server);
+            return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
         }
     }
 
@@ -2414,6 +2453,7 @@ static struct aws_mqtt5_operation_vtable s_unsubscribe_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_unsubscribe_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_set_packet_id,
     .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_unsubscribe_get_packet_id_address,
+    .aws_mqtt5_operation_validate_vs_settings_fn = s_aws_mqtt5_packet_unsubscribe_view_validate_vs_settings,
 };
 
 static void s_destroy_operation_unsubscribe(void *object) {
@@ -2434,6 +2474,10 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     const struct aws_mqtt5_unsubscribe_completion_options *completion_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(unsubscribe_options != NULL);
+
+    if (aws_mqtt5_packet_unsubscribe_view_validate(unsubscribe_options)) {
+        return NULL;
+    }
 
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_unsubscribe));
@@ -2472,9 +2516,7 @@ error:
 
 static int s_aws_mqtt5_validate_subscription(
     const struct aws_mqtt5_subscription_view *subscription,
-    struct aws_mqtt5_client *client,
     void *log_context) {
-    (void)client;
 
     if (!aws_mqtt_is_valid_topic_filter(&subscription->topic_filter)) {
         AWS_LOGF_ERROR(
@@ -2515,9 +2557,7 @@ static int s_aws_mqtt5_validate_subscription(
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_packet_subscribe_view_validate(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    struct aws_mqtt5_client *client) {
+int aws_mqtt5_packet_subscribe_view_validate(const struct aws_mqtt5_packet_subscribe_view *subscribe_view) {
 
     if (subscribe_view == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "null SUBSCRIBE packet options");
@@ -2542,7 +2582,7 @@ int aws_mqtt5_packet_subscribe_view_validate(
 
     for (size_t i = 0; i < subscribe_view->subscription_count; ++i) {
         const struct aws_mqtt5_subscription_view *subscription = &subscribe_view->subscriptions[i];
-        if (s_aws_mqtt5_validate_subscription(subscription, client, (void *)subscribe_view)) {
+        if (s_aws_mqtt5_validate_subscription(subscription, (void *)subscribe_view)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_subscribe_view - invalid subscription",
@@ -2570,37 +2610,41 @@ int aws_mqtt5_packet_subscribe_view_validate(
         return AWS_OP_ERR;
     }
 
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_packet_subscribe_view_validate_vs_settings(
+    const void *packet_view,
+    struct aws_mqtt5_client *client) {
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet_view;
+
+    AWS_FATAL_ASSERT(client->loop == NULL || aws_event_loop_thread_is_callers_thread(client->loop));
+
     /* If we have valid negotiated settings, check against them as well */
-    if (client != NULL) {
-        if (client->loop != NULL) {
-            AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
+    if (aws_mqtt5_client_are_negotiated_settings_valid(client)) {
+        struct aws_mqtt5_negotiated_settings *settings = &client->negotiated_settings;
+
+        size_t packet_size_in_bytes = 0;
+        if (aws_mqtt5_packet_view_get_encoded_size(AWS_MQTT5_PT_SUBSCRIBE, subscribe_view, &packet_size_in_bytes)) {
+            int error_code = aws_last_error();
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_subscribe_view - error %d(%s) computing packet size",
+                (void *)subscribe_view,
+                error_code,
+                aws_error_debug_str(error_code));
+            return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
         }
 
-        if (client->current_state == AWS_MCS_CONNECTED || client->current_state == AWS_MCS_CLEAN_DISCONNECT) {
-            struct aws_mqtt5_negotiated_settings *settings = &client->negotiated_settings;
-
-            size_t packet_size_in_bytes = 0;
-            if (aws_mqtt5_packet_subscribe_get_packet_size(subscribe_view, &packet_size_in_bytes)) {
-                int error_code = aws_last_error();
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_subscribe_view - error %d(%s) computing packet size",
-                    (void *)subscribe_view,
-                    error_code,
-                    aws_error_debug_str(error_code));
-                return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-            }
-
-            if (packet_size_in_bytes > settings->maximum_packet_size_to_server) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_subscribe_view - encoded packet size (%zu) exceeds server's maximum "
-                    "packet size (%" PRIu32 ")",
-                    (void *)subscribe_view,
-                    packet_size_in_bytes,
-                    settings->maximum_packet_size_to_server);
-                return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
-            }
+        if (packet_size_in_bytes > settings->maximum_packet_size_to_server) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_subscribe_view - encoded packet size (%zu) exceeds server's maximum "
+                "packet size (%" PRIu32 ")",
+                (void *)subscribe_view,
+                packet_size_in_bytes,
+                settings->maximum_packet_size_to_server);
+            return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
         }
     }
 
@@ -2801,6 +2845,7 @@ static struct aws_mqtt5_operation_vtable s_subscribe_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_subscribe_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_subscribe_set_packet_id,
     .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_subscribe_get_packet_id_address,
+    .aws_mqtt5_operation_validate_vs_settings_fn = s_aws_mqtt5_packet_subscribe_view_validate_vs_settings,
 };
 
 static void s_destroy_operation_subscribe(void *object) {
@@ -2821,6 +2866,10 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     const struct aws_mqtt5_subscribe_completion_options *completion_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(subscribe_options != NULL);
+
+    if (aws_mqtt5_packet_subscribe_view_validate(subscribe_options)) {
+        return NULL;
+    }
 
     struct aws_mqtt5_operation_subscribe *subscribe_op =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_operation_subscribe));
@@ -3235,7 +3284,7 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
         return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
     }
 
-    if (aws_mqtt5_packet_connect_view_validate(options->connect_options, NULL)) {
+    if (aws_mqtt5_packet_connect_view_validate(options->connect_options)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid CONNECT options in mqtt5 client configuration");
         return AWS_OP_ERR;
     }

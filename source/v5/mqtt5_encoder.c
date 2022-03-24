@@ -1154,8 +1154,7 @@ int aws_mqtt5_encoder_append_packet_encoding(
     const void *packet_view) {
     aws_mqtt5_encode_begin_packet_type_fn *encoding_fn = encoder->config.encoders->encoders_by_packet_type[packet_type];
     if (encoding_fn == NULL) {
-        /* TODO: I think the right error for this is in another branch atm, fix after merging */
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_FAILURE);
     }
 
     return (*encoding_fn)(encoder, packet_view);
@@ -1177,53 +1176,41 @@ static int s_compute_packet_size(uint32_t total_remaining_length, size_t *packet
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_packet_publish_get_packet_size(
-    const struct aws_mqtt5_packet_publish_view *publish_view,
+int aws_mqtt5_packet_view_get_encoded_size(
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet_view,
     size_t *packet_size) {
     size_t total_remaining_length = 0;
     size_t properties_length = 0;
 
-    if (s_compute_publish_variable_length_fields(publish_view, &total_remaining_length, &properties_length)) {
-        return AWS_OP_ERR;
-    }
+    switch (packet_type) {
+        case AWS_MQTT5_PT_PUBLISH:
+            if (s_compute_publish_variable_length_fields(packet_view, &total_remaining_length, &properties_length)) {
+                return AWS_OP_ERR;
+            }
+            break;
 
-    return s_compute_packet_size(total_remaining_length, packet_size);
-}
+        case AWS_MQTT5_PT_SUBSCRIBE:
+            if (s_compute_subscribe_variable_length_fields(packet_view, &total_remaining_length, &properties_length)) {
+                return AWS_OP_ERR;
+            }
+            break;
 
-int aws_mqtt5_packet_subscribe_get_packet_size(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    size_t *packet_size) {
-    size_t total_remaining_length = 0;
-    size_t properties_length = 0;
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            if (s_compute_unsubscribe_variable_length_fields(
+                    packet_view, &total_remaining_length, &properties_length)) {
+                return AWS_OP_ERR;
+            }
+            break;
 
-    if (s_compute_subscribe_variable_length_fields(subscribe_view, &total_remaining_length, &properties_length)) {
-        return AWS_OP_ERR;
-    }
+        case AWS_MQTT5_PT_DISCONNECT:
+            if (s_compute_disconnect_variable_length_fields(packet_view, &total_remaining_length, &properties_length)) {
+                return AWS_OP_ERR;
+            }
+            break;
 
-    return s_compute_packet_size(total_remaining_length, packet_size);
-}
-
-int aws_mqtt5_packet_unsubscribe_get_packet_size(
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
-    size_t *packet_size) {
-    size_t total_remaining_length = 0;
-    size_t properties_length = 0;
-
-    if (s_compute_unsubscribe_variable_length_fields(unsubscribe_view, &total_remaining_length, &properties_length)) {
-        return AWS_OP_ERR;
-    }
-
-    return s_compute_packet_size(total_remaining_length, packet_size);
-}
-
-int aws_mqtt5_packet_disconnect_get_packet_size(
-    const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
-    size_t *packet_size) {
-    size_t total_remaining_length = 0;
-    size_t properties_length = 0;
-
-    if (s_compute_disconnect_variable_length_fields(disconnect_view, &total_remaining_length, &properties_length)) {
-        return AWS_OP_ERR;
+        default:
+            return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_SIZE_UNSUPPORTED_PACKET_TYPE);
     }
 
     return s_compute_packet_size(total_remaining_length, packet_size);

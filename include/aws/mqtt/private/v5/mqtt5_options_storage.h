@@ -38,6 +38,10 @@ struct aws_mqtt5_operation_vtable {
         *aws_mqtt5_operation_set_packet_id_fn)(struct aws_mqtt5_operation *operation, aws_mqtt5_packet_id_t packet_id);
 
     aws_mqtt5_packet_id_t *(*aws_mqtt5_operation_get_packet_id_address_fn)(const struct aws_mqtt5_operation *operation);
+
+    int (*aws_mqtt5_operation_validate_vs_settings_fn)(
+        const void *operation_packet_view,
+        struct aws_mqtt5_client *client);
 };
 
 /**
@@ -431,6 +435,10 @@ AWS_MQTT_API aws_mqtt5_packet_id_t aws_mqtt5_operation_get_packet_id(const struc
 AWS_MQTT_API aws_mqtt5_packet_id_t *aws_mqtt5_operation_get_packet_id_address(
     const struct aws_mqtt5_operation *operation);
 
+AWS_MQTT_API int aws_mqtt5_operation_validate_vs_settings(
+    const struct aws_mqtt5_operation *operation,
+    struct aws_mqtt5_client *client);
+
 /* Connect */
 
 AWS_MQTT_API struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
@@ -448,9 +456,7 @@ AWS_MQTT_API int aws_mqtt5_packet_connect_storage_init_from_external_storage(
 
 AWS_MQTT_API void aws_mqtt5_packet_connect_storage_clean_up(struct aws_mqtt5_packet_connect_storage *connect_storage);
 
-AWS_MQTT_API int aws_mqtt5_packet_connect_view_validate(
-    const struct aws_mqtt5_packet_connect_view *connect_view,
-    struct aws_mqtt5_client *client);
+AWS_MQTT_API int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect_view *connect_view);
 
 AWS_MQTT_API void aws_mqtt5_packet_connect_view_log(
     const struct aws_mqtt5_packet_connect_view *connect_view,
@@ -508,8 +514,7 @@ AWS_MQTT_API void aws_mqtt5_packet_disconnect_storage_clean_up(
     struct aws_mqtt5_packet_disconnect_storage *disconnect_storage);
 
 AWS_MQTT_API int aws_mqtt5_packet_disconnect_view_validate(
-    const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
-    struct aws_mqtt5_client *client);
+    const struct aws_mqtt5_packet_disconnect_view *disconnect_view);
 
 AWS_MQTT_API void aws_mqtt5_packet_disconnect_view_log(
     const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
@@ -537,9 +542,7 @@ AWS_MQTT_API int aws_mqtt5_packet_publish_storage_init_from_external_storage(
 
 AWS_MQTT_API void aws_mqtt5_packet_publish_storage_clean_up(struct aws_mqtt5_packet_publish_storage *publish_storage);
 
-AWS_MQTT_API int aws_mqtt5_packet_publish_view_validate(
-    const struct aws_mqtt5_packet_publish_view *publish_view,
-    struct aws_mqtt5_client *client);
+AWS_MQTT_API int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish_view *publish_view);
 
 AWS_MQTT_API void aws_mqtt5_packet_publish_view_log(
     const struct aws_mqtt5_packet_publish_view *publish_view,
@@ -593,9 +596,7 @@ AWS_MQTT_API int aws_mqtt5_packet_subscribe_storage_init_from_external_storage(
 AWS_MQTT_API void aws_mqtt5_packet_subscribe_storage_clean_up(
     struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
 
-AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    struct aws_mqtt5_client *client);
+AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate(const struct aws_mqtt5_packet_subscribe_view *subscribe_view);
 
 AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_log(
     const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
@@ -646,8 +647,7 @@ AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_storage_clean_up(
     struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
 
 AWS_MQTT_API int aws_mqtt5_packet_unsubscribe_view_validate(
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
-    struct aws_mqtt5_client *client);
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view);
 
 AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_log(
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,

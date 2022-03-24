@@ -204,6 +204,10 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION,
                 "Mqtt5 operation failed due to inability to rejoin previous session"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_ENCODE_SIZE_UNSUPPORTED_PACKET_TYPE,
+                "Unsupported packet type for encode size calculation"),
+
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

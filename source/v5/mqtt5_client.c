@@ -2394,25 +2394,39 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
     do {
         /* if no current operation, pull one in and setup encode */
         if (client_operational_state->current_operation == NULL) {
-            struct aws_linked_list_node *next_operation_node =
-                aws_linked_list_pop_front(&client_operational_state->queued_operations);
-            struct aws_mqtt5_operation *next_operation =
-                AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
 
             /*
-             * TODO: final validation of next_operation against current settings/constraints
-             *
-             * If validation fails, fail the operation, but continue client service
+             * Loop through queued operations, discarding ones that fail validation, until we run out or find
+             * a good one.  Failing validation against negotiated settings is expected to be a rare event.
              */
+            struct aws_mqtt5_operation *next_operation = NULL;
+            while (!aws_linked_list_empty(&client_operational_state->queued_operations)) {
+                struct aws_linked_list_node *next_operation_node =
+                    aws_linked_list_pop_front(&client_operational_state->queued_operations);
+                struct aws_mqtt5_operation *operation =
+                    AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
 
-            if (s_aws_mqtt5_client_set_current_operation(client, next_operation)) {
+                if (aws_mqtt5_operation_validate_vs_settings(operation, client)) {
+                    int validation_error_code = aws_last_error();
+                    aws_mqtt5_operation_complete(operation, validation_error_code, NULL);
+                    aws_mqtt5_operation_release(operation);
+                    continue;
+                }
+
+                next_operation = operation;
+                break;
+            }
+
+            if (next_operation != NULL && s_aws_mqtt5_client_set_current_operation(client, next_operation)) {
                 process_result = AWS_OP_ERR;
                 break;
             }
         }
 
         struct aws_mqtt5_operation *current_operation = client_operational_state->current_operation;
-        AWS_FATAL_ASSERT(current_operation != NULL);
+        if (current_operation == NULL) {
+            break;
+        }
 
         /* write current operation to message, handle errors */
         enum aws_mqtt5_encoding_result encoding_result =
@@ -2476,11 +2490,15 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
         should_service = s_aws_mqtt5_client_should_service_operational_state(client_operational_state, now);
     } while (should_service);
 
-    AWS_FATAL_ASSERT(io_message != NULL);
-
     if (process_result != AWS_OP_SUCCESS) {
         aws_mem_release(io_message->allocator, io_message);
         return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_FAILURE);
+    }
+
+    /* It's possible for there to be no data if we serviced operations that failed validation */
+    if (io_message->message_data.len == 0) {
+        aws_mem_release(io_message->allocator, io_message);
+        return AWS_OP_SUCCESS;
     }
 
     /* send io_message down channel in write direction, handle errors */
@@ -2529,4 +2547,8 @@ void aws_mqtt5_client_operational_state_handle_ack(
     aws_mqtt5_operation_complete(operation, AWS_ERROR_SUCCESS, packet_view);
 
     aws_mqtt5_operation_release(operation);
+}
+
+bool aws_mqtt5_client_are_negotiated_settings_valid(struct aws_mqtt5_client *client) {
+    return client->current_state == AWS_MCS_CONNECTED || client->current_state == AWS_MCS_CLEAN_DISCONNECT;
 }
