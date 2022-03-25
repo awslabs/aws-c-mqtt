@@ -336,8 +336,8 @@ static void s_handle_unsubscribe(struct aws_mqtt5_client *client, struct aws_arr
     }
 
     struct aws_mqtt5_packet_unsubscribe_view packet_unsubscribe_view = {
-        .topic_count = topic_count,
-        .topics = ((struct aws_byte_cursor *)arguments->data) + 1,
+        .topic_filter_count = topic_count,
+        .topic_filters = ((struct aws_byte_cursor *)arguments->data) + 1,
     };
 
     aws_mqtt5_client_unsubscribe(client, &packet_unsubscribe_view, &unsubscribe_completion_options);

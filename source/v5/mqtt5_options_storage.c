@@ -1547,11 +1547,7 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
         }
     } else if (!aws_mqtt_is_valid_topic(&publish_view->topic)) {
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - invalid topic", (void *)publish_view);
-        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
-    } else if (publish_view->topic.len > UINT16_MAX) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - topic too long", (void *)publish_view);
+            AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - invalid topic: \"" PRInSTR "\"", (void *)publish_view, AWS_BYTE_CURSOR_PRI(publish_view->topic));
         return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
     }
 
@@ -2174,7 +2170,7 @@ int aws_mqtt5_packet_unsubscribe_view_validate(const struct aws_mqtt5_packet_uns
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
-    if (unsubscribe_view->topic_count == 0) {
+    if (unsubscribe_view->topic_filter_count == 0) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_unsubscribe_view - must contain at least one topic",
@@ -2182,22 +2178,23 @@ int aws_mqtt5_packet_unsubscribe_view_validate(const struct aws_mqtt5_packet_uns
         return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
     }
 
-    if (unsubscribe_view->topic_count > AWS_MQTT5_CLIENT_MAXIMUM_TOPICS_PER_UNSUBSCRIBE) {
+    if (unsubscribe_view->topic_filter_count > AWS_MQTT5_CLIENT_MAXIMUM_TOPIC_FILTERS_PER_UNSUBSCRIBE) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_unsubscribe_view - contains too many topics (%zu)",
             (void *)unsubscribe_view,
-            unsubscribe_view->topic_count);
+            unsubscribe_view->topic_filter_count);
         return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
     }
 
-    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
-        const struct aws_byte_cursor *topic = &unsubscribe_view->topics[i];
-        if (topic->len > UINT16_MAX) {
+    for (size_t i = 0; i < unsubscribe_view->topic_filter_count; ++i) {
+        const struct aws_byte_cursor *topic_filter = &unsubscribe_view->topic_filters[i];
+        if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
-                "id=%p: aws_mqtt5_packet_unsubscribe_view - topic too long",
-                (void *)unsubscribe_view);
+                "id=%p: aws_mqtt5_packet_unsubscribe_view - invalid topic filter: \"" PRInSTR "\"",
+                (void *)unsubscribe_view,
+                AWS_BYTE_CURSOR_PRI(*topic_filter));
             return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
         }
     }
@@ -2223,9 +2220,9 @@ void aws_mqtt5_packet_unsubscribe_view_log(
 
     /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
 
-    size_t topic_count = unsubscribe_view->topic_count;
+    size_t topic_count = unsubscribe_view->topic_filter_count;
     for (size_t i = 0; i < topic_count; ++i) {
-        const struct aws_byte_cursor *topic_cursor = &unsubscribe_view->topics[i];
+        const struct aws_byte_cursor *topic_cursor = &unsubscribe_view->topic_filters[i];
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_GENERAL,
@@ -2256,8 +2253,8 @@ void aws_mqtt5_packet_unsubscribe_storage_clean_up(struct aws_mqtt5_packet_unsub
 void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
     struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
     const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage) {
-    unsubscribe_view->topic_count = aws_array_list_length(&unsubscribe_storage->topics);
-    unsubscribe_view->topics = unsubscribe_storage->topics.data;
+    unsubscribe_view->topic_filter_count = aws_array_list_length(&unsubscribe_storage->topics);
+    unsubscribe_view->topic_filters = unsubscribe_storage->topics.data;
 
     unsubscribe_view->user_property_count = aws_mqtt5_user_property_set_size(&unsubscribe_storage->user_properties);
     unsubscribe_view->user_properties = unsubscribe_storage->user_properties.properties.data;
@@ -2295,8 +2292,8 @@ static size_t s_aws_mqtt5_packet_unsubscribe_compute_storage_size(
     size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
         unsubscribe_view->user_properties, unsubscribe_view->user_property_count);
 
-    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
-        const struct aws_byte_cursor *topic = &unsubscribe_view->topics[i];
+    for (size_t i = 0; i < unsubscribe_view->topic_filter_count; ++i) {
+        const struct aws_byte_cursor *topic = &unsubscribe_view->topic_filters[i];
         storage_size += topic->len;
     }
 
@@ -2315,7 +2312,7 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
     }
 
     if (s_aws_mqtt5_packet_unsubscribe_build_topic_list(
-            unsubscribe_storage, allocator, unsubscribe_options->topic_count, unsubscribe_options->topics)) {
+            unsubscribe_storage, allocator, unsubscribe_options->topic_filter_count, unsubscribe_options->topic_filters)) {
         return AWS_OP_ERR;
     }
 

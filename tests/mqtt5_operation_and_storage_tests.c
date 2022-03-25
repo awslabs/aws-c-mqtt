@@ -489,8 +489,8 @@ static int s_mqtt5_unsubscribe_operation_new_set_all_fn(struct aws_allocator *al
     (void)ctx;
 
     struct aws_mqtt5_packet_unsubscribe_view unsubscribe_options = {
-        .topics = s_topics,
-        .topic_count = AWS_ARRAY_SIZE(s_topics),
+        .topic_filters = s_topics,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_topics),
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = s_user_properties,
     };
@@ -509,10 +509,10 @@ static int s_mqtt5_unsubscribe_operation_new_set_all_fn(struct aws_allocator *al
     struct aws_mqtt5_packet_unsubscribe_view *stored_view = &unsubscribe_storage->storage_view;
     ASSERT_SUCCESS(aws_mqtt5_packet_unsubscribe_view_validate(stored_view));
 
-    ASSERT_UINT_EQUALS(stored_view->topic_count, unsubscribe_options.topic_count);
-    for (size_t i = 0; i < stored_view->topic_count; ++i) {
-        const struct aws_byte_cursor *expected_topic = &unsubscribe_options.topics[i];
-        const struct aws_byte_cursor *actual_topic = &stored_view->topics[i];
+    ASSERT_UINT_EQUALS(stored_view->topic_filter_count, unsubscribe_options.topic_filter_count);
+    for (size_t i = 0; i < stored_view->topic_filter_count; ++i) {
+        const struct aws_byte_cursor *expected_topic = &unsubscribe_options.topic_filters[i];
+        const struct aws_byte_cursor *actual_topic = &stored_view->topic_filters[i];
 
         ASSERT_UINT_EQUALS(expected_topic->len, actual_topic->len);
         ASSERT_TRUE(expected_topic->ptr != actual_topic->ptr);
@@ -1421,8 +1421,8 @@ static void s_create_operations(
     *subscribe_op = aws_mqtt5_operation_subscribe_new(allocator, &subscribe_view, NULL);
 
     struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
-        .topics = s_topics,
-        .topic_count = AWS_ARRAY_SIZE(s_topics),
+        .topic_filters = s_topics,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_topics),
     };
 
     *unsubscribe_op = aws_mqtt5_operation_unsubscribe_new(allocator, &unsubscribe_view, NULL);

@@ -634,12 +634,12 @@ static int s_compute_unsubscribe_variable_length_fields(
      *   n bytes for Topic Filter
      */
 
-    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
-        const struct aws_byte_cursor topic_filter = unsubscribe_view->topics[i];
+    for (size_t i = 0; i < unsubscribe_view->topic_filter_count; ++i) {
+        const struct aws_byte_cursor topic_filter = unsubscribe_view->topic_filters[i];
         payload_length += topic_filter.len;
     }
 
-    payload_length += (2 * unsubscribe_view->topic_count);
+    payload_length += (2 * unsubscribe_view->topic_filter_count);
 
     *total_remaining_length = variable_header_length + payload_length;
 
@@ -709,7 +709,7 @@ static int s_aws_mqtt5_encoder_begin_unsubscribe(struct aws_mqtt5_encoder *encod
      */
 
     aws_mqtt5_add_unsubscribe_topic_filter_encoding_steps(
-        encoder, unsubscribe_view->topics, unsubscribe_view->topic_count);
+        encoder, unsubscribe_view->topic_filters, unsubscribe_view->topic_filter_count);
 
     return AWS_OP_SUCCESS;
 }

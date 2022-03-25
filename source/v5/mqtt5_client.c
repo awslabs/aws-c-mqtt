@@ -1748,6 +1748,10 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
 
     aws_ref_count_init(&client->ref_count, client, s_on_mqtt5_client_zero_ref_count);
 
+    if (aws_mqtt5_client_operational_state_init(&client->operational_state, allocator, client)) {
+        goto on_error;
+    }
+
     client->config = aws_mqtt5_client_options_storage_new(allocator, options);
     if (client->config == NULL) {
         goto on_error;
@@ -1762,10 +1766,6 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     client->desired_state = AWS_MCS_STOPPED;
     client->current_state = AWS_MCS_STOPPED;
     client->lifecycle_state = AWS_MQTT5_LS_NONE;
-
-    if (aws_mqtt5_client_operational_state_init(&client->operational_state, allocator, client)) {
-        goto on_error;
-    }
 
     struct aws_mqtt5_decoder_options decoder_options = {
         .callback_user_data = client,
@@ -2156,6 +2156,10 @@ int aws_mqtt5_client_operational_state_init(
     struct aws_allocator *allocator,
     struct aws_mqtt5_client *client) {
 
+    aws_linked_list_init(&client_operational_state->queued_operations);
+    aws_linked_list_init(&client_operational_state->write_completion_operations);
+    aws_linked_list_init(&client_operational_state->unacked_operations);
+
     if (aws_hash_table_init(
             &client_operational_state->unacked_operations_table,
             allocator,
@@ -2166,10 +2170,6 @@ int aws_mqtt5_client_operational_state_init(
             NULL)) {
         return AWS_OP_ERR;
     }
-
-    aws_linked_list_init(&client_operational_state->queued_operations);
-    aws_linked_list_init(&client_operational_state->write_completion_operations);
-    aws_linked_list_init(&client_operational_state->unacked_operations);
 
     client_operational_state->next_mqtt_packet_id = 1;
     client_operational_state->current_operation = NULL;
