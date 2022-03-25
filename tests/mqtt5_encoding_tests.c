@@ -260,6 +260,15 @@ static int s_aws_mqtt5_encode_decode_round_trip_test(
         aws_byte_buf_clean_up(&fragment_dest);
     }
 
+    /*
+     * For packet types that support encoded size calculations (outgoing operations), verify that the encoded size
+     * calculation matches the length we encoded
+     */
+    size_t expected_packet_size = 0;
+    if (!aws_mqtt5_packet_view_get_encoded_size(packet_type, packet_view, &expected_packet_size)) {
+        ASSERT_INT_EQUALS(whole_dest.len, expected_packet_size);
+    }
+
     ASSERT_INT_EQUALS(AWS_MQTT5_ER_FINISHED, result);
 
     struct aws_mqtt5_decoder_options decoder_options = {

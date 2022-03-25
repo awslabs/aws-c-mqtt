@@ -4,7 +4,7 @@ include(AwsLibFuzzer)
 enable_testing()
 
 file(GLOB TEST_HDRS "*.h")
-set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_operation_and_storage_tests.c mqtt5_encoding_tests.c mqtt5_testing_utils.c mqtt5_client_tests.c)
+set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_operation_and_storage_tests.c mqtt5_encoding_tests.c mqtt5_testing_utils.c mqtt5_client_tests.c mqtt5_operation_validation_failure_tests.c)
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
@@ -79,6 +79,14 @@ add_test_case(mqtt5_unsuback_storage_new_set_no_optional)
 add_test_case(mqtt5_unsuback_storage_new_set_all)
 
 # TODO: puback storage tests
+
+# operation/view validation failure tests
+add_test_case(mqtt5_operation_disconnect_validation_failure_server_reference)
+add_test_case(mqtt5_operation_disconnect_validation_failure_bad_reason_code)
+add_test_case(mqtt5_operation_disconnect_validation_failure_reason_string_too_long)
+add_test_case(mqtt5_operation_disconnect_validation_failure_bad_user_properties_name)
+add_test_case(mqtt5_operation_disconnect_validation_failure_bad_user_properties_value)
+add_test_case(mqtt5_operation_disconnect_validation_failure_bad_user_properties_too_many)
 
 add_test_case(mqtt5_operation_bind_packet_id_empty_table)
 add_test_case(mqtt5_operation_bind_packet_id_multiple_with_existing)

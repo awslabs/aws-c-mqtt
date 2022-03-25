@@ -113,6 +113,8 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+
     struct aws_mqtt5_operation_publish *publish_op = aws_mqtt5_operation_publish_new(allocator, &publish_options, NULL);
 
     ASSERT_NOT_NULL(publish_op);
@@ -120,6 +122,7 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     /* This test will check both the values in storage as well as the embedded view.  They should be in sync. */
     struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
     struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage->storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(stored_view));
 
     /* required fields */
     ASSERT_SUCCESS(s_verify_publish_operation_required_fields(publish_storage, &publish_options));
@@ -220,6 +223,8 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
         .user_properties = s_user_properties,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+
     struct aws_mqtt5_publish_completion_options completion_options = {
         .completion_callback = &s_aws_mqtt5_publish_completion_fn,
         .completion_user_data = (void *)0xFFFF,
@@ -232,6 +237,7 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
 
     struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
     struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage->storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(stored_view));
 
     /* required fields */
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_CURSOR(publish_storage, &publish_options, payload);
@@ -375,6 +381,8 @@ static int s_mqtt5_subscribe_operation_new_set_no_optional_fn(struct aws_allocat
         .user_properties = NULL,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(&subscribe_options));
+
     struct aws_mqtt5_subscribe_completion_options completion_options = {
         .completion_callback = &s_aws_mqtt5_subscribe_completion_fn,
         .completion_user_data = (void *)0xFFFF,
@@ -387,6 +395,8 @@ static int s_mqtt5_subscribe_operation_new_set_no_optional_fn(struct aws_allocat
         subscribe_op, &subscribe_options, &completion_options));
 
     struct aws_mqtt5_packet_subscribe_view *stored_view = &subscribe_op->options_storage.storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(stored_view));
+
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&subscribe_op->options_storage, subscription_identifier);
 
     aws_mqtt5_packet_subscribe_view_log(stored_view, AWS_LL_DEBUG);
@@ -411,6 +421,8 @@ static int s_mqtt5_subscribe_operation_new_set_all_fn(struct aws_allocator *allo
     uint32_t sub_id = 5;
     subscribe_options.subscription_identifier = &sub_id;
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(&subscribe_options));
+
     struct aws_mqtt5_subscribe_completion_options completion_options = {
         .completion_callback = &s_aws_mqtt5_subscribe_completion_fn,
         .completion_user_data = (void *)0xFFFF,
@@ -424,6 +436,7 @@ static int s_mqtt5_subscribe_operation_new_set_all_fn(struct aws_allocator *allo
 
     struct aws_mqtt5_packet_subscribe_storage *subscribe_storage = &subscribe_op->options_storage;
     struct aws_mqtt5_packet_subscribe_view *stored_view = &subscribe_storage->storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(stored_view));
 
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_UINT(subscribe_storage, &subscribe_options, subscription_identifier);
 
@@ -482,6 +495,8 @@ static int s_mqtt5_unsubscribe_operation_new_set_all_fn(struct aws_allocator *al
         .user_properties = s_user_properties,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_unsubscribe_view_validate(&unsubscribe_options));
+
     struct aws_mqtt5_unsubscribe_completion_options completion_options = {
         .completion_callback = &s_aws_mqtt5_unsubscribe_completion_fn,
         .completion_user_data = (void *)0xFFFF,
@@ -492,6 +507,7 @@ static int s_mqtt5_unsubscribe_operation_new_set_all_fn(struct aws_allocator *al
 
     struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage = &unsubscribe_op->options_storage;
     struct aws_mqtt5_packet_unsubscribe_view *stored_view = &unsubscribe_storage->storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_unsubscribe_view_validate(stored_view));
 
     ASSERT_UINT_EQUALS(stored_view->topic_count, unsubscribe_options.topic_count);
     for (size_t i = 0; i < stored_view->topic_count; ++i) {
@@ -543,6 +559,8 @@ static int s_mqtt5_connect_storage_new_set_no_optional_fn(struct aws_allocator *
         .clean_start = true,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
 
@@ -551,6 +569,7 @@ static int s_mqtt5_connect_storage_new_set_no_optional_fn(struct aws_allocator *
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
     struct aws_mqtt5_packet_connect_view *stored_view = &connect_storage.storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_view_validate(stored_view));
 
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&connect_storage, username);
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&connect_storage, password);
@@ -858,6 +877,8 @@ static int s_mqtt5_disconnect_storage_new_set_no_optional_fn(struct aws_allocato
         .reason_code = AWS_MQTT5_DRC_ADMINISTRATIVE_ACTION,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_disconnect_view_validate(&disconnect_options));
+
     struct aws_mqtt5_packet_disconnect_storage disconnect_storage;
     AWS_ZERO_STRUCT(disconnect_storage);
 
@@ -866,6 +887,7 @@ static int s_mqtt5_disconnect_storage_new_set_no_optional_fn(struct aws_allocato
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_UINT(&disconnect_storage, &disconnect_options, reason_code);
 
     struct aws_mqtt5_packet_disconnect_view *stored_view = &disconnect_storage.storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_disconnect_view_validate(stored_view));
 
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&disconnect_storage, session_expiry_interval_seconds);
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&disconnect_storage, reason_string);
