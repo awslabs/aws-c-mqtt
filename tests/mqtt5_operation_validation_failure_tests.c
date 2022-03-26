@@ -307,7 +307,7 @@ static struct aws_mqtt5_subscription_view s_good_subscription[] = {
     },
 };
 
-static const uint32_t s_invalid_subscription_identifier = 0;
+static const uint32_t s_invalid_subscription_identifier = AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER + 1;
 
 static struct aws_mqtt5_packet_subscribe_view s_invalid_subscription_identifier_subscribe_view = {
     .subscriptions = s_good_subscription,
@@ -657,9 +657,12 @@ AWS_VALIDATION_FAILURE_TEST3(publish, user_properties_too_many, s_user_propertie
 static struct aws_socket_options s_good_socket_options = {
     .type = AWS_SOCKET_STREAM,
     .domain = AWS_SOCKET_IPV4,
+    .connect_timeout_ms = 10000,
 };
 
-static struct aws_mqtt5_packet_connect_view s_good_connect = {};
+static struct aws_mqtt5_packet_connect_view s_good_connect = {
+    .keep_alive_interval_seconds = 30,
+};
 
 void s_lifecycle_event_handler(const struct aws_mqtt5_client_lifecycle_event *event) {
     (void)event;
@@ -668,7 +671,7 @@ void s_lifecycle_event_handler(const struct aws_mqtt5_client_lifecycle_event *ev
 static struct aws_mqtt5_client_options s_no_host_client_options = {
     .socket_options = &s_good_socket_options,
     .connect_options = &s_good_connect,
-    .ping_timeout_ms = 30000,
+    .ping_timeout_ms = 5000,
     .lifecycle_event_handler = &s_lifecycle_event_handler,
 };
 
@@ -897,6 +900,7 @@ AWS_CONNECTION_SETTINGS_VALIDATION_FAILURE_TEST4(
     s_packet_size_init_settings_success_fn,
     s_packet_size_init_settings_failure_fn)
 
+static const uint32_t s_positive_session_expiry = 1;
 static const uint32_t s_session_expiry = 5;
 
 static struct aws_mqtt5_packet_disconnect_view s_promote_zero_session_expiry_disconnect_view = {
@@ -908,23 +912,59 @@ static int mqtt5_operation_disconnect_connection_settings_validation_failure_pro
     void *ctx) {
     (void)ctx;
 
+    aws_mqtt_library_init(allocator);
+
+    struct aws_event_loop_group *elg = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    struct aws_host_resolver_default_options hr_options = {
+        .el_group = elg,
+        .max_entries = 1,
+    };
+    struct aws_host_resolver *hr = aws_host_resolver_new_default(allocator, &hr_options);
+
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = elg,
+        .host_resolver = hr,
+    };
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+
+    struct aws_mqtt5_client_options client_options = s_no_host_client_options;
+    client_options.host_name = s_server_reference_cursor;
+    client_options.bootstrap = bootstrap;
+
+    struct aws_mqtt5_packet_connect_view connect_options = s_good_connect;
+    connect_options.session_expiry_interval_seconds = &s_positive_session_expiry;
+    client_options.connect_options = &connect_options;
+
+    struct aws_mqtt5_client_options_storage *client_options_storage =
+        aws_mqtt5_client_options_storage_new(allocator, &client_options);
+    ASSERT_NOT_NULL(client_options_storage);
+
     struct aws_mqtt5_client dummy_client;
     AWS_ZERO_STRUCT(dummy_client);
 
     dummy_client.current_state = AWS_MCS_CONNECTED;
+    dummy_client.negotiated_settings.maximum_packet_size_to_server = 100;
+    dummy_client.config = client_options_storage;
 
     struct aws_mqtt5_operation_disconnect *operation =
         aws_mqtt5_operation_disconnect_new(allocator, &s_promote_zero_session_expiry_disconnect_view, NULL, NULL);
 
-    ? ? ;
-
     ASSERT_SUCCESS(aws_mqtt5_operation_validate_vs_connection_settings(&operation->base, &dummy_client));
 
-    ? ? ;
+    ((struct aws_mqtt5_client_options_storage *)dummy_client.config)
+        ->connect.storage_view.session_expiry_interval_seconds = NULL;
 
     ASSERT_FAILS(aws_mqtt5_operation_validate_vs_connection_settings(&operation->base, &dummy_client));
 
     aws_mqtt5_operation_release(&operation->base);
+    aws_mqtt5_client_options_storage_destroy(client_options_storage);
+
+    aws_client_bootstrap_release(bootstrap);
+    aws_host_resolver_release(hr);
+    aws_event_loop_group_release(elg);
+
+    aws_mqtt_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }

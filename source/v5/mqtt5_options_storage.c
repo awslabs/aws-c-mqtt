@@ -1547,7 +1547,10 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
         }
     } else if (!aws_mqtt_is_valid_topic(&publish_view->topic)) {
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - invalid topic: \"" PRInSTR "\"", (void *)publish_view, AWS_BYTE_CURSOR_PRI(publish_view->topic));
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_publish_view - invalid topic: \"" PRInSTR "\"",
+            (void *)publish_view,
+            AWS_BYTE_CURSOR_PRI(publish_view->topic));
         return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
     }
 
@@ -2312,7 +2315,10 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
     }
 
     if (s_aws_mqtt5_packet_unsubscribe_build_topic_list(
-            unsubscribe_storage, allocator, unsubscribe_options->topic_filter_count, unsubscribe_options->topic_filters)) {
+            unsubscribe_storage,
+            allocator,
+            unsubscribe_options->topic_filter_count,
+            unsubscribe_options->topic_filters)) {
         return AWS_OP_ERR;
     }
 
