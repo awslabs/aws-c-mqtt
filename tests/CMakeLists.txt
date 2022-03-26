@@ -191,15 +191,15 @@ add_test_case(mqtt5_client_websocket_connect_handshake_failure)
 add_test_case(mqtt5_client_direct_connect_connack_refusal)
 add_test_case(mqtt5_client_direct_connect_connack_timeout)
 add_test_case(mqtt5_client_direct_connect_from_server_disconnect)
-
 add_test_case(mqtt5_client_subscribe_success)
-
 add_test_case(mqtt5_client_ping_sequence)
 add_test_case(mqtt5_client_ping_timeout)
-
 add_test_case(mqtt5_client_reconnect_failure_backoff)
 add_test_case(mqtt5_client_reconnect_backoff_insufficient_reset)
 add_test_case(mqtt5_client_reconnect_backoff_sufficient_reset)
+
+add_test_case(mqtt5_client_subscribe_fail_packet_too_big)
+add_test_case(mqtt5_client_disconnect_fail_packet_too_big)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

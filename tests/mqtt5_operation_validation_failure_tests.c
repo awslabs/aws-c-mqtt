@@ -719,7 +719,7 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_publish_view,
     s_make_user_properties_too_many_publish_view)
 
-#define AWS_CLIENT_CREATION_VALIDATION_FAILURE(failure_reason, options_name, set_bootstrap)                            \
+#define AWS_CLIENT_CREATION_VALIDATION_FAILURE(failure_reason, base_options, mutate_function)                          \
     static int s_mqtt5_client_options_validation_failure_##failure_reason##_fn(                                        \
         struct aws_allocator *allocator, void *ctx) {                                                                  \
         (void)ctx;                                                                                                     \
@@ -727,25 +727,33 @@ AWS_VALIDATION_FAILURE_TEST3(
         struct aws_event_loop_group *elg = NULL;                                                                       \
         struct aws_host_resolver *hr = NULL;                                                                           \
         struct aws_client_bootstrap *bootstrap = NULL;                                                                 \
-        if (set_bootstrap) {                                                                                           \
-            elg = aws_event_loop_group_new_default(allocator, 1, NULL);                                                \
+        elg = aws_event_loop_group_new_default(allocator, 1, NULL);                                                    \
                                                                                                                        \
-            struct aws_host_resolver_default_options hr_options = {                                                    \
-                .el_group = elg,                                                                                       \
-                .max_entries = 1,                                                                                      \
-            };                                                                                                         \
-            hr = aws_host_resolver_new_default(allocator, &hr_options);                                                \
+        struct aws_host_resolver_default_options hr_options = {                                                        \
+            .el_group = elg,                                                                                           \
+            .max_entries = 1,                                                                                          \
+        };                                                                                                             \
+        hr = aws_host_resolver_new_default(allocator, &hr_options);                                                    \
                                                                                                                        \
-            struct aws_client_bootstrap_options bootstrap_options = {                                                  \
-                .event_loop_group = elg,                                                                               \
-                .host_resolver = hr,                                                                                   \
-            };                                                                                                         \
-            bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);                                       \
-        }                                                                                                              \
-        options_name.bootstrap = bootstrap;                                                                            \
+        struct aws_client_bootstrap_options bootstrap_options = {                                                      \
+            .event_loop_group = elg,                                                                                   \
+            .host_resolver = hr,                                                                                       \
+        };                                                                                                             \
+        bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);                                           \
                                                                                                                        \
-        ASSERT_FAILS(aws_mqtt5_client_options_validate(&options_name));                                                \
-        ASSERT_NULL(aws_mqtt5_client_new(allocator, &options_name));                                                   \
+        struct aws_mqtt5_client_options good_options = base_options;                                                   \
+        good_options.bootstrap = bootstrap;                                                                            \
+                                                                                                                       \
+        ASSERT_SUCCESS(aws_mqtt5_client_options_validate(&good_options));                                              \
+        struct aws_mqtt5_client *client = aws_mqtt5_client_new(allocator, &good_options);                              \
+        ASSERT_NOT_NULL(client);                                                                                       \
+        aws_mqtt5_client_release(client);                                                                              \
+                                                                                                                       \
+        struct aws_mqtt5_client_options bad_options = good_options;                                                    \
+        (*mutate_function)(&bad_options);                                                                              \
+        ASSERT_FAILS(aws_mqtt5_client_options_validate(&bad_options));                                                 \
+        ASSERT_NULL(aws_mqtt5_client_new(allocator, &bad_options));                                                    \
+                                                                                                                       \
         aws_client_bootstrap_release(bootstrap);                                                                       \
         aws_host_resolver_release(hr);                                                                                 \
         aws_event_loop_group_release(elg);                                                                             \
@@ -772,41 +780,39 @@ void s_lifecycle_event_handler(const struct aws_mqtt5_client_lifecycle_event *ev
     (void)event;
 }
 
-static struct aws_mqtt5_client_options s_no_host_client_options = {
+static struct aws_mqtt5_client_options s_good_client_options = {
+    .host_name =
+        {
+            .ptr = s_server_reference,
+            .len = AWS_ARRAY_SIZE(s_server_reference) - 1,
+        },
     .socket_options = &s_good_socket_options,
     .connect_options = &s_good_connect,
     .ping_timeout_ms = 5000,
     .lifecycle_event_handler = &s_lifecycle_event_handler,
 };
 
-AWS_CLIENT_CREATION_VALIDATION_FAILURE(no_host, s_no_host_client_options, true)
+static void s_make_no_host_client_options(struct aws_mqtt5_client_options *options) {
+    options->host_name.ptr = NULL;
+    options->host_name.len = 0;
+}
 
-static struct aws_mqtt5_client_options s_no_bootstrap_client_options = {
-    .host_name =
-        {
-            .ptr = s_server_reference,
-            .len = AWS_ARRAY_SIZE(s_server_reference) - 1,
-        },
-    .socket_options = &s_good_socket_options,
-    .connect_options = &s_good_connect,
-    .ping_timeout_ms = 30000,
-    .lifecycle_event_handler = &s_lifecycle_event_handler,
+AWS_CLIENT_CREATION_VALIDATION_FAILURE(no_host, s_good_client_options, s_make_no_host_client_options)
+
+static void s_make_no_bootstrap_client_options(struct aws_mqtt5_client_options *options) {
+    options->bootstrap = NULL;
+}
+
+AWS_CLIENT_CREATION_VALIDATION_FAILURE(no_bootstrap, s_good_client_options, s_make_no_bootstrap_client_options)
+
+static void s_make_invalid_socket_options_client_options(struct aws_mqtt5_client_options *options) {
+    options->socket_options = NULL;
 };
 
-AWS_CLIENT_CREATION_VALIDATION_FAILURE(no_bootstrap, s_no_bootstrap_client_options, false)
-
-static struct aws_mqtt5_client_options s_invalid_socket_options_client_options = {
-    .host_name =
-        {
-            .ptr = s_server_reference,
-            .len = AWS_ARRAY_SIZE(s_server_reference) - 1,
-        },
-    .connect_options = &s_good_connect,
-    .ping_timeout_ms = 30000,
-    .lifecycle_event_handler = &s_lifecycle_event_handler,
-};
-
-AWS_CLIENT_CREATION_VALIDATION_FAILURE(invalid_socket_options, s_invalid_socket_options_client_options, true)
+AWS_CLIENT_CREATION_VALIDATION_FAILURE(
+    invalid_socket_options,
+    s_good_client_options,
+    s_make_invalid_socket_options_client_options)
 
 static struct aws_mqtt5_packet_connect_view s_client_id_too_long_connect_view = {
     .client_id =
@@ -816,37 +822,25 @@ static struct aws_mqtt5_packet_connect_view s_client_id_too_long_connect_view = 
         },
 };
 
-static struct aws_mqtt5_client_options s_invalid_connect_client_options = {
-    .host_name =
-        {
-            .ptr = s_server_reference,
-            .len = AWS_ARRAY_SIZE(s_server_reference) - 1,
-        },
-    .socket_options = &s_good_socket_options,
-    .connect_options = &s_client_id_too_long_connect_view,
-    .ping_timeout_ms = 30000,
-    .lifecycle_event_handler = &s_lifecycle_event_handler,
-};
+static void s_make_invalid_connect_client_options(struct aws_mqtt5_client_options *options) {
+    options->connect_options = &s_client_id_too_long_connect_view;
+}
 
-AWS_CLIENT_CREATION_VALIDATION_FAILURE(invalid_connect, s_invalid_connect_client_options, true)
+AWS_CLIENT_CREATION_VALIDATION_FAILURE(invalid_connect, s_good_client_options, s_make_invalid_connect_client_options)
 
 static struct aws_mqtt5_packet_connect_view s_short_keep_alive_connect_view = {
     .keep_alive_interval_seconds = 20,
 };
 
-static struct aws_mqtt5_client_options s_invalid_keep_alive_client_options = {
-    .host_name =
-        {
-            .ptr = s_server_reference,
-            .len = AWS_ARRAY_SIZE(s_server_reference) - 1,
-        },
-    .socket_options = &s_good_socket_options,
-    .connect_options = &s_short_keep_alive_connect_view,
-    .ping_timeout_ms = 30000,
-    .lifecycle_event_handler = &s_lifecycle_event_handler,
-};
+static void s_make_invalid_keep_alive_client_options(struct aws_mqtt5_client_options *options) {
+    options->connect_options = &s_short_keep_alive_connect_view;
+    options->ping_timeout_ms = 30000;
+}
 
-AWS_CLIENT_CREATION_VALIDATION_FAILURE(invalid_keep_alive, s_invalid_keep_alive_client_options, true)
+AWS_CLIENT_CREATION_VALIDATION_FAILURE(
+    invalid_keep_alive,
+    s_good_client_options,
+    s_make_invalid_keep_alive_client_options)
 
 #define AWS_CONNECTION_SETTINGS_VALIDATION_FAILURE_TEST_PREFIX(packet_type, failure_reason, init_success_settings_fn)  \
     static int s_mqtt5_operation_##packet_type##_connection_settings_validation_failure_##failure_reason##_fn(         \
@@ -1040,7 +1034,7 @@ static int mqtt5_operation_disconnect_connection_settings_validation_failure_pro
     };
     struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
-    struct aws_mqtt5_client_options client_options = s_no_host_client_options;
+    struct aws_mqtt5_client_options client_options = s_good_client_options;
     client_options.host_name = s_server_reference_cursor;
     client_options.bootstrap = bootstrap;
 
