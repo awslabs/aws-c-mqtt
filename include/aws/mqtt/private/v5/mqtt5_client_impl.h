@@ -80,8 +80,13 @@ enum aws_mqtt5_client_state {
     AWS_MCS_CONNECTED,
 
     /*
-     * NYI/TODO: a state tentatively earmarked for processing the current mqtt outbound operation as well as a
-     * user-or-client-created outbound DISCONNECT.
+     * The client is attempt to shut down a connection cleanly by finishing the current operation and then
+     * transmitting an outbound DISCONNECT.
+     *
+     * Next States:
+     *    CHANNEL_SHUTDOWN - on successful (or unsuccessful) send of the DISCONNECT
+     *    PENDING_RECONNECT - unexpected channel shutdown completion and desired state still CONNECTED
+     *    STOPPED - unexpected channel shutdown completion and desired state no longer CONNECTED
      */
     AWS_MCS_CLEAN_DISCONNECT,
 
@@ -244,6 +249,36 @@ struct aws_mqtt5_client_operational_state {
      * send additional ones/
      */
     bool pending_write_completion;
+};
+
+/*
+ * State related to flow-control rules for the mqtt5 client
+ *
+ * Includes:
+ *   (1) Mqtt5 ReceiveMaximum support
+ *   (2) AWS IoT Core limit support:
+ *       (a) Publish TPS rate limit
+ *       (b) Total outbound throughput limit
+ */
+struct aws_mqtt5_client_flow_control_state {
+    uint32_t unacked_qos1_publish_count;
+
+    /*
+    struct aws_token_bucket outbound_publish_limiter;
+    struct aws_token_bucket outbound_throughput_limiter;
+     */
+};
+
+/*
+ * A collection of simple atomic-based read-only integral client properties.
+ *
+ * APIs exist for the user to query these values.
+ */
+struct aws_mqtt5_client_statistics {
+    struct aws_atomic_var queued_operation_count;
+    struct aws_atomic_var queued_operation_total_size;
+    struct aws_atomic_var unacked_operation_count;
+    struct aws_atomic_var unacked_operation_total_size;
 };
 
 struct aws_mqtt5_client {

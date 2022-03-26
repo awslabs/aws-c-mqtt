@@ -1,3 +1,8 @@
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
+
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 
 #include <aws/common/byte_buf.h>
@@ -203,4 +208,46 @@ void aws_mqtt5_negotiated_settings_apply_connack(
     }
 
     negotiated_settings->rejoined_session = connack_data->session_present;
+}
+
+const char *aws_mqtt5_client_session_behavior_type_to_c_string(
+    enum aws_mqtt5_client_session_behavior_type session_behavior) {
+    switch (session_behavior) {
+        case AWS_MQTT5_CSBT_CLEAN:
+            return "Clean session always";
+        case AWS_MQTT5_CSBT_REJOIN:
+            return "Rejoin session always";
+    }
+
+    return "Unknown session behavior";
+}
+
+const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior) {
+    switch (outbound_aliasing_behavior) {
+        case AWS_MQTT5_COTABT_DUMB:
+            return "Dumb outbound topic aliasing behavior";
+        case AWS_MQTT5_COTABT_LRU:
+            return "LRU caching outbound topic aliasing behavior";
+    }
+
+    return "Unknown outbound topic aliasing behavior";
+}
+
+const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
+    enum aws_mqtt5_client_lifecycle_event_type lifecycle_event) {
+    switch (lifecycle_event) {
+        case AWS_MQTT5_CLET_ATTEMPTING_CONNECT:
+            return "Connection establishment attempt";
+        case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
+            return "Connection establishment success";
+        case AWS_MQTT5_CLET_CONNECTION_FAILURE:
+            return "Connection establishment failure";
+        case AWS_MQTT5_CLET_DISCONNECTION:
+            return "Disconnection";
+        case AWS_MQTT5_CLET_STOPPED:
+            return "Client stopped";
+    }
+
+    return "Unknown lifecycle event";
 }

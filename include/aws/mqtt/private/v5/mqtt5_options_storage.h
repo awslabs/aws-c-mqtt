@@ -15,6 +15,7 @@
 #include <aws/io/retry_strategy.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
+#include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_client_bootstrap;
@@ -376,6 +377,7 @@ struct aws_mqtt5_client_options_storage {
 
     enum aws_mqtt5_client_session_behavior_type session_behavior;
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
+    enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_and_flow_control_options;
 
     enum aws_exponential_backoff_jitter_mode retry_jitter_mode;
     uint64_t min_reconnect_delay_ms;
