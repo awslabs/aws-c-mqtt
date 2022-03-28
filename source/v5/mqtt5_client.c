@@ -1494,6 +1494,7 @@ static void s_aws_mqtt5_client_on_connack(
 
     s_change_current_state(client, AWS_MCS_CONNECTED);
     s_aws_mqtt5_client_emit_connection_success_lifecycle_event(client, connack_view);
+    aws_mqtt5_client_flow_control_state_init(client);
 }
 
 static void s_aws_mqtt5_client_log_received_packet(
@@ -1595,14 +1596,16 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         case AWS_MQTT5_PT_SUBACK: {
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: SUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_suback_view *)packet_view)->packet_id;
-            aws_mqtt5_client_operational_state_handle_ack(&client->operational_state, packet_id, packet_view);
+            aws_mqtt5_client_operational_state_handle_ack(
+                &client->operational_state, packet_id, AWS_MQTT5_PT_SUBACK, packet_view);
             break;
         }
 
         case AWS_MQTT5_PT_UNSUBACK: {
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: UNSUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_unsuback_view *)packet_view)->packet_id;
-            aws_mqtt5_client_operational_state_handle_ack(&client->operational_state, packet_id, packet_view);
+            aws_mqtt5_client_operational_state_handle_ack(
+                &client->operational_state, packet_id, AWS_MQTT5_PT_UNSUBACK, packet_view);
             break;
         }
 
@@ -1632,7 +1635,8 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         case AWS_MQTT5_PT_PUBACK: {
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_puback_view *)packet_view)->packet_id;
-            aws_mqtt5_client_operational_state_handle_ack(&client->operational_state, packet_id, packet_view);
+            aws_mqtt5_client_operational_state_handle_ack(
+                &client->operational_state, packet_id, AWS_MQTT5_PT_PUBACK, packet_view);
             break;
         }
 
@@ -2277,19 +2281,18 @@ static bool s_aws_mqtt5_client_has_pending_operational_work(
 }
 
 static uint64_t s_aws_mqtt5_client_compute_next_operation_flow_control_service_time(
+    struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation,
-    enum aws_mqtt5_client_state client_state,
     uint64_t now) {
     (void)operation;
 
-    switch (client_state) {
+    switch (client->current_state) {
         case AWS_MCS_MQTT_CONNECT:
         case AWS_MCS_CLEAN_DISCONNECT:
             return now;
 
         case AWS_MCS_CONNECTED:
-            /* TODO: check mqtt5 flow control, and later, optionally, AWS IoT Core limit flow control */
-            return now;
+            return aws_mqtt5_client_flow_control_state_get_next_operation_service_time(client, operation, now);
 
         default:
             /* no outbound traffic is allowed outside of the above states */
@@ -2335,7 +2338,8 @@ static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
      *
      * Eventually this could return future timepoints.
      */
-    return s_aws_mqtt5_client_compute_next_operation_flow_control_service_time(next_operation, client_state, now);
+    return s_aws_mqtt5_client_compute_next_operation_flow_control_service_time(
+        client_operational_state->client, next_operation, now);
 }
 
 static bool s_aws_mqtt5_client_should_service_operational_state(
@@ -2447,6 +2451,8 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
          *    break
          */
         if (encoding_result == AWS_MQTT5_ER_FINISHED) {
+            aws_mqtt5_client_flow_control_state_on_outbound_operation(client, current_operation);
+
             if (s_operation_requires_ack(current_operation)) {
                 /* track the operation in the unacked data structures by packet id */
                 AWS_FATAL_ASSERT(aws_mqtt5_operation_get_packet_id(current_operation) != 0);
@@ -2523,7 +2529,13 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
 void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
+    enum aws_mqtt5_packet_type packet_type,
     const void *packet_view) {
+
+    if (packet_type == AWS_MQTT5_PT_PUBACK) {
+        aws_mqtt5_client_flow_control_state_on_puback(client_operational_state->client);
+    }
+
     struct aws_hash_element *elem = NULL;
     aws_hash_table_find(&client_operational_state->unacked_operations_table, &packet_id, &elem);
 
@@ -2547,7 +2559,6 @@ void aws_mqtt5_client_operational_state_handle_ack(
     aws_linked_list_remove(&operation->node);
     aws_hash_table_remove(&client_operational_state->unacked_operations_table, &packet_id, NULL, NULL);
 
-    /* TODO: we may need to propagate errors here, but for multi-op things like SUBSCRIBE that doesn't make sense */
     aws_mqtt5_operation_complete(operation, AWS_ERROR_SUCCESS, packet_view);
 
     aws_mqtt5_operation_release(operation);
@@ -2555,4 +2566,62 @@ void aws_mqtt5_client_operational_state_handle_ack(
 
 bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client) {
     return client->current_state == AWS_MCS_CONNECTED || client->current_state == AWS_MCS_CLEAN_DISCONNECT;
+}
+
+void aws_mqtt5_client_flow_control_state_init(struct aws_mqtt5_client *client) {
+    struct aws_mqtt5_client_flow_control_state *flow_control = &client->flow_control_state;
+
+    AWS_FATAL_ASSERT(aws_mqtt5_client_are_negotiated_settings_valid(client));
+
+    flow_control->unacked_publish_token_count = client->negotiated_settings.receive_maximum_from_server;
+}
+
+void aws_mqtt5_client_flow_control_state_on_puback(struct aws_mqtt5_client *client) {
+    struct aws_mqtt5_client_flow_control_state *flow_control = &client->flow_control_state;
+
+    bool was_zero = flow_control->unacked_publish_token_count == 0;
+    flow_control->unacked_publish_token_count = aws_min_u32(
+        client->negotiated_settings.receive_maximum_from_server, flow_control->unacked_publish_token_count + 1);
+
+    if (was_zero) {
+        s_reevaluate_service_task(client);
+    }
+}
+
+void aws_mqtt5_client_flow_control_state_on_outbound_operation(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation) {
+    if (operation->packet_type != AWS_MQTT5_PT_PUBLISH) {
+        return;
+    }
+
+    const struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
+    if (publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE) {
+        return;
+    }
+
+    struct aws_mqtt5_client_flow_control_state *flow_control = &client->flow_control_state;
+
+    AWS_FATAL_ASSERT(flow_control->unacked_publish_token_count > 0);
+    --flow_control->unacked_publish_token_count;
+}
+
+uint64_t aws_mqtt5_client_flow_control_state_get_next_operation_service_time(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *next_operation,
+    uint64_t now) {
+    if (next_operation->packet_type != AWS_MQTT5_PT_PUBLISH) {
+        return now;
+    }
+
+    const struct aws_mqtt5_packet_publish_view *publish_view = next_operation->packet_view;
+    if (publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE) {
+        return now;
+    }
+
+    if (client->flow_control_state.unacked_publish_token_count > 0) {
+        return now;
+    }
+
+    return 0;
 }

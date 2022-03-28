@@ -332,17 +332,6 @@ struct aws_mqtt5_publish_payload_delivery_options {
 };
 
 /**
- * Configuration options for incoming message delivery.
- *
- * TODO: Associate with subscribe.  Should this be per-subscription (struct aws_mqtt5_subscription) or
- * per-subscribe-call (add to aws_mqtt5_client_subscribe, operation, etc...)?
- */
-struct aws_mqtt5_message_receive_options {
-    aws_mqtt5_on_message_received_callback_fn *on_received_fn;
-    void *user_data;
-};
-
-/**
  * Basic mqtt5 client configuration struct.
  *
  * Contains desired connection properties
