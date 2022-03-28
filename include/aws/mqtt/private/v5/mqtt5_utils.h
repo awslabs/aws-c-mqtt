@@ -207,6 +207,8 @@ AWS_MQTT_API const char *aws_mqtt5_retain_handling_type_to_c_string(
  */
 AWS_MQTT_API const char *aws_mqtt5_packet_type_to_c_string(enum aws_mqtt5_packet_type packet_type);
 
+AWS_MQTT_API uint64_t aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT5_UTILS_H */

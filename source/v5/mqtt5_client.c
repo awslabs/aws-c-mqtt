@@ -6,7 +6,6 @@
 #include <aws/mqtt/v5/mqtt5_client.h>
 
 #include <aws/common/clock.h>
-#include <aws/common/device_random.h>
 #include <aws/common/string.h>
 #include <aws/http/proxy.h>
 #include <aws/http/request_response.h>
@@ -1042,32 +1041,6 @@ static void s_change_current_state_to_channel_shutdown(struct aws_mqtt5_client *
 
 /* TODO: refactor and reunify with internals of retry strategy to expose these as usable functions in aws-c-io */
 
-static uint64_t s_aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to) {
-    uint64_t max = aws_max_u64(from, to);
-    uint64_t min = aws_min_u64(from, to);
-
-    /* Note: this contains several changes to the corresponding function in aws-c-io.  Don't throw them away.
-     *
-     * 1. random range is now inclusive/closed: [from, to] rather than half-open [from, to)
-     * 2. as a corollary, diff == 0 => return min, not 0
-     */
-    uint64_t diff = max - min;
-    if (!diff) {
-        return min;
-    }
-
-    uint64_t random_value = 0;
-    if (aws_device_random_u64(&random_value)) {
-        return min;
-    }
-
-    if (diff == UINT64_MAX) {
-        return random_value;
-    }
-
-    return min + random_value % (diff + 1); /* + 1 is safe due to previous check */
-}
-
 static uint64_t s_aws_mqtt5_compute_reconnect_backoff_no_jitter(struct aws_mqtt5_client *client) {
     uint64_t retry_count = aws_min_u64(client->reconnect_count, 63);
     return aws_mul_u64_saturating((uint64_t)1 << retry_count, client->config->min_reconnect_delay_ms);
@@ -1075,7 +1048,7 @@ static uint64_t s_aws_mqtt5_compute_reconnect_backoff_no_jitter(struct aws_mqtt5
 
 static uint64_t s_aws_mqtt5_compute_reconnect_backoff_full_jitter(struct aws_mqtt5_client *client) {
     uint64_t non_jittered = s_aws_mqtt5_compute_reconnect_backoff_no_jitter(client);
-    return s_aws_mqtt5_client_random_in_range(0, non_jittered);
+    return aws_mqtt5_client_random_in_range(0, non_jittered);
 }
 
 static uint64_t s_compute_deccorelated_jitter(struct aws_mqtt5_client *client) {
@@ -1085,7 +1058,7 @@ static uint64_t s_compute_deccorelated_jitter(struct aws_mqtt5_client *client) {
         return s_aws_mqtt5_compute_reconnect_backoff_full_jitter(client);
     }
 
-    return s_aws_mqtt5_client_random_in_range(
+    return aws_mqtt5_client_random_in_range(
         client->config->min_reconnect_delay_ms, aws_mul_u64_saturating(last_backoff_val, 3));
 }
 

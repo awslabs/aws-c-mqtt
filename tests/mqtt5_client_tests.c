@@ -11,6 +11,7 @@
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
 #include <aws/mqtt/mqtt.h>
+#include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 
 #include <aws/testing/aws_test_harness.h>
@@ -934,13 +935,13 @@ AWS_TEST_CASE(
     mqtt5_client_direct_connect_from_server_disconnect,
     s_mqtt5_client_direct_connect_from_server_disconnect_fn)
 
-struct aws_mqtt5_client_test_ping_context {
-    size_t required_ping_count;
+struct aws_mqtt5_client_test_wait_for_n_context {
+    size_t required_event_count;
     struct aws_mqtt5_client_mock_test_fixture *test_fixture;
 };
 
 static bool s_received_at_least_n_pingreqs(void *arg) {
-    struct aws_mqtt5_client_test_ping_context *ping_context = arg;
+    struct aws_mqtt5_client_test_wait_for_n_context *ping_context = arg;
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = ping_context->test_fixture;
 
     size_t ping_count = 0;
@@ -954,10 +955,10 @@ static bool s_received_at_least_n_pingreqs(void *arg) {
         }
     }
 
-    return ping_count >= ping_context->required_ping_count;
+    return ping_count >= ping_context->required_event_count;
 }
 
-static void s_wait_for_n_pingreqs(struct aws_mqtt5_client_test_ping_context *ping_context) {
+static void s_wait_for_n_pingreqs(struct aws_mqtt5_client_test_wait_for_n_context *ping_context) {
 
     struct aws_mqtt5_client_mock_test_fixture *test_context = ping_context->test_fixture;
     aws_mutex_lock(&test_context->lock);
@@ -1036,8 +1037,8 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     client_options.ping_timeout_ms = 750;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
-    struct aws_mqtt5_client_test_ping_context ping_context = {
-        .required_ping_count = 5,
+    struct aws_mqtt5_client_test_wait_for_n_context ping_context = {
+        .required_event_count = 5,
         .test_fixture = &test_context,
     };
 
@@ -2082,3 +2083,218 @@ static int s_mqtt5_client_disconnect_fail_packet_too_big_fn(struct aws_allocator
 }
 
 AWS_TEST_CASE(mqtt5_client_disconnect_fail_packet_too_big, s_mqtt5_client_disconnect_fail_packet_too_big_fn)
+
+static uint8_t s_topic[] = "Hello/world";
+
+#define RECEIVE_MAXIMUM_PUBLISH_COUNT 30
+#define TEST_RECEIVE_MAXIMUM 3
+
+static int s_aws_mqtt5_mock_server_handle_connect_succeed_receive_maximum(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    uint16_t receive_maximum = TEST_RECEIVE_MAXIMUM;
+
+    connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+    connack_view.receive_maximum = &receive_maximum;
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+struct send_puback_task {
+    struct aws_allocator *allocator;
+    struct aws_task task;
+    struct aws_mqtt5_server_mock_connection_context *connection;
+    uint16_t packet_id;
+};
+
+void send_puback_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    struct send_puback_task *puback_response_task = arg;
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        goto done;
+    }
+
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = puback_response_task->connection->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
+    --test_fixture->server_current_inflight_publishes;
+    aws_mutex_unlock(&test_fixture->lock);
+
+    struct aws_mqtt5_packet_puback_view puback_view = {
+        .packet_id = puback_response_task->packet_id,
+    };
+
+    s_aws_mqtt5_mock_server_send_packet(puback_response_task->connection, AWS_MQTT5_PT_PUBACK, &puback_view);
+
+done:
+
+    aws_mem_release(puback_response_task->allocator, puback_response_task);
+}
+
+static int s_aws_mqtt5_mock_server_handle_publish_delayed_puback(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+
+    (void)user_data;
+
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = connection->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
+    ++test_fixture->server_current_inflight_publishes;
+    test_fixture->server_maximum_inflight_publishes =
+        aws_max_u32(test_fixture->server_current_inflight_publishes, test_fixture->server_maximum_inflight_publishes);
+    aws_mutex_unlock(&test_fixture->lock);
+
+    struct aws_mqtt5_packet_publish_view *publish_view = packet;
+
+    struct send_puback_task *puback_response_task =
+        aws_mem_calloc(connection->allocator, 1, sizeof(struct send_puback_task));
+    puback_response_task->allocator = connection->allocator;
+    puback_response_task->connection = connection;
+    puback_response_task->packet_id = publish_view->packet_id;
+
+    aws_task_init(&puback_response_task->task, send_puback_fn, puback_response_task, "delayed_puback_response");
+
+    struct aws_event_loop *event_loop = aws_channel_get_event_loop(connection->slot->channel);
+
+    uint64_t now = 0;
+    aws_event_loop_current_clock_time(event_loop, &now);
+
+    uint64_t min_delay = aws_timestamp_convert(250, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    uint64_t max_delay = aws_timestamp_convert(500, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    uint64_t delay_nanos = aws_mqtt5_client_random_in_range(min_delay, max_delay);
+
+    uint64_t puback_time = aws_add_u64_saturating(now, delay_nanos);
+    aws_event_loop_schedule_task_future(event_loop, &puback_response_task->task, puback_time);
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_receive_maximum_publish_completion_fn(
+    const struct aws_mqtt5_packet_puback_view *puback,
+    int error_code,
+    void *complete_ctx) {
+
+    (void)puback;
+    (void)error_code;
+
+    struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
+
+    aws_mutex_lock(&test_context->lock);
+
+    ++test_context->total_pubacks_received;
+    if (error_code == AWS_ERROR_SUCCESS && puback->reason_code < 128) {
+        ++test_context->successful_pubacks_received;
+    }
+
+    aws_mutex_unlock(&test_context->lock);
+    aws_condition_variable_notify_all(&test_context->signal);
+}
+
+static bool s_received_n_successful_publishes(void *arg) {
+    struct aws_mqtt5_client_test_wait_for_n_context *context = arg;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = context->test_fixture;
+
+    return test_fixture->successful_pubacks_received >= context->required_event_count;
+}
+
+static void s_wait_for_n_successful_publishes(struct aws_mqtt5_client_test_wait_for_n_context *context) {
+
+    struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_received_n_successful_publishes, context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+static int s_mqtt5_client_flow_control_receive_maximum_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* send delayed pubacks */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_mock_server_handle_publish_delayed_puback;
+
+    /* establish a low receive maximum */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_aws_mqtt5_mock_server_handle_connect_succeed_receive_maximum;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    /* send a bunch of publishes */
+    for (size_t i = 0; i < RECEIVE_MAXIMUM_PUBLISH_COUNT; ++i) {
+        struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_topic,
+                    .len = AWS_ARRAY_SIZE(s_topic) - 1,
+                },
+        };
+
+        struct aws_mqtt5_publish_completion_options completion_options = {
+            .completion_callback = s_receive_maximum_publish_completion_fn,
+            .completion_user_data = &test_context,
+        };
+
+        ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &qos1_publish_view, &completion_options));
+    }
+
+    /* wait for all publishes to succeed */
+    struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
+        .test_fixture = &test_context,
+        .required_event_count = RECEIVE_MAXIMUM_PUBLISH_COUNT,
+    };
+    s_wait_for_n_successful_publishes(&wait_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    /*
+     * verify that the maximum number of in-progress qos1 publishes on the server was never more than what the
+     * server said its maximum was
+     */
+    aws_mutex_lock(&test_context.lock);
+    uint32_t max_inflight_publishes = test_context.server_maximum_inflight_publishes;
+    aws_mutex_unlock(&test_context.lock);
+
+    ASSERT_TRUE(max_inflight_publishes <= TEST_RECEIVE_MAXIMUM);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_flow_control_receive_maximum, s_mqtt5_client_flow_control_receive_maximum_fn)
