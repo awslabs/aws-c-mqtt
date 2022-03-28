@@ -260,6 +260,15 @@ static int s_aws_mqtt5_encode_decode_round_trip_test(
         aws_byte_buf_clean_up(&fragment_dest);
     }
 
+    /*
+     * For packet types that support encoded size calculations (outgoing operations), verify that the encoded size
+     * calculation matches the length we encoded
+     */
+    size_t expected_packet_size = 0;
+    if (!aws_mqtt5_packet_view_get_encoded_size(packet_type, packet_view, &expected_packet_size)) {
+        ASSERT_INT_EQUALS(whole_dest.len, expected_packet_size);
+    }
+
     ASSERT_INT_EQUALS(AWS_MQTT5_ER_FINISHED, result);
 
     struct aws_mqtt5_decoder_options decoder_options = {
@@ -881,11 +890,11 @@ static int s_aws_mqtt5_on_unsubscribe_received_fn(enum aws_mqtt5_packet_type typ
 
     ASSERT_INT_EQUALS(expected_view->packet_id, unsubscribe_view->packet_id);
 
-    ASSERT_INT_EQUALS(expected_view->topic_count, unsubscribe_view->topic_count);
+    ASSERT_INT_EQUALS(expected_view->topic_filter_count, unsubscribe_view->topic_filter_count);
 
-    for (size_t i = 0; i < unsubscribe_view->topic_count; ++i) {
-        const struct aws_byte_cursor unsubscribe_topic = unsubscribe_view->topics[i];
-        const struct aws_byte_cursor expected_topic = expected_view->topics[i];
+    for (size_t i = 0; i < unsubscribe_view->topic_filter_count; ++i) {
+        const struct aws_byte_cursor unsubscribe_topic = unsubscribe_view->topic_filters[i];
+        const struct aws_byte_cursor expected_topic = expected_view->topic_filters[i];
         ASSERT_BIN_ARRAYS_EQUALS(expected_topic.ptr, expected_topic.len, unsubscribe_topic.ptr, unsubscribe_topic.len);
     }
 
@@ -905,8 +914,8 @@ static int s_mqtt5_packet_unsubscribe_round_trip_fn(struct aws_allocator *alloca
 
     struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
         .packet_id = packet_id,
-        .topic_count = AWS_ARRAY_SIZE(s_unsubscribe_topics),
-        .topics = &s_unsubscribe_topics[0],
+        .topic_filter_count = AWS_ARRAY_SIZE(s_unsubscribe_topics),
+        .topic_filters = &s_unsubscribe_topics[0],
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = &s_user_properties[0],
     };

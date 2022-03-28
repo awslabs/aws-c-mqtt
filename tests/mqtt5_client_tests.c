@@ -1055,7 +1055,11 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     s_wait_for_connected_lifecycle_event(&test_context);
     s_wait_for_n_pingreqs(&ping_context);
 
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+    struct aws_mqtt5_packet_disconnect_view disconnect_view = {
+        .reason_code = AWS_MQTT5_DRC_NORMAL_DISCONNECTION,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, &disconnect_view, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
 
@@ -1799,7 +1803,7 @@ static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_alloc
 
 AWS_TEST_CASE(mqtt5_client_reconnect_backoff_sufficient_reset, s_mqtt5_client_reconnect_backoff_sufficient_reset_fn)
 
-static const char s_topic_filter1[] = "some/topic/+";
+static const char s_topic_filter1[] = "some/topic/but/letsmakeit/longer/soIcanfailpacketsizetests/+";
 
 static struct aws_mqtt5_subscription_view s_subscriptions[] = {
     {
@@ -1830,7 +1834,7 @@ void s_aws_mqtt5_subscribe_complete_fn(
     struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
 
     aws_mutex_lock(&test_context->lock);
-    test_context->suback_received = true;
+    test_context->subscribe_complete = true;
     aws_mutex_unlock(&test_context->lock);
     aws_condition_variable_notify_all(&test_context->signal);
 }
@@ -1838,7 +1842,7 @@ void s_aws_mqtt5_subscribe_complete_fn(
 static bool s_received_suback(void *arg) {
     struct aws_mqtt5_client_mock_test_fixture *test_context = arg;
 
-    return test_context->suback_received;
+    return test_context->subscribe_complete;
 }
 
 static void s_wait_for_suback_received(struct aws_mqtt5_client_mock_test_fixture *test_context) {
@@ -1922,3 +1926,159 @@ static int s_mqtt5_client_subscribe_success_fn(struct aws_allocator *allocator, 
 }
 
 AWS_TEST_CASE(mqtt5_client_subscribe_success, s_mqtt5_client_subscribe_success_fn)
+
+static int s_aws_mqtt5_mock_server_handle_connect_succeed_maximum_packet_size(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    uint32_t maximum_packet_size = 50;
+
+    connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+    connack_view.maximum_packet_size = &maximum_packet_size;
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+void s_aws_mqtt5_subscribe_complete_packet_size_too_small_fn(
+    const struct aws_mqtt5_packet_suback_view *suback,
+    int error_code,
+    void *complete_ctx) {
+
+    AWS_FATAL_ASSERT(suback == NULL);
+    AWS_FATAL_ASSERT(AWS_ERROR_MQTT5_PACKET_VALIDATION == error_code);
+
+    struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
+
+    aws_mutex_lock(&test_context->lock);
+    test_context->subscribe_complete = true;
+    aws_mutex_unlock(&test_context->lock);
+    aws_condition_variable_notify_all(&test_context->signal);
+}
+
+static int s_mqtt5_client_subscribe_fail_packet_too_big_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_aws_mqtt5_mock_server_handle_connect_succeed_maximum_packet_size;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
+        .subscriptions = s_subscriptions,
+        .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
+    };
+
+    struct aws_mqtt5_subscribe_completion_options completion_options = {
+        .completion_callback = s_aws_mqtt5_subscribe_complete_packet_size_too_small_fn,
+        .completion_user_data = &test_context,
+    };
+    aws_mqtt5_client_subscribe(client, &subscribe_view, &completion_options);
+
+    s_wait_for_suback_received(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_subscribe_fail_packet_too_big, s_mqtt5_client_subscribe_fail_packet_too_big_fn)
+
+static void s_aws_mqtt5_disconnect_failure_completion_fn(int error_code, void *complete_ctx) {
+    AWS_FATAL_ASSERT(error_code == AWS_ERROR_MQTT5_PACKET_VALIDATION);
+
+    s_on_disconnect_completion(error_code, complete_ctx);
+}
+
+static int s_mqtt5_client_disconnect_fail_packet_too_big_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_aws_mqtt5_mock_server_handle_connect_succeed_maximum_packet_size;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_byte_cursor long_reason_string_cursor = aws_byte_cursor_from_c_str(
+        "Not valid because it includes the 0-terminator but we don't check utf-8 so who cares");
+
+    struct aws_mqtt5_packet_disconnect_view disconnect_view = {
+        .reason_string = &long_reason_string_cursor,
+    };
+
+    struct aws_mqtt5_disconnect_completion_options completion_options = {
+        .completion_callback = s_aws_mqtt5_disconnect_failure_completion_fn,
+        .completion_user_data = &test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, &disconnect_view, &completion_options));
+
+    s_wait_for_disconnect_completion(&test_context);
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_disconnect_fail_packet_too_big, s_mqtt5_client_disconnect_fail_packet_too_big_fn)

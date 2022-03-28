@@ -208,6 +208,20 @@ AWS_EXTERN_C_END
 AWS_EXTERN_C_BEGIN
 
 /**
+ * Utility function to calculate the encoded packet size of a given packet view.  Used to validate operations
+ * against the server's maximum packet size.
+ *
+ * @param packet_type type of packet the view represents
+ * @param packet_view packet view
+ * @param packet_size output parameter, set if the size was successfully calculated
+ * @return success/failure
+ */
+AWS_MQTT_API int aws_mqtt5_packet_view_get_encoded_size(
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet_view,
+    size_t *packet_size);
+
+/**
  * Encodes a variable length integer to a buffer.  Assumes the buffer has been checked for sufficient room (this
  * is not a streaming/resumable operation)
  *

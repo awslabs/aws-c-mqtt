@@ -24,7 +24,7 @@ struct aws_http_message;
  */
 #define AWS_MQTT5_CLIENT_MAXIMUM_USER_PROPERTIES 1024
 #define AWS_MQTT5_CLIENT_MAXIMUM_SUBSCRIPTIONS_PER_SUBSCRIBE 1024
-#define AWS_MQTT5_CLIENT_MAXIMUM_TOPICS_PER_UNSUBSCRIBE 1024
+#define AWS_MQTT5_CLIENT_MAXIMUM_TOPIC_FILTERS_PER_UNSUBSCRIBE 1024
 
 /**
  * Over-the-wire packet id as defined in the mqtt spec.  Allocated at the point in time when the packet is
@@ -376,8 +376,8 @@ struct aws_mqtt5_packet_subscribe_view {
 struct aws_mqtt5_packet_unsubscribe_view {
     aws_mqtt5_packet_id_t packet_id;
 
-    size_t topic_count;
-    const struct aws_byte_cursor *topics;
+    size_t topic_filter_count;
+    const struct aws_byte_cursor *topic_filters;
 
     size_t user_property_count;
     const struct aws_mqtt5_user_property *user_properties;
@@ -612,7 +612,7 @@ struct aws_mqtt5_negotiated_settings {
 
     uint32_t session_expiry_interval;
     uint16_t receive_maximum_from_server;
-    uint32_t maximum_packet_size;
+    uint32_t maximum_packet_size_to_server;
     uint16_t topic_alias_maximum_to_server;
     uint16_t topic_alias_maximum_to_client;
     uint16_t server_keep_alive;

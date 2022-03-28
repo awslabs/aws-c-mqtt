@@ -49,9 +49,9 @@ void aws_mqtt5_negotiated_settings_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_negotiated_settings maximum packet size set to %" PRIu32,
+        "id=%p: aws_mqtt5_negotiated_settings maximum packet size to server set to %" PRIu32,
         (void *)negotiated_settings,
-        negotiated_settings->maximum_packet_size);
+        negotiated_settings->maximum_packet_size_to_server);
 
     AWS_LOGF(
         level,
@@ -117,8 +117,7 @@ void aws_mqtt5_negotiated_settings_reset(
     negotiated_settings->server_keep_alive = packet_connect_view->keep_alive_interval_seconds;
     negotiated_settings->session_expiry_interval = 0;
     negotiated_settings->receive_maximum_from_server = AWS_MQTT5_RECEIVE_MAXIMUM;
-    /* This value should not be sent unless set by client to something other than default. */
-    negotiated_settings->maximum_packet_size = AWS_MQTT5_MAXIMUM_PACKET_SIZE;
+    negotiated_settings->maximum_packet_size_to_server = AWS_MQTT5_MAXIMUM_PACKET_SIZE;
     negotiated_settings->topic_alias_maximum_to_client = 0;
 
     // Default for Client is QoS 1. Server default is 2.
@@ -141,10 +140,6 @@ void aws_mqtt5_negotiated_settings_reset(
 
     if (packet_connect_view->session_expiry_interval_seconds != NULL) {
         negotiated_settings->session_expiry_interval = *packet_connect_view->session_expiry_interval_seconds;
-    }
-
-    if (packet_connect_view->maximum_packet_size_bytes != NULL) {
-        negotiated_settings->maximum_packet_size = *packet_connect_view->maximum_packet_size_bytes;
     }
 
     if (packet_connect_view->topic_alias_maximum != NULL) {
@@ -183,10 +178,7 @@ void aws_mqtt5_negotiated_settings_apply_connack(
     }
 
     if (connack_data->maximum_packet_size != NULL) {
-        negotiated_settings->maximum_packet_size = *connack_data->maximum_packet_size;
-    } else {
-        /* Property not being present means the Server is set to unlimited. */
-        negotiated_settings->maximum_packet_size = AWS_MQTT5_MAXIMUM_PACKET_SIZE;
+        negotiated_settings->maximum_packet_size_to_server = *connack_data->maximum_packet_size;
     }
 
     // If a value is not sent by Server, the Client must not send any Topic Aliases to the Server.

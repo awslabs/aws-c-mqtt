@@ -175,6 +175,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION,
                 "Invalid mqtt5 user property value."),
             AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_PACKET_VALIDATION,
+                "General mqtt5 packet validation error"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_ENCODE_FAILURE,
                 "Error occurred while encoding an outgoing mqtt5 packet"),
             AWS_DEFINE_ERROR_INFO_MQTT(
@@ -204,6 +207,12 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION,
                 "Mqtt5 operation failed due to inability to rejoin previous session"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_ENCODE_SIZE_UNSUPPORTED_PACKET_TYPE,
+                "Unsupported packet type for encode size calculation"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_OPERATION_PROCESSING_FAILURE,
+                "Error while processing mqtt5 operational state"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

@@ -113,6 +113,8 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+
     struct aws_mqtt5_operation_publish *publish_op = aws_mqtt5_operation_publish_new(allocator, &publish_options, NULL);
 
     ASSERT_NOT_NULL(publish_op);
@@ -120,6 +122,7 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
     /* This test will check both the values in storage as well as the embedded view.  They should be in sync. */
     struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
     struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage->storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(stored_view));
 
     /* required fields */
     ASSERT_SUCCESS(s_verify_publish_operation_required_fields(publish_storage, &publish_options));
@@ -220,6 +223,8 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
         .user_properties = s_user_properties,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+
     struct aws_mqtt5_publish_completion_options completion_options = {
         .completion_callback = &s_aws_mqtt5_publish_completion_fn,
         .completion_user_data = (void *)0xFFFF,
@@ -232,6 +237,7 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
 
     struct aws_mqtt5_packet_publish_storage *publish_storage = &publish_op->options_storage;
     struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage->storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(stored_view));
 
     /* required fields */
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_CURSOR(publish_storage, &publish_options, payload);
@@ -375,6 +381,8 @@ static int s_mqtt5_subscribe_operation_new_set_no_optional_fn(struct aws_allocat
         .user_properties = NULL,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(&subscribe_options));
+
     struct aws_mqtt5_subscribe_completion_options completion_options = {
         .completion_callback = &s_aws_mqtt5_subscribe_completion_fn,
         .completion_user_data = (void *)0xFFFF,
@@ -387,6 +395,8 @@ static int s_mqtt5_subscribe_operation_new_set_no_optional_fn(struct aws_allocat
         subscribe_op, &subscribe_options, &completion_options));
 
     struct aws_mqtt5_packet_subscribe_view *stored_view = &subscribe_op->options_storage.storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(stored_view));
+
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&subscribe_op->options_storage, subscription_identifier);
 
     aws_mqtt5_packet_subscribe_view_log(stored_view, AWS_LL_DEBUG);
@@ -411,6 +421,8 @@ static int s_mqtt5_subscribe_operation_new_set_all_fn(struct aws_allocator *allo
     uint32_t sub_id = 5;
     subscribe_options.subscription_identifier = &sub_id;
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(&subscribe_options));
+
     struct aws_mqtt5_subscribe_completion_options completion_options = {
         .completion_callback = &s_aws_mqtt5_subscribe_completion_fn,
         .completion_user_data = (void *)0xFFFF,
@@ -424,6 +436,7 @@ static int s_mqtt5_subscribe_operation_new_set_all_fn(struct aws_allocator *allo
 
     struct aws_mqtt5_packet_subscribe_storage *subscribe_storage = &subscribe_op->options_storage;
     struct aws_mqtt5_packet_subscribe_view *stored_view = &subscribe_storage->storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(stored_view));
 
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_UINT(subscribe_storage, &subscribe_options, subscription_identifier);
 
@@ -476,11 +489,13 @@ static int s_mqtt5_unsubscribe_operation_new_set_all_fn(struct aws_allocator *al
     (void)ctx;
 
     struct aws_mqtt5_packet_unsubscribe_view unsubscribe_options = {
-        .topics = s_topics,
-        .topic_count = AWS_ARRAY_SIZE(s_topics),
+        .topic_filters = s_topics,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_topics),
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = s_user_properties,
     };
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_unsubscribe_view_validate(&unsubscribe_options));
 
     struct aws_mqtt5_unsubscribe_completion_options completion_options = {
         .completion_callback = &s_aws_mqtt5_unsubscribe_completion_fn,
@@ -492,11 +507,12 @@ static int s_mqtt5_unsubscribe_operation_new_set_all_fn(struct aws_allocator *al
 
     struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage = &unsubscribe_op->options_storage;
     struct aws_mqtt5_packet_unsubscribe_view *stored_view = &unsubscribe_storage->storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_unsubscribe_view_validate(stored_view));
 
-    ASSERT_UINT_EQUALS(stored_view->topic_count, unsubscribe_options.topic_count);
-    for (size_t i = 0; i < stored_view->topic_count; ++i) {
-        const struct aws_byte_cursor *expected_topic = &unsubscribe_options.topics[i];
-        const struct aws_byte_cursor *actual_topic = &stored_view->topics[i];
+    ASSERT_UINT_EQUALS(stored_view->topic_filter_count, unsubscribe_options.topic_filter_count);
+    for (size_t i = 0; i < stored_view->topic_filter_count; ++i) {
+        const struct aws_byte_cursor *expected_topic = &unsubscribe_options.topic_filters[i];
+        const struct aws_byte_cursor *actual_topic = &stored_view->topic_filters[i];
 
         ASSERT_UINT_EQUALS(expected_topic->len, actual_topic->len);
         ASSERT_TRUE(expected_topic->ptr != actual_topic->ptr);
@@ -543,6 +559,8 @@ static int s_mqtt5_connect_storage_new_set_no_optional_fn(struct aws_allocator *
         .clean_start = true,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
 
@@ -551,6 +569,7 @@ static int s_mqtt5_connect_storage_new_set_no_optional_fn(struct aws_allocator *
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
     struct aws_mqtt5_packet_connect_view *stored_view = &connect_storage.storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_view_validate(stored_view));
 
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&connect_storage, username);
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&connect_storage, password);
@@ -858,6 +877,8 @@ static int s_mqtt5_disconnect_storage_new_set_no_optional_fn(struct aws_allocato
         .reason_code = AWS_MQTT5_DRC_ADMINISTRATIVE_ACTION,
     };
 
+    ASSERT_SUCCESS(aws_mqtt5_packet_disconnect_view_validate(&disconnect_options));
+
     struct aws_mqtt5_packet_disconnect_storage disconnect_storage;
     AWS_ZERO_STRUCT(disconnect_storage);
 
@@ -866,6 +887,7 @@ static int s_mqtt5_disconnect_storage_new_set_no_optional_fn(struct aws_allocato
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_UINT(&disconnect_storage, &disconnect_options, reason_code);
 
     struct aws_mqtt5_packet_disconnect_view *stored_view = &disconnect_storage.storage_view;
+    ASSERT_SUCCESS(aws_mqtt5_packet_disconnect_view_validate(stored_view));
 
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&disconnect_storage, session_expiry_interval_seconds);
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(&disconnect_storage, reason_string);
@@ -1169,7 +1191,7 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
@@ -1196,7 +1218,6 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, connect_view.keep_alive_interval_seconds);
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connect_view.session_expiry_interval_seconds);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, *connect_view.maximum_packet_size_bytes);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, *connect_view.topic_alias_maximum);
 
@@ -1233,7 +1254,7 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
@@ -1276,7 +1297,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
 
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, AWS_MQTT5_RECEIVE_MAXIMUM);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
@@ -1306,7 +1327,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
     ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos);
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connack_view.session_expiry_interval);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, *connack_view.receive_maximum);
-    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size, *connack_view.maximum_packet_size);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, *connack_view.maximum_packet_size);
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, *connack_view.server_keep_alive);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, *connack_view.topic_alias_maximum);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_client, 0);
@@ -1400,8 +1421,8 @@ static void s_create_operations(
     *subscribe_op = aws_mqtt5_operation_subscribe_new(allocator, &subscribe_view, NULL);
 
     struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
-        .topics = s_topics,
-        .topic_count = AWS_ARRAY_SIZE(s_topics),
+        .topic_filters = s_topics,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_topics),
     };
 
     *unsubscribe_op = aws_mqtt5_operation_unsubscribe_new(allocator, &unsubscribe_view, NULL);
@@ -1757,6 +1778,9 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
 
     /* this keeps the operation processing logic from crashing when dereferencing client->slot->channel */
     test_context->dummy_client.slot = &test_context->dummy_slot;
+
+    /* this keeps operation processing tests from failing operations due to a 0 maximum packet size */
+    test_context->dummy_client.negotiated_settings.maximum_packet_size_to_server = AWS_MQTT5_MAXIMUM_PACKET_SIZE;
 
     aws_array_list_init_dynamic(&test_context->output_io_messages, allocator, 0, sizeof(struct aws_io_message *));
 
