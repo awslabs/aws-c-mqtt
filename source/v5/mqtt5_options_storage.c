@@ -1554,6 +1554,16 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
         return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
     }
 
+    if (publish_view->topic_alias != NULL) {
+        if (*publish_view->topic_alias == 0) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_publish_view - topic alias may not be zero",
+                (void *)publish_view);
+            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        }
+    }
+
     if (publish_view->payload_format != NULL) {
         if (*publish_view->payload_format < AWS_MQTT5_PFI_BYTES || *publish_view->payload_format > AWS_MQTT5_PFI_UTF8) {
             AWS_LOGF_ERROR(
@@ -1570,6 +1580,14 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_publish_view - response topic too long",
+                (void *)publish_view);
+            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        }
+
+        if (!aws_mqtt_is_valid_topic(publish_view->response_topic)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_publish_view - response topic must be a valid mqtt topic",
                 (void *)publish_view);
             return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
         }
@@ -1600,16 +1618,6 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_publish_view - content type too long",
-                (void *)publish_view);
-            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
-        }
-    }
-
-    if (publish_view->topic_alias != NULL) {
-        if (*publish_view->topic_alias == 0) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: aws_mqtt5_packet_publish_view - topic alias may not be zero",
                 (void *)publish_view);
             return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
         }
