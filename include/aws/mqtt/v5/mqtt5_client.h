@@ -186,7 +186,7 @@ typedef void(aws_mqtt5_disconnect_completion_fn)(int error_code, void *complete_
  * Invoked by the client when there is additional payload data ready to be read by the receiver.
  */
 typedef int(aws_mqtt5_payload_delivery_on_stream_data_callback_fn)(
-    struct aws_mqtt5_packet_publish_view *message_view,
+    const struct aws_mqtt5_packet_publish_view *message_view,
     struct aws_byte_cursor payload_data,
     void *user_data);
 
@@ -195,7 +195,7 @@ typedef int(aws_mqtt5_payload_delivery_on_stream_data_callback_fn)(
  * successful and finished at this point.
  */
 typedef void(aws_mqtt5_payload_delivery_on_stream_complete_callback_fn)(
-    struct aws_mqtt5_packet_publish_view *message_view,
+    const struct aws_mqtt5_packet_publish_view *message_view,
     void *user_data);
 
 /**
@@ -203,7 +203,7 @@ typedef void(aws_mqtt5_payload_delivery_on_stream_complete_callback_fn)(
  * have failed and a failing PUBACK will be sent to the server if the connection is still good.
  */
 typedef void(aws_mqtt5_payload_delivery_on_stream_error_callback_fn)(
-    struct aws_mqtt5_packet_publish_view *message_view,
+    const struct aws_mqtt5_packet_publish_view *message_view,
     int error_code,
     void *user_data);
 
@@ -213,7 +213,7 @@ typedef void(aws_mqtt5_payload_delivery_on_stream_error_callback_fn)(
  * Receiver must set all delivery_options_out callback members in order to receive the payload.
  */
 typedef int(aws_mqtt5_on_message_received_callback_fn)(
-    struct aws_mqtt5_packet_publish_view *message_view,
+    const struct aws_mqtt5_packet_publish_view *message_view,
     struct aws_mqtt5_publish_payload_delivery_options *delivery_options_out,
     void *user_data);
 
