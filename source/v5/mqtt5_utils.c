@@ -6,6 +6,7 @@
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 
 #include <aws/common/byte_buf.h>
+#include <aws/common/device_random.h>
 #include <aws/io/stream.h>
 #include <inttypes.h>
 
@@ -250,4 +251,30 @@ const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(
     }
 
     return "Unknown lifecycle event";
+}
+
+uint64_t aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to) {
+    uint64_t max = aws_max_u64(from, to);
+    uint64_t min = aws_min_u64(from, to);
+
+    /* Note: this contains several changes to the corresponding function in aws-c-io.  Don't throw them away.
+     *
+     * 1. random range is now inclusive/closed: [from, to] rather than half-open [from, to)
+     * 2. as a corollary, diff == 0 => return min, not 0
+     */
+    uint64_t diff = max - min;
+    if (!diff) {
+        return min;
+    }
+
+    uint64_t random_value = 0;
+    if (aws_device_random_u64(&random_value)) {
+        return min;
+    }
+
+    if (diff == UINT64_MAX) {
+        return random_value;
+    }
+
+    return min + random_value % (diff + 1); /* + 1 is safe due to previous check */
 }

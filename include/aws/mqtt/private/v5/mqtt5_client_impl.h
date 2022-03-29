@@ -261,12 +261,19 @@ struct aws_mqtt5_client_operational_state {
  *       (b) Total outbound throughput limit
  */
 struct aws_mqtt5_client_flow_control_state {
-    uint32_t unacked_qos1_publish_count;
 
     /*
-    struct aws_token_bucket outbound_publish_limiter;
-    struct aws_token_bucket outbound_throughput_limiter;
+     * Starts at the server's receive maximum.
+     *   1. Decrement every time we send a QoS1+ publish
+     *   2. Increment every time we receive a PUBACK
+     *
+     * Qos1+ publishes (and all operations behind them in the queue) are blocked while this value is zero.
+     *
+     * Qos 2 support will require additional work here to match the spec.
      */
+    uint32_t unacked_publish_token_count;
+
+    /* TODO: rate limiters for publish TPS and total bandwidth in order to support optional AWS IoT Core limits */
 };
 
 /*
@@ -381,10 +388,9 @@ struct aws_mqtt5_client {
     /* TODO: statistics that use atomics because we don't care about consistency/isolation */
 
     /*
-     * TODO: flow control system.  Initial requires only a count of # of unacked QoS1+ publishes.
-     * Followup will support per-op-type token-bucket rate controls against fixed IoT Core limits as an opt-in option,
-     * as well as throughput throttles and any other modellable IoT Core limit.
+     * Wraps all state related to outbound flow control.
      */
+    struct aws_mqtt5_client_flow_control_state flow_control_state;
 
     /*
      * When should the next PINGREQ be sent?  Automatically pushed out with ever socket write completion.
@@ -492,9 +498,23 @@ AWS_MQTT_API int aws_mqtt5_client_service_operational_state(
 AWS_MQTT_API void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
+    enum aws_mqtt5_packet_type packet_type,
     const void *packet_view);
 
 AWS_MQTT_API bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client);
+
+AWS_MQTT_API void aws_mqtt5_client_flow_control_state_init(struct aws_mqtt5_client *client);
+
+AWS_MQTT_API void aws_mqtt5_client_flow_control_state_on_puback(struct aws_mqtt5_client *client);
+
+AWS_MQTT_API void aws_mqtt5_client_flow_control_state_on_outbound_operation(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation);
+
+AWS_MQTT_API uint64_t aws_mqtt5_client_flow_control_state_get_next_operation_service_time(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation,
+    uint64_t now);
 
 AWS_EXTERN_C_END
 

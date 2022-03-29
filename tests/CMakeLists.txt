@@ -200,6 +200,7 @@ add_test_case(mqtt5_client_reconnect_backoff_sufficient_reset)
 
 add_test_case(mqtt5_client_subscribe_fail_packet_too_big)
 add_test_case(mqtt5_client_disconnect_fail_packet_too_big)
+add_test_case(mqtt5_client_flow_control_receive_maximum)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
