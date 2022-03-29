@@ -645,6 +645,21 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_publish_view,
     s_make_response_topic_too_long_publish_view)
 
+static struct aws_byte_cursor s_invalid_topic_cursor = {
+    .ptr = s_invalid_topic,
+    .len = AWS_ARRAY_SIZE(s_invalid_topic) - 1,
+};
+
+static void s_make_response_topic_invalid_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->response_topic = &s_invalid_topic_cursor;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    publish,
+    invalid_response_topic,
+    s_good_publish_view,
+    s_make_response_topic_invalid_publish_view)
+
 static void s_make_correlation_data_too_long_publish_view(struct aws_mqtt5_packet_publish_view *view) {
     view->correlation_data = &s_too_long_for_uint16_cursor;
 }
@@ -680,7 +695,8 @@ AWS_VALIDATION_FAILURE_TEST3(
 
 static const uint16_t s_topic_alias_zero = 0;
 static void s_make_topic_alias_zero_publish_view(struct aws_mqtt5_packet_publish_view *view) {
-    view->topic_alias = &s_topic_alias_zero, view->topic.ptr = NULL;
+    view->topic_alias = &s_topic_alias_zero;
+    view->topic.ptr = NULL;
     view->topic.len = 0;
 }
 
