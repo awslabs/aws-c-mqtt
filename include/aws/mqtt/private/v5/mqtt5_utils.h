@@ -8,9 +8,11 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_byte_buf;
+struct aws_mqtt5_negotiated_settings;
 
 #define AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER 268435455
 #define AWS_MQTT5_MAXIMUM_PACKET_SIZE (5 + AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER)
