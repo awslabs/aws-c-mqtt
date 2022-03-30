@@ -1999,7 +1999,7 @@ int aws_mqtt5_client_publish(
     AWS_PRECONDITION(publish_options != NULL);
 
     struct aws_mqtt5_operation_publish *publish_op =
-        aws_mqtt5_operation_publish_new(client->allocator, publish_options, completion_options);
+        aws_mqtt5_operation_publish_new(client->allocator, client, publish_options, completion_options);
 
     if (publish_op == NULL) {
         return AWS_OP_ERR;
@@ -2027,7 +2027,7 @@ int aws_mqtt5_client_subscribe(
     AWS_PRECONDITION(subscribe_options != NULL);
 
     struct aws_mqtt5_operation_subscribe *subscribe_op =
-        aws_mqtt5_operation_subscribe_new(client->allocator, subscribe_options, completion_options);
+        aws_mqtt5_operation_subscribe_new(client->allocator, client, subscribe_options, completion_options);
 
     if (subscribe_op == NULL) {
         return AWS_OP_ERR;
@@ -2055,7 +2055,7 @@ int aws_mqtt5_client_unsubscribe(
     AWS_PRECONDITION(unsubscribe_options != NULL);
 
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
-        aws_mqtt5_operation_unsubscribe_new(client->allocator, unsubscribe_options, completion_options);
+        aws_mqtt5_operation_unsubscribe_new(client->allocator, client, unsubscribe_options, completion_options);
 
     if (unsubscribe_op == NULL) {
         return AWS_OP_ERR;
