@@ -532,6 +532,7 @@ AWS_MQTT_API void aws_mqtt5_packet_disconnect_view_init_from_storage(
 
 AWS_MQTT_API struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     struct aws_allocator *allocator,
+    const struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_publish_view *publish_options,
     const struct aws_mqtt5_publish_completion_options *completion_options);
 
@@ -547,6 +548,9 @@ AWS_MQTT_API int aws_mqtt5_packet_publish_storage_init_from_external_storage(
 AWS_MQTT_API void aws_mqtt5_packet_publish_storage_clean_up(struct aws_mqtt5_packet_publish_storage *publish_storage);
 
 AWS_MQTT_API int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish_view *publish_view);
+
+AWS_MQTT_API int aws_mqtt5_packet_publish_view_validate_vs_iot_core(
+    const struct aws_mqtt5_packet_publish_view *publish_view);
 
 AWS_MQTT_API void aws_mqtt5_packet_publish_view_log(
     const struct aws_mqtt5_packet_publish_view *publish_view,
@@ -585,6 +589,7 @@ AWS_MQTT_API void aws_mqtt5_packet_puback_view_init_from_storage(
 
 AWS_MQTT_API struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     struct aws_allocator *allocator,
+    const struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
     const struct aws_mqtt5_subscribe_completion_options *completion_options);
 
@@ -601,6 +606,9 @@ AWS_MQTT_API void aws_mqtt5_packet_subscribe_storage_clean_up(
     struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
 
 AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate(const struct aws_mqtt5_packet_subscribe_view *subscribe_view);
+
+AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate_vs_iot_core(
+    const struct aws_mqtt5_packet_subscribe_view *subscribe_view);
 
 AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_log(
     const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
@@ -635,6 +643,7 @@ AWS_MQTT_API void aws_mqtt5_packet_suback_view_init_from_storage(
 
 AWS_MQTT_API struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     struct aws_allocator *allocator,
+    const struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
     const struct aws_mqtt5_unsubscribe_completion_options *completion_options);
 
@@ -651,6 +660,9 @@ AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_storage_clean_up(
     struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
 
 AWS_MQTT_API int aws_mqtt5_packet_unsubscribe_view_validate(
+    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view);
+
+AWS_MQTT_API int aws_mqtt5_packet_unsubscribe_view_validate_vs_iot_core(
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view);
 
 AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_log(

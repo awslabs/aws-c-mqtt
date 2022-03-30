@@ -115,7 +115,8 @@ static int s_mqtt5_publish_operation_new_set_no_optional_fn(struct aws_allocator
 
     ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
 
-    struct aws_mqtt5_operation_publish *publish_op = aws_mqtt5_operation_publish_new(allocator, &publish_options, NULL);
+    struct aws_mqtt5_operation_publish *publish_op =
+        aws_mqtt5_operation_publish_new(allocator, NULL, &publish_options, NULL);
 
     ASSERT_NOT_NULL(publish_op);
 
@@ -231,7 +232,7 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
     };
 
     struct aws_mqtt5_operation_publish *publish_op =
-        aws_mqtt5_operation_publish_new(allocator, &publish_options, &completion_options);
+        aws_mqtt5_operation_publish_new(allocator, NULL, &publish_options, &completion_options);
 
     ASSERT_NOT_NULL(publish_op);
 
@@ -389,7 +390,7 @@ static int s_mqtt5_subscribe_operation_new_set_no_optional_fn(struct aws_allocat
     };
 
     struct aws_mqtt5_operation_subscribe *subscribe_op =
-        aws_mqtt5_operation_subscribe_new(allocator, &subscribe_options, &completion_options);
+        aws_mqtt5_operation_subscribe_new(allocator, NULL, &subscribe_options, &completion_options);
 
     ASSERT_SUCCESS(s_aws_mqtt5_subcribe_operation_verify_required_properties(
         subscribe_op, &subscribe_options, &completion_options));
@@ -429,7 +430,7 @@ static int s_mqtt5_subscribe_operation_new_set_all_fn(struct aws_allocator *allo
     };
 
     struct aws_mqtt5_operation_subscribe *subscribe_op =
-        aws_mqtt5_operation_subscribe_new(allocator, &subscribe_options, &completion_options);
+        aws_mqtt5_operation_subscribe_new(allocator, NULL, &subscribe_options, &completion_options);
 
     ASSERT_SUCCESS(s_aws_mqtt5_subcribe_operation_verify_required_properties(
         subscribe_op, &subscribe_options, &completion_options));
@@ -503,7 +504,7 @@ static int s_mqtt5_unsubscribe_operation_new_set_all_fn(struct aws_allocator *al
     };
 
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
-        aws_mqtt5_operation_unsubscribe_new(allocator, &unsubscribe_options, &completion_options);
+        aws_mqtt5_operation_unsubscribe_new(allocator, NULL, &unsubscribe_options, &completion_options);
 
     struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage = &unsubscribe_op->options_storage;
     struct aws_mqtt5_packet_unsubscribe_view *stored_view = &unsubscribe_storage->storage_view;
@@ -1366,7 +1367,7 @@ static int s_mqtt5_operation_bind_packet_id_empty_table_fn(struct aws_allocator 
     };
 
     struct aws_mqtt5_operation_publish *publish_operation =
-        aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
+        aws_mqtt5_operation_publish_new(allocator, NULL, &publish_view, NULL);
 
     struct aws_mqtt5_client_operational_state operational_state;
     aws_mqtt5_client_operational_state_init(&operational_state, allocator, NULL);
@@ -1411,21 +1412,21 @@ static void s_create_operations(
         .payload = s_payload_cursor,
     };
 
-    *publish_op = aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
+    *publish_op = aws_mqtt5_operation_publish_new(allocator, NULL, &publish_view, NULL);
 
     struct aws_mqtt5_packet_subscribe_view subscribe_view = {
         .subscriptions = s_subscriptions,
         .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
     };
 
-    *subscribe_op = aws_mqtt5_operation_subscribe_new(allocator, &subscribe_view, NULL);
+    *subscribe_op = aws_mqtt5_operation_subscribe_new(allocator, NULL, &subscribe_view, NULL);
 
     struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
         .topic_filters = s_topics,
         .topic_filter_count = AWS_ARRAY_SIZE(s_topics),
     };
 
-    *unsubscribe_op = aws_mqtt5_operation_unsubscribe_new(allocator, &unsubscribe_view, NULL);
+    *unsubscribe_op = aws_mqtt5_operation_unsubscribe_new(allocator, NULL, &unsubscribe_view, NULL);
 }
 
 static void s_seed_unacked_operations(
@@ -1563,7 +1564,7 @@ static int s_mqtt5_operation_bind_packet_id_full_table_fn(struct aws_allocator *
 
     for (uint16_t i = 0; i < UINT16_MAX; ++i) {
         struct aws_mqtt5_operation_publish *publish_op =
-            aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
+            aws_mqtt5_operation_publish_new(allocator, NULL, &publish_view, NULL);
         aws_mqtt5_operation_set_packet_id(&publish_op->base, i + 1);
 
         aws_hash_table_put(
@@ -1574,7 +1575,8 @@ static int s_mqtt5_operation_bind_packet_id_full_table_fn(struct aws_allocator *
         aws_linked_list_push_back(&operational_state.unacked_operations, &publish_op->base.node);
     }
 
-    struct aws_mqtt5_operation_publish *new_publish = aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
+    struct aws_mqtt5_operation_publish *new_publish =
+        aws_mqtt5_operation_publish_new(allocator, NULL, &publish_view, NULL);
 
     ASSERT_FAILS(aws_mqtt5_operation_bind_packet_id(&new_publish->base, &operational_state));
     ASSERT_UINT_EQUALS(1, operational_state.next_mqtt_packet_id);
@@ -1597,7 +1599,8 @@ static int s_mqtt5_operation_bind_packet_id_not_valid_fn(struct aws_allocator *a
         .payload = s_payload_cursor,
     };
 
-    struct aws_mqtt5_operation_publish *new_publish = aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
+    struct aws_mqtt5_operation_publish *new_publish =
+        aws_mqtt5_operation_publish_new(allocator, NULL, &publish_view, NULL);
 
     struct aws_mqtt5_client_operational_state operational_state;
     aws_mqtt5_client_operational_state_init(&operational_state, allocator, NULL);
@@ -1623,7 +1626,8 @@ static int s_mqtt5_operation_bind_packet_id_already_bound_fn(struct aws_allocato
         .payload = s_payload_cursor,
     };
 
-    struct aws_mqtt5_operation_publish *new_publish = aws_mqtt5_operation_publish_new(allocator, &publish_view, NULL);
+    struct aws_mqtt5_operation_publish *new_publish =
+        aws_mqtt5_operation_publish_new(allocator, NULL, &publish_view, NULL);
     aws_mqtt5_operation_set_packet_id(&new_publish->base, 2);
 
     struct aws_mqtt5_client_operational_state operational_state;
@@ -1846,7 +1850,7 @@ static struct aws_mqtt5_operation_subscribe *s_make_simple_subscribe_operation(s
         .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
     };
 
-    return aws_mqtt5_operation_subscribe_new(allocator, &subscribe_view, NULL);
+    return aws_mqtt5_operation_subscribe_new(allocator, NULL, &subscribe_view, NULL);
 }
 
 /*
@@ -2385,7 +2389,7 @@ static struct aws_mqtt5_operation_subscribe *s_make_completable_subscribe_operat
         .completion_user_data = test_context,
     };
 
-    return aws_mqtt5_operation_subscribe_new(allocator, &subscribe_view, &completion_options);
+    return aws_mqtt5_operation_subscribe_new(allocator, NULL, &subscribe_view, &completion_options);
 }
 
 void s_on_publish_operation_complete(
@@ -2415,7 +2419,7 @@ static struct aws_mqtt5_operation_publish *s_make_completable_publish_operation(
         .completion_user_data = test_context,
     };
 
-    return aws_mqtt5_operation_publish_new(allocator, &publish_options, &completion_options);
+    return aws_mqtt5_operation_publish_new(allocator, NULL, &publish_options, &completion_options);
 }
 
 static int s_setup_unacked_operation(

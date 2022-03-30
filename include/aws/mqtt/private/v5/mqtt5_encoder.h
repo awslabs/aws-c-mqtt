@@ -197,7 +197,7 @@ AWS_MQTT_API enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
  * Default encoder table.  Tests copy it and augment with additional functions in order to do round-trip encode-decode
  * tests for packets that are only encoded on the server.
  */
-AWS_MQTT_API const struct aws_mqtt5_encoder_function_table *g_aws_mqtt5_encoder_default_function_table;
+AWS_MQTT_API extern const struct aws_mqtt5_encoder_function_table *g_aws_mqtt5_encoder_default_function_table;
 
 AWS_EXTERN_C_END
 
