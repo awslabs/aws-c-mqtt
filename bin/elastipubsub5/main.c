@@ -395,7 +395,7 @@ static void s_handle_publish(
     }
 
     printf(
-        "Publishing to Topic:" PRInSTR " Payload:" PRInSTR "\n",
+        "Publishing to Topic:'" PRInSTR "' Payload:'" PRInSTR "'\n",
         AWS_BYTE_CURSOR_PRI(topic_cursor),
         AWS_BYTE_CURSOR_PRI(payload_cursor));
 

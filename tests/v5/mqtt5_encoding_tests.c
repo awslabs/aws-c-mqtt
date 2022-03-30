@@ -989,3 +989,105 @@ static int s_mqtt5_packet_unsuback_round_trip_fn(struct aws_allocator *allocator
 }
 
 AWS_TEST_CASE(mqtt5_packet_unsuback_round_trip, s_mqtt5_packet_unsuback_round_trip_fn)
+
+static char s_publish_topic[] = "test_topic";
+static char s_publish_payload[] = "test payload contents";
+static char s_publish_response_topic[] = "test response topic";
+static char s_publish_correlation_data[] = "test correlation data";
+static char s_publish_content_type[] = "test content type";
+
+static int s_aws_mqtt5_on_publish_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    struct aws_mqtt5_encode_decode_tester *tester = user_data;
+
+    ++tester->view_count;
+
+    struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
+    struct aws_mqtt5_packet_publish_view *expected_view = tester->expected_views;
+
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->payload.ptr, expected_view->payload.len, publish_view->payload.ptr, publish_view->payload.len);
+    ASSERT_INT_EQUALS(expected_view->packet_id, publish_view->packet_id);
+    ASSERT_INT_EQUALS(expected_view->qos, publish_view->qos);
+    ASSERT_INT_EQUALS(expected_view->duplicate, publish_view->duplicate);
+    ASSERT_INT_EQUALS(expected_view->retain, publish_view->retain);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->topic.ptr, expected_view->topic.len, publish_view->topic.ptr, publish_view->topic.len);
+    ASSERT_INT_EQUALS(*expected_view->payload_format, *publish_view->payload_format);
+    ASSERT_INT_EQUALS(*expected_view->message_expiry_interval_seconds, *publish_view->message_expiry_interval_seconds);
+    ASSERT_INT_EQUALS(*expected_view->topic_alias, *publish_view->topic_alias);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->response_topic->ptr,
+        expected_view->response_topic->len,
+        publish_view->response_topic->ptr,
+        publish_view->response_topic->len);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->correlation_data->ptr,
+        expected_view->correlation_data->len,
+        publish_view->correlation_data->ptr,
+        publish_view->correlation_data->len);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->content_type->ptr,
+        expected_view->content_type->len,
+        publish_view->content_type->ptr,
+        publish_view->content_type->len);
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        expected_view->user_property_count,
+        expected_view->user_properties,
+        publish_view->user_property_count,
+        publish_view->user_properties));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_packet_publish_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt5_packet_id_t packet_id = 47;
+    enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
+    uint32_t message_expiry_interval_seconds = 100;
+    uint16_t topic_alias = 1;
+    struct aws_byte_cursor response_topic = {
+        .ptr = (uint8_t *)s_publish_response_topic,
+        .len = AWS_ARRAY_SIZE(s_publish_response_topic) - 1,
+    };
+    struct aws_byte_cursor correlation_data = {
+        .ptr = (uint8_t *)s_publish_correlation_data,
+        .len = AWS_ARRAY_SIZE(s_publish_correlation_data) - 1,
+    };
+    struct aws_byte_cursor content_type = {
+        .ptr = (uint8_t *)s_publish_content_type,
+        .len = AWS_ARRAY_SIZE(s_publish_content_type) - 1,
+    };
+
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .payload =
+            {
+                .ptr = (uint8_t *)s_publish_payload,
+                .len = AWS_ARRAY_SIZE(s_publish_payload) - 1,
+            },
+        .packet_id = packet_id,
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .duplicate = false,
+        .retain = false,
+        .topic =
+            {
+                .ptr = (uint8_t *)s_publish_topic,
+                .len = AWS_ARRAY_SIZE(s_publish_topic) - 1,
+            },
+        .payload_format = &payload_format,
+        .message_expiry_interval_seconds = &message_expiry_interval_seconds,
+        .topic_alias = &topic_alias,
+        .response_topic = &response_topic,
+        .correlation_data = &correlation_data,
+        .content_type = &content_type,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
+        allocator, AWS_MQTT5_PT_PUBLISH, &publish_view, s_aws_mqtt5_on_publish_received_fn));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_packet_publish_round_trip, s_mqtt5_packet_publish_round_trip_fn)

@@ -426,7 +426,7 @@ struct aws_mqtt5_client_options {
     uint32_t connack_timeout_ms;
 
     /**
-     * STEVE FILL IN
+     * Callback for received publish packets
      */
     aws_mqtt5_publish_received_fn *publish_received;
 

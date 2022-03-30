@@ -727,6 +727,7 @@ static int s_compute_publish_variable_length_fields(
     ADD_OPTIONAL_U16_PROPERTY_LENGTH(publish_view->topic_alias, publish_property_section_length);
     ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->response_topic, publish_property_section_length);
     ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->correlation_data, publish_property_section_length);
+    ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->content_type, publish_property_section_length);
 
     *publish_properties_length = (uint32_t)publish_property_section_length;
 
