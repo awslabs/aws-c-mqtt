@@ -335,8 +335,8 @@ size_t aws_mqtt5_topic_get_segment_count(struct aws_byte_cursor topic_cursor) {
     return segment_count;
 }
 
-bool aws_mqtt_is_valid_topic_filter_for_iot_core(struct aws_byte_cursor topic_cursor) {
-    struct aws_byte_cursor post_rule_suffix = aws_mqtt5_topic_skip_aws_iot_rules_prefix(topic_cursor);
+bool aws_mqtt_is_valid_topic_filter_for_iot_core(struct aws_byte_cursor topic_filter_cursor) {
+    struct aws_byte_cursor post_rule_suffix = aws_mqtt5_topic_skip_aws_iot_rules_prefix(topic_filter_cursor);
     return aws_mqtt5_topic_get_segment_count(post_rule_suffix) <= AWS_IOT_CORE_MAXIMUM_TOPIC_SEGMENTS;
 }
 

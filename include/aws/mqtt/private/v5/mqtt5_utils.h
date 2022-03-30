@@ -231,10 +231,25 @@ AWS_MQTT_API uint64_t aws_mqtt5_client_random_in_range(uint64_t from, uint64_t t
  */
 AWS_MQTT_API struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(struct aws_byte_cursor topic_cursor);
 
+/**
+ * Computes the number of topic segments in a topic or topic filter
+ * @param topic_cursor topic or topic filter
+ * @return number of topic segments in the topic or topic filter
+ */
 AWS_MQTT_API size_t aws_mqtt5_topic_get_segment_count(const struct aws_byte_cursor topic_cursor);
 
-AWS_MQTT_API bool aws_mqtt_is_valid_topic_filter_for_iot_core(struct aws_byte_cursor topic_cursor);
+/**
+ * Checks a topic filter for validity against AWS IoT Core rules
+ * @param topic_filter_cursor topic filter to check
+ * @return true if valid, false otherwise
+ */
+AWS_MQTT_API bool aws_mqtt_is_valid_topic_filter_for_iot_core(struct aws_byte_cursor topic_filter_cursor);
 
+/**
+ * Checks a topic for validity against AWS IoT Core rules
+ * @param topic_cursor topic to check
+ * @return true if valid, false otherwise
+ */
 AWS_MQTT_API bool aws_mqtt_is_valid_topic_for_iot_core(struct aws_byte_cursor topic_cursor);
 
 AWS_EXTERN_C_END
