@@ -138,7 +138,7 @@ static const struct aws_mqtt5_user_property
         mqtt5_operation_##packet_type##_validation_failure_##failure_reason,                                           \
         s_mqtt5_operation_##packet_type##_validation_failure_##failure_reason##_fn)
 
-static struct aws_mqtt5_packet_disconnect_view s_good_disconnect_view = {};
+static struct aws_mqtt5_packet_disconnect_view s_good_disconnect_view;
 
 static void s_make_server_reference_disconnect_view(struct aws_mqtt5_packet_disconnect_view *view) {
     view->server_reference = &s_server_reference_cursor;
@@ -203,7 +203,7 @@ AWS_VALIDATION_FAILURE_TEST4(
     s_good_disconnect_view,
     s_make_user_properties_too_many_disconnect_view)
 
-static struct aws_mqtt5_packet_connect_view s_good_connect_view = {};
+static struct aws_mqtt5_packet_connect_view s_good_connect_view;
 
 static void s_make_client_id_too_long_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->client_id.ptr = s_too_long_for_uint16;
@@ -335,7 +335,7 @@ static struct aws_mqtt5_packet_connect_view s_good_will_connect_view = {
     .will = &s_good_will_publish_view,
 };
 
-static struct aws_mqtt5_packet_publish_view s_will_invalid_publish_view = {};
+static struct aws_mqtt5_packet_publish_view s_will_invalid_publish_view;
 
 static void s_make_will_invalid_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->will = &s_will_invalid_publish_view;
@@ -391,7 +391,7 @@ static void s_make_no_subscriptions_subscribe_view(struct aws_mqtt5_packet_subsc
 AWS_VALIDATION_FAILURE_TEST3(subscribe, no_subscriptions, s_good_subscribe_view, s_make_no_subscriptions_subscribe_view)
 
 static struct aws_mqtt5_subscription_view
-    s_too_many_subscriptions[AWS_MQTT5_CLIENT_MAXIMUM_SUBSCRIPTIONS_PER_SUBSCRIBE + 1] = {};
+    s_too_many_subscriptions[AWS_MQTT5_CLIENT_MAXIMUM_SUBSCRIPTIONS_PER_SUBSCRIBE + 1];
 
 static void s_make_too_many_subscriptions_subscribe_view(struct aws_mqtt5_packet_subscribe_view *view) {
     for (size_t i = 0; i < AWS_ARRAY_SIZE(s_too_many_subscriptions); ++i) {
@@ -601,7 +601,7 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_unsubscribe_view,
     s_make_no_topic_filters_unsubscribe_view)
 
-static struct aws_byte_cursor s_too_many_topic_filters[AWS_MQTT5_CLIENT_MAXIMUM_TOPIC_FILTERS_PER_UNSUBSCRIBE + 1] = {};
+static struct aws_byte_cursor s_too_many_topic_filters[AWS_MQTT5_CLIENT_MAXIMUM_TOPIC_FILTERS_PER_UNSUBSCRIBE + 1];
 
 static void s_make_too_many_topic_filters_unsubscribe_view(struct aws_mqtt5_packet_unsubscribe_view *view) {
     for (size_t i = 0; i < AWS_ARRAY_SIZE(s_too_many_topic_filters); ++i) {

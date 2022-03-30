@@ -151,7 +151,7 @@ AWS_MQTT_API int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *de
  * Default decoding table; tests use an augmented version with decoders for packets that only the server needs to
  * decode.
  */
-AWS_MQTT_API const struct aws_mqtt5_decoder_function_table *g_aws_mqtt5_default_decoder_table;
+AWS_MQTT_API extern const struct aws_mqtt5_decoder_function_table *g_aws_mqtt5_default_decoder_table;
 
 AWS_EXTERN_C_END
 

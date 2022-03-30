@@ -3,8 +3,8 @@ include(AwsTestHarness)
 include(AwsLibFuzzer)
 enable_testing()
 
-file(GLOB TEST_HDRS "*.h")
-set(TEST_SRC packet_encoding_test.c topic_tree_test.c connection_state_test.c mqtt_mock_server_handler.c mqtt5_operation_and_storage_tests.c mqtt5_encoding_tests.c mqtt5_testing_utils.c mqtt5_client_tests.c mqtt5_operation_validation_failure_tests.c mqtt5_utils_tests.c)
+file(GLOB TEST_HDRS "v3/*.h v5/*.h")
+set(TEST_SRC v3/*.c v5/*.c)
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
@@ -215,7 +215,7 @@ generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)
 
-add_executable(${TEST_PAHO_CLIENT_BINARY_NAME} "paho_client_test.c")
+add_executable(${TEST_PAHO_CLIENT_BINARY_NAME} "v3-client/paho_client_test.c")
 target_link_libraries(${TEST_PAHO_CLIENT_BINARY_NAME} PRIVATE ${PROJECT_NAME})
 aws_set_common_properties(${TEST_PAHO_CLIENT_BINARY_NAME})
 aws_add_sanitizers(${TEST_PAHO_CLIENT_BINARY_NAME} ${${PROJECT_NAME}_SANITIZERS})
@@ -224,7 +224,7 @@ target_include_directories(${TEST_PAHO_CLIENT_BINARY_NAME} PRIVATE ${CMAKE_CURRE
 
 set(TEST_IOT_CLIENT_BINARY_NAME ${PROJECT_NAME}-iot-client)
 
-add_executable(${TEST_IOT_CLIENT_BINARY_NAME} "aws_iot_client_test.c")
+add_executable(${TEST_IOT_CLIENT_BINARY_NAME} "v3-client/aws_iot_client_test.c")
 target_link_libraries(${TEST_IOT_CLIENT_BINARY_NAME} PRIVATE ${PROJECT_NAME})
 aws_set_common_properties(${TEST_IOT_CLIENT_BINARY_NAME})
 aws_add_sanitizers(${TEST_IOT_CLIENT_BINARY_NAME} ${${PROJECT_NAME}_SANITIZERS})
