@@ -66,6 +66,12 @@ struct aws_mqtt5_negotiated_settings;
 #define AWS_MQTT5_SUBSCRIBE_FLAGS_QOS_BIT_POSITION 0
 #define AWS_MQTT5_SUBSCRIBE_FLAGS_QOS_BIT_MASK 0x03
 
+/* Static AWS IoT Core Limit/Quota Values */
+#define AWS_IOT_CORE_MAXIMUM_CLIENT_ID_LENGTH 128
+#define AWS_IOT_CORE_MAXIMUM_TOPIC_LENGTH 256
+#define AWS_IOT_CORE_MAXIMUM_TOPIC_SEGMENTS 8
+#define AWS_IOT_CORE_MAXIMUM_SUSBCRIPTIONS_PER_SUBSCRIBE 8
+
 AWS_EXTERN_C_BEGIN
 
 /**
@@ -207,7 +213,29 @@ AWS_MQTT_API const char *aws_mqtt5_retain_handling_type_to_c_string(
  */
 AWS_MQTT_API const char *aws_mqtt5_packet_type_to_c_string(enum aws_mqtt5_packet_type packet_type);
 
+/**
+ * Computes a uniformly-distributed random number in the specified range.  Not intended for cryptographic purposes.
+ *
+ * @param from one end of the range to sample from
+ * @param to other end of the range to sample from
+ * @return a random number from the supplied range, with roughly a uniform distribution
+ */
 AWS_MQTT_API uint64_t aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to);
+
+/**
+ * Utility function to skip the "$aws/rules/<rule-name>/" prefix of a topic.  Technically this works for topic
+ * filters too.
+ *
+ * @param topic_cursor topic to get the non-rules suffix for
+ * @return remaining part of the topic after the leading AWS IoT Rules prefix has been skipped, if present
+ */
+AWS_MQTT_API struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(struct aws_byte_cursor topic_cursor);
+
+AWS_MQTT_API size_t aws_mqtt5_topic_get_segment_count(const struct aws_byte_cursor topic_cursor);
+
+AWS_MQTT_API bool aws_mqtt_is_valid_topic_filter_for_iot_core(struct aws_byte_cursor topic_cursor);
+
+AWS_MQTT_API bool aws_mqtt_is_valid_topic_for_iot_core(struct aws_byte_cursor topic_cursor);
 
 AWS_EXTERN_C_END
 

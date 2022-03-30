@@ -278,3 +278,73 @@ uint64_t aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to) {
 
     return min + random_value % (diff + 1); /* + 1 is safe due to previous check */
 }
+
+static uint8_t s_aws_iot_core_rules_prefix[] = "$aws/rules/";
+
+struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(const struct aws_byte_cursor topic_cursor) {
+    size_t prefix_length = AWS_ARRAY_SIZE(s_aws_iot_core_rules_prefix) - 1; /* skip 0-terminator */
+
+    struct aws_byte_cursor rules_prefix = {
+        .ptr = s_aws_iot_core_rules_prefix,
+        .len = prefix_length,
+    };
+
+    if (topic_cursor.len < rules_prefix.len) {
+        return topic_cursor;
+    }
+
+    struct aws_byte_cursor topic_cursor_copy = topic_cursor;
+    struct aws_byte_cursor topic_prefix = topic_cursor;
+    topic_prefix.len = rules_prefix.len;
+
+    if (!aws_byte_cursor_eq_ignore_case(&rules_prefix, &topic_prefix)) {
+        return topic_cursor;
+    }
+
+    aws_byte_cursor_advance(&topic_cursor_copy, prefix_length);
+    if (topic_cursor_copy.len == 0) {
+        return topic_cursor;
+    }
+
+    struct aws_byte_cursor rule_name_segment_cursor;
+    AWS_ZERO_STRUCT(rule_name_segment_cursor);
+
+    if (!aws_byte_cursor_next_split(&topic_cursor_copy, '/', &rule_name_segment_cursor)) {
+        return topic_cursor;
+    }
+
+    if (topic_cursor_copy.len < rule_name_segment_cursor.len + 1) {
+        return topic_cursor;
+    }
+
+    aws_byte_cursor_advance(&topic_cursor_copy, rule_name_segment_cursor.len + 1);
+
+    return topic_cursor_copy;
+}
+
+size_t aws_mqtt5_topic_get_segment_count(struct aws_byte_cursor topic_cursor) {
+    size_t segment_count = 0;
+
+    struct aws_byte_cursor segment_cursor;
+    AWS_ZERO_STRUCT(segment_cursor);
+
+    while (aws_byte_cursor_next_split(&topic_cursor, '/', &segment_cursor)) {
+        ++segment_count;
+    }
+
+    return segment_count;
+}
+
+bool aws_mqtt_is_valid_topic_filter_for_iot_core(struct aws_byte_cursor topic_cursor) {
+    struct aws_byte_cursor post_rule_suffix = aws_mqtt5_topic_skip_aws_iot_rules_prefix(topic_cursor);
+    return aws_mqtt5_topic_get_segment_count(post_rule_suffix) <= AWS_IOT_CORE_MAXIMUM_TOPIC_SEGMENTS;
+}
+
+bool aws_mqtt_is_valid_topic_for_iot_core(struct aws_byte_cursor topic_cursor) {
+    struct aws_byte_cursor post_rule_suffix = aws_mqtt5_topic_skip_aws_iot_rules_prefix(topic_cursor);
+    if (aws_mqtt5_topic_get_segment_count(post_rule_suffix) > AWS_IOT_CORE_MAXIMUM_TOPIC_SEGMENTS) {
+        return false;
+    }
+
+    return post_rule_suffix.len <= AWS_IOT_CORE_MAXIMUM_TOPIC_LENGTH;
+}
