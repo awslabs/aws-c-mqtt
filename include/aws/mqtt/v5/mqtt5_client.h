@@ -178,6 +178,11 @@ typedef void(aws_mqtt5_unsubscribe_completion_fn)(
     void *complete_ctx);
 
 /**
+ * Signature of callback to invoke on Publish received
+ */
+typedef void(aws_mqtt5_publish_received_fn)(const struct aws_mqtt5_packet_publish_view *publish, void *user_data);
+
+/**
  * Signature of callback to invoke when a DISCONNECT is fully written to the socket (or fails to be)
  */
 typedef void(aws_mqtt5_disconnect_completion_fn)(int error_code, void *complete_ctx);
@@ -419,6 +424,11 @@ struct aws_mqtt5_client_options {
      * connection will be shut down.
      */
     uint32_t connack_timeout_ms;
+
+    /**
+     * STEVE FILL IN
+     */
+    aws_mqtt5_publish_received_fn *publish_received;
 
     /**
      * Callback and user data for all client lifecycle events.

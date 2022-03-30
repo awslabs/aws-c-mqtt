@@ -1214,6 +1214,12 @@ int aws_mqtt5_packet_view_get_encoded_size(
             }
             break;
 
+        case AWS_MQTT5_PT_PUBACK:
+            if (s_compute_puback_variable_length_fields(packet_view, &total_remaining_length, &properties_length)) {
+                return AWS_OP_ERR;
+            }
+            break;
+
         default:
             return aws_raise_error(AWS_ERROR_MQTT5_ENCODE_SIZE_UNSUPPORTED_PACKET_TYPE);
     }

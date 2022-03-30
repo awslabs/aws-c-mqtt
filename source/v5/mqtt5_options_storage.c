@@ -3182,6 +3182,11 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
         return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
     }
 
+    if (options->publish_received == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "publish received not set in mqtt5 client configuration");
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+    }
+
     if (aws_mqtt5_packet_connect_view_validate(options->connect_options)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid CONNECT options in mqtt5 client configuration");
         return AWS_OP_ERR;
@@ -3499,6 +3504,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
 
     options_storage->websocket_handshake_transform = options->websocket_handshake_transform;
     options_storage->websocket_handshake_transform_user_data = options->websocket_handshake_transform_user_data;
+
+    options_storage->publish_received = options->publish_received;
 
     options_storage->session_behavior = options->session_behavior;
     options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
