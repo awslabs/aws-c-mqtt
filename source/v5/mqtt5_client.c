@@ -1655,7 +1655,7 @@ static int s_aws_mqtt5_client_on_publish_payload_received(
     (void)payload;
     (void)decoder_callback_user_data;
 
-    /* TODO: STEVE implement */
+    /* TODO: Streaming implementation */
 
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }

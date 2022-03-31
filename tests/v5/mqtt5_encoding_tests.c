@@ -1121,7 +1121,7 @@ static int s_mqtt5_packet_puback_round_trip_fn(struct aws_allocator *allocator, 
     (void)ctx;
 
     aws_mqtt5_packet_id_t packet_id = 47;
-    enum aws_mqtt5_puback_reason_code reason_code = AWS_MQTT5_PARC_SUCCESS;
+    enum aws_mqtt5_puback_reason_code reason_code = AWS_MQTT5_PARC_NO_MATCHING_SUBSCRIBERS;
     struct aws_byte_cursor reason_string = {
         .ptr = (uint8_t *)s_puback_reason_string,
         .len = AWS_ARRAY_SIZE(s_puback_reason_string) - 1,
