@@ -16,21 +16,13 @@ struct aws_mqtt5_client;
 struct aws_mqtt5_decoder;
 
 /**
- * Overall decoder state.  For all but publish, we read the packet type and the remaining length, and then buffer the
- * entire packet before decoding.  This lets us avoid the full complexity of a streaming decoder.
+ * Overall decoder state.  We read the packet type and the remaining length, and then buffer the
+ * entire packet before decoding.
  */
 enum aws_mqtt5_decoder_state {
     AWS_MQTT5_DS_READ_PACKET_TYPE,
     AWS_MQTT5_DS_READ_REMAINING_LENGTH,
-    AWS_MQTT5_DS_READ_NON_PUBLISH_PACKET,
-
-    /* TODO: publish-specific states to support streaming payloads */
-    AWS_MQTT5_DS_READ_PUBLISH_TOPIC_LENGTH,
-    AWS_MQTT5_DS_READ_PUBLISH_TOPIC,
-    AWS_MQTT5_DS_READ_PUBLISH_PROPERTIES_REMAINING_LENGTH,
-    AWS_MQTT5_DS_READ_PUBLISH_PRE_PAYLOAD,
-    AWS_MQTT5_DS_READ_PUBLISH_PAYLOAD,
-
+    AWS_MQTT5_DS_READ_PACKET,
     AWS_MQTT5_DS_FATAL_ERROR,
 };
 
@@ -77,7 +69,6 @@ struct aws_mqtt5_decoder_function_table {
 struct aws_mqtt5_decoder_options {
     void *callback_user_data;
     aws_mqtt5_on_packet_received_fn *on_packet_received;
-    aws_mqtt5_on_publish_payload_data_fn *on_publish_payload_data;
     const struct aws_mqtt5_decoder_function_table *decoder_table;
 };
 
@@ -88,18 +79,17 @@ struct aws_mqtt5_decoder {
     enum aws_mqtt5_decoder_state state;
 
     /*
-     * decode scratch space: packets may get fully buffered here before decode (except publish payloads)
+     * decode scratch space: packets may get fully buffered here before decode
      * Exceptions:
-     *   (1) publish payloads
-     *   (2) when the incoming io message buffer contains the entire packet, we decode directly from it instead
+     *   when the incoming io message buffer contains the entire packet, we decode directly from it instead
      */
     struct aws_byte_buf scratch_space;
 
     /*
-     * During streaming decoding, we fill out basic properties as we decode them in order to guide the
-     * in-memory decode.
+     * packet type and flags
      */
-    uint8_t packet_first_byte; /* packet type and flags */
+    uint8_t packet_first_byte;
+
     uint32_t remaining_length;
 
     /*
@@ -161,7 +151,7 @@ AWS_EXTERN_C_BEGIN
 
 /**
  * Decodes, if possible, a variable length integer from a cursor.  If the decode is successful, the cursor is advanced
- * past the variable length integer encoding.  This can be used both for streaming and non-streaming decode operations.
+ * past the variable length integer encoding. This can be used both for streaming and non-streaming decode operations.
  *
  * @param cursor data to decode from
  * @param dest where to put a successfully decoded variable length integer
@@ -170,7 +160,7 @@ AWS_EXTERN_C_BEGIN
 AWS_MQTT_API enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest);
 
 /**
- * Decodes an MQTT5 user property from a cursor (non-streamable)
+ * Decodes an MQTT5 user property from a cursor
  *
  * @param packet_cursor data to decode from
  * @param properties property set to add the decoded property to
