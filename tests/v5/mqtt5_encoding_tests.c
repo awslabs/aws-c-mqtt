@@ -1091,3 +1091,54 @@ static int s_mqtt5_packet_publish_round_trip_fn(struct aws_allocator *allocator,
 }
 
 AWS_TEST_CASE(mqtt5_packet_publish_round_trip, s_mqtt5_packet_publish_round_trip_fn)
+
+static char s_puback_reason_string[] = "test reason string";
+
+static int s_aws_mqtt5_on_puback_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    struct aws_mqtt5_encode_decode_tester *tester = user_data;
+
+    ++tester->view_count;
+
+    struct aws_mqtt5_packet_puback_view *puback_view = packet_view;
+    struct aws_mqtt5_packet_puback_view *expected_view = tester->expected_views;
+    ASSERT_INT_EQUALS(expected_view->packet_id, puback_view->packet_id);
+    ASSERT_INT_EQUALS(expected_view->reason_code, puback_view->reason_code);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->reason_string->ptr,
+        expected_view->reason_string->len,
+        puback_view->reason_string->ptr,
+        puback_view->reason_string->len);
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        expected_view->user_property_count,
+        expected_view->user_properties,
+        puback_view->user_property_count,
+        puback_view->user_properties));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_packet_puback_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt5_packet_id_t packet_id = 47;
+    enum aws_mqtt5_puback_reason_code reason_code = AWS_MQTT5_PARC_SUCCESS;
+    struct aws_byte_cursor reason_string = {
+        .ptr = (uint8_t *)s_puback_reason_string,
+        .len = AWS_ARRAY_SIZE(s_puback_reason_string) - 1,
+    };
+
+    struct aws_mqtt5_packet_puback_view puback_view = {
+        .packet_id = packet_id,
+        .reason_code = reason_code,
+        .reason_string = &reason_string,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
+        allocator, AWS_MQTT5_PT_PUBACK, &puback_view, s_aws_mqtt5_on_puback_received_fn));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_packet_puback_round_trip, s_mqtt5_packet_puback_round_trip_fn)

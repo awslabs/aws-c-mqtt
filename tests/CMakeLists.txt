@@ -192,6 +192,7 @@ add_test_case(mqtt5_packet_suback_round_trip)
 add_test_case(mqtt5_packet_unsubscribe_round_trip)
 add_test_case(mqtt5_packet_unsuback_round_trip)
 add_test_case(mqtt5_packet_publish_round_trip)
+add_test_case(mqtt5_packet_puback_round_trip)
 
 add_test_case(mqtt5_client_direct_connect_success)
 add_test_case(mqtt5_client_direct_connect_sync_channel_failure)
