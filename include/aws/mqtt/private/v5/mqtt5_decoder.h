@@ -151,7 +151,7 @@ AWS_EXTERN_C_BEGIN
 
 /**
  * Decodes, if possible, a variable length integer from a cursor.  If the decode is successful, the cursor is advanced
- * past the variable length integer encoding.
+ * past the variable length integer encoding. This can be used both for streaming and non-streaming decode operations.
  *
  * @param cursor data to decode from
  * @param dest where to put a successfully decoded variable length integer
