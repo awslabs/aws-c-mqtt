@@ -1647,19 +1647,6 @@ static int s_aws_mqtt5_client_on_packet_received(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_mqtt5_client_on_publish_payload_received(
-    struct aws_mqtt5_packet_publish_view *publish_view,
-    struct aws_byte_cursor payload,
-    void *decoder_callback_user_data) {
-    (void)publish_view;
-    (void)payload;
-    (void)decoder_callback_user_data;
-
-    /* TODO: Streaming implementation */
-
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
-}
-
 static uint64_t s_aws_high_res_clock_get_ticks_proxy(void) {
     uint64_t current_time = 0;
     AWS_FATAL_ASSERT(aws_high_res_clock_get_ticks(&current_time) == AWS_OP_SUCCESS);
@@ -1748,7 +1735,6 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     struct aws_mqtt5_decoder_options decoder_options = {
         .callback_user_data = client,
         .on_packet_received = s_aws_mqtt5_client_on_packet_received,
-        .on_publish_payload_data = s_aws_mqtt5_client_on_publish_payload_received,
     };
 
     if (aws_mqtt5_decoder_init(&client->decoder, allocator, &decoder_options)) {

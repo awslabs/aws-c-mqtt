@@ -1138,7 +1138,6 @@ static void s_on_incoming_channel_setup_fn(
         struct aws_mqtt5_decoder_options decoder_options = {
             .callback_user_data = server_connection,
             .on_packet_received = s_aws_mqtt5_mock_test_fixture_on_packet_received_fn,
-            .on_publish_payload_data = NULL, /* TODO */
             .decoder_table = &server_connection->decoding_table,
         };
 
