@@ -1463,6 +1463,23 @@ static void s_aws_mqtt5_client_on_connack(
         return;
     }
 
+    if (connack_view->session_present) {
+        /*
+         * TODO 3.2.2-4
+         * If client doesn't have Session State and receives Session Present set to 1, it MUST close the connection
+         */
+    } else {
+        /*
+         * TODO 3.2.2-5
+         * If client has a Session Present, it must be discarded if continuing with this connection
+         */
+    }
+    /*
+     * TODO 3.2.2-16
+     * If client sent a CONNECT with a 0 length Client Identifier, the server will respond with an
+     * assigned Client Identifier. We should store that in this space.
+     */
+
     aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
 
     s_change_current_state(client, AWS_MCS_CONNECTED);
