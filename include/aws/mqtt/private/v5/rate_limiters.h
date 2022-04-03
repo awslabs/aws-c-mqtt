@@ -11,10 +11,19 @@
 #include <aws/io/io.h>
 
 struct aws_rate_limiter_token_bucket_options {
+    /* Clock functon override.  If left null, the high resolution clock will be used */
     aws_io_clock_fn *clock_fn;
 
+    /* How many tokens regenerate per second? */
     uint64_t tokens_per_second;
+
+    /* Initial amount of tokens the limiter will start with */
     uint64_t initial_token_count;
+
+    /*
+     * Maximum amount of tokens the limiter can hold.  Regenerated tokens that exceed this maximum are
+     * discarded
+     */
     uint64_t maximum_token_count;
 };
 
