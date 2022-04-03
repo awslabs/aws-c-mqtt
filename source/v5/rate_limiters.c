@@ -35,6 +35,8 @@ void aws_rate_limiter_token_bucket_reset(struct aws_rate_limiter_token_bucket *l
 
     limiter->current_token_count =
         aws_min_u64(limiter->config.initial_token_count, limiter->config.maximum_token_count);
+    limiter->fractional_nanos = 0;
+    limiter->fractional_nano_tokens = 0;
 
     uint64_t now = 0;
     AWS_FATAL_ASSERT(s_rate_limit_time_fn(&limiter->config, &now) == AWS_OP_SUCCESS);
@@ -62,16 +64,27 @@ static void s_regenerate_tokens(struct aws_rate_limiter_token_bucket *limiter) {
      *
      * In particular, by doing this, we won't see saturation unless a regeneration rate in the multi-billions is used
      * or elapsed_seconds is in the billions.  This is similar reasoning to what we do in aws_timestamp_convert_u64.
+     *
+     * Additionally, we use a (sub-second) fractional counter/accumulator (fractional_nanos, fractional_nano_tokens)
+     * in order to prevent error accumulation due to integer division rounding.
      */
     uint64_t remainder_nanos = 0;
-    uint64_t elapsed_seconds = aws_timestamp_convert(nanos_elapsed, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, &remainder_nanos);
-    uint64_t tokens_regenerated_from_elapsed_seconds = aws_mul_u64_saturating(elapsed_seconds, limiter->config.tokens_per_second);
-    uint64_t nano_token_product = aws_mul_u64_saturating(remainder_nanos, limiter->config.tokens_per_second);
-    uint64_t tokens_regenerated_from_remainder_nanos = nano_token_product / AWS_TIMESTAMP_NANOS;
-    uint64_t fractional_token_nanos = nano_token_product % AWS_TIMESTAMP_NANOS;
-    uint64_t tokens_regenerated = aws_add_u64_saturating(tokens_regenerated_from_elapsed_seconds, tokens_regenerated_from_remainder_nanos);
-    if (tokens_regenerated == 0) {
-        return;
+    uint64_t elapsed_seconds =
+        aws_timestamp_convert(nanos_elapsed, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, &remainder_nanos);
+
+    uint64_t tokens_regenerated = aws_mul_u64_saturating(elapsed_seconds, limiter->config.tokens_per_second);
+    limiter->fractional_nanos += remainder_nanos;
+    if (limiter->fractional_nanos < AWS_TIMESTAMP_NANOS) {
+        uint64_t new_fractional_tokens =
+            aws_mul_u64_saturating(limiter->fractional_nanos, limiter->config.tokens_per_second) / AWS_TIMESTAMP_NANOS;
+        tokens_regenerated += new_fractional_tokens - limiter->fractional_nano_tokens;
+        limiter->fractional_nano_tokens = new_fractional_tokens;
+    } else {
+        tokens_regenerated += limiter->config.tokens_per_second - limiter->fractional_nano_tokens;
+        limiter->fractional_nanos -= AWS_TIMESTAMP_NANOS;
+        limiter->fractional_nano_tokens =
+            aws_mul_u64_saturating(limiter->fractional_nanos, limiter->config.tokens_per_second) / AWS_TIMESTAMP_NANOS;
+        tokens_regenerated += limiter->fractional_nano_tokens;
     }
 
     limiter->current_token_count = aws_add_u64_saturating(tokens_regenerated, limiter->current_token_count);
@@ -79,18 +92,12 @@ static void s_regenerate_tokens(struct aws_rate_limiter_token_bucket *limiter) {
         limiter->current_token_count = limiter->config.maximum_token_count;
     }
 
-    /*
-     * Finally, we don't update last service time to current time because that may skip a fraction's worth
-     * of token regeneration that we cannot account for with integers.
-     *
-     * Instead, set last_service_time to now minus the number of nanos we're past a non-fractional token amount.
-     *
-     * In this way, the last_service_time is *always* a timepoint representing a non-fractional token amount.
-     */
-    limiter->last_service_time = now - fractional_token_nanos;
+    limiter->last_service_time = now;
 }
 
-bool aws_rate_limiter_token_bucket_can_take_tokens(struct aws_rate_limiter_token_bucket *limiter, uint64_t token_count) {
+bool aws_rate_limiter_token_bucket_can_take_tokens(
+    struct aws_rate_limiter_token_bucket *limiter,
+    uint64_t token_count) {
     s_regenerate_tokens(limiter);
 
     return limiter->current_token_count >= token_count;
@@ -117,24 +124,38 @@ uint64_t aws_rate_limiter_token_bucket_compute_wait_for_tokens(
         return 0;
     }
 
+    uint64_t token_rate = limiter->config.tokens_per_second;
+    AWS_FATAL_ASSERT(limiter->fractional_nanos < AWS_TIMESTAMP_NANOS);
+    AWS_FATAL_ASSERT(limiter->fractional_nano_tokens <= token_rate);
+
+    uint64_t expected_wait = 0;
+
     uint64_t deficit = token_count - limiter->current_token_count;
+    uint64_t remaining_fractional_tokens = token_rate - limiter->fractional_nano_tokens;
 
-    uint64_t unnormalized_token_nanos = aws_mul_u64_saturating(deficit, AWS_TIMESTAMP_NANOS);
-    uint64_t normalized_nanos = unnormalized_token_nanos / limiter->config.tokens_per_second;
+    if (deficit < remaining_fractional_tokens) {
+        uint64_t target_fractional_tokens = aws_add_u64_saturating(deficit, limiter->fractional_nano_tokens);
+        uint64_t remainder_wait_unnormalized = aws_mul_u64_saturating(target_fractional_tokens, AWS_TIMESTAMP_NANOS);
 
-    /* If the above division was fractional, we need to round up to the next nanosecond */
-    if (unnormalized_token_nanos % limiter->config.tokens_per_second != 0) {
-        ++normalized_nanos;
+        expected_wait = remainder_wait_unnormalized / token_rate - limiter->fractional_nanos;
+        if (remainder_wait_unnormalized % token_rate) {
+            ++expected_wait;
+        }
+    } else {
+        expected_wait = AWS_TIMESTAMP_NANOS - limiter->fractional_nanos;
+        deficit -= remaining_fractional_tokens;
+
+        uint64_t expected_wait_seconds = deficit / token_rate;
+        uint64_t deficit_remainder = deficit % token_rate;
+
+        expected_wait += aws_mul_u64_saturating(expected_wait_seconds, AWS_TIMESTAMP_NANOS);
+
+        uint64_t remainder_wait_unnormalized = aws_mul_u64_saturating(deficit_remainder, AWS_TIMESTAMP_NANOS);
+        expected_wait += remainder_wait_unnormalized / token_rate;
+        if (remainder_wait_unnormalized % token_rate) {
+            ++expected_wait;
+        }
     }
 
-    /* do our regen calculations based off of last_service_time, but our wait is based off of current time */
-    uint64_t now = 0;
-    AWS_FATAL_ASSERT(s_rate_limit_time_fn(&limiter->config, &now) == AWS_OP_SUCCESS);
-
-    uint64_t final_time = aws_add_u64_saturating(limiter->last_service_time, normalized_nanos);
-    if (final_time < now) {
-        return 0;
-    }
-
-    return final_time - now;
+    return expected_wait;
 }

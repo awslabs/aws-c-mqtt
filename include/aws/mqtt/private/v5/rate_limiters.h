@@ -24,7 +24,7 @@ struct aws_rate_limiter_token_bucket {
 
     uint64_t fractional_nanos;
     uint64_t fractional_nano_tokens;
-    
+
     struct aws_rate_limiter_token_bucket_options config;
 };
 
