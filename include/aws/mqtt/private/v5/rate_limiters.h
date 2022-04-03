@@ -18,6 +18,17 @@ struct aws_rate_limiter_token_bucket_options {
     uint64_t maximum_token_count;
 };
 
+/**
+ * A token-bucket based rate limiter.
+ *
+ * Has an unusually complex implementation due to implementer-desired constraints:
+ *
+ *   (1) Model regeneration as an integral rate per second.
+ *   (2) Integer math only.
+ *   (3) Minimize as much as possible the dangers of multiplication saturation.
+ *   (4) No integer division round-off "error" accumulation allowed.
+ *   (5) A perfectly accurate how-long-must-I-wait query
+ */
 struct aws_rate_limiter_token_bucket {
     uint64_t last_service_time;
     uint64_t current_token_count;
