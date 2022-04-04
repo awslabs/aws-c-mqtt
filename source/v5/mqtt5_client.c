@@ -1587,6 +1587,12 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             uint16_t packet_id = ((const struct aws_mqtt5_packet_suback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(
                 &client->operational_state, packet_id, AWS_MQTT5_PT_SUBACK, packet_view);
+            /*
+             * TODO
+             * the reason code of the SUBACK corresponds to the QoS that topic can receive.
+             * Should we handle this potential limitation or just leave it up to the customer
+             * to handle since we aren't keeping track of topics?
+             */
             break;
         }
 
