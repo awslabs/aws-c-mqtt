@@ -3595,6 +3595,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
 
     options_storage->session_behavior = options->session_behavior;
     options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
+    options_storage->extended_validation_and_flow_control_options =
+        options->extended_validation_and_flow_control_options;
 
     options_storage->retry_jitter_mode = options->retry_jitter_mode;
     options_storage->min_reconnect_delay_ms = options->min_reconnect_delay_ms;

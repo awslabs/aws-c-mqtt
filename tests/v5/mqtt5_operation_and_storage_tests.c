@@ -2502,7 +2502,7 @@ static int s_mqtt5_operation_processing_reconnect_rejoin_session_fn(struct aws_a
     struct aws_mqtt5_operation_processing_test_context test_context;
     s_aws_mqtt5_operation_processing_test_context_init(&test_context, allocator);
 
-    test_context.dummy_client.current_state = AWS_MCS_MQTT_CONNECT;
+    test_context.dummy_client.current_state = AWS_MCS_CONNECTED;
 
     struct aws_mqtt5_operation *publish1_op =
         &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;
@@ -2547,7 +2547,7 @@ static int s_mqtt5_operation_processing_reconnect_no_session_fn(struct aws_alloc
     struct aws_mqtt5_operation_processing_test_context test_context;
     s_aws_mqtt5_operation_processing_test_context_init(&test_context, allocator);
 
-    test_context.dummy_client.current_state = AWS_MCS_MQTT_CONNECT;
+    test_context.dummy_client.current_state = AWS_MCS_CONNECTED;
 
     struct aws_mqtt5_operation *publish1_op =
         &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;

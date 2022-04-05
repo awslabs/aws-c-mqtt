@@ -16,6 +16,7 @@
 
 #include <aws/testing/aws_test_harness.h>
 
+#include <inttypes.h>
 #include <math.h>
 
 #define TEST_IO_MESSAGE_LENGTH 4096
@@ -809,7 +810,6 @@ static int s_mqtt5_client_direct_connect_connack_timeout_fn(struct aws_allocator
     enum aws_mqtt5_client_state expected_states[] = {
         AWS_MCS_CONNECTING,
         AWS_MCS_MQTT_CONNECT,
-        AWS_MCS_CLEAN_DISCONNECT,
         AWS_MCS_CHANNEL_SHUTDOWN,
     };
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
@@ -2187,6 +2187,9 @@ static void s_receive_maximum_publish_completion_fn(
 
     struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
 
+    uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&now);
+
     aws_mutex_lock(&test_context->lock);
 
     ++test_context->total_pubacks_received;
@@ -2298,3 +2301,252 @@ static int s_mqtt5_client_flow_control_receive_maximum_fn(struct aws_allocator *
 }
 
 AWS_TEST_CASE(mqtt5_client_flow_control_receive_maximum, s_mqtt5_client_flow_control_receive_maximum_fn)
+
+static int s_aws_mqtt5_mock_server_handle_publish_puback(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+
+    (void)user_data;
+
+    struct aws_mqtt5_packet_publish_view *publish_view = packet;
+    if (publish_view->qos != AWS_MQTT5_QOS_AT_LEAST_ONCE) {
+        return AWS_OP_SUCCESS;
+    }
+
+    struct aws_mqtt5_packet_puback_view puback_view = {
+        .packet_id = publish_view->packet_id,
+    };
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBACK, &puback_view);
+}
+
+#define IOT_CORE_THROUGHPUT_PACKETS 21
+
+static int s_do_iot_core_throughput_test(struct aws_allocator *allocator, bool use_iot_core_limits) {
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* send pubacks */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_mock_server_handle_publish_puback;
+
+    if (use_iot_core_limits) {
+        client_options.extended_validation_and_flow_control_options = AWS_MQTT5_EVAFCO_AWS_IOT_CORE_DEFAULTS;
+    }
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    /* send a bunch of large publishes */
+    uint8_t packet_payload[127 * 1024];
+    aws_secure_zero(packet_payload, AWS_ARRAY_SIZE(packet_payload));
+
+    for (size_t i = 0; i < IOT_CORE_THROUGHPUT_PACKETS; ++i) {
+        struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_topic,
+                    .len = AWS_ARRAY_SIZE(s_topic) - 1,
+                },
+            .payload = aws_byte_cursor_from_array(packet_payload, AWS_ARRAY_SIZE(packet_payload)),
+        };
+
+        struct aws_mqtt5_publish_completion_options completion_options = {
+            .completion_callback = s_receive_maximum_publish_completion_fn, /* can reuse receive_maximum callback */
+            .completion_user_data = &test_context,
+        };
+
+        ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &qos1_publish_view, &completion_options));
+    }
+
+    /* wait for all publishes to succeed */
+    struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
+        .test_fixture = &test_context,
+        .required_event_count = IOT_CORE_THROUGHPUT_PACKETS,
+    };
+    s_wait_for_n_successful_publishes(&wait_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_flow_control_iot_core_throughput_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    uint64_t start_time1 = 0;
+    aws_high_res_clock_get_ticks(&start_time1);
+
+    ASSERT_SUCCESS(s_do_iot_core_throughput_test(allocator, false));
+
+    uint64_t end_time1 = 0;
+    aws_high_res_clock_get_ticks(&end_time1);
+
+    uint64_t test_time1 = end_time1 - start_time1;
+
+    uint64_t start_time2 = 0;
+    aws_high_res_clock_get_ticks(&start_time2);
+
+    ASSERT_SUCCESS(s_do_iot_core_throughput_test(allocator, true));
+
+    uint64_t end_time2 = 0;
+    aws_high_res_clock_get_ticks(&end_time2);
+
+    uint64_t test_time2 = end_time2 - start_time2;
+
+    /* We expect the unthrottled test to complete quickly */
+    ASSERT_TRUE(test_time1 < AWS_TIMESTAMP_NANOS);
+
+    /*
+     * We expect the throttled version to take around 5 seconds, since we're sending 21 almost-max size (127k) packets
+     * against a limit of 512KB/s.  Since the packets are submitted immediately on CONNACK, the rate limiter
+     * token bucket is starting at zero and so will give us immediate throttling.
+     */
+    ASSERT_TRUE(test_time2 > 5 * (uint64_t)AWS_TIMESTAMP_NANOS);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_flow_control_iot_core_throughput, s_mqtt5_client_flow_control_iot_core_throughput_fn)
+
+#define IOT_CORE_PUBLISH_TPS_PACKETS 650
+
+static int s_do_iot_core_publish_tps_test(struct aws_allocator *allocator, bool use_iot_core_limits) {
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* send pubacks */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_mock_server_handle_publish_puback;
+
+    if (use_iot_core_limits) {
+        client_options.extended_validation_and_flow_control_options = AWS_MQTT5_EVAFCO_AWS_IOT_CORE_DEFAULTS;
+    }
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    /* send a bunch of tiny publishes */
+    for (size_t i = 0; i < IOT_CORE_PUBLISH_TPS_PACKETS; ++i) {
+        struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_topic,
+                    .len = AWS_ARRAY_SIZE(s_topic) - 1,
+                },
+        };
+
+        struct aws_mqtt5_publish_completion_options completion_options = {
+            .completion_callback = s_receive_maximum_publish_completion_fn, /* can reuse receive_maximum callback */
+            .completion_user_data = &test_context,
+        };
+
+        ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &qos1_publish_view, &completion_options));
+    }
+
+    /* wait for all publishes to succeed */
+    struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
+        .test_fixture = &test_context,
+        .required_event_count = IOT_CORE_PUBLISH_TPS_PACKETS,
+    };
+    s_wait_for_n_successful_publishes(&wait_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_flow_control_iot_core_publish_tps_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    uint64_t start_time1 = 0;
+    aws_high_res_clock_get_ticks(&start_time1);
+
+    ASSERT_SUCCESS(s_do_iot_core_publish_tps_test(allocator, false));
+
+    uint64_t end_time1 = 0;
+    aws_high_res_clock_get_ticks(&end_time1);
+
+    uint64_t test_time1 = end_time1 - start_time1;
+
+    uint64_t start_time2 = 0;
+    aws_high_res_clock_get_ticks(&start_time2);
+
+    ASSERT_SUCCESS(s_do_iot_core_publish_tps_test(allocator, true));
+
+    uint64_t end_time2 = 0;
+    aws_high_res_clock_get_ticks(&end_time2);
+
+    uint64_t test_time2 = end_time2 - start_time2;
+
+    /* We expect the unthrottled test to complete quickly */
+    ASSERT_TRUE(test_time1 < AWS_TIMESTAMP_NANOS);
+
+    /*
+     * We expect the throttled version to take over 6 seconds, since we're sending over 650 tiny publish packets
+     * against a limit of 100TPS.  Since the packets are submitted immediately on CONNACK, the rate limiter
+     * token bucket is starting at zero and so will give us immediate throttling.
+     */
+    ASSERT_TRUE(test_time2 > 6 * (uint64_t)AWS_TIMESTAMP_NANOS);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_flow_control_iot_core_publish_tps, s_mqtt5_client_flow_control_iot_core_publish_tps_fn)

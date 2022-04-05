@@ -518,6 +518,8 @@ AWS_MQTT_API bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aw
 
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_init(struct aws_mqtt5_client *client);
 
+AWS_MQTT_API void aws_mqtt5_client_flow_control_state_reset(struct aws_mqtt5_client *client);
+
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_on_puback(struct aws_mqtt5_client *client);
 
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_on_outbound_operation(
