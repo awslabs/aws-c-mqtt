@@ -119,8 +119,6 @@ void aws_mqtt5_encoder_push_step_cursor(struct aws_mqtt5_encoder *encoder, struc
  * to use checked arithmetic is a PUBLISH packet when combining the payload size and "sizeof everything else"
  *
  * The additional beyond-spec constraints we apply to view validation ensure our results actually fit in 32 bits.
- *
- * TODO: view validation does not currently check the total length of the packet.
  */
 size_t aws_mqtt5_compute_user_property_encode_length(
     const struct aws_mqtt5_user_property *properties,

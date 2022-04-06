@@ -216,8 +216,10 @@ const char *aws_mqtt5_client_session_behavior_type_to_c_string(
     switch (session_behavior) {
         case AWS_MQTT5_CSBT_CLEAN:
             return "Clean session always";
-        case AWS_MQTT5_CSBT_REJOIN:
-            return "Rejoin session always";
+        case AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS:
+            return "Attempt to resume a session after initial connection success";
+        case AWS_MQTT5_CSBT_REJOIN_ALWAYS:
+            return "Always attempt to resume a session";
     }
 
     return "Unknown session behavior";
