@@ -727,6 +727,7 @@ static int s_compute_publish_variable_length_fields(
     ADD_OPTIONAL_U16_PROPERTY_LENGTH(publish_view->topic_alias, publish_property_section_length);
     ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->response_topic, publish_property_section_length);
     ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->correlation_data, publish_property_section_length);
+    ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->content_type, publish_property_section_length);
 
     *publish_properties_length = (uint32_t)publish_property_section_length;
 
@@ -1210,6 +1211,12 @@ int aws_mqtt5_packet_view_get_encoded_size(
 
         case AWS_MQTT5_PT_DISCONNECT:
             if (s_compute_disconnect_variable_length_fields(packet_view, &total_remaining_length, &properties_length)) {
+                return AWS_OP_ERR;
+            }
+            break;
+
+        case AWS_MQTT5_PT_PUBACK:
+            if (s_compute_puback_variable_length_fields(packet_view, &total_remaining_length, &properties_length)) {
                 return AWS_OP_ERR;
             }
             break;
