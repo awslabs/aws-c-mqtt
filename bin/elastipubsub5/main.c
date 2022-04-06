@@ -198,6 +198,7 @@ static void s_on_publish_complete_fn(
         case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT:
             break;
         case AWS_ERROR_MQTT_TIMEOUT:
+            printf("PUBLISH COMPLETED AWS_ERROR_MQTT_TIMEOUT\n");
             break;
         case AWS_ERROR_SUCCESS:
             printf("PUBLISH COMPLETED AWS_ERROR_SUCCESS\n");

@@ -143,10 +143,13 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, struct aws_linked_
             /* Timeout for this packet has been reached */
 
             /*
-             * steve The operation should be removed from the list before an action is taken on it so it doesn't trigger
-             * again.
+             * steve The operation should be removed from the lists and hashsets containing them
              */
-            aws_linked_list_remove(node->prev);
+            aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
+            aws_linked_list_remove(&operation->timeout_node);
+            aws_linked_list_remove(&operation->node);
+            aws_hash_table_remove(&client->operational_state.unacked_operations_table, &packet_id, NULL, NULL);
+            aws_mqtt5_operation_release(operation);
 
             printf("TIMEOUT FOR SOMETHING REACHED\n");
             switch (operation->packet_type) {
@@ -183,6 +186,10 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, struct aws_linked_
                      * Assign this operation to requeue and send again
                      * Completion callback with an error to notify the customer
                      */
+                    /* steve trying failing an operation with a timeout explanation */
+
+                    aws_mqtt5_operation_complete(operation, AWS_ERROR_MQTT_TIMEOUT, NULL);
+
                     AWS_LOGF_INFO(
                         AWS_LS_MQTT5_CLIENT,
                         "id=%p: PUBLISH packet with id:%d has timed out",
@@ -1695,7 +1702,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
     switch (type) {
         case AWS_MQTT5_PT_PINGRESP:
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: resetting PINGREQ timer", (void *)client);
-
+            /* steve check if we can move this ping timeout to where other timeouts are now being handled */
             client->next_ping_timeout_time = 0;
             break;
 
@@ -2321,8 +2328,11 @@ void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5
             is_qos1_publish = publish_view->qos >= AWS_MQTT5_QOS_AT_LEAST_ONCE;
             publish_view->duplicate = true;
         }
-
-        if (!is_qos1_publish) {
+        /*
+         * steve Should we be cancelling evertyhing? If sub/unsub are awaiting acks, what do we do about those?
+         * also, I think this bool check was supposed to be if true, not if false but I'm not positive
+         */
+        if (is_qos1_publish) {
             aws_linked_list_remove(&operation->node);
 
             aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
@@ -2580,7 +2590,7 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                     operational_error_code = aws_last_error();
                     break;
                 }
-                /* add ack required operations to be checked for timeouts */
+                /* ack required operations should be checked for timeouts */
                 s_add_operation_to_timeouts(current_operation, &client_operational_state->timeout_operations, now);
 
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);
