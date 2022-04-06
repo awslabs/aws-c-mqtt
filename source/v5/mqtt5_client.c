@@ -1532,7 +1532,6 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
 }
 
 static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint16_t packet_id) {
-
     AWS_PRECONDITION(client != NULL);
 
     const struct aws_mqtt5_packet_puback_view puback_view = {
@@ -1592,6 +1591,8 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBLISH received", (void *)client);
             const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
 
+            client->config->publish_received(publish_view, client);
+
             /* Send a puback if QoS 1+ */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
 
@@ -1650,19 +1651,6 @@ static int s_aws_mqtt5_client_on_packet_received(
     s_reevaluate_service_task(client);
 
     return AWS_OP_SUCCESS;
-}
-
-static int s_aws_mqtt5_client_on_publish_payload_received(
-    struct aws_mqtt5_packet_publish_view *publish_view,
-    struct aws_byte_cursor payload,
-    void *decoder_callback_user_data) {
-    (void)publish_view;
-    (void)payload;
-    (void)decoder_callback_user_data;
-
-    /* TODO: STEVE implement */
-
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }
 
 static uint64_t s_aws_high_res_clock_get_ticks_proxy(void) {
@@ -1755,7 +1743,6 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     struct aws_mqtt5_decoder_options decoder_options = {
         .callback_user_data = client,
         .on_packet_received = s_aws_mqtt5_client_on_packet_received,
-        .on_publish_payload_data = s_aws_mqtt5_client_on_publish_payload_received,
     };
 
     if (aws_mqtt5_decoder_init(&client->decoder, allocator, &decoder_options)) {

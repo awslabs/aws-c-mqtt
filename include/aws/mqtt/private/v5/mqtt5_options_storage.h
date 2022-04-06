@@ -375,6 +375,8 @@ struct aws_mqtt5_client_options_storage {
     aws_mqtt5_transform_websocket_handshake_fn *websocket_handshake_transform;
     void *websocket_handshake_transform_user_data;
 
+    aws_mqtt5_publish_received_fn *publish_received;
+
     enum aws_mqtt5_client_session_behavior_type session_behavior;
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
     enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_and_flow_control_options;
