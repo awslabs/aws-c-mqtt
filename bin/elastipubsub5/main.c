@@ -190,8 +190,21 @@ static void s_on_publish_complete_fn(
     const struct aws_mqtt5_packet_puback_view *puback,
     int error_code,
     void *complete_ctx) {
-    (void)error_code;
     (void)complete_ctx;
+
+    switch (error_code) {
+        case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION:
+            break;
+        case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT:
+            break;
+        case AWS_ERROR_MQTT_TIMEOUT:
+            break;
+        case AWS_ERROR_SUCCESS:
+            printf("PUBLISH COMPLETED AWS_ERROR_SUCCESS\n");
+            break;
+        default:
+            break;
+    }
 
     if (puback) {
         printf("PUBACK received!\n");

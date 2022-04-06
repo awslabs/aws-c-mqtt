@@ -18,6 +18,11 @@
 
 #include <inttypes.h>
 
+static const uint64_t s_mqtt5_timeout_connect_ns = 6000000000;   /* 6 seconds */
+static const uint64_t s_mqtt5_timeout_ping_ns = 3000000000;      /* 3 seconds */
+static const uint64_t s_mqtt5_timeout_publish_ns = 10000000000;  /* 10 seconds */
+static const uint64_t s_mqtt5_timeout_subscribe_ns = 3000000000; /* 3 seconds */
+
 static const char *s_aws_mqtt5_client_state_to_c_str(enum aws_mqtt5_client_state state) {
     switch (state) {
         case AWS_MCS_STOPPED:
@@ -82,6 +87,126 @@ static void s_complete_operation_list(struct aws_linked_list *operation_list, in
 
     /* we've released everything, so reset the list to empty */
     aws_linked_list_init(operation_list);
+}
+
+/* assigns timeout to operation and adds it to a timeout ordered list of packets awaiting an ack */
+static void s_add_operation_to_timeouts(
+    struct aws_mqtt5_operation *operation,
+    struct aws_linked_list *operation_list,
+    uint64_t now) {
+
+    switch (operation->packet_type) {
+        case AWS_MQTT5_PT_SUBSCRIBE:
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            operation->timeout_counter = now + s_mqtt5_timeout_subscribe_ns;
+            break;
+        case AWS_MQTT5_PT_PUBLISH:
+            operation->timeout_counter = now + s_mqtt5_timeout_publish_ns;
+            break;
+        case AWS_MQTT5_PT_CONNECT:
+        case AWS_MQTT5_PT_DISCONNECT:
+            operation->timeout_counter = now + s_mqtt5_timeout_connect_ns;
+            break;
+        case AWS_MQTT5_PT_PINGREQ:
+            operation->timeout_counter = now + s_mqtt5_timeout_ping_ns;
+            break;
+        default:
+            break;
+    }
+
+    struct aws_linked_list_node *node = aws_linked_list_rbegin(operation_list);
+    bool is_added = false;
+    while (node != aws_linked_list_rend(operation_list)) {
+        struct aws_mqtt5_operation *operation_being_checked =
+            AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, timeout_node);
+        node = aws_linked_list_prev(node);
+
+        if (operation_being_checked->timeout_counter < operation->timeout_counter) {
+            is_added = true;
+            aws_linked_list_insert_after(&operation_being_checked->timeout_node, &operation->timeout_node);
+            break;
+        }
+    }
+
+    if (!is_added) {
+        aws_linked_list_insert_after(aws_linked_list_rbegin(operation_list), &operation->timeout_node);
+    }
+}
+
+/* checks if any operations awaiting an ack have timed out and takes appropriate action */
+static void s_check_timeouts(struct aws_mqtt5_client *client, struct aws_linked_list *operation_list, uint64_t now) {
+    struct aws_linked_list_node *node = aws_linked_list_begin(operation_list);
+    while (node != aws_linked_list_end(operation_list)) {
+        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, timeout_node);
+        node = aws_linked_list_next(node);
+        if (operation->timeout_counter < now) {
+            /* Timeout for this packet has been reached */
+
+            /*
+             * steve The operation should be removed from the list before an action is taken on it so it doesn't trigger
+             * again.
+             */
+            aws_linked_list_remove(node->prev);
+
+            printf("TIMEOUT FOR SOMETHING REACHED\n");
+            switch (operation->packet_type) {
+                case AWS_MQTT5_PT_SUBSCRIBE:
+                    /*
+                     * SUBSCRIBE has timed out.
+                     * Options:
+                     * Assign this operation to requeue and send again
+                     * Completion callback with an error to notify the customer
+                     */
+                    AWS_LOGF_INFO(
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: SUBSCRIBE packet with id:%d has timed out",
+                        (void *)client,
+                        *aws_mqtt5_operation_get_packet_id_address(operation));
+                    break;
+                case AWS_MQTT5_PT_UNSUBSCRIBE:
+                    /*
+                     * UNSUBSCRIBE has timed out.
+                     * Options:
+                     * Assign this operation to requeue and send again
+                     * Completion callback with an error to notify the customer
+                     */
+                    AWS_LOGF_INFO(
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: UNSUBSCRIBE packet with id:%d has timed out",
+                        (void *)client,
+                        *aws_mqtt5_operation_get_packet_id_address(operation));
+                    break;
+                case AWS_MQTT5_PT_PUBLISH:
+                    /*
+                     * PUBLISH has timed out.
+                     * Options:
+                     * Assign this operation to requeue and send again
+                     * Completion callback with an error to notify the customer
+                     */
+                    AWS_LOGF_INFO(
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: PUBLISH packet with id:%d has timed out",
+                        (void *)client,
+                        *aws_mqtt5_operation_get_packet_id_address(operation));
+                    break;
+                case AWS_MQTT5_PT_CONNECT:
+                    /*
+                     * Connect has failed
+                     * Begin or continue reconnect strategy
+                     */
+                    AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: CONNECT has timed out", (void *)client);
+                    break;
+                case AWS_MQTT5_PT_PINGREQ:
+                    /* PING has timed out. Disconnect and initiate reconnect strategy */
+                    break;
+                default:
+                    /* something is wrong, there should be no other packet type in this linked list */
+                    break;
+            }
+        } else {
+            break;
+        }
+    }
 }
 
 static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
@@ -395,6 +520,7 @@ static void s_aws_mqtt5_client_operational_state_reset(
     s_complete_operation_list(&client_operational_state->queued_operations, completion_error_code);
     s_complete_operation_list(&client_operational_state->write_completion_operations, completion_error_code);
     s_complete_operation_list(&client_operational_state->unacked_operations, completion_error_code);
+    aws_linked_list_init(&client_operational_state->timeout_operations);
 
     if (is_final) {
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
@@ -1864,7 +1990,7 @@ static struct aws_mqtt_change_desired_state_task *s_aws_mqtt_change_desired_stat
     }
 
     aws_task_init(&change_state_task->task, s_change_state_task_fn, (void *)change_state_task, "ChangeStateTask");
-
+    /* Steve question, why can't we use the client->allocator above to allocate for change_state_task? */
     change_state_task->allocator = client->allocator;
     change_state_task->client = (desired_state == AWS_MCS_TERMINATED) ? client : aws_mqtt5_client_acquire(client);
     change_state_task->desired_state = desired_state;
@@ -2146,6 +2272,7 @@ int aws_mqtt5_client_operational_state_init(
     aws_linked_list_init(&client_operational_state->queued_operations);
     aws_linked_list_init(&client_operational_state->write_completion_operations);
     aws_linked_list_init(&client_operational_state->unacked_operations);
+    aws_linked_list_init(&client_operational_state->timeout_operations);
 
     if (aws_hash_table_init(
             &client_operational_state->unacked_operations_table,
@@ -2217,6 +2344,9 @@ void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5
     /* fail everything in the pending queue */
     s_complete_operation_list(
         &client_operational_state->queued_operations, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT);
+
+    /* clear timeout_operations */
+    aws_linked_list_init(&client_operational_state->timeout_operations);
 }
 
 void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_client *client) {
@@ -2231,6 +2361,8 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
             &client->operational_state.unacked_operations, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION);
     }
 
+    /* clear timeout operations */ /* Steve should we set all timeout counters to 0 before clearing this list? */
+    aws_linked_list_init(&client->operational_state.timeout_operations);
     aws_hash_table_clear(&client->operational_state.unacked_operations_table);
 }
 
@@ -2448,6 +2580,8 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                     operational_error_code = aws_last_error();
                     break;
                 }
+                /* add ack required operations to be checked for timeouts */
+                s_add_operation_to_timeouts(current_operation, &client_operational_state->timeout_operations, now);
 
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);
             } else {
@@ -2478,6 +2612,9 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
             AWS_FATAL_ASSERT(encoding_result == AWS_MQTT5_ER_OUT_OF_ROOM);
             break;
         }
+
+        now = (*vtable->get_current_time_fn)();
+        s_check_timeouts(client, &client_operational_state->timeout_operations, now);
 
         now = (*vtable->get_current_time_fn)();
         should_service = s_aws_mqtt5_client_should_service_operational_state(client_operational_state, now);
@@ -2537,8 +2674,11 @@ void aws_mqtt5_client_operational_state_handle_ack(
             (int)packet_id);
     }
 
+    s_reset_ping(client_operational_state->client);
+
     struct aws_mqtt5_operation *operation = elem->value;
 
+    aws_linked_list_remove(&operation->timeout_node);
     aws_linked_list_remove(&operation->node);
     aws_hash_table_remove(&client_operational_state->unacked_operations_table, &packet_id, NULL, NULL);
 

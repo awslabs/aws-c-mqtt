@@ -187,7 +187,7 @@ enum aws_mqtt5_lifecycle_state {
     AWS_MQTT5_LS_CONNECTED,
 };
 
-/*
+/* STEVE Add operation related notes for timeout_operations list
  * Operation-related state notes
  *
  * operation flow:
@@ -242,6 +242,7 @@ struct aws_mqtt5_client_operational_state {
     struct aws_hash_table unacked_operations_table;
     struct aws_linked_list unacked_operations;
     struct aws_linked_list write_completion_operations;
+    struct aws_linked_list timeout_operations;
 
     /*
      * Is there an io message in transit (to the socket) that has not invoked its write completion callback yet?
