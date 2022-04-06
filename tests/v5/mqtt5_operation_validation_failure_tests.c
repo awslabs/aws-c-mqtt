@@ -916,6 +916,11 @@ void s_lifecycle_event_handler(const struct aws_mqtt5_client_lifecycle_event *ev
     (void)event;
 }
 
+void s_publish_received(const struct aws_mqtt5_packet_publish_view *publish, void *user_data) {
+    (void)publish;
+    (void)user_data;
+}
+
 static struct aws_mqtt5_client_options s_good_client_options = {
     .host_name =
         {
@@ -926,6 +931,7 @@ static struct aws_mqtt5_client_options s_good_client_options = {
     .connect_options = &s_good_connect,
     .ping_timeout_ms = 5000,
     .lifecycle_event_handler = &s_lifecycle_event_handler,
+    .publish_received = &s_publish_received,
 };
 
 static void s_make_no_host_client_options(struct aws_mqtt5_client_options *options) {
@@ -940,6 +946,15 @@ static void s_make_no_bootstrap_client_options(struct aws_mqtt5_client_options *
 }
 
 AWS_CLIENT_CREATION_VALIDATION_FAILURE(no_bootstrap, s_good_client_options, s_make_no_bootstrap_client_options)
+
+static void s_make_no_publish_received_client_options(struct aws_mqtt5_client_options *options) {
+    options->publish_received = NULL;
+}
+
+AWS_CLIENT_CREATION_VALIDATION_FAILURE(
+    no_publish_received,
+    s_good_client_options,
+    s_make_no_publish_received_client_options)
 
 static void s_make_invalid_socket_options_client_options(struct aws_mqtt5_client_options *options) {
     options->socket_options = NULL;

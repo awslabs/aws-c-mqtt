@@ -36,8 +36,7 @@ static bool s_is_decodable_packet_type(struct aws_mqtt5_decoder *decoder, enum a
 }
 
 /*
- * "streaming" step of one byte.  Every mqtt packet has a first byte that, amongst other things, determines the
- * packet type
+ * Every mqtt packet has a first byte that, amongst other things, determines the packet type
  */
 static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     struct aws_mqtt5_decoder *decoder,
@@ -144,9 +143,7 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_remaining_leng
         return result;
     }
 
-    /* TODO: branch state based on PUBLISH packet vs non-PUBLISH */
-
-    s_enter_state(decoder, AWS_MQTT5_DS_READ_NON_PUBLISH_PACKET);
+    s_enter_state(decoder, AWS_MQTT5_DS_READ_PACKET);
 
     return AWS_MQTT5_DRT_SUCCESS;
 }
@@ -1008,7 +1005,7 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
                 result = s_aws_mqtt5_decoder_read_remaining_length_on_data(decoder, &data);
                 break;
 
-            case AWS_MQTT5_DS_READ_NON_PUBLISH_PACKET:
+            case AWS_MQTT5_DS_READ_PACKET:
                 result = s_aws_mqtt5_decoder_read_packet_on_data(decoder, &data);
                 break;
 
