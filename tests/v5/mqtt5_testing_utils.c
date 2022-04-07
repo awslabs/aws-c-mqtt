@@ -428,51 +428,53 @@ static int s_read_connect_property(
     uint8_t property_type = 0;
     AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
 
+    struct aws_mqtt5_packet_connect_view *storage_view = &storage->storage_view;
+
     switch (property_type) {
         case AWS_MQTT5_PROPERTY_TYPE_SESSION_EXPIRY_INTERVAL:
             AWS_MQTT5_DECODE_U32_OPTIONAL(
                 packet_cursor,
                 &storage->session_expiry_interval_seconds,
-                &storage->session_expiry_interval_seconds_ptr,
+                &storage_view->session_expiry_interval_seconds,
                 done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_RECEIVE_MAXIMUM:
             AWS_MQTT5_DECODE_U16_OPTIONAL(
-                packet_cursor, &storage->receive_maximum, &storage->receive_maximum_ptr, done);
+                packet_cursor, &storage->receive_maximum, &storage_view->receive_maximum, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_MAXIMUM_PACKET_SIZE:
             AWS_MQTT5_DECODE_U32_OPTIONAL(
-                packet_cursor, &storage->maximum_packet_size_bytes, &storage->maximum_packet_size_bytes_ptr, done);
+                packet_cursor, &storage->maximum_packet_size_bytes, &storage_view->maximum_packet_size_bytes, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_TOPIC_ALIAS_MAXIMUM:
             AWS_MQTT5_DECODE_U16_OPTIONAL(
-                packet_cursor, &storage->topic_alias_maximum, &storage->topic_alias_maximum_ptr, done);
+                packet_cursor, &storage->topic_alias_maximum, &storage_view->topic_alias_maximum, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_REQUEST_RESPONSE_INFORMATION:
             AWS_MQTT5_DECODE_U8_OPTIONAL(
                 packet_cursor,
                 &storage->request_response_information,
-                &storage->request_response_information_ptr,
+                &storage_view->request_response_information,
                 done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_REQUEST_PROBLEM_INFORMATION:
             AWS_MQTT5_DECODE_U8_OPTIONAL(
-                packet_cursor, &storage->request_problem_information, &storage->request_problem_information_ptr, done);
+                packet_cursor, &storage->request_problem_information, &storage_view->request_problem_information, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_METHOD:
             AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
-                packet_cursor, &storage->authentication_method, &storage->authentication_method_ptr, done);
+                packet_cursor, &storage->authentication_method, &storage_view->authentication_method, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_AUTHENTICATION_DATA:
             AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
-                packet_cursor, &storage->authentication_data, &storage->authentication_data_ptr, done);
+                packet_cursor, &storage->authentication_data, &storage_view->authentication_data, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
@@ -506,41 +508,44 @@ static int s_read_will_property(
     uint8_t property_type = 0;
     AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
 
+    struct aws_mqtt5_packet_connect_view *connect_storage_view = &connect_storage->storage_view;
+    struct aws_mqtt5_packet_publish_view *will_storage_view = &will_storage->storage_view;
+
     switch (property_type) {
         case AWS_MQTT5_PROPERTY_TYPE_WILL_DELAY_INTERVAL:
             AWS_MQTT5_DECODE_U32_OPTIONAL(
                 packet_cursor,
                 &connect_storage->will_delay_interval_seconds,
-                &connect_storage->will_delay_interval_seconds_ptr,
+                &connect_storage_view->will_delay_interval_seconds,
                 done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_PAYLOAD_FORMAT_INDICATOR:
             AWS_MQTT5_DECODE_U8_OPTIONAL(
-                packet_cursor, &will_storage->payload_format, &will_storage->payload_format_ptr, done);
+                packet_cursor, &will_storage->payload_format, &will_storage_view->payload_format, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_MESSAGE_EXPIRY_INTERVAL:
             AWS_MQTT5_DECODE_U32_OPTIONAL(
                 packet_cursor,
                 &will_storage->message_expiry_interval_seconds,
-                &will_storage->message_expiry_interval_seconds_ptr,
+                &will_storage_view->message_expiry_interval_seconds,
                 done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE:
             AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
-                packet_cursor, &will_storage->content_type, &will_storage->content_type_ptr, done);
+                packet_cursor, &will_storage->content_type, &will_storage_view->content_type, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_RESPONSE_TOPIC:
             AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
-                packet_cursor, &will_storage->response_topic, &will_storage->response_topic_ptr, done);
+                packet_cursor, &will_storage->response_topic, &will_storage_view->response_topic, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA:
             AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
-                packet_cursor, &will_storage->correlation_data, &will_storage->correlation_data_ptr, done);
+                packet_cursor, &will_storage->correlation_data, &will_storage_view->correlation_data, done);
             break;
 
         case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
@@ -601,9 +606,12 @@ static int s_aws_mqtt5_decoder_decode_connect(struct aws_mqtt5_decoder *decoder)
     uint8_t connect_flags = 0;
     AWS_MQTT5_DECODE_U8(&packet_cursor, &connect_flags, done);
 
-    connect_storage.clean_start = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_CLEAN_START_BIT) != 0;
+    struct aws_mqtt5_packet_connect_view *connect_storage_view = &connect_storage.storage_view;
+    struct aws_mqtt5_packet_publish_view *will_storage_view = &publish_storage.storage_view;
 
-    AWS_MQTT5_DECODE_U16(&packet_cursor, &connect_storage.keep_alive_interval_seconds, done);
+    connect_storage_view->clean_start = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_CLEAN_START_BIT) != 0;
+
+    AWS_MQTT5_DECODE_U16(&packet_cursor, &connect_storage_view->keep_alive_interval_seconds, done);
 
     uint32_t connect_property_length = 0;
     AWS_MQTT5_DECODE_VLI(&packet_cursor, &connect_property_length, done);
@@ -618,7 +626,10 @@ static int s_aws_mqtt5_decoder_decode_connect(struct aws_mqtt5_decoder *decoder)
         }
     }
 
-    AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &connect_storage.client_id, done);
+    connect_storage_view->user_property_count = aws_mqtt5_user_property_set_size(&connect_storage.user_properties);
+    connect_storage_view->user_properties = connect_storage.user_properties.properties.data;
+
+    AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &connect_storage_view->client_id, done);
 
     has_will = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_WILL_BIT) != 0;
     if (has_will) {
@@ -635,24 +646,27 @@ static int s_aws_mqtt5_decoder_decode_connect(struct aws_mqtt5_decoder *decoder)
             }
         }
 
-        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &publish_storage.topic, done);
-        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &publish_storage.payload, done);
+        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &will_storage_view->topic, done);
+        AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &will_storage_view->payload, done);
 
         /* apply will flags from the connect flags to the will's storage */
-        publish_storage.qos = (enum aws_mqtt5_qos)(
+        will_storage_view->qos = (enum aws_mqtt5_qos)(
             (connect_flags >> AWS_MQTT5_CONNECT_FLAGS_WILL_QOS_BIT_POSITION) &
             AWS_MQTT5_CONNECT_FLAGS_WILL_QOS_BIT_MASK);
-        publish_storage.retain = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_WILL_RETAIN_BIT) != 0;
+        will_storage_view->retain = (connect_flags & AWS_MQTT5_CONNECT_FLAGS_WILL_RETAIN_BIT) != 0;
+
+        will_storage_view->user_property_count = aws_mqtt5_user_property_set_size(&publish_storage.user_properties);
+        will_storage_view->user_properties = publish_storage.user_properties.properties.data;
     }
 
     if ((connect_flags & AWS_MQTT5_CONNECT_FLAGS_USER_NAME_BIT) != 0) {
         AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
-            &packet_cursor, &connect_storage.username, &connect_storage.username_ptr, done);
+            &packet_cursor, &connect_storage.username, &connect_storage_view->username, done);
     }
 
     if ((connect_flags & AWS_MQTT5_CONNECT_FLAGS_PASSWORD_BIT) != 0) {
         AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
-            &packet_cursor, &connect_storage.password, &connect_storage.password_ptr, done);
+            &packet_cursor, &connect_storage.password, &connect_storage_view->password, done);
     }
 
     if (packet_cursor.len == 0) {
@@ -663,9 +677,7 @@ done:
 
     if (result == AWS_OP_SUCCESS) {
         if (decoder->options.on_packet_received != NULL) {
-            aws_mqtt5_packet_connect_view_init_from_storage(&connect_storage.storage_view, &connect_storage);
             if (has_will) {
-                aws_mqtt5_packet_publish_view_init_from_storage(&publish_storage.storage_view, &publish_storage);
                 connect_storage.storage_view.will = &publish_storage.storage_view;
             }
 
@@ -695,11 +707,12 @@ static int s_read_subscribe_property(
     uint8_t property_type = 0;
     AWS_MQTT5_DECODE_U8(packet_cursor, &property_type, done);
 
+    struct aws_mqtt5_packet_subscribe_view *storage_view = &subscribe_storage->storage_view;
+
     switch (property_type) {
         case AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER:
             AWS_MQTT5_DECODE_VLI(packet_cursor, &subscribe_storage->subscription_identifier, done);
-            subscribe_storage->subscription_identifier_ptr = &subscribe_storage->subscription_identifier;
-            subscribe_storage->storage_view.subscription_identifier = subscribe_storage->subscription_identifier_ptr;
+            storage_view->subscription_identifier = &subscribe_storage->subscription_identifier;
 
             break;
         case AWS_MQTT5_PROPERTY_TYPE_USER_PROPERTY:
@@ -733,6 +746,8 @@ static int s_aws_mqtt5_decoder_decode_subscribe(struct aws_mqtt5_decoder *decode
     if (aws_mqtt5_packet_subscribe_storage_init_from_external_storage(&subscribe_storage, decoder->allocator)) {
         goto done;
     }
+
+    struct aws_mqtt5_packet_subscribe_view *storage_view = &subscribe_storage.storage_view;
 
     /* SUBSCRIBE flags must be 2 by protocol*/
     uint8_t first_byte = decoder->packet_first_byte;
@@ -784,6 +799,11 @@ static int s_aws_mqtt5_decoder_decode_subscribe(struct aws_mqtt5_decoder *decode
         }
     }
 
+    storage_view->subscription_count = aws_array_list_length(&subscribe_storage.subscriptions);
+    storage_view->subscriptions = subscribe_storage.subscriptions.data;
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&subscribe_storage.user_properties);
+    storage_view->user_properties = subscribe_storage.user_properties.properties.data;
+
     if (packet_cursor.len == 0) {
         result = AWS_OP_SUCCESS;
     }
@@ -792,8 +812,6 @@ done:
 
     if (result == AWS_OP_SUCCESS) {
         if (decoder->options.on_packet_received != NULL) {
-            aws_mqtt5_packet_subscribe_view_init_from_storage(&subscribe_storage.storage_view, &subscribe_storage);
-
             result = (*decoder->options.on_packet_received)(
                 AWS_MQTT5_PT_SUBSCRIBE, &subscribe_storage.storage_view, decoder->options.callback_user_data);
         }
@@ -852,6 +870,8 @@ static int s_aws_mqtt5_decoder_decode_unsubscribe(struct aws_mqtt5_decoder *deco
         goto done;
     }
 
+    struct aws_mqtt5_packet_unsubscribe_view *storage_view = &unsubscribe_storage.storage_view;
+
     /* UNSUBSCRIBE flags must be 2 by protocol*/
     uint8_t first_byte = decoder->packet_first_byte;
     if ((first_byte & 0x0F) != 2) {
@@ -883,22 +903,22 @@ static int s_aws_mqtt5_decoder_decode_unsubscribe(struct aws_mqtt5_decoder *deco
     while (packet_cursor.len > 0) {
         struct aws_byte_cursor topic;
         AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR(&packet_cursor, &topic, done);
-        if (aws_array_list_push_back(&unsubscribe_storage.topics, &topic)) {
+        if (aws_array_list_push_back(&unsubscribe_storage.topic_filters, &topic)) {
             goto done;
         }
     }
 
-    if (packet_cursor.len == 0) {
-        result = AWS_OP_SUCCESS;
-    }
+    storage_view->topic_filter_count = aws_array_list_length(&unsubscribe_storage.topic_filters);
+    storage_view->topic_filters = unsubscribe_storage.topic_filters.data;
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&unsubscribe_storage.user_properties);
+    storage_view->user_properties = unsubscribe_storage.user_properties.properties.data;
+
+    result = AWS_OP_SUCCESS;
 
 done:
 
     if (result == AWS_OP_SUCCESS) {
         if (decoder->options.on_packet_received != NULL) {
-            aws_mqtt5_packet_unsubscribe_view_init_from_storage(
-                &unsubscribe_storage.storage_view, &unsubscribe_storage);
-
             result = (*decoder->options.on_packet_received)(
                 AWS_MQTT5_PT_UNSUBSCRIBE, &unsubscribe_storage.storage_view, decoder->options.callback_user_data);
         }
@@ -968,7 +988,9 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
             break;
 
         case AWS_MQTT5_PT_PUBACK:
-            /* TODO */
+            packet_record.packet_storage =
+                aws_mem_calloc(test_fixture->allocator, 1, sizeof(struct aws_mqtt5_packet_puback_storage));
+            aws_mqtt5_packet_puback_storage_init(packet_record.packet_storage, test_fixture->allocator, packet_view);
             break;
 
         default:

@@ -44,7 +44,6 @@ static bool s_is_cursor_in_buffer(const struct aws_byte_buf *buffer, struct aws_
  */
 
 #define AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULL(storage_ptr, field_name)                                             \
-    ASSERT_NULL((storage_ptr)->field_name##_ptr);                                                                      \
     ASSERT_NULL((storage_ptr)->storage_view.field_name);
 
 #define AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(storage_ptr, view_ptr, field_name)                        \
@@ -66,29 +65,20 @@ static bool s_is_cursor_in_buffer(const struct aws_byte_buf *buffer, struct aws_
     ASSERT_BIN_ARRAYS_EQUALS(                                                                                          \
         (view_ptr)->field_name.ptr,                                                                                    \
         (view_ptr)->field_name.len,                                                                                    \
-        (storage_ptr)->field_name.ptr,                                                                                 \
-        (storage_ptr)->field_name.len);                                                                                \
-    ASSERT_BIN_ARRAYS_EQUALS(                                                                                          \
-        (view_ptr)->field_name.ptr,                                                                                    \
-        (view_ptr)->field_name.len,                                                                                    \
         (storage_ptr)->storage_view.field_name.ptr,                                                                    \
         (storage_ptr)->storage_view.field_name.len);                                                                   \
-    ASSERT_TRUE(s_is_cursor_in_buffer(&(storage_ptr)->storage, (storage_ptr)->field_name));                            \
     ASSERT_TRUE(s_is_cursor_in_buffer(&(storage_ptr)->storage, (storage_ptr)->storage_view.field_name));               \
-    ASSERT_TRUE((view_ptr)->field_name.ptr != (storage_ptr)->field_name.ptr);
+    ASSERT_TRUE((view_ptr)->field_name.ptr != (storage_ptr)->storage_view.field_name.ptr);
 
 #define AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_EMPTY_CURSOR(storage_ptr, view_ptr, field_name)                           \
-    ASSERT_UINT_EQUALS(0, (storage_ptr)->field_name.len);                                                              \
     ASSERT_UINT_EQUALS(0, (storage_ptr)->storage_view.field_name.len);
 
 #define AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_UINT(storage_ptr, view_ptr, field_name)                                   \
-    ASSERT_UINT_EQUALS((view_ptr)->field_name, (storage_ptr)->field_name);                                             \
     ASSERT_UINT_EQUALS((view_ptr)->field_name, (storage_ptr)->storage_view.field_name);
 
 #define AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_UINT(storage_ptr, view_ptr, field_name)                          \
-    ASSERT_PTR_EQUALS(&(storage_ptr)->field_name, (storage_ptr)->field_name##_ptr);                                    \
     ASSERT_UINT_EQUALS(*(view_ptr)->field_name, (storage_ptr)->field_name);                                            \
-    ASSERT_PTR_EQUALS((storage_ptr)->storage_view.field_name, (storage_ptr)->field_name##_ptr);
+    ASSERT_PTR_EQUALS((storage_ptr)->storage_view.field_name, &(storage_ptr)->field_name);
 
 static const char *PUBLISH_PAYLOAD = "hello-world";
 static const char *PUBLISH_TOPIC = "greetings/friendly";
