@@ -1577,7 +1577,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBLISH received", (void *)client);
             const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
 
-            client->config->publish_received(publish_view, client);
+            client->config->publish_received_handler(publish_view, client->config->publish_received_handler_user_data);
 
             /* Send a puback if QoS 1+ */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {

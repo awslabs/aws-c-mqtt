@@ -931,7 +931,7 @@ static struct aws_mqtt5_client_options s_good_client_options = {
     .connect_options = &s_good_connect,
     .ping_timeout_ms = 5000,
     .lifecycle_event_handler = &s_lifecycle_event_handler,
-    .publish_received = &s_publish_received,
+    .publish_received_handler = &s_publish_received,
 };
 
 static void s_make_no_host_client_options(struct aws_mqtt5_client_options *options) {
@@ -948,7 +948,7 @@ static void s_make_no_bootstrap_client_options(struct aws_mqtt5_client_options *
 AWS_CLIENT_CREATION_VALIDATION_FAILURE(no_bootstrap, s_good_client_options, s_make_no_bootstrap_client_options)
 
 static void s_make_no_publish_received_client_options(struct aws_mqtt5_client_options *options) {
-    options->publish_received = NULL;
+    options->publish_received_handler = NULL;
 }
 
 AWS_CLIENT_CREATION_VALIDATION_FAILURE(

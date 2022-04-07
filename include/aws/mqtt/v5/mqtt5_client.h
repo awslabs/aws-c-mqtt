@@ -112,6 +112,8 @@ enum aws_mqtt5_client_operation_queue_behavior_type {
      * Qos 0 publishes that are not complete at the time of disconnection are failed.  Unacked QoS 1+ publishes are
      * requeued at the head of the line for immediate retransmission on a session resumption.  All other operations
      * are requeued in original order behind any retransmissions.
+     *
+     * TODO: not yet supported
      */
     AWS_MQTT5_COQBT_FAIL_QOS0_ON_DISCONNECT,
 };
@@ -413,7 +415,8 @@ struct aws_mqtt5_client_options {
     /**
      * Callback for received publish packets
      */
-    aws_mqtt5_publish_received_fn *publish_received;
+    aws_mqtt5_publish_received_fn *publish_received_handler;
+    void *publish_received_handler_user_data;
 
     /**
      * Callback and user data for all client lifecycle events.
