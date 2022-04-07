@@ -53,7 +53,6 @@ struct aws_mqtt5_operation {
     const struct aws_mqtt5_operation_vtable *vtable;
     struct aws_ref_count ref_count;
     uint64_t timeout_counter;
-    struct aws_linked_list_node timeout_node;
     struct aws_linked_list_node node;
     enum aws_mqtt5_packet_type packet_type;
     const void *packet_view;

@@ -242,7 +242,6 @@ struct aws_mqtt5_client_operational_state {
     struct aws_hash_table unacked_operations_table;
     struct aws_linked_list unacked_operations;
     struct aws_linked_list write_completion_operations;
-    struct aws_linked_list timeout_operations;
 
     /*
      * Is there an io message in transit (to the socket) that has not invoked its write completion callback yet?
@@ -500,7 +499,8 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
     enum aws_mqtt5_packet_type packet_type,
-    const void *packet_view);
+    const void *packet_view,
+    int error_code);
 
 AWS_MQTT_API bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client);
 
