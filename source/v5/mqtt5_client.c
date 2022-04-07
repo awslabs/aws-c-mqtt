@@ -320,6 +320,13 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
         next_service_time = aws_min_u64(next_service_time, client->next_ping_timeout_time);
     }
 
+    /* unacked operations timeout */
+    if (client->config->timeout_seconds != 0 && !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
+        struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
+        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
+        next_service_time = aws_min_u64(next_service_time, operation->timeout_counter);
+    }
+
     if (client->desired_state != AWS_MCS_CONNECTED) {
         next_service_time = now;
     }
@@ -339,7 +346,23 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
 }
 
 static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_mqtt5_client *client, uint64_t now) {
-    return s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
+    uint64_t next_service_time = 0;
+
+    /* unacked operations timeout */
+    if (client->config->timeout_seconds != 0 && !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
+        struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
+        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
+        next_service_time = aws_min_u64(next_service_time, operation->timeout_counter);
+    }
+
+    uint64_t operation_processing_time =
+        s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
+
+    if (operation_processing_time != 0) {
+        next_service_time = aws_min_u64(next_service_time, operation_processing_time);
+    }
+
+    return next_service_time;
 }
 
 static uint64_t s_compute_next_service_time_client_channel_shutdown(struct aws_mqtt5_client *client, uint64_t now) {
