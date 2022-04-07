@@ -7,7 +7,6 @@
 
 #include <aws/common/byte_buf.h>
 #include <aws/common/device_random.h>
-#include <aws/io/stream.h>
 #include <inttypes.h>
 
 uint8_t aws_mqtt5_compute_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags) {

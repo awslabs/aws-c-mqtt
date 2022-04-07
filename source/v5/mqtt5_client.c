@@ -12,6 +12,7 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/mqtt/private/shared_constants.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
@@ -663,12 +664,6 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
     client->handshake = aws_http_message_acquire(websocket_transform_complete_task->handshake);
 
     int error_code = websocket_transform_complete_task->error_code;
-
-    /*
-     * TODO: for now there is no timeout that will change state out of CONNECTING, so assume we're still in it.
-     * Since we haven't kicked off channel creation yet, we could (and probably should) add one.
-     */
-    AWS_ASSERT(client->current_state == AWS_MCS_CONNECTING);
     if (error_code == 0 && client->desired_state == AWS_MCS_CONNECTED) {
 
         struct aws_websocket_client_connection_options websocket_options = {
@@ -743,25 +738,16 @@ static int s_websocket_connect(struct aws_mqtt5_client *client) {
     AWS_ASSERT(client);
     AWS_ASSERT(client->config->websocket_handshake_transform);
 
-    /* These defaults were chosen because they're commmon in other MQTT libraries.
-     * The user can modify the request in their transform callback if they need to. */
-    /* TODO: share these with the mqtt3.1 impl in client.c */
-    const struct aws_byte_cursor default_path = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("/mqtt");
-    const struct aws_http_header default_protocol_header = {
-        .name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("Sec-WebSocket-Protocol"),
-        .value = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("mqtt"),
-    };
-
     /* Build websocket handshake request */
     struct aws_http_message *handshake = aws_http_message_new_websocket_handshake_request(
-        client->allocator, default_path, aws_byte_cursor_from_string(client->config->host_name));
+        client->allocator, *g_websocket_handshake_default_path, aws_byte_cursor_from_string(client->config->host_name));
 
     if (handshake == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Failed to generate websocket handshake request", (void *)client);
         return AWS_OP_ERR;
     }
 
-    if (aws_http_message_add_header(handshake, default_protocol_header)) {
+    if (aws_http_message_add_header(handshake, *g_websocket_handshake_default_protocol_header)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT, "id=%p: Failed to add default header to websocket handshake request", (void *)client);
         goto on_error;
