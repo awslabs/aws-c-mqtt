@@ -1630,7 +1630,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
     switch (type) {
         case AWS_MQTT5_PT_PINGRESP:
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: resetting PINGREQ timer", (void *)client);
-            /* steve check if we can move this ping timeout to where other timeouts are now being handled */
             client->next_ping_timeout_time = 0;
             break;
 
@@ -1648,12 +1647,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             uint16_t packet_id = ((const struct aws_mqtt5_packet_suback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(
                 &client->operational_state, packet_id, AWS_MQTT5_PT_SUBACK, packet_view, AWS_ERROR_SUCCESS);
-            /*
-             * TODO
-             * the reason code of the SUBACK corresponds to the QoS that topic can receive.
-             * Should we handle this potential limitation or just leave it up to the customer
-             * to handle since we aren't keeping track of topics?
-             */
             break;
         }
 
@@ -2255,10 +2248,7 @@ void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5
             is_qos1_publish = publish_view->qos >= AWS_MQTT5_QOS_AT_LEAST_ONCE;
             publish_view->duplicate = true;
         }
-        /*
-         * steve Should we be cancelling evertyhing? If sub/unsub are awaiting acks, what do we do about those?
-         * also, I think this bool check was supposed to be if true, not if false but I'm not positive
-         */
+
         if (is_qos1_publish) {
             aws_linked_list_remove(&operation->node);
 
@@ -2637,7 +2627,6 @@ void aws_mqtt5_client_flow_control_state_init(struct aws_mqtt5_client *client) {
     flow_control->unacked_publish_token_count = client->negotiated_settings.receive_maximum_from_server;
 }
 
-/* steve on a timed out publish we should probably still modify this token count */
 void aws_mqtt5_client_flow_control_state_on_puback(struct aws_mqtt5_client *client) {
     struct aws_mqtt5_client_flow_control_state *flow_control = &client->flow_control_state;
 
