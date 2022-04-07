@@ -8,7 +8,11 @@
 
 #include <aws/mqtt/mqtt.h>
 
+AWS_EXTERN_C_BEGIN
+
 AWS_MQTT_API extern const struct aws_byte_cursor *g_websocket_handshake_default_path;
 AWS_MQTT_API extern const struct aws_http_header *g_websocket_handshake_default_protocol_header;
+
+AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_SHARED_CONSTANTS_H */
