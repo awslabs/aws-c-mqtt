@@ -84,13 +84,13 @@ static void s_complete_operation_list(struct aws_linked_list *operation_list, in
     aws_linked_list_init(operation_list);
 }
 
-static void s_check_timeouts(struct aws_mqtt5_client *client, struct aws_linked_list *operation_list, uint64_t now) {
+static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
     if (client->config->timeout_seconds == 0) {
         return;
     }
 
-    struct aws_linked_list_node *node = aws_linked_list_begin(operation_list);
-    while (node != aws_linked_list_end(operation_list)) {
+    struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
+    while (node != aws_linked_list_end(&client->operational_state.unacked_operations)) {
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
         node = aws_linked_list_next(node);
         if (operation->timeout_counter < now) {
@@ -1343,6 +1343,8 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
         client->next_reconnect_delay_reset_time_ns = 0;
     }
 
+    s_check_timeouts(client, now);
+
     if (aws_mqtt5_client_service_operational_state(&client->operational_state)) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -1357,7 +1359,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
     }
 }
 
-static void s_service_state_clean_disconnect(struct aws_mqtt5_client *client) {
+static void s_service_state_clean_disconnect(struct aws_mqtt5_client *client, uint64_t now) {
     if (aws_mqtt5_client_service_operational_state(&client->operational_state)) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -1370,6 +1372,8 @@ static void s_service_state_clean_disconnect(struct aws_mqtt5_client *client) {
         s_aws_mqtt5_client_shutdown_channel(client, error_code);
         return;
     }
+
+    s_check_timeouts(client, now);
 }
 
 static void s_service_state_channel_shutdown(struct aws_mqtt5_client *client) {
@@ -1414,7 +1418,7 @@ static void s_mqtt5_service_task_fn(struct aws_task *task, void *arg, enum aws_t
             s_service_state_connected(client, now);
             break;
         case AWS_MCS_CLEAN_DISCONNECT:
-            s_service_state_clean_disconnect(client);
+            s_service_state_clean_disconnect(client, now);
             break;
         case AWS_MCS_CHANNEL_SHUTDOWN:
             s_service_state_channel_shutdown(client);
@@ -2558,9 +2562,6 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
             AWS_FATAL_ASSERT(encoding_result == AWS_MQTT5_ER_OUT_OF_ROOM);
             break;
         }
-
-        now = (*vtable->get_current_time_fn)();
-        s_check_timeouts(client, &client_operational_state->unacked_operations, now);
 
         now = (*vtable->get_current_time_fn)();
         should_service = s_aws_mqtt5_client_should_service_operational_state(client_operational_state, now);
