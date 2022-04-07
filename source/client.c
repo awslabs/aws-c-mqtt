@@ -14,7 +14,6 @@
 
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
-#include <aws/io/logging.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 #include <aws/io/uri.h>
@@ -25,7 +24,6 @@
 #include <inttypes.h>
 
 #ifdef AWS_MQTT_WITH_WEBSOCKETS
-#    include <aws/http/connection.h>
 #    include <aws/http/request_response.h>
 #    include <aws/http/websocket.h>
 #endif
