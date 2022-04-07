@@ -387,6 +387,8 @@ struct aws_mqtt5_client_options_storage {
     uint64_t max_reconnect_delay_ms;
     uint64_t min_connected_time_to_reset_reconnect_delay_ms;
 
+    uint64_t timeout_seconds;
+
     uint32_t ping_timeout_ms;
     uint32_t connack_timeout_ms;
 

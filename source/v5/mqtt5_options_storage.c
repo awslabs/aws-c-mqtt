@@ -3612,6 +3612,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->ping_timeout_ms = options->ping_timeout_ms;
     options_storage->connack_timeout_ms = options->connack_timeout_ms;
 
+    options_storage->timeout_seconds = options->timout_seconds;
+
     if (aws_mqtt5_packet_connect_storage_init(&options_storage->connect, allocator, options->connect_options)) {
         goto error;
     }

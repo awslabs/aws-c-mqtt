@@ -426,6 +426,13 @@ struct aws_mqtt5_client_options {
     uint32_t connack_timeout_ms;
 
     /**
+     * Time interval to wait for an ack after sending a PUBLISH, SUBSCRIBE, or UNSUBSCRIBE with QoS 1+ before
+     * failing the packet, notifying the client of failure, and removing it from the retry queue. Defaults
+     * to 0 meaning the packet will always be retried upon a reconnect scenario.
+     */
+    uint64_t timout_seconds;
+
+    /**
      * Callback for received publish packets
      */
     aws_mqtt5_publish_received_fn *publish_received;

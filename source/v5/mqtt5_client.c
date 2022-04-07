@@ -18,8 +18,6 @@
 
 #include <inttypes.h>
 
-static const uint64_t s_mqtt5_timeout_default_ns = 10000000000; /* 10 seconds */
-
 static const char *s_aws_mqtt5_client_state_to_c_str(enum aws_mqtt5_client_state state) {
     switch (state) {
         case AWS_MCS_STOPPED:
@@ -87,7 +85,7 @@ static void s_complete_operation_list(struct aws_linked_list *operation_list, in
 }
 
 static void s_check_timeouts(struct aws_mqtt5_client *client, struct aws_linked_list *operation_list, uint64_t now) {
-    if (s_mqtt5_timeout_default_ns == 0) {
+    if (client->config->timeout_seconds == 0) {
         return;
     }
 
@@ -2503,8 +2501,9 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                     break;
                 }
 
-                if (s_mqtt5_timeout_default_ns != 0) {
-                    current_operation->timeout_counter = now + s_mqtt5_timeout_default_ns;
+                if (client->config->timeout_seconds != 0) {
+                    uint64_t nanos_per_second = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+                    current_operation->timeout_counter = now + (client->config->timeout_seconds * nanos_per_second);
                 }
 
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);
