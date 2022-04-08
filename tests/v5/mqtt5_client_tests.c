@@ -3195,9 +3195,77 @@ static int s_mqtt5_client_sub_pub_unsub_qos1_fn(struct aws_allocator *allocator,
 
 AWS_TEST_CASE(mqtt5_client_sub_pub_unsub_qos1, s_mqtt5_client_sub_pub_unsub_qos1_fn)
 
+static enum aws_mqtt5_unsuback_reason_code s_unsubscribe_success_reason_codes[] = {
+    AWS_MQTT5_UARC_NO_SUBSCRIPTION_EXISTED,
+};
+
+static int s_aws_mqtt5_server_send_not_subscribe_unsuback_on_unsubscribe(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)user_data;
+
+    struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view = packet;
+
+    struct aws_mqtt5_packet_unsuback_view unsuback_view = {
+        .packet_id = unsubscribe_view->packet_id,
+        .reason_code_count = AWS_ARRAY_SIZE(s_unsubscribe_success_reason_codes),
+        .reason_codes = s_unsubscribe_success_reason_codes,
+    };
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_UNSUBACK, &unsuback_view);
+}
+
 static int s_mqtt5_client_unsubscribe_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    (void)allocator;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
+        s_aws_mqtt5_server_send_not_subscribe_unsuback_on_unsubscribe;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    struct aws_mqtt5_sub_pub_unsub_context full_test_context = {
+        .test_fixture = &test_context,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &full_test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
+        .topic_filters = s_sub_pub_unsub_topic_filters,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_sub_pub_unsub_topic_filters),
+    };
+
+    struct aws_mqtt5_unsubscribe_completion_options completion_options = {
+        .completion_callback = s_sub_pub_unsub_unsubscribe_complete_fn,
+        .completion_user_data = &full_test_context,
+    };
+    aws_mqtt5_client_unsubscribe(client, &unsubscribe_view, &completion_options);
+
+    s_sub_pub_unsub_wait_for_unsuback_received(&full_test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
