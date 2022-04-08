@@ -358,11 +358,15 @@ static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_m
     uint64_t operation_processing_time =
         s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
 
-    if (operation_processing_time != 0) {
-        next_service_time = aws_min_u64(next_service_time, operation_processing_time);
+    if (next_service_time == 0) {
+        return operation_processing_time;
     }
 
-    return next_service_time;
+    if (operation_processing_time == 0) {
+        return next_service_time;
+    }
+
+    return aws_min_u64(next_service_time, operation_processing_time);
 }
 
 static uint64_t s_compute_next_service_time_client_channel_shutdown(struct aws_mqtt5_client *client, uint64_t now) {
