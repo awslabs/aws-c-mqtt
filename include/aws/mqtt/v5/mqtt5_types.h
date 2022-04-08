@@ -329,13 +329,13 @@ struct aws_mqtt5_packet_unsubscribe_view {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
  */
 struct aws_mqtt5_packet_publish_view {
-    /* This field is always empty on received messages */
     struct aws_byte_cursor payload;
 
     /* packet_id is only set for QoS 1 and QoS 2 */
     aws_mqtt5_packet_id_t packet_id;
 
     enum aws_mqtt5_qos qos;
+
     /*
      * Used to set the duplicate flag on QoS 1+ re-delivery attempts.
      * Set to false on all first attempts or QoS 0. Set to true on any re-delivery.

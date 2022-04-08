@@ -1148,6 +1148,45 @@ static int s_mqtt5_unsuback_storage_new_set_all_fn(struct aws_allocator *allocat
 
 AWS_TEST_CASE(mqtt5_unsuback_storage_new_set_all, s_mqtt5_unsuback_storage_new_set_all_fn)
 
+static int s_mqtt5_puback_storage_new_set_all_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_packet_puback_view puback_options = {
+        .packet_id = 333,
+        .reason_code = AWS_MQTT5_PARC_NO_MATCHING_SUBSCRIBERS,
+        .reason_string = &s_reason_string_cursor,
+        .user_properties = s_user_properties,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+    };
+
+    struct aws_mqtt5_packet_puback_storage puback_storage;
+    AWS_ZERO_STRUCT(puback_storage);
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_puback_storage_init(&puback_storage, allocator, &puback_options));
+
+    struct aws_mqtt5_packet_puback_view *stored_view = &puback_storage.storage_view;
+
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_UINT(&puback_storage, &puback_options, packet_id);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_UINT(&puback_storage, &puback_options, reason_code);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&puback_storage, &puback_options, reason_string);
+
+    ASSERT_SUCCESS(s_verify_user_properties(
+        &puback_storage.user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        stored_view->user_property_count,
+        stored_view->user_properties,
+        AWS_ARRAY_SIZE(s_user_properties),
+        s_user_properties));
+
+    aws_mqtt5_packet_puback_view_log(stored_view, AWS_LL_DEBUG);
+
+    aws_mqtt5_packet_puback_storage_clean_up(&puback_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_puback_storage_new_set_all, s_mqtt5_puback_storage_new_set_all_fn)
+
 static const enum aws_mqtt5_qos s_maximum_qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;
 static const uint16_t s_keep_alive_interval_seconds = 999;
 static const uint32_t s_session_expiry_interval = 999;

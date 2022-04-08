@@ -11,7 +11,7 @@
 #include <aws/io/io.h>
 
 struct aws_rate_limiter_token_bucket_options {
-    /* Clock functon override.  If left null, the high resolution clock will be used */
+    /* Clock function override.  If left null, the high resolution clock will be used */
     aws_io_clock_fn *clock_fn;
 
     /* How many tokens regenerate per second? */

@@ -63,9 +63,12 @@ add_test_case(mqtt_connection_unsub_timeout)
 add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
 
 # MQTT5 tests
+
+# topic utilities
 add_test_case(mqtt5_topic_skip_rules_prefix)
 add_test_case(mqtt5_topic_get_segment_count)
 
+# mqtt operation/storage/view creation/relationship tests
 add_test_case(mqtt5_publish_operation_new_set_no_optional)
 add_test_case(mqtt5_publish_operation_new_set_all)
 add_test_case(mqtt5_subscribe_operation_new_set_no_optional)
@@ -81,8 +84,7 @@ add_test_case(mqtt5_suback_storage_new_set_no_optional)
 add_test_case(mqtt5_suback_storage_new_set_all)
 add_test_case(mqtt5_unsuback_storage_new_set_no_optional)
 add_test_case(mqtt5_unsuback_storage_new_set_all)
-
-# TODO: puback storage tests
+add_test_case(mqtt5_puback_storage_new_set_all)
 
 # operation/view validation failure tests
 add_test_case(mqtt5_operation_disconnect_validation_failure_server_reference)
@@ -178,11 +180,13 @@ add_test_case(mqtt5_operation_processing_reconnect_no_session)
 add_test_case(mqtt5_negotiated_settings_reset_test)
 add_test_case(mqtt5_negotiated_settings_apply_connack_test)
 
+# vli encode/decode
 add_test_case(mqtt5_vli_size)
 add_test_case(mqtt5_vli_success_round_trip)
 add_test_case(mqtt5_vli_encode_failures)
 add_test_case(mqtt5_vli_decode_failures)
 
+# packet encode/decode cycle tests
 add_test_case(mqtt5_packet_disconnect_round_trip)
 add_test_case(mqtt5_packet_pingreq_round_trip)
 add_test_case(mqtt5_packet_pingresp_round_trip)
@@ -205,6 +209,9 @@ add_test_case(mqtt5_client_direct_connect_connack_refusal)
 add_test_case(mqtt5_client_direct_connect_connack_timeout)
 add_test_case(mqtt5_client_direct_connect_from_server_disconnect)
 add_test_case(mqtt5_client_subscribe_success)
+add_test_case(mqtt5_client_unsubscribe_success)
+add_test_case(mqtt5_client_publish_qos0_success)
+add_test_case(mqtt5_client_publish_qos1_success)
 add_test_case(mqtt5_client_ping_sequence)
 add_test_case(mqtt5_client_ping_timeout)
 add_test_case(mqtt5_client_reconnect_failure_backoff)
@@ -215,10 +222,11 @@ add_test_case(mqtt5_client_disconnect_fail_packet_too_big)
 add_test_case(mqtt5_client_flow_control_receive_maximum)
 add_test_case(mqtt5_client_flow_control_iot_core_throughput)
 add_test_case(mqtt5_client_flow_control_iot_core_publish_tps)
-
 add_test_case(mqtt5_client_session_resumption_clean_start)
 add_test_case(mqtt5_client_session_resumption_always)
 add_test_case(mqtt5_client_session_resumption_post_success)
+add_test_case(mqtt5_client_sub_pub_unsub_qos0)
+add_test_case(mqtt5_client_sub_pub_unsub_qos1)
 
 add_test_case(rate_limiter_token_bucket_init_invalid)
 add_test_case(rate_limiter_token_bucket_regeneration_integral)

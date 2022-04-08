@@ -1519,6 +1519,106 @@ static bool s_aws_disconnect_packets_equal(
     return true;
 }
 
+static bool s_are_subscription_views_equal(
+    const struct aws_mqtt5_subscription_view *lhs,
+    const struct aws_mqtt5_subscription_view *rhs) {
+    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->topic_filter, rhs->topic_filter);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->qos, rhs->qos);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->no_local, rhs->no_local);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->retain_as_published, rhs->retain_as_published);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->retain_handling_type, rhs->retain_handling_type);
+
+    return true;
+}
+
+static bool s_aws_subscribe_packets_equal(
+    const struct aws_mqtt5_packet_subscribe_view *lhs,
+    const struct aws_mqtt5_packet_subscribe_view *rhs) {
+
+    // Don't check packet id intentionally
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->subscription_count, rhs->subscription_count);
+    for (size_t i = 0; i < lhs->subscription_count; ++i) {
+        const struct aws_mqtt5_subscription_view *lhs_sub_view = &lhs->subscriptions[i];
+        const struct aws_mqtt5_subscription_view *rhs_sub_view = &rhs->subscriptions[i];
+
+        if (!s_are_subscription_views_equal(lhs_sub_view, rhs_sub_view)) {
+            return false;
+        }
+    }
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->subscription_identifier, rhs->subscription_identifier);
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
+        lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
+
+    return true;
+}
+
+static bool s_aws_unsubscribe_packets_equal(
+    const struct aws_mqtt5_packet_unsubscribe_view *lhs,
+    const struct aws_mqtt5_packet_unsubscribe_view *rhs) {
+
+    // Don't check packet id intentionally
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->topic_filter_count, rhs->topic_filter_count);
+    for (size_t i = 0; i < lhs->topic_filter_count; ++i) {
+        struct aws_byte_cursor lhs_topic_filter = lhs->topic_filters[i];
+        struct aws_byte_cursor rhs_topic_filter = rhs->topic_filters[i];
+
+        AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs_topic_filter, rhs_topic_filter);
+    }
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
+        lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
+
+    return true;
+}
+
+static bool s_aws_publish_packets_equal(
+    const struct aws_mqtt5_packet_publish_view *lhs,
+    const struct aws_mqtt5_packet_publish_view *rhs) {
+
+    // Don't check packet id intentionally
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->payload, rhs->payload);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->qos, rhs->qos);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->duplicate, rhs->duplicate);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->retain, rhs->retain);
+    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->topic, rhs->topic);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->payload_format, rhs->payload_format);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(
+        lhs->message_expiry_interval_seconds, rhs->message_expiry_interval_seconds);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->topic_alias, rhs->topic_alias);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->response_topic, rhs->response_topic);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->correlation_data, rhs->correlation_data);
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->subscription_identifier_count, rhs->subscription_identifier_count);
+    for (size_t i = 0; i < lhs->subscription_identifier_count; ++i) {
+        AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->subscription_identifiers[i], rhs->subscription_identifiers[i]);
+    }
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
+        lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
+
+    return true;
+}
+
+static bool s_aws_puback_packets_equal(
+    const struct aws_mqtt5_packet_puback_view *lhs,
+    const struct aws_mqtt5_packet_puback_view *rhs) {
+
+    // Don't check packet id intentionally
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->reason_code, rhs->reason_code);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->reason_string, rhs->reason_string);
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
+        lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
+
+    return true;
+}
+
 bool aws_mqtt5_client_test_are_packets_equal(
     enum aws_mqtt5_packet_type packet_type,
     void *lhs_packet_storage,
@@ -1533,6 +1633,26 @@ bool aws_mqtt5_client_test_are_packets_equal(
             return s_aws_disconnect_packets_equal(
                 &((struct aws_mqtt5_packet_disconnect_storage *)lhs_packet_storage)->storage_view,
                 &((struct aws_mqtt5_packet_disconnect_storage *)rhs_packet_storage)->storage_view);
+
+        case AWS_MQTT5_PT_SUBSCRIBE:
+            return s_aws_subscribe_packets_equal(
+                &((struct aws_mqtt5_packet_subscribe_storage *)lhs_packet_storage)->storage_view,
+                &((struct aws_mqtt5_packet_subscribe_storage *)rhs_packet_storage)->storage_view);
+
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            return s_aws_unsubscribe_packets_equal(
+                &((struct aws_mqtt5_packet_unsubscribe_storage *)lhs_packet_storage)->storage_view,
+                &((struct aws_mqtt5_packet_unsubscribe_storage *)rhs_packet_storage)->storage_view);
+
+        case AWS_MQTT5_PT_PUBLISH:
+            return s_aws_publish_packets_equal(
+                &((struct aws_mqtt5_packet_publish_storage *)lhs_packet_storage)->storage_view,
+                &((struct aws_mqtt5_packet_publish_storage *)rhs_packet_storage)->storage_view);
+
+        case AWS_MQTT5_PT_PUBACK:
+            return s_aws_puback_packets_equal(
+                &((struct aws_mqtt5_packet_puback_storage *)lhs_packet_storage)->storage_view,
+                &((struct aws_mqtt5_packet_puback_storage *)rhs_packet_storage)->storage_view);
 
         case AWS_MQTT5_PT_PINGREQ:
         case AWS_MQTT5_PT_PINGRESP:
