@@ -3271,21 +3271,3 @@ static int s_mqtt5_client_unsubscribe_success_fn(struct aws_allocator *allocator
 }
 
 AWS_TEST_CASE(mqtt5_client_unsubscribe_success, s_mqtt5_client_unsubscribe_success_fn)
-
-static int s_mqtt5_client_publish_qos0_success_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    (void)allocator;
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(mqtt5_client_publish_qos0_success, s_mqtt5_client_publish_qos0_success_fn)
-
-static int s_mqtt5_client_publish_qos1_success_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    (void)allocator;
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(mqtt5_client_publish_qos1_success, s_mqtt5_client_publish_qos1_success_fn)
