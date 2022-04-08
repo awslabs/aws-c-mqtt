@@ -2274,7 +2274,7 @@ void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5
             publish_view->duplicate = true;
         }
 
-        if (is_qos1_publish) {
+        if (!is_qos1_publish) {
             aws_linked_list_remove(&operation->node);
 
             aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
