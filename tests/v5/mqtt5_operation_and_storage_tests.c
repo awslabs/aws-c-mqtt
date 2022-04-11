@@ -1655,6 +1655,7 @@ AWS_TEST_CASE(mqtt5_operation_bind_packet_id_already_bound, s_mqtt5_operation_bi
 struct aws_mqtt5_operation_processing_test_context {
     struct aws_allocator *allocator;
     struct aws_mqtt5_client dummy_client;
+    struct aws_mqtt5_client_options_storage dummy_client_options;
     struct aws_mqtt5_client_vtable vtable;
     struct aws_channel_slot dummy_slot;
 
@@ -1791,6 +1792,9 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
 
     /* this keeps operation processing tests from failing operations due to a 0 maximum packet size */
     test_context->dummy_client.negotiated_settings.maximum_packet_size_to_server = AWS_MQTT5_MAXIMUM_PACKET_SIZE;
+
+    /* this keeps operation processing tests from crashing when dereferencing config options */
+    test_context->dummy_client.config = &test_context->dummy_client_options;
 
     aws_array_list_init_dynamic(&test_context->output_io_messages, allocator, 0, sizeof(struct aws_io_message *));
 
@@ -2504,7 +2508,7 @@ static int s_mqtt5_operation_processing_reconnect_rejoin_session_fn(struct aws_a
     struct aws_mqtt5_operation_processing_test_context test_context;
     s_aws_mqtt5_operation_processing_test_context_init(&test_context, allocator);
 
-    test_context.dummy_client.current_state = AWS_MCS_MQTT_CONNECT;
+    test_context.dummy_client.current_state = AWS_MCS_CONNECTED;
 
     struct aws_mqtt5_operation *publish1_op =
         &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;
@@ -2549,7 +2553,7 @@ static int s_mqtt5_operation_processing_reconnect_no_session_fn(struct aws_alloc
     struct aws_mqtt5_operation_processing_test_context test_context;
     s_aws_mqtt5_operation_processing_test_context_init(&test_context, allocator);
 
-    test_context.dummy_client.current_state = AWS_MCS_MQTT_CONNECT;
+    test_context.dummy_client.current_state = AWS_MCS_CONNECTED;
 
     struct aws_mqtt5_operation *publish1_op =
         &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;

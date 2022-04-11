@@ -1276,8 +1276,7 @@ static void s_service_state_mqtt_connect(struct aws_mqtt5_client *client, uint64
     enum aws_mqtt5_client_state desired_state = client->desired_state;
     if (desired_state != AWS_MCS_CONNECTED) {
         s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, NULL, NULL);
-        s_aws_mqtt5_client_shutdown_channel_clean(
-            client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, AWS_MQTT5_DRC_NORMAL_DISCONNECTION);
+        s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP);
         return;
     }
 
@@ -1285,8 +1284,7 @@ static void s_service_state_mqtt_connect(struct aws_mqtt5_client *client, uint64
         s_aws_mqtt5_client_emit_final_lifecycle_event(client, AWS_ERROR_MQTT5_CONNACK_TIMEOUT, NULL, NULL);
 
         AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: shutting down channel due to CONNACK timeout", (void *)client);
-        s_aws_mqtt5_client_shutdown_channel_clean(
-            client, AWS_ERROR_MQTT5_CONNACK_TIMEOUT, AWS_MQTT5_DRC_UNSPECIFIED_ERROR);
+        s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_CONNACK_TIMEOUT);
         return;
     }
 
@@ -1586,10 +1584,8 @@ static void s_aws_mqtt5_client_on_connack(
      */
 
     aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
-
     s_change_current_state(client, AWS_MCS_CONNECTED);
     s_aws_mqtt5_client_emit_connection_success_lifecycle_event(client, connack_view);
-    aws_mqtt5_client_flow_control_state_init(client);
 }
 
 static void s_aws_mqtt5_client_log_received_packet(
@@ -1842,6 +1838,8 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     if (client->config == NULL) {
         goto on_error;
     }
+
+    aws_mqtt5_client_flow_control_state_init(client);
 
     /* all client activity will take place on this event loop, serializing things like reconnect, ping, etc... */
     client->loop = aws_event_loop_group_get_next_loop(client->config->bootstrap->event_loop_group);
@@ -2330,6 +2328,8 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
     }
 
     aws_hash_table_clear(&client->operational_state.unacked_operations_table);
+
+    aws_mqtt5_client_flow_control_state_reset(client);
 }
 
 static bool s_aws_mqtt5_client_has_pending_operational_work(
@@ -2382,17 +2382,63 @@ static uint64_t s_aws_mqtt5_client_compute_next_operation_flow_control_service_t
 }
 
 /*
- * TODO: factor in flow control state (as a parameter and to helper functions)
+ * We don't presently know if IoT Core's throughput limit is on the plaintext or encrypted data stream.  Assume
+ * it's on the encrypted stream for now and make a reasonable guess at the additional cost TLS imposes on data size:
+ *
+ * This calculation is intended to be a reasonable default but will not be accurate in all cases
+ *
+ * Estimate the # of ethernet frames (max 1444 bytes) and add in potential TLS framing and padding values per.
+ *
+ * TODO: query IoT Core to determine if this calculation is needed after all
+ * TODO: may eventually want to expose the ethernet frame size here as a configurable option for networks that have a
+ * lower MTU
+ *
+ * References:
+ *  https://tools.ietf.org/id/draft-mattsson-uta-tls-overhead-01.xml#rfc.section.3
+ *
  */
+
+#define ETHERNET_FRAME_MAX_PAYLOAD_SIZE 1500
+#define TCP_SIZE_OVERESTIMATE 72
+#define TLS_FRAMING_AND_PADDING_OVERESTIMATE 64
+#define AVAILABLE_ETHERNET_FRAME_SIZE                                                                                  \
+    (ETHERNET_FRAME_MAX_PAYLOAD_SIZE - (TCP_SIZE_OVERESTIMATE + TLS_FRAMING_AND_PADDING_OVERESTIMATE))
+#define ETHERNET_FRAMES_PER_IO_MESSAGE_ESTIMATE                                                                        \
+    ((AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH + AVAILABLE_ETHERNET_FRAME_SIZE - 1) / AVAILABLE_ETHERNET_FRAME_SIZE)
+#define THROUGHPUT_TOKENS_PER_IO_MESSAGE_OVERESTIMATE                                                                  \
+    (AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH +                                                                             \
+     ETHERNET_FRAMES_PER_IO_MESSAGE_ESTIMATE * TLS_FRAMING_AND_PADDING_OVERESTIMATE)
+
+static uint64_t s_compute_throughput_throttle_wait(const struct aws_mqtt5_client *client, uint64_t now) {
+
+    /* flow control only applies during CONNECTED/CLEAN_DISCONNECT */
+    if (!aws_mqtt5_client_are_negotiated_settings_valid(client)) {
+        return now;
+    }
+
+    uint64_t throughput_wait = 0;
+    if (client->config->extended_validation_and_flow_control_options != AWS_MQTT5_EVAFCO_NONE) {
+        throughput_wait = aws_rate_limiter_token_bucket_compute_wait_for_tokens(
+            (struct aws_rate_limiter_token_bucket *)&client->flow_control_state.throughput_throttle,
+            THROUGHPUT_TOKENS_PER_IO_MESSAGE_OVERESTIMATE);
+    }
+
+    return aws_add_u64_saturating(now, throughput_wait);
+}
+
 static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
     uint64_t now) {
-    /* If something is in transit, then wait for it to complete */
+    /* If an io message is in transit down the channel, then wait for it to complete */
     if (client_operational_state->pending_write_completion) {
         return 0;
     }
 
-    /* TODO: bandwidth flow control check goes here.  This could return future timepoints. */
+    /* Throughput flow control check */
+    uint64_t next_throttled_time = s_compute_throughput_throttle_wait(client_operational_state->client, now);
+    if (next_throttled_time > now) {
+        return next_throttled_time;
+    }
 
     /* If we're in the middle of something, keep going */
     if (client_operational_state->current_operation != NULL) {
@@ -2416,8 +2462,6 @@ static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
 
     /*
      * Check the head of the pending operation queue against flow control and client state restrictions
-     *
-     * Eventually this could return future timepoints.
      */
     return s_aws_mqtt5_client_compute_next_operation_flow_control_service_time(
         client_operational_state->client, next_operation, now);
@@ -2453,6 +2497,34 @@ static void s_on_pingreq_send(struct aws_mqtt5_client *client) {
     client->next_ping_timeout_time = aws_add_u64_saturating(now, ping_timeout_nanos);
 }
 
+static int s_apply_throughput_flow_control(struct aws_mqtt5_client *client) {
+    /* flow control only applies during CONNECTED/CLEAN_DISCONNECT */
+    if (!aws_mqtt5_client_are_negotiated_settings_valid(client)) {
+        return AWS_OP_SUCCESS;
+    }
+
+    if (client->config->extended_validation_and_flow_control_options == AWS_MQTT5_EVAFCO_NONE) {
+        return AWS_OP_SUCCESS;
+    }
+
+    return aws_rate_limiter_token_bucket_take_tokens(
+        (struct aws_rate_limiter_token_bucket *)&client->flow_control_state.throughput_throttle,
+        THROUGHPUT_TOKENS_PER_IO_MESSAGE_OVERESTIMATE);
+}
+
+static int s_apply_publish_tps_flow_control(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+    if (client->config->extended_validation_and_flow_control_options == AWS_MQTT5_EVAFCO_NONE) {
+        return AWS_OP_SUCCESS;
+    }
+
+    if (operation->packet_type != AWS_MQTT5_PT_PUBLISH) {
+        return AWS_OP_SUCCESS;
+    }
+
+    return aws_rate_limiter_token_bucket_take_tokens(
+        (struct aws_rate_limiter_token_bucket *)&client->flow_control_state.publish_throttle, 1);
+}
+
 int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operational_state *client_operational_state) {
     struct aws_mqtt5_client *client = client_operational_state->client;
     struct aws_channel_slot *slot = client->slot;
@@ -2462,6 +2534,10 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
     /* Should we write data? */
     bool should_service = s_aws_mqtt5_client_should_service_operational_state(client_operational_state, now);
     if (!should_service) {
+        return AWS_OP_SUCCESS;
+    }
+
+    if (s_apply_throughput_flow_control(client)) {
         return AWS_OP_SUCCESS;
     }
 
@@ -2488,6 +2564,10 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                     aws_linked_list_pop_front(&client_operational_state->queued_operations);
                 struct aws_mqtt5_operation *operation =
                     AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
+
+                if (s_apply_publish_tps_flow_control(client, operation)) {
+                    break;
+                }
 
                 if (!aws_mqtt5_operation_validate_vs_connection_settings(operation, client)) {
                     next_operation = operation;
@@ -2658,9 +2738,30 @@ bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_clien
 void aws_mqtt5_client_flow_control_state_init(struct aws_mqtt5_client *client) {
     struct aws_mqtt5_client_flow_control_state *flow_control = &client->flow_control_state;
 
+    struct aws_rate_limiter_token_bucket_options publish_throttle_config = {
+        .tokens_per_second = AWS_IOT_CORE_PUBLISH_PER_SECOND_LIMIT,
+        .maximum_token_count = AWS_IOT_CORE_PUBLISH_PER_SECOND_LIMIT,
+        .initial_token_count = 0,
+    };
+    aws_rate_limiter_token_bucket_init(&flow_control->publish_throttle, &publish_throttle_config);
+
+    struct aws_rate_limiter_token_bucket_options throughput_throttle_config = {
+        .tokens_per_second = AWS_IOT_CORE_THROUGHPUT_LIMIT,
+        .maximum_token_count = AWS_IOT_CORE_THROUGHPUT_LIMIT,
+        .initial_token_count = 0,
+    };
+    aws_rate_limiter_token_bucket_init(&flow_control->throughput_throttle, &throughput_throttle_config);
+}
+
+void aws_mqtt5_client_flow_control_state_reset(struct aws_mqtt5_client *client) {
+    struct aws_mqtt5_client_flow_control_state *flow_control = &client->flow_control_state;
+
     AWS_FATAL_ASSERT(aws_mqtt5_client_are_negotiated_settings_valid(client));
 
     flow_control->unacked_publish_token_count = client->negotiated_settings.receive_maximum_from_server;
+
+    aws_rate_limiter_token_bucket_reset(&client->flow_control_state.publish_throttle);
+    aws_rate_limiter_token_bucket_reset(&client->flow_control_state.throughput_throttle);
 }
 
 void aws_mqtt5_client_flow_control_state_on_puback(struct aws_mqtt5_client *client) {
@@ -2697,10 +2798,21 @@ uint64_t aws_mqtt5_client_flow_control_state_get_next_operation_service_time(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *next_operation,
     uint64_t now) {
+
     if (next_operation->packet_type != AWS_MQTT5_PT_PUBLISH) {
         return now;
     }
 
+    /* publish tps check */
+    if (client->config->extended_validation_and_flow_control_options != AWS_MQTT5_EVAFCO_NONE) {
+        uint64_t publish_wait =
+            aws_rate_limiter_token_bucket_compute_wait_for_tokens(&client->flow_control_state.publish_throttle, 1);
+        if (publish_wait > 0) {
+            return now + publish_wait;
+        }
+    }
+
+    /* receive maximum check */
     const struct aws_mqtt5_packet_publish_view *publish_view = next_operation->packet_view;
     if (publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE) {
         return now;
