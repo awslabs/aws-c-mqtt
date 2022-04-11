@@ -2452,7 +2452,8 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
     };
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
 
-    s_wait_for_stopped_lifecycle_event(&test_context);
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
