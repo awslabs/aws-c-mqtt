@@ -2434,23 +2434,9 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
     unacked_count = aws_hash_table_get_entry_count(&client->operational_state.unacked_operations_table);
     ASSERT_INT_EQUALS(0, unacked_count);
 
-    struct aws_mqtt5_packet_disconnect_view disconnect_view = {
-        .reason_code = AWS_MQTT5_DRC_NORMAL_DISCONNECTION,
-    };
-
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, &disconnect_view, NULL));
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
-
-    enum aws_mqtt5_client_state expected_states[] = {
-        AWS_MCS_CONNECTING,
-        AWS_MCS_MQTT_CONNECT,
-        AWS_MCS_CONNECTED,
-        AWS_MCS_CLEAN_DISCONNECT,
-        AWS_MCS_CHANNEL_SHUTDOWN,
-        AWS_MCS_STOPPED,
-    };
-    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
 
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
