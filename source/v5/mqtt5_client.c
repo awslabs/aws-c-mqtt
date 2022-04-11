@@ -123,15 +123,13 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
                         "id=%p: PUBLISH packet with id:%d has timed out",
                         (void *)client,
                         packet_id);
+
+                    aws_mqtt5_client_flow_control_state_on_puback(client);
                     break;
 
                 default:
                     /* something is wrong, there should be no other packet type in this linked list */
                     break;
-            }
-
-            if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
-                /* steve handle the flow control on a timed out publish packet */
             }
 
             struct aws_hash_element *elem = NULL;
