@@ -13,6 +13,7 @@
 #include <aws/io/channel.h>
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
 #include <aws/mqtt/private/v5/mqtt5_encoder.h>
+#include <aws/mqtt/private/v5/rate_limiters.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_event_loop;
@@ -263,6 +264,8 @@ struct aws_mqtt5_client_operational_state {
 struct aws_mqtt5_client_flow_control_state {
 
     /*
+     * Mechanically follows the mqtt5 suggested implementation:
+     *
      * Starts at the server's receive maximum.
      *   1. Decrement every time we send a QoS1+ publish
      *   2. Increment every time we receive a PUBACK
@@ -273,7 +276,17 @@ struct aws_mqtt5_client_flow_control_state {
      */
     uint32_t unacked_publish_token_count;
 
-    /* TODO: rate limiters for publish TPS and total bandwidth in order to support optional AWS IoT Core limits */
+    /*
+     * Optional throttle (extended validation) that prevents the client from exceeding Iot Core's default throughput
+     * limit
+     */
+    struct aws_rate_limiter_token_bucket throughput_throttle;
+
+    /*
+     * Optional throttle (extended validation) that prevents the client from exceeding Iot Core's default publish
+     * rate limit.
+     */
+    struct aws_rate_limiter_token_bucket publish_throttle;
 };
 
 /*
@@ -504,6 +517,8 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_handle_ack(
 AWS_MQTT_API bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client);
 
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_init(struct aws_mqtt5_client *client);
+
+AWS_MQTT_API void aws_mqtt5_client_flow_control_state_reset(struct aws_mqtt5_client *client);
 
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_on_puback(struct aws_mqtt5_client *client);
 
