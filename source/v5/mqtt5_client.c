@@ -1958,7 +1958,6 @@ static struct aws_mqtt_change_desired_state_task *s_aws_mqtt_change_desired_stat
     }
 
     aws_task_init(&change_state_task->task, s_change_state_task_fn, (void *)change_state_task, "ChangeStateTask");
-    /* Steve question, why can't we use the client->allocator above to allocate for change_state_task? */
     change_state_task->allocator = client->allocator;
     change_state_task->client = (desired_state == AWS_MCS_TERMINATED) ? client : aws_mqtt5_client_acquire(client);
     change_state_task->desired_state = desired_state;
