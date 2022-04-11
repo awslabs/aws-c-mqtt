@@ -137,6 +137,21 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
             struct aws_hash_element *elem = NULL;
             aws_hash_table_find(&client->operational_state.unacked_operations_table, &packet_id, &elem);
 
+            if (elem == NULL || elem->value == NULL) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT5_CLIENT,
+                    "id=%p: timeout for unknown operation with id %d",
+                    (void *)client,
+                    (int)packet_id);
+                return;
+            }
+
+            aws_linked_list_remove(&operation->node);
+            aws_hash_table_remove(&client->operational_state.unacked_operations_table, &packet_id, NULL, NULL);
+
+            aws_mqtt5_operation_complete(operation, AWS_ERROR_MQTT_TIMEOUT, NULL);
+            aws_mqtt5_operation_release(operation);
+
         } else {
             break;
         }
