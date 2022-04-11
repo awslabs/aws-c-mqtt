@@ -97,7 +97,6 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
             /* Timeout for this packet has been reached */
             aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
 
-            printf("TIMEOUT FOR SOMETHING REACHED\n");
             switch (operation->packet_type) {
                 case AWS_MQTT5_PT_SUBSCRIBE:
                     /* SUBSCRIBE has timed out. */
@@ -131,12 +130,13 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
                     break;
             }
 
-            aws_mqtt5_client_operational_state_handle_ack(
-                &client->operational_state,
-                packet_id,
-                operation->packet_type,
-                operation->packet_view,
-                AWS_ERROR_MQTT_TIMEOUT);
+            if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
+                /* steve handle the flow control on a timed out publish packet */
+            }
+
+            struct aws_hash_element *elem = NULL;
+            aws_hash_table_find(&client->operational_state.unacked_operations_table, &packet_id, &elem);
+
         } else {
             break;
         }
@@ -2608,10 +2608,6 @@ void aws_mqtt5_client_operational_state_handle_ack(
         aws_mqtt5_client_flow_control_state_on_puback(client_operational_state->client);
     }
 
-    if (packet_type == AWS_MQTT5_PT_PUBLISH) {
-        /* steve handle the flow control on a timed out publish packet */
-    }
-
     struct aws_hash_element *elem = NULL;
     aws_hash_table_find(&client_operational_state->unacked_operations_table, &packet_id, &elem);
 
@@ -2629,8 +2625,6 @@ void aws_mqtt5_client_operational_state_handle_ack(
             (void *)client_operational_state->client,
             (int)packet_id);
     }
-
-    s_reset_ping(client_operational_state->client);
 
     struct aws_mqtt5_operation *operation = elem->value;
 

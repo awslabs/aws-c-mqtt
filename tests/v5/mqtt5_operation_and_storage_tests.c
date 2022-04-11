@@ -26,6 +26,8 @@ static int s_verify_user_properties(
         expected_properties);
 }
 
+AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "MyClientId");
+
 static bool s_is_cursor_in_buffer(const struct aws_byte_buf *buffer, struct aws_byte_cursor cursor) {
     if (cursor.ptr < buffer->buffer) {
         return false;
@@ -548,8 +550,6 @@ static int s_aws_mqtt5_connect_storage_verify_required_properties(
 
     return AWS_OP_SUCCESS;
 }
-
-AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "MyClientId");
 
 static int s_mqtt5_connect_storage_new_set_no_optional_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1766,6 +1766,12 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
     test_context->allocator = allocator;
     aws_mqtt5_client_operational_state_init(
         &test_context->dummy_client.operational_state, allocator, &test_context->dummy_client);
+
+    struct aws_mqtt5_client_options_storage test_storage = {
+        .timeout_seconds = 0,
+    };
+
+    test_context->dummy_client.config = &test_storage;
 
     struct aws_mqtt5_encoder_options encoder_options = {
         .client = &test_context->dummy_client,

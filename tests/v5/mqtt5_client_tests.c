@@ -118,6 +118,7 @@ static void s_mqtt5_client_test_init_default_options(
         .min_connected_time_to_reset_reconnect_delay_ms = 30000,
         .min_reconnect_delay_ms = 1000,
         .ping_timeout_ms = 10000,
+        .timout_seconds = 0,
         .publish_received = s_publish_received_callback,
     };
 
@@ -2304,3 +2305,55 @@ static int s_mqtt5_client_flow_control_receive_maximum_fn(struct aws_allocator *
 }
 
 AWS_TEST_CASE(mqtt5_client_flow_control_receive_maximum, s_mqtt5_client_flow_control_receive_maximum_fn)
+
+static void s_on_publish_complete_fn(
+    const struct aws_mqtt5_packet_puback_view *puback,
+    int error_code,
+    void *complete_ctx) {}
+
+/*
+ * Test that not receiving a PUBACK causes the PUBLISH waiting for the PUBACK to timeout
+ */
+static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* don't response to PINGREQs */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = NULL;
+
+    /* faster publish timeout */
+    client_options.timout_seconds = 3;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_publish_completion_options publish_completion_options = {
+        .completion_callback = &s_on_publish_complete_fn,
+        .completion_user_data = NULL,
+    };
+
+    /* send publish, make sure it's waiting for an ack by checking ack count, then timeout, check that
+     completion callback happens with an error, then check that the ack count is 0 */
+    // ASSERT_SUCCESS(aws_mqtt5_client_publish(client, ))
+    // s_wait_for_disconnection_lifecycle_event(&test_context);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_publish_timeout, s_mqtt5_client_publish_timeout_fn)
