@@ -276,6 +276,14 @@ struct aws_mqtt5_negotiated_settings {
     bool rejoined_session;
 };
 
+struct aws_mqtt5_client_stats {
+    uint64_t incomplete_operation_count;
+    uint64_t incomplete_operation_size;
+
+    uint64_t unacked_operation_count;
+    uint64_t unacked_operation_size;
+};
+
 /**
  * Details about a client lifecycle event.
  */
@@ -536,6 +544,12 @@ int aws_mqtt5_client_unsubscribe(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
     const struct aws_mqtt5_unsubscribe_completion_options *completion_options);
+
+
+AWS_MQTT_API
+void aws_mqtt5_client_get_stats(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_client_stats *stats);
 
 AWS_EXTERN_C_END
 

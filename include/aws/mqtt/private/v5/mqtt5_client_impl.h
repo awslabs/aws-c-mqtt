@@ -9,6 +9,7 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/common/hash_table.h>
+#include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
 #include <aws/io/channel.h>
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
@@ -289,6 +290,12 @@ struct aws_mqtt5_client_flow_control_state {
     struct aws_rate_limiter_token_bucket publish_throttle;
 };
 
+struct aws_mqtt5_client_statistics {
+    struct aws_mutex lock;
+
+    struct aws_mqtt5_client_stats stats;
+};
+
 struct aws_mqtt5_client {
 
     struct aws_allocator *allocator;
@@ -386,7 +393,8 @@ struct aws_mqtt5_client {
      * To-server requires both a table and a list (for LRU)
      */
 
-    /* TODO: statistics that use atomics because we don't care about consistency/isolation */
+    /* Statistics tracking operational state */
+    struct aws_mqtt5_client_statistics statistics;
 
     /*
      * Wraps all state related to outbound flow control.
@@ -532,6 +540,14 @@ AWS_MQTT_API uint64_t aws_mqtt5_client_flow_control_state_get_next_operation_ser
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation,
     uint64_t now);
+
+AWS_MQTT_API void aws_mqtt5_client_statistics_init(struct aws_mqtt5_client_statistics *statistics);
+
+AWS_MQTT_API void aws_mqtt5_client_statistics_clean_up(struct aws_mqtt5_client_statistics *statistics);
+
+AWS_MQTT_API void aws_mqtt5_client_statistics_get_stats(struct aws_mqtt5_client_statistics *statistics, struct aws_mqtt5_client_stats *stats_out);
+
+AWS_MQTT_API void aws_mqtt5_client_statistics_change_operation_statistic_state(struct aws_mqtt5_client_statistics *statistics, struct aws_mqtt5_operation *operation, enum aws_mqtt5_operation_statistic_state_flags new_state_flags);
 
 AWS_EXTERN_C_END
 

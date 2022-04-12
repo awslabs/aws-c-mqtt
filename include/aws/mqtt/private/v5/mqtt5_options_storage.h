@@ -45,6 +45,12 @@ struct aws_mqtt5_operation_vtable {
         const struct aws_mqtt5_client *client);
 };
 
+enum aws_mqtt5_operation_statistic_state_flags {
+    AWS_MQTT5_OSS_NONE = 0,
+    AWS_MQTT5_OSS_INCOMPLETE = 1 << 0,
+    AWS_MQTT5_OSS_UNACKED = 1 << 1,
+};
+
 /**
  * This is the base structure for all mqtt operations.  It includes the type, a ref count, and list
  * management.
@@ -53,8 +59,12 @@ struct aws_mqtt5_operation {
     const struct aws_mqtt5_operation_vtable *vtable;
     struct aws_ref_count ref_count;
     struct aws_linked_list_node node;
+
     enum aws_mqtt5_packet_type packet_type;
     const void *packet_view;
+
+    enum aws_mqtt5_operation_statistic_state_flags statistic_state_flags;
+    size_t packet_size;
 
     void *impl;
 };
