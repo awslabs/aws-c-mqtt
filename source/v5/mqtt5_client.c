@@ -18,6 +18,9 @@
 
 #include <inttypes.h>
 
+#define AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH 4096
+#define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
+
 static const char *s_aws_mqtt5_client_state_to_c_str(enum aws_mqtt5_client_state state) {
     switch (state) {
         case AWS_MCS_STOPPED:
@@ -363,8 +366,6 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
 }
 
 static void s_enqueue_operation_back(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
-    /* TODO: when statistics are added, we'll need to update them here */
-
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
         "id=%p: enqueuing %s operation to back",
@@ -937,8 +938,12 @@ static void s_aws_mqtt5_on_socket_write_completion(
     s_complete_operation_list(&client->operational_state.write_completion_operations, error_code);
 }
 
-#define AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH 4096
-#define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
+static bool s_should_resume_session(const struct aws_mqtt5_client *client) {
+    enum aws_mqtt5_client_session_behavior_type session_behavior = client->config->session_behavior;
+
+    return session_behavior == AWS_MQTT5_CSBT_REJOIN_ALWAYS ||
+           (session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully);
+}
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {
     AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
@@ -949,10 +954,14 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
 
     aws_mqtt5_encoder_reset(&client->encoder);
     aws_mqtt5_decoder_reset(&client->decoder);
-    aws_mqtt5_negotiated_settings_reset(&client->negotiated_settings, &client->config->connect.storage_view);
 
-    struct aws_mqtt5_operation_connect *connect_op =
-        aws_mqtt5_operation_connect_new(client->allocator, &client->config->connect.storage_view);
+    bool resume_session = s_should_resume_session(client);
+    struct aws_mqtt5_packet_connect_view connect_view = client->config->connect.storage_view;
+    connect_view.clean_start = !resume_session;
+
+    aws_mqtt5_negotiated_settings_reset(&client->negotiated_settings, &connect_view);
+
+    struct aws_mqtt5_operation_connect *connect_op = aws_mqtt5_operation_connect_new(client->allocator, &connect_view);
     if (connect_op == NULL) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -1007,6 +1016,7 @@ static void s_change_current_state_to_connected(struct aws_mqtt5_client *client)
 
     aws_mqtt5_client_on_connection_update_operational_state(client);
 
+    client->has_connected_successfully = true;
     client->next_ping_timeout_time = 0;
     s_reset_ping(client);
     s_reset_reconnection_delay_time(client);

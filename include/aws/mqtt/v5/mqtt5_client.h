@@ -32,9 +32,14 @@ enum aws_mqtt5_client_session_behavior_type {
     AWS_MQTT5_CSBT_CLEAN,
 
     /**
-     * Attempt to rejoin an existing session.
+     * Always attempt to rejoin an existing session after an initial connection success.
      */
-    AWS_MQTT5_CSBT_REJOIN,
+    AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS,
+
+    /**
+     * Every CONNECT will attempt to rejoin an existing session.
+     */
+    AWS_MQTT5_CSBT_REJOIN_ALWAYS,
 };
 
 /*
@@ -79,8 +84,36 @@ enum aws_mqtt5_extended_validation_and_flow_control_options {
     /**
      * Apply additional client-side validation and operational flow control that respects the
      * default AWS IoT Core limits.
+     *
+     * Currently applies the following additional validation:
+     *  (1) No more than 8 subscriptions per SUBSCRIBE packet
+     *  (2) Topics and topic filters have a maximum of 7 slashes (8 segments), not counting any AWS rules prefix
+     *  (3) Topics must be <= 256 bytes in length
+     *  (4) Client id must be <= 128 bytes in length
+     *
+     * Also applies the following flow control:
+     *  (1) Outbound throughput throttled to 512KB/s
+     *  (2) Outbound publish TPS throttled to 100
      */
     AWS_MQTT5_EVAFCO_AWS_IOT_CORE_DEFAULTS,
+};
+
+/**
+ * Controls how disconnects affect the queued and in-progress operations submitted to the client.
+ */
+enum aws_mqtt5_client_operation_queue_behavior_type {
+    /*
+     * All operations that are not complete at the time of disconnection are failed, except those operations that
+     * the mqtt 5 spec requires to be retransmitted (unacked qos1+ publishes).
+     */
+    AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT,
+
+    /*
+     * Qos 0 publishes that are not complete at the time of disconnection are failed.  Unacked QoS 1+ publishes are
+     * requeued at the head of the line for immediate retransmission on a session resumption.  All other operations
+     * are requeued in original order behind any retransmissions.
+     */
+    AWS_MQTT5_COQBT_FAIL_QOS0_ON_DISCONNECT,
 };
 
 /**
@@ -402,6 +435,11 @@ struct aws_mqtt5_client_options {
     enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_and_flow_control_options;
 
     /**
+     * Controls how the client treats queued/in-progress operations when the connection drops for any reason.
+     */
+    enum aws_mqtt5_client_operation_queue_behavior_type offline_queue_behavior;
+
+    /**
      * Minimum and maximum amount of time to wait to reconnect after a disconnect.
      */
     enum aws_exponential_backoff_jitter_mode retry_jitter_mode;
@@ -409,7 +447,7 @@ struct aws_mqtt5_client_options {
     uint64_t max_reconnect_delay_ms;
 
     /**
-     * Amount of time that must elapse with a good connection before the reconnect delay is reset to the minimum
+     * Amount of time that must elapse with a good connection before the reconnect delay is reset to the minimum.
      */
     uint64_t min_connected_time_to_reset_reconnect_delay_ms;
 
@@ -478,8 +516,8 @@ AWS_MQTT_API
 struct aws_mqtt5_client *aws_mqtt5_client_release(struct aws_mqtt5_client *client);
 
 /**
- * Asynchronous notify to the mqtt5 client that you want it to attempt to connect to the configured endpoint. After
- * connecting the client will attempt to stay connected using the properties of the reconnect-related parameters
+ * Asynchronous notify to the mqtt5 client that you want it to attempt to connect to the configured endpoint.
+ * The client will attempt to stay connected using the properties of the reconnect-related parameters
  * in the mqtt5 client configuration.
  *
  * @param client mqtt5 client to start
@@ -506,8 +544,9 @@ int aws_mqtt5_client_stop(
  *
  * @param client mqtt5 client to queue a Publish for
  * @param publish_options configuration options for the Publish operation
- * @param completion_options completion callback configuration.  QoS 0 publishes invoke the callback when the
- * data has been written to the socket.  QoS1+ publishes invoke the callback when the corresponding ack is received.
+ * @param completion_options completion callback configuration.  Successful QoS 0 publishes invoke the callback when
+ * the data has been written to the socket.  Successful QoS1+ publishes invoke the callback when the corresponding ack
+ * is received.  Unsuccessful publishes invoke the callback at the point in time a failure condition is reached.
  * @return success/failure in the synchronous logic that kicks off the publish operation
  */
 AWS_MQTT_API
@@ -521,7 +560,9 @@ int aws_mqtt5_client_publish(
  *
  * @param client mqtt5 client to queue a Subscribe for
  * @param subscribe_options configuration options for the Subscribe operation
- * @param completion_options Completion callback configuration.  Invoked when the corresponding SUBACK is received.
+ * @param completion_options Completion callback configuration.  Invoked when the corresponding SUBACK is received or
+ * a failure condition is reached.  An error code implies complete failure of the subscribe, while a success code
+ * implies the user must still check all of the SUBACK's reason codes for per-subscription feedback.
  * @return success/failure in the synchronous logic that kicks off the Subscribe operation
  */
 AWS_MQTT_API
@@ -535,7 +576,9 @@ int aws_mqtt5_client_subscribe(
  *
  * @param client mqtt5 client to queue an Unsubscribe for
  * @param unsubscribe_options configuration options for the Unsubscribe operation
- * @param completion_options Completion callback configuration.  Invoked when the corresponding UNSUBACK is received.
+ * @param completion_options Completion callback configuration.  Invoked when the corresponding UNSUBACK is received or
+ * a failure condition is reached.  An error code implies complete failure of the unsubscribe, while a success code
+ * implies the user must still check all of the UNSUBACK's reason codes for per-topic-filter feedback.
  * @return success/failure in the synchronous logic that kicks off the Unsubscribe operation
  */
 AWS_MQTT_API
