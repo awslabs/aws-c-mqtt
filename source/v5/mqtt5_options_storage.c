@@ -600,35 +600,13 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(const struct aws_m
     return storage_size;
 }
 
-void aws_mqtt5_packet_connect_view_init_from_storage(
-    struct aws_mqtt5_packet_connect_view *view,
-    const struct aws_mqtt5_packet_connect_storage *storage) {
-    view->keep_alive_interval_seconds = storage->keep_alive_interval_seconds;
-    view->client_id = storage->client_id;
-    view->username = storage->username_ptr;
-    view->password = storage->password_ptr;
-    view->clean_start = storage->clean_start;
-    view->session_expiry_interval_seconds = storage->session_expiry_interval_seconds_ptr;
-    view->request_response_information = storage->request_response_information_ptr;
-    view->request_problem_information = storage->request_problem_information_ptr;
-    view->receive_maximum = storage->receive_maximum_ptr;
-    view->topic_alias_maximum = storage->topic_alias_maximum_ptr;
-    view->maximum_packet_size_bytes = storage->maximum_packet_size_bytes_ptr;
-    if (storage->will != NULL) {
-        view->will = &storage->will->storage_view;
-    }
-    view->will_delay_interval_seconds = storage->will_delay_interval_seconds_ptr;
-    view->user_property_count = aws_mqtt5_user_property_set_size(&storage->user_properties);
-    view->user_properties = storage->user_properties.properties.data;
-    view->authentication_method = storage->authentication_method_ptr;
-    view->authentication_data = storage->authentication_data_ptr;
-}
-
 int aws_mqtt5_packet_connect_storage_init(
     struct aws_mqtt5_packet_connect_storage *storage,
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_connect_view *view) {
     AWS_ZERO_STRUCT(*storage);
+
+    struct aws_mqtt5_packet_connect_view *storage_view = &storage->storage_view;
 
     size_t storage_capacity = s_aws_mqtt5_packet_connect_compute_storage_size(view);
     if (aws_byte_buf_init(&storage->storage, allocator, storage_capacity)) {
@@ -636,10 +614,10 @@ int aws_mqtt5_packet_connect_storage_init(
     }
 
     storage->allocator = allocator;
-    storage->keep_alive_interval_seconds = view->keep_alive_interval_seconds;
+    storage_view->keep_alive_interval_seconds = view->keep_alive_interval_seconds;
 
-    storage->client_id = view->client_id;
-    if (aws_byte_buf_append_and_update(&storage->storage, &storage->client_id)) {
+    storage_view->client_id = view->client_id;
+    if (aws_byte_buf_append_and_update(&storage->storage, &storage_view->client_id)) {
         return AWS_OP_ERR;
     }
 
@@ -649,7 +627,7 @@ int aws_mqtt5_packet_connect_storage_init(
             return AWS_OP_ERR;
         }
 
-        storage->username_ptr = &storage->username;
+        storage_view->username = &storage->username;
     }
 
     if (view->password != NULL) {
@@ -658,39 +636,39 @@ int aws_mqtt5_packet_connect_storage_init(
             return AWS_OP_ERR;
         }
 
-        storage->password_ptr = &storage->password;
+        storage_view->password = &storage->password;
     }
 
-    storage->clean_start = view->clean_start;
+    storage_view->clean_start = view->clean_start;
 
     if (view->session_expiry_interval_seconds != NULL) {
         storage->session_expiry_interval_seconds = *view->session_expiry_interval_seconds;
-        storage->session_expiry_interval_seconds_ptr = &storage->session_expiry_interval_seconds;
+        storage_view->session_expiry_interval_seconds = &storage->session_expiry_interval_seconds;
     }
 
     if (view->request_response_information != NULL) {
         storage->request_response_information = *view->request_response_information;
-        storage->request_response_information_ptr = &storage->request_response_information;
+        storage_view->request_response_information = &storage->request_response_information;
     }
 
     if (view->request_problem_information != NULL) {
         storage->request_problem_information = *view->request_problem_information;
-        storage->request_problem_information_ptr = &storage->request_problem_information;
+        storage_view->request_problem_information = &storage->request_problem_information;
     }
 
     if (view->receive_maximum != NULL) {
         storage->receive_maximum = *view->receive_maximum;
-        storage->receive_maximum_ptr = &storage->receive_maximum;
+        storage_view->receive_maximum = &storage->receive_maximum;
     }
 
     if (view->topic_alias_maximum != NULL) {
         storage->topic_alias_maximum = *view->topic_alias_maximum;
-        storage->topic_alias_maximum_ptr = &storage->topic_alias_maximum;
+        storage_view->topic_alias_maximum = &storage->topic_alias_maximum;
     }
 
     if (view->maximum_packet_size_bytes != NULL) {
         storage->maximum_packet_size_bytes = *view->maximum_packet_size_bytes;
-        storage->maximum_packet_size_bytes_ptr = &storage->maximum_packet_size_bytes;
+        storage_view->maximum_packet_size_bytes = &storage->maximum_packet_size_bytes;
     }
 
     if (view->will != NULL) {
@@ -702,11 +680,13 @@ int aws_mqtt5_packet_connect_storage_init(
         if (aws_mqtt5_packet_publish_storage_init(storage->will, allocator, view->will)) {
             return AWS_OP_ERR;
         }
+
+        storage_view->will = &storage->will->storage_view;
     }
 
     if (view->will_delay_interval_seconds != 0) {
         storage->will_delay_interval_seconds = *view->will_delay_interval_seconds;
-        storage->will_delay_interval_seconds_ptr = &storage->will_delay_interval_seconds;
+        storage_view->will_delay_interval_seconds = &storage->will_delay_interval_seconds;
     }
 
     if (aws_mqtt5_user_property_set_init_with_storage(
@@ -718,13 +698,16 @@ int aws_mqtt5_packet_connect_storage_init(
         return AWS_OP_ERR;
     }
 
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&storage->user_properties);
+    storage_view->user_properties = storage->user_properties.properties.data;
+
     if (view->authentication_method != NULL) {
         storage->authentication_method = *view->authentication_method;
         if (aws_byte_buf_append_and_update(&storage->storage, &storage->authentication_method)) {
             return AWS_OP_ERR;
         }
 
-        storage->authentication_method_ptr = &storage->authentication_method;
+        storage_view->authentication_method = &storage->authentication_method;
     }
 
     if (view->authentication_data != NULL) {
@@ -733,10 +716,8 @@ int aws_mqtt5_packet_connect_storage_init(
             return AWS_OP_ERR;
         }
 
-        storage->authentication_data_ptr = &storage->authentication_data;
+        storage_view->authentication_data = &storage->authentication_data;
     }
-
-    aws_mqtt5_packet_connect_view_init_from_storage(&storage->storage_view, storage);
 
     return AWS_OP_SUCCESS;
 }
@@ -854,34 +835,36 @@ int aws_mqtt5_packet_connack_storage_init(
         return AWS_OP_ERR;
     }
 
+    struct aws_mqtt5_packet_connack_view *stored_view = &connack_storage->storage_view;
+
     connack_storage->allocator = allocator;
 
-    connack_storage->session_present = connack_view->session_present;
-    connack_storage->reason_code = connack_view->reason_code;
+    stored_view->session_present = connack_view->session_present;
+    stored_view->reason_code = connack_view->reason_code;
 
     if (connack_view->session_expiry_interval != NULL) {
         connack_storage->session_expiry_interval = *connack_view->session_expiry_interval;
-        connack_storage->session_expiry_interval_ptr = &connack_storage->session_expiry_interval;
+        stored_view->session_expiry_interval = &connack_storage->session_expiry_interval;
     }
 
     if (connack_view->receive_maximum != NULL) {
         connack_storage->receive_maximum = *connack_view->receive_maximum;
-        connack_storage->receive_maximum_ptr = &connack_storage->receive_maximum;
+        stored_view->receive_maximum = &connack_storage->receive_maximum;
     }
 
     if (connack_view->maximum_qos != NULL) {
         connack_storage->maximum_qos = *connack_view->maximum_qos;
-        connack_storage->maximum_qos_ptr = &connack_storage->maximum_qos;
+        stored_view->maximum_qos = &connack_storage->maximum_qos;
     }
 
     if (connack_view->retain_available != NULL) {
         connack_storage->retain_available = *connack_view->retain_available;
-        connack_storage->retain_available_ptr = &connack_storage->retain_available;
+        stored_view->retain_available = &connack_storage->retain_available;
     }
 
     if (connack_view->maximum_packet_size != NULL) {
         connack_storage->maximum_packet_size = *connack_view->maximum_packet_size;
-        connack_storage->maximum_packet_size_ptr = &connack_storage->maximum_packet_size;
+        stored_view->maximum_packet_size = &connack_storage->maximum_packet_size;
     }
 
     if (connack_view->assigned_client_identifier != NULL) {
@@ -890,12 +873,12 @@ int aws_mqtt5_packet_connack_storage_init(
             return AWS_OP_ERR;
         }
 
-        connack_storage->assigned_client_identifier_ptr = &connack_storage->assigned_client_identifier;
+        stored_view->assigned_client_identifier = &connack_storage->assigned_client_identifier;
     }
 
     if (connack_view->topic_alias_maximum != NULL) {
         connack_storage->topic_alias_maximum = *connack_view->topic_alias_maximum;
-        connack_storage->topic_alias_maximum_ptr = &connack_storage->topic_alias_maximum;
+        stored_view->topic_alias_maximum = &connack_storage->topic_alias_maximum;
     }
 
     if (connack_view->reason_string != NULL) {
@@ -904,27 +887,27 @@ int aws_mqtt5_packet_connack_storage_init(
             return AWS_OP_ERR;
         }
 
-        connack_storage->reason_string_ptr = &connack_storage->reason_string;
+        stored_view->reason_string = &connack_storage->reason_string;
     }
 
     if (connack_view->wildcard_subscriptions_available != NULL) {
         connack_storage->wildcard_subscriptions_available = *connack_view->wildcard_subscriptions_available;
-        connack_storage->wildcard_subscriptions_available_ptr = &connack_storage->wildcard_subscriptions_available;
+        stored_view->wildcard_subscriptions_available = &connack_storage->wildcard_subscriptions_available;
     }
 
     if (connack_view->subscription_identifiers_available != NULL) {
         connack_storage->subscription_identifiers_available = *connack_view->subscription_identifiers_available;
-        connack_storage->subscription_identifiers_available_ptr = &connack_storage->subscription_identifiers_available;
+        stored_view->subscription_identifiers_available = &connack_storage->subscription_identifiers_available;
     }
 
     if (connack_view->shared_subscriptions_available != NULL) {
         connack_storage->shared_subscriptions_available = *connack_view->shared_subscriptions_available;
-        connack_storage->shared_subscriptions_available_ptr = &connack_storage->shared_subscriptions_available;
+        stored_view->shared_subscriptions_available = &connack_storage->shared_subscriptions_available;
     }
 
     if (connack_view->server_keep_alive != NULL) {
         connack_storage->server_keep_alive = *connack_view->server_keep_alive;
-        connack_storage->server_keep_alive_ptr = &connack_storage->server_keep_alive;
+        stored_view->server_keep_alive = &connack_storage->server_keep_alive;
     }
 
     if (connack_view->response_information != NULL) {
@@ -933,7 +916,7 @@ int aws_mqtt5_packet_connack_storage_init(
             return AWS_OP_ERR;
         }
 
-        connack_storage->response_information_ptr = &connack_storage->response_information;
+        stored_view->response_information = &connack_storage->response_information;
     }
 
     if (connack_view->server_reference != NULL) {
@@ -942,7 +925,7 @@ int aws_mqtt5_packet_connack_storage_init(
             return AWS_OP_ERR;
         }
 
-        connack_storage->server_reference_ptr = &connack_storage->server_reference;
+        stored_view->server_reference = &connack_storage->server_reference;
     }
 
     if (connack_view->authentication_method != NULL) {
@@ -951,7 +934,7 @@ int aws_mqtt5_packet_connack_storage_init(
             return AWS_OP_ERR;
         }
 
-        connack_storage->authentication_method_ptr = &connack_storage->authentication_method;
+        stored_view->authentication_method = &connack_storage->authentication_method;
     }
 
     if (connack_view->authentication_data != NULL) {
@@ -960,7 +943,7 @@ int aws_mqtt5_packet_connack_storage_init(
             return AWS_OP_ERR;
         }
 
-        connack_storage->authentication_data_ptr = &connack_storage->authentication_data;
+        stored_view->authentication_data = &connack_storage->authentication_data;
     }
 
     if (aws_mqtt5_user_property_set_init_with_storage(
@@ -972,7 +955,8 @@ int aws_mqtt5_packet_connack_storage_init(
         return AWS_OP_ERR;
     }
 
-    aws_mqtt5_packet_connack_view_init_from_storage(&connack_storage->storage_view, connack_storage);
+    stored_view->user_property_count = aws_mqtt5_user_property_set_size(&connack_storage->user_properties);
+    stored_view->user_properties = connack_storage->user_properties.properties.data;
 
     return AWS_OP_SUCCESS;
 }
@@ -1173,35 +1157,6 @@ void aws_mqtt5_packet_connack_view_log(
         "aws_mqtt5_packet_connack_view");
 }
 
-void aws_mqtt5_packet_connack_view_init_from_storage(
-    struct aws_mqtt5_packet_connack_view *connack_view,
-    const struct aws_mqtt5_packet_connack_storage *connack_storage) {
-
-    connack_view->session_present = connack_storage->session_present;
-    connack_view->reason_code = connack_storage->reason_code;
-    connack_view->session_expiry_interval = connack_storage->session_expiry_interval_ptr;
-    connack_view->receive_maximum = connack_storage->receive_maximum_ptr;
-    connack_view->maximum_qos = connack_storage->maximum_qos_ptr;
-    connack_view->retain_available = connack_storage->retain_available_ptr;
-    connack_view->maximum_packet_size = connack_storage->maximum_packet_size_ptr;
-    connack_view->assigned_client_identifier = connack_storage->assigned_client_identifier_ptr;
-    connack_view->topic_alias_maximum = connack_storage->topic_alias_maximum_ptr;
-    connack_view->reason_string = connack_storage->reason_string_ptr;
-
-    connack_view->user_property_count = aws_mqtt5_user_property_set_size(&connack_storage->user_properties);
-    connack_view->user_properties = connack_storage->user_properties.properties.data;
-
-    connack_view->wildcard_subscriptions_available = connack_storage->wildcard_subscriptions_available_ptr;
-    connack_view->subscription_identifiers_available = connack_storage->subscription_identifiers_available_ptr;
-    connack_view->shared_subscriptions_available = connack_storage->shared_subscriptions_available_ptr;
-
-    connack_view->server_keep_alive = connack_storage->server_keep_alive_ptr;
-    connack_view->response_information = connack_storage->response_information_ptr;
-    connack_view->server_reference = connack_storage->server_reference_ptr;
-    connack_view->authentication_method = connack_storage->authentication_method_ptr;
-    connack_view->authentication_data = connack_storage->authentication_data_ptr;
-}
-
 /*********************************************************************************************************************
  * Disconnect
  ********************************************************************************************************************/
@@ -1343,18 +1298,6 @@ void aws_mqtt5_packet_disconnect_storage_clean_up(struct aws_mqtt5_packet_discon
     aws_byte_buf_clean_up(&disconnect_storage->storage);
 }
 
-void aws_mqtt5_packet_disconnect_view_init_from_storage(
-    struct aws_mqtt5_packet_disconnect_view *disconnect_view,
-    const struct aws_mqtt5_packet_disconnect_storage *disconnect_storage) {
-
-    disconnect_view->reason_code = disconnect_storage->reason_code;
-    disconnect_view->session_expiry_interval_seconds = disconnect_storage->session_expiry_interval_seconds_ptr;
-    disconnect_view->reason_string = disconnect_storage->reason_string_ptr;
-    disconnect_view->server_reference = disconnect_storage->server_reference_ptr;
-    disconnect_view->user_property_count = aws_mqtt5_user_property_set_size(&disconnect_storage->user_properties);
-    disconnect_view->user_properties = disconnect_storage->user_properties.properties.data;
-}
-
 static size_t s_aws_mqtt5_packet_disconnect_compute_storage_size(
     const struct aws_mqtt5_packet_disconnect_view *disconnect_view) {
     size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
@@ -1382,11 +1325,13 @@ int aws_mqtt5_packet_disconnect_storage_init(
         return AWS_OP_ERR;
     }
 
-    disconnect_storage->reason_code = disconnect_options->reason_code;
+    struct aws_mqtt5_packet_disconnect_view *storage_view = &disconnect_storage->storage_view;
+
+    storage_view->reason_code = disconnect_options->reason_code;
 
     if (disconnect_options->session_expiry_interval_seconds != NULL) {
         disconnect_storage->session_expiry_interval_seconds = *disconnect_options->session_expiry_interval_seconds;
-        disconnect_storage->session_expiry_interval_seconds_ptr = &disconnect_storage->session_expiry_interval_seconds;
+        storage_view->session_expiry_interval_seconds = &disconnect_storage->session_expiry_interval_seconds;
     }
 
     if (disconnect_options->reason_string != NULL) {
@@ -1395,7 +1340,7 @@ int aws_mqtt5_packet_disconnect_storage_init(
             return AWS_OP_ERR;
         }
 
-        disconnect_storage->reason_string_ptr = &disconnect_storage->reason_string;
+        storage_view->reason_string = &disconnect_storage->reason_string;
     }
 
     if (disconnect_options->server_reference != NULL) {
@@ -1404,7 +1349,7 @@ int aws_mqtt5_packet_disconnect_storage_init(
             return AWS_OP_ERR;
         }
 
-        disconnect_storage->server_reference_ptr = &disconnect_storage->server_reference;
+        storage_view->server_reference = &disconnect_storage->server_reference;
     }
 
     if (aws_mqtt5_user_property_set_init_with_storage(
@@ -1416,7 +1361,8 @@ int aws_mqtt5_packet_disconnect_storage_init(
         return AWS_OP_ERR;
     }
 
-    aws_mqtt5_packet_disconnect_view_init_from_storage(&disconnect_storage->storage_view, disconnect_storage);
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&disconnect_storage->user_properties);
+    storage_view->user_properties = disconnect_storage->user_properties.properties.data;
 
     return AWS_OP_SUCCESS;
 }
@@ -1604,7 +1550,7 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
     }
 
     /*
-     * validate is done from a client perspective and client's should never generate subscription identifier in a
+     * validate is done from a client perspective and clients should never generate subscription identifier in a
      * publish message
      */
     if (publish_view->subscription_identifier_count != 0) {
@@ -1779,26 +1725,6 @@ void aws_mqtt5_packet_publish_view_log(
         "aws_mqtt5_packet_publish_view");
 }
 
-void aws_mqtt5_packet_publish_view_init_from_storage(
-    struct aws_mqtt5_packet_publish_view *publish_view,
-    const struct aws_mqtt5_packet_publish_storage *publish_storage) {
-
-    publish_view->payload = publish_storage->payload;
-    publish_view->packet_id = publish_storage->packet_id;
-    publish_view->qos = publish_storage->qos;
-    publish_view->retain = publish_storage->retain;
-    publish_view->duplicate = publish_storage->duplicate;
-    publish_view->topic = publish_storage->topic;
-    publish_view->payload_format = publish_storage->payload_format_ptr;
-    publish_view->message_expiry_interval_seconds = publish_storage->message_expiry_interval_seconds_ptr;
-    publish_view->topic_alias = publish_storage->topic_alias_ptr;
-    publish_view->response_topic = publish_storage->response_topic_ptr;
-    publish_view->correlation_data = publish_storage->correlation_data_ptr;
-    publish_view->content_type = publish_storage->content_type_ptr;
-    publish_view->user_property_count = aws_mqtt5_user_property_set_size(&publish_storage->user_properties);
-    publish_view->user_properties = publish_storage->user_properties.properties.data;
-}
-
 static size_t s_aws_mqtt5_packet_publish_compute_storage_size(
     const struct aws_mqtt5_packet_publish_view *publish_view) {
     size_t storage_size = s_aws_mqtt5_user_property_set_compute_storage_size(
@@ -1833,33 +1759,37 @@ int aws_mqtt5_packet_publish_storage_init(
         return AWS_OP_ERR;
     }
 
-    publish_storage->payload = publish_options->payload;
-    if (aws_byte_buf_append_and_update(&publish_storage->storage, &publish_storage->payload)) {
+    struct aws_mqtt5_packet_publish_view *storage_view = &publish_storage->storage_view;
+
+    storage_view->packet_id = publish_options->packet_id;
+
+    storage_view->payload = publish_options->payload;
+    if (aws_byte_buf_append_and_update(&publish_storage->storage, &storage_view->payload)) {
         return AWS_OP_ERR;
     }
 
-    publish_storage->qos = publish_options->qos;
-    publish_storage->retain = publish_options->retain;
-    publish_storage->duplicate = publish_options->duplicate;
+    storage_view->qos = publish_options->qos;
+    storage_view->retain = publish_options->retain;
+    storage_view->duplicate = publish_options->duplicate;
 
-    publish_storage->topic = publish_options->topic;
-    if (aws_byte_buf_append_and_update(&publish_storage->storage, &publish_storage->topic)) {
+    storage_view->topic = publish_options->topic;
+    if (aws_byte_buf_append_and_update(&publish_storage->storage, &storage_view->topic)) {
         return AWS_OP_ERR;
     }
 
     if (publish_options->payload_format != NULL) {
         publish_storage->payload_format = *publish_options->payload_format;
-        publish_storage->payload_format_ptr = &publish_storage->payload_format;
+        storage_view->payload_format = &publish_storage->payload_format;
     }
 
     if (publish_options->message_expiry_interval_seconds != NULL) {
         publish_storage->message_expiry_interval_seconds = *publish_options->message_expiry_interval_seconds;
-        publish_storage->message_expiry_interval_seconds_ptr = &publish_storage->message_expiry_interval_seconds;
+        storage_view->message_expiry_interval_seconds = &publish_storage->message_expiry_interval_seconds;
     }
 
     if (publish_options->topic_alias != NULL) {
         publish_storage->topic_alias = *publish_options->topic_alias;
-        publish_storage->topic_alias_ptr = &publish_storage->topic_alias;
+        storage_view->topic_alias = &publish_storage->topic_alias;
     }
 
     if (publish_options->response_topic != NULL) {
@@ -1868,7 +1798,7 @@ int aws_mqtt5_packet_publish_storage_init(
             return AWS_OP_ERR;
         }
 
-        publish_storage->response_topic_ptr = &publish_storage->response_topic;
+        storage_view->response_topic = &publish_storage->response_topic;
     }
 
     if (publish_options->correlation_data != NULL) {
@@ -1877,7 +1807,7 @@ int aws_mqtt5_packet_publish_storage_init(
             return AWS_OP_ERR;
         }
 
-        publish_storage->correlation_data_ptr = &publish_storage->correlation_data;
+        storage_view->correlation_data = &publish_storage->correlation_data;
     }
 
     if (publish_options->content_type != NULL) {
@@ -1886,7 +1816,7 @@ int aws_mqtt5_packet_publish_storage_init(
             return AWS_OP_ERR;
         }
 
-        publish_storage->content_type_ptr = &publish_storage->content_type;
+        storage_view->content_type = &publish_storage->content_type;
     }
 
     if (aws_mqtt5_user_property_set_init_with_storage(
@@ -1897,8 +1827,8 @@ int aws_mqtt5_packet_publish_storage_init(
             publish_options->user_properties)) {
         return AWS_OP_ERR;
     }
-
-    aws_mqtt5_packet_publish_view_init_from_storage(&publish_storage->storage_view, publish_storage);
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&publish_storage->user_properties);
+    storage_view->user_properties = publish_storage->user_properties.properties.data;
 
     return AWS_OP_SUCCESS;
 }
@@ -1977,6 +1907,15 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
         return NULL;
     }
 
+    if (publish_options->packet_id != 0) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_publish_view packet id must be zero",
+            (void *)publish_options);
+        aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        return NULL;
+    }
+
     if (client != NULL && client->config->extended_validation_and_flow_control_options != AWS_MQTT5_EVAFCO_NONE) {
         if (aws_mqtt5_packet_publish_view_validate_vs_iot_core(publish_options)) {
             return NULL;
@@ -2038,10 +1977,11 @@ AWS_MQTT_API int aws_mqtt5_packet_puback_storage_init(
     if (aws_byte_buf_init(&puback_storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
     }
-    puback_storage->packet_id = puback_view->packet_id;
-    puback_storage->storage_view.packet_id = puback_view->packet_id;
 
-    puback_storage->reason_code = puback_view->reason_code;
+    struct aws_mqtt5_packet_puback_view *storage_view = &puback_storage->storage_view;
+
+    storage_view->packet_id = puback_view->packet_id;
+    storage_view->reason_code = puback_view->reason_code;
 
     if (puback_view->reason_string != NULL) {
         puback_storage->reason_string = *puback_view->reason_string;
@@ -2049,7 +1989,7 @@ AWS_MQTT_API int aws_mqtt5_packet_puback_storage_init(
             return AWS_OP_ERR;
         }
 
-        puback_storage->reason_string_ptr = &puback_storage->reason_string;
+        storage_view->reason_string = &puback_storage->reason_string;
     }
 
     if (aws_mqtt5_user_property_set_init_with_storage(
@@ -2060,8 +2000,8 @@ AWS_MQTT_API int aws_mqtt5_packet_puback_storage_init(
             puback_view->user_properties)) {
         return AWS_OP_ERR;
     }
-
-    aws_mqtt5_packet_puback_view_init_from_storage(&puback_storage->storage_view, puback_storage);
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&puback_storage->user_properties);
+    storage_view->user_properties = puback_storage->user_properties.properties.data;
 
     return AWS_OP_SUCCESS;
 }
@@ -2130,19 +2070,6 @@ void aws_mqtt5_packet_puback_view_log(
         (void *)puback_view,
         level,
         "aws_mqtt5_packet_puback_view");
-}
-
-void aws_mqtt5_packet_puback_view_init_from_storage(
-    struct aws_mqtt5_packet_puback_view *puback_view,
-    const struct aws_mqtt5_packet_puback_storage *puback_storage) {
-    puback_view->packet_id = puback_storage->packet_id;
-
-    puback_view->reason_code = puback_storage->reason_code;
-
-    puback_view->reason_string = puback_storage->reason_string_ptr;
-
-    puback_view->user_property_count = aws_mqtt5_user_property_set_size(&puback_storage->user_properties);
-    puback_view->user_properties = puback_storage->user_properties.properties.data;
 }
 
 static void s_destroy_operation_puback(void *object) {
@@ -2295,19 +2222,9 @@ void aws_mqtt5_packet_unsubscribe_storage_clean_up(struct aws_mqtt5_packet_unsub
         return;
     }
 
-    aws_array_list_clean_up(&unsubscribe_storage->topics);
+    aws_array_list_clean_up(&unsubscribe_storage->topic_filters);
     aws_mqtt5_user_property_set_clean_up(&unsubscribe_storage->user_properties);
     aws_byte_buf_clean_up(&unsubscribe_storage->storage);
-}
-
-void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
-    struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
-    const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage) {
-    unsubscribe_view->topic_filter_count = aws_array_list_length(&unsubscribe_storage->topics);
-    unsubscribe_view->topic_filters = unsubscribe_storage->topics.data;
-
-    unsubscribe_view->user_property_count = aws_mqtt5_user_property_set_size(&unsubscribe_storage->user_properties);
-    unsubscribe_view->user_properties = unsubscribe_storage->user_properties.properties.data;
 }
 
 static int s_aws_mqtt5_packet_unsubscribe_build_topic_list(
@@ -2317,7 +2234,7 @@ static int s_aws_mqtt5_packet_unsubscribe_build_topic_list(
     const struct aws_byte_cursor *topics) {
 
     if (aws_array_list_init_dynamic(
-            &unsubscribe_storage->topics, allocator, topic_count, sizeof(struct aws_byte_cursor))) {
+            &unsubscribe_storage->topic_filters, allocator, topic_count, sizeof(struct aws_byte_cursor))) {
         return AWS_OP_ERR;
     }
 
@@ -2329,7 +2246,7 @@ static int s_aws_mqtt5_packet_unsubscribe_build_topic_list(
             return AWS_OP_ERR;
         }
 
-        if (aws_array_list_push_back(&unsubscribe_storage->topics, &topic_cursor)) {
+        if (aws_array_list_push_back(&unsubscribe_storage->topic_filters, &topic_cursor)) {
             return AWS_OP_ERR;
         }
     }
@@ -2361,6 +2278,8 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
         return AWS_OP_ERR;
     }
 
+    struct aws_mqtt5_packet_unsubscribe_view *storage_view = &unsubscribe_storage->storage_view;
+
     if (s_aws_mqtt5_packet_unsubscribe_build_topic_list(
             unsubscribe_storage,
             allocator,
@@ -2368,6 +2287,8 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
             unsubscribe_options->topic_filters)) {
         return AWS_OP_ERR;
     }
+    storage_view->topic_filter_count = aws_array_list_length(&unsubscribe_storage->topic_filters);
+    storage_view->topic_filters = unsubscribe_storage->topic_filters.data;
 
     if (aws_mqtt5_user_property_set_init_with_storage(
             &unsubscribe_storage->user_properties,
@@ -2377,8 +2298,8 @@ int aws_mqtt5_packet_unsubscribe_storage_init(
             unsubscribe_options->user_properties)) {
         return AWS_OP_ERR;
     }
-
-    aws_mqtt5_packet_unsubscribe_view_init_from_storage(&unsubscribe_storage->storage_view, unsubscribe_storage);
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&unsubscribe_storage->user_properties);
+    storage_view->user_properties = unsubscribe_storage->user_properties.properties.data;
 
     return AWS_OP_SUCCESS;
 }
@@ -2392,7 +2313,8 @@ int aws_mqtt5_packet_unsubscribe_storage_init_from_external_storage(
         return AWS_OP_ERR;
     }
 
-    if (aws_array_list_init_dynamic(&unsubscribe_storage->topics, allocator, 0, sizeof(struct aws_byte_cursor))) {
+    if (aws_array_list_init_dynamic(
+            &unsubscribe_storage->topic_filters, allocator, 0, sizeof(struct aws_byte_cursor))) {
         return AWS_OP_ERR;
     }
 
@@ -2452,6 +2374,15 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     AWS_PRECONDITION(unsubscribe_options != NULL);
 
     if (aws_mqtt5_packet_unsubscribe_view_validate(unsubscribe_options)) {
+        return NULL;
+    }
+
+    if (unsubscribe_options->packet_id != 0) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_unsubscribe_view packet id must be zero",
+            (void *)unsubscribe_options);
+        aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
         return NULL;
     }
 
@@ -2608,6 +2539,7 @@ AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate_vs_iot_core(
             (int)AWS_IOT_CORE_MAXIMUM_SUSBCRIPTIONS_PER_SUBSCRIBE);
         return AWS_OP_ERR;
     }
+
     for (size_t i = 0; i < subscribe_view->subscription_count; ++i) {
         const struct aws_mqtt5_subscription_view *subscription = &subscribe_view->subscriptions[i];
         const struct aws_byte_cursor *topic_filter = &subscription->topic_filter;
@@ -2681,19 +2613,6 @@ void aws_mqtt5_packet_subscribe_storage_clean_up(struct aws_mqtt5_packet_subscri
     aws_byte_buf_clean_up(&subscribe_storage->storage);
 }
 
-void aws_mqtt5_packet_subscribe_view_init_from_storage(
-    struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    const struct aws_mqtt5_packet_subscribe_storage *subscribe_storage) {
-    subscribe_view->packet_id = subscribe_storage->storage_view.packet_id;
-    subscribe_view->subscription_identifier = subscribe_storage->subscription_identifier_ptr;
-
-    subscribe_view->subscription_count = aws_array_list_length(&subscribe_storage->subscriptions);
-    subscribe_view->subscriptions = subscribe_storage->subscriptions.data;
-
-    subscribe_view->user_property_count = aws_mqtt5_user_property_set_size(&subscribe_storage->user_properties);
-    subscribe_view->user_properties = subscribe_storage->user_properties.properties.data;
-}
-
 static int s_aws_mqtt5_packet_subscribe_storage_init_subscriptions(
     struct aws_mqtt5_packet_subscribe_storage *subscribe_storage,
     struct aws_allocator *allocator,
@@ -2748,17 +2667,20 @@ int aws_mqtt5_packet_subscribe_storage_init(
         return AWS_OP_ERR;
     }
 
-    subscribe_storage->storage_view.packet_id = subscribe_options->packet_id;
+    struct aws_mqtt5_packet_subscribe_view *storage_view = &subscribe_storage->storage_view;
+    storage_view->packet_id = subscribe_options->packet_id;
 
     if (subscribe_options->subscription_identifier != NULL) {
         subscribe_storage->subscription_identifier = *subscribe_options->subscription_identifier;
-        subscribe_storage->subscription_identifier_ptr = &subscribe_storage->subscription_identifier;
+        storage_view->subscription_identifier = &subscribe_storage->subscription_identifier;
     }
 
     if (s_aws_mqtt5_packet_subscribe_storage_init_subscriptions(
             subscribe_storage, allocator, subscribe_options->subscription_count, subscribe_options->subscriptions)) {
         return AWS_OP_ERR;
     }
+    storage_view->subscription_count = aws_array_list_length(&subscribe_storage->subscriptions);
+    storage_view->subscriptions = subscribe_storage->subscriptions.data;
 
     if (aws_mqtt5_user_property_set_init_with_storage(
             &subscribe_storage->user_properties,
@@ -2768,7 +2690,8 @@ int aws_mqtt5_packet_subscribe_storage_init(
             subscribe_options->user_properties)) {
         return AWS_OP_ERR;
     }
-    aws_mqtt5_packet_subscribe_view_init_from_storage(&subscribe_storage->storage_view, subscribe_storage);
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&subscribe_storage->user_properties);
+    storage_view->user_properties = subscribe_storage->user_properties.properties.data;
 
     return AWS_OP_SUCCESS;
 }
@@ -2843,6 +2766,15 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     AWS_PRECONDITION(subscribe_options != NULL);
 
     if (aws_mqtt5_packet_subscribe_view_validate(subscribe_options)) {
+        return NULL;
+    }
+
+    if (subscribe_options->packet_id != 0) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_subscribe_view packet id must be zero",
+            (void *)subscribe_options);
+        aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
         return NULL;
     }
 
@@ -2926,7 +2858,9 @@ AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init(
         return AWS_OP_ERR;
     }
 
-    suback_storage->storage_view.packet_id = suback_storage->packet_id;
+    struct aws_mqtt5_packet_suback_view *storage_view = &suback_storage->storage_view;
+
+    storage_view->packet_id = suback_view->packet_id;
 
     if (suback_view->reason_string != NULL) {
         suback_storage->reason_string = *suback_view->reason_string;
@@ -2934,13 +2868,15 @@ AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init(
             return AWS_OP_ERR;
         }
 
-        suback_storage->reason_string_ptr = &suback_storage->reason_string;
+        storage_view->reason_string = &suback_storage->reason_string;
     }
 
     if (s_aws_mqtt5_packet_suback_storage_init_reason_codes(
             suback_storage, allocator, suback_view->reason_code_count, suback_view->reason_codes)) {
         return AWS_OP_ERR;
     }
+    storage_view->reason_code_count = aws_array_list_length(&suback_storage->reason_codes);
+    storage_view->reason_codes = suback_storage->reason_codes.data;
 
     if (aws_mqtt5_user_property_set_init_with_storage(
             &suback_storage->user_properties,
@@ -2950,8 +2886,8 @@ AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init(
             suback_view->user_properties)) {
         return AWS_OP_ERR;
     }
-
-    aws_mqtt5_packet_suback_view_init_from_storage(&suback_storage->storage_view, suback_storage);
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&suback_storage->user_properties);
+    storage_view->user_properties = suback_storage->user_properties.properties.data;
 
     return AWS_OP_SUCCESS;
 }
@@ -3021,20 +2957,6 @@ void aws_mqtt5_packet_suback_view_log(
         "aws_mqtt5_packet_suback_view");
 }
 
-void aws_mqtt5_packet_suback_view_init_from_storage(
-    struct aws_mqtt5_packet_suback_view *suback_view,
-    const struct aws_mqtt5_packet_suback_storage *suback_storage) {
-
-    suback_view->packet_id = suback_storage->packet_id;
-    suback_view->reason_string = suback_storage->reason_string_ptr;
-
-    suback_view->user_property_count = aws_mqtt5_user_property_set_size(&suback_storage->user_properties);
-    suback_view->user_properties = suback_storage->user_properties.properties.data;
-
-    suback_view->reason_code_count = aws_array_list_length(&suback_storage->reason_codes);
-    suback_view->reason_codes = suback_storage->reason_codes.data;
-}
-
 /*********************************************************************************************************************
  * Unsuback
  ********************************************************************************************************************/
@@ -3082,7 +3004,9 @@ AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init(
         return AWS_OP_ERR;
     }
 
-    unsuback_storage->storage_view.packet_id = unsuback_storage->packet_id;
+    struct aws_mqtt5_packet_unsuback_view *storage_view = &unsuback_storage->storage_view;
+
+    storage_view->packet_id = unsuback_view->packet_id;
 
     if (unsuback_view->reason_string != NULL) {
         unsuback_storage->reason_string = *unsuback_view->reason_string;
@@ -3090,13 +3014,15 @@ AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init(
             return AWS_OP_ERR;
         }
 
-        unsuback_storage->reason_string_ptr = &unsuback_storage->reason_string;
+        storage_view->reason_string = &unsuback_storage->reason_string;
     }
 
     if (s_aws_mqtt5_packet_unsuback_storage_init_reason_codes(
             unsuback_storage, allocator, unsuback_view->reason_code_count, unsuback_view->reason_codes)) {
         return AWS_OP_ERR;
     }
+    storage_view->reason_code_count = aws_array_list_length(&unsuback_storage->reason_codes);
+    storage_view->reason_codes = unsuback_storage->reason_codes.data;
 
     if (aws_mqtt5_user_property_set_init_with_storage(
             &unsuback_storage->user_properties,
@@ -3106,8 +3032,8 @@ AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init(
             unsuback_view->user_properties)) {
         return AWS_OP_ERR;
     }
-
-    aws_mqtt5_packet_unsuback_view_init_from_storage(&unsuback_storage->storage_view, unsuback_storage);
+    storage_view->user_property_count = aws_mqtt5_user_property_set_size(&unsuback_storage->user_properties);
+    storage_view->user_properties = unsuback_storage->user_properties.properties.data;
 
     return AWS_OP_SUCCESS;
 }
@@ -3175,20 +3101,6 @@ void aws_mqtt5_packet_unsuback_view_log(
         (void *)unsuback_view,
         level,
         "aws_mqtt5_packet_unsuback_view");
-}
-
-void aws_mqtt5_packet_unsuback_view_init_from_storage(
-    struct aws_mqtt5_packet_unsuback_view *unsuback_view,
-    const struct aws_mqtt5_packet_unsuback_storage *unsuback_storage) {
-
-    unsuback_view->packet_id = unsuback_storage->packet_id;
-    unsuback_view->reason_string = unsuback_storage->reason_string_ptr;
-
-    unsuback_view->user_property_count = aws_mqtt5_user_property_set_size(&unsuback_storage->user_properties);
-    unsuback_view->user_properties = unsuback_storage->user_properties.properties.data;
-
-    unsuback_view->reason_code_count = aws_array_list_length(&unsuback_storage->reason_codes);
-    unsuback_view->reason_codes = unsuback_storage->reason_codes.data;
 }
 
 /*********************************************************************************************************************

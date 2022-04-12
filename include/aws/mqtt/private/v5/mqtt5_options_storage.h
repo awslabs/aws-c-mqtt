@@ -65,48 +65,31 @@ struct aws_mqtt5_packet_connect_storage {
 
     struct aws_mqtt5_packet_connect_view storage_view;
 
-    uint16_t keep_alive_interval_seconds;
-
-    struct aws_byte_cursor client_id;
-
     struct aws_byte_cursor username;
-    struct aws_byte_cursor *username_ptr;
 
     struct aws_byte_cursor password;
-    struct aws_byte_cursor *password_ptr;
-
-    bool clean_start;
 
     uint32_t session_expiry_interval_seconds;
-    uint32_t *session_expiry_interval_seconds_ptr;
 
     uint8_t request_response_information;
-    uint8_t *request_response_information_ptr;
 
     uint8_t request_problem_information;
-    uint8_t *request_problem_information_ptr;
 
     uint16_t receive_maximum;
-    uint16_t *receive_maximum_ptr;
 
     uint16_t topic_alias_maximum;
-    uint16_t *topic_alias_maximum_ptr;
 
     uint32_t maximum_packet_size_bytes;
-    uint32_t *maximum_packet_size_bytes_ptr;
 
     struct aws_mqtt5_packet_publish_storage *will;
 
     uint32_t will_delay_interval_seconds;
-    uint32_t *will_delay_interval_seconds_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
 
     struct aws_byte_cursor authentication_method;
-    struct aws_byte_cursor *authentication_method_ptr;
 
     struct aws_byte_cursor authentication_data;
-    struct aws_byte_cursor *authentication_data_ptr;
 
     struct aws_byte_buf storage;
 };
@@ -123,56 +106,37 @@ struct aws_mqtt5_packet_connack_storage {
 
     struct aws_mqtt5_packet_connack_view storage_view;
 
-    bool session_present;
-    enum aws_mqtt5_connect_reason_code reason_code;
-
     uint32_t session_expiry_interval;
-    uint32_t *session_expiry_interval_ptr;
 
     uint16_t receive_maximum;
-    uint16_t *receive_maximum_ptr;
 
     enum aws_mqtt5_qos maximum_qos;
-    enum aws_mqtt5_qos *maximum_qos_ptr;
 
     bool retain_available;
-    bool *retain_available_ptr;
 
     uint32_t maximum_packet_size;
-    uint32_t *maximum_packet_size_ptr;
 
     struct aws_byte_cursor assigned_client_identifier;
-    struct aws_byte_cursor *assigned_client_identifier_ptr;
 
     uint16_t topic_alias_maximum;
-    uint16_t *topic_alias_maximum_ptr;
 
     struct aws_byte_cursor reason_string;
-    struct aws_byte_cursor *reason_string_ptr;
 
     bool wildcard_subscriptions_available;
-    bool *wildcard_subscriptions_available_ptr;
 
     bool subscription_identifiers_available;
-    bool *subscription_identifiers_available_ptr;
 
     bool shared_subscriptions_available;
-    bool *shared_subscriptions_available_ptr;
 
     uint16_t server_keep_alive;
-    uint16_t *server_keep_alive_ptr;
 
     struct aws_byte_cursor response_information;
-    struct aws_byte_cursor *response_information_ptr;
 
     struct aws_byte_cursor server_reference;
-    struct aws_byte_cursor *server_reference_ptr;
 
     struct aws_byte_cursor authentication_method;
-    struct aws_byte_cursor *authentication_method_ptr;
 
     struct aws_byte_cursor authentication_data;
-    struct aws_byte_cursor *authentication_data_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
 
@@ -185,10 +149,7 @@ struct aws_mqtt5_packet_suback_storage {
 
     struct aws_mqtt5_packet_suback_view storage_view;
 
-    aws_mqtt5_packet_id_t packet_id;
-
     struct aws_byte_cursor reason_string;
-    struct aws_byte_cursor *reason_string_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
 
@@ -203,10 +164,7 @@ struct aws_mqtt5_packet_unsuback_storage {
 
     struct aws_mqtt5_packet_unsuback_view storage_view;
 
-    aws_mqtt5_packet_id_t packet_id;
-
     struct aws_byte_cursor reason_string;
-    struct aws_byte_cursor *reason_string_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
 
@@ -218,34 +176,17 @@ struct aws_mqtt5_packet_unsuback_storage {
 struct aws_mqtt5_packet_publish_storage {
     struct aws_mqtt5_packet_publish_view storage_view;
 
-    struct aws_byte_cursor payload;
-
-    /* packet_id is only set for QoS 1 and QoS 2 */
-    aws_mqtt5_packet_id_t packet_id;
-
-    bool dup;
-    enum aws_mqtt5_qos qos;
-    bool retain;
-    bool duplicate;
-    struct aws_byte_cursor topic;
-
     enum aws_mqtt5_payload_format_indicator payload_format;
-    enum aws_mqtt5_payload_format_indicator *payload_format_ptr;
 
     uint32_t message_expiry_interval_seconds;
-    uint32_t *message_expiry_interval_seconds_ptr;
 
     uint16_t topic_alias;
-    uint16_t *topic_alias_ptr;
 
     struct aws_byte_cursor response_topic;
-    struct aws_byte_cursor *response_topic_ptr;
 
     struct aws_byte_cursor correlation_data;
-    struct aws_byte_cursor *correlation_data_ptr;
 
     struct aws_byte_cursor content_type;
-    struct aws_byte_cursor *content_type_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
     struct aws_array_list subscription_identifiers;
@@ -265,12 +206,7 @@ struct aws_mqtt5_operation_publish {
 struct aws_mqtt5_packet_puback_storage {
     struct aws_mqtt5_packet_puback_view storage_view;
 
-    aws_mqtt5_packet_id_t packet_id;
-
-    enum aws_mqtt5_puback_reason_code reason_code;
-
     struct aws_byte_cursor reason_string;
-    struct aws_byte_cursor *reason_string_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
 
@@ -287,18 +223,13 @@ struct aws_mqtt5_operation_puback {
 struct aws_mqtt5_packet_disconnect_storage {
     struct aws_mqtt5_packet_disconnect_view storage_view;
 
-    enum aws_mqtt5_disconnect_reason_code reason_code;
-
     uint32_t session_expiry_interval_seconds;
-    uint32_t *session_expiry_interval_seconds_ptr;
 
     struct aws_byte_cursor reason_string;
-    struct aws_byte_cursor *reason_string_ptr;
 
     struct aws_mqtt5_user_property_set user_properties;
 
     struct aws_byte_cursor server_reference;
-    struct aws_byte_cursor *server_reference_ptr;
 
     struct aws_byte_buf storage;
 };
@@ -317,7 +248,6 @@ struct aws_mqtt5_packet_subscribe_storage {
     struct aws_mqtt5_packet_subscribe_view storage_view;
 
     uint32_t subscription_identifier;
-    uint32_t *subscription_identifier_ptr;
 
     struct aws_array_list subscriptions;
 
@@ -338,7 +268,7 @@ struct aws_mqtt5_operation_subscribe {
 struct aws_mqtt5_packet_unsubscribe_storage {
     struct aws_mqtt5_packet_unsubscribe_view storage_view;
 
-    struct aws_array_list topics;
+    struct aws_array_list topic_filters;
 
     struct aws_mqtt5_user_property_set user_properties;
 
@@ -415,15 +345,6 @@ AWS_MQTT_API void aws_mqtt5_user_property_set_clean_up(struct aws_mqtt5_user_pro
 
 AWS_MQTT_API size_t aws_mqtt5_user_property_set_size(const struct aws_mqtt5_user_property_set *property_set);
 
-AWS_MQTT_API int aws_mqtt5_user_property_set_get_property(
-    const struct aws_mqtt5_user_property_set *property_set,
-    size_t index,
-    struct aws_mqtt5_user_property *property_out);
-
-AWS_MQTT_API int aws_mqtt5_user_property_set_add_stored_property(
-    struct aws_mqtt5_user_property_set *property_set,
-    struct aws_mqtt5_user_property *property);
-
 /* Operation base */
 
 AWS_MQTT_API struct aws_mqtt5_operation *aws_mqtt5_operation_acquire(struct aws_mqtt5_operation *operation);
@@ -471,10 +392,6 @@ AWS_MQTT_API void aws_mqtt5_packet_connect_view_log(
     const struct aws_mqtt5_packet_connect_view *connect_view,
     enum aws_log_level level);
 
-AWS_MQTT_API void aws_mqtt5_packet_connect_view_init_from_storage(
-    struct aws_mqtt5_packet_connect_view *connect_view,
-    const struct aws_mqtt5_packet_connect_storage *connect_storage);
-
 /* Connack */
 
 AWS_MQTT_API int aws_mqtt5_packet_connack_storage_init(
@@ -491,10 +408,6 @@ AWS_MQTT_API void aws_mqtt5_packet_connack_storage_clean_up(struct aws_mqtt5_pac
 AWS_MQTT_API void aws_mqtt5_packet_connack_view_log(
     const struct aws_mqtt5_packet_connack_view *connack_view,
     enum aws_log_level level);
-
-AWS_MQTT_API void aws_mqtt5_packet_connack_view_init_from_storage(
-    struct aws_mqtt5_packet_connack_view *connack_view,
-    const struct aws_mqtt5_packet_connack_storage *connack_storage);
 
 /* Disconnect */
 
@@ -529,10 +442,6 @@ AWS_MQTT_API void aws_mqtt5_packet_disconnect_view_log(
     const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
     enum aws_log_level level);
 
-AWS_MQTT_API void aws_mqtt5_packet_disconnect_view_init_from_storage(
-    struct aws_mqtt5_packet_disconnect_view *disconnect_view,
-    const struct aws_mqtt5_packet_disconnect_storage *disconnect_storage);
-
 /* Publish */
 
 AWS_MQTT_API struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
@@ -561,10 +470,6 @@ AWS_MQTT_API void aws_mqtt5_packet_publish_view_log(
     const struct aws_mqtt5_packet_publish_view *publish_view,
     enum aws_log_level level);
 
-AWS_MQTT_API void aws_mqtt5_packet_publish_view_init_from_storage(
-    struct aws_mqtt5_packet_publish_view *publish_view,
-    const struct aws_mqtt5_packet_publish_storage *publish_storage);
-
 /* Puback */
 
 AWS_MQTT_API struct aws_mqtt5_operation_puback *aws_mqtt5_operation_puback_new(
@@ -585,10 +490,6 @@ AWS_MQTT_API void aws_mqtt5_packet_puback_storage_clean_up(struct aws_mqtt5_pack
 AWS_MQTT_API void aws_mqtt5_packet_puback_view_log(
     const struct aws_mqtt5_packet_puback_view *puback_view,
     enum aws_log_level level);
-
-AWS_MQTT_API void aws_mqtt5_packet_puback_view_init_from_storage(
-    struct aws_mqtt5_packet_puback_view *puback_view,
-    const struct aws_mqtt5_packet_puback_storage *puback_storage);
 
 /* Subscribe */
 
@@ -619,10 +520,6 @@ AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_log(
     const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
     enum aws_log_level level);
 
-AWS_MQTT_API void aws_mqtt5_packet_subscribe_view_init_from_storage(
-    struct aws_mqtt5_packet_subscribe_view *subscribe_view,
-    const struct aws_mqtt5_packet_subscribe_storage *subscribe_storage);
-
 /* Suback */
 
 AWS_MQTT_API int aws_mqtt5_packet_suback_storage_init(
@@ -639,10 +536,6 @@ AWS_MQTT_API void aws_mqtt5_packet_suback_storage_clean_up(struct aws_mqtt5_pack
 AWS_MQTT_API void aws_mqtt5_packet_suback_view_log(
     const struct aws_mqtt5_packet_suback_view *suback_view,
     enum aws_log_level level);
-
-AWS_MQTT_API void aws_mqtt5_packet_suback_view_init_from_storage(
-    struct aws_mqtt5_packet_suback_view *suback_view,
-    const struct aws_mqtt5_packet_suback_storage *suback_storage);
 
 /* Unsubscribe */
 
@@ -674,10 +567,6 @@ AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_log(
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
     enum aws_log_level level);
 
-AWS_MQTT_API void aws_mqtt5_packet_unsubscribe_view_init_from_storage(
-    struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
-    const struct aws_mqtt5_packet_unsubscribe_storage *unsubscribe_storage);
-
 /* Unsuback */
 
 AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init(
@@ -695,10 +584,6 @@ AWS_MQTT_API void aws_mqtt5_packet_unsuback_storage_clean_up(
 AWS_MQTT_API void aws_mqtt5_packet_unsuback_view_log(
     const struct aws_mqtt5_packet_unsuback_view *unsuback_view,
     enum aws_log_level level);
-
-AWS_MQTT_API void aws_mqtt5_packet_unsuback_view_init_from_storage(
-    struct aws_mqtt5_packet_unsuback_view *unsuback_view,
-    const struct aws_mqtt5_packet_unsuback_storage *unsuback_storage);
 
 /* PINGREQ */
 
