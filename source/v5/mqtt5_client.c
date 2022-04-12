@@ -97,7 +97,7 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
     while (node != aws_linked_list_end(&client->operational_state.unacked_operations)) {
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
         node = aws_linked_list_next(node);
-        if (operation->timeout_counter < now) {
+        if (operation->timeout_timepoint_ns < now) {
             /* Timeout for this packet has been reached */
             aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
 
@@ -341,7 +341,7 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
     if (client->config->timeout_seconds != 0 && !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
         struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
-        next_service_time = aws_min_u64(next_service_time, operation->timeout_counter);
+        next_service_time = aws_min_u64(next_service_time, operation->timeout_timepoint_ns);
     }
 
     if (client->desired_state != AWS_MCS_CONNECTED) {
@@ -369,7 +369,7 @@ static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_m
     if (client->config->timeout_seconds != 0 && !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
         struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
-        next_service_time = aws_min_u64(next_service_time, operation->timeout_counter);
+        next_service_time = aws_min_u64(next_service_time, operation->timeout_timepoint_ns);
     }
 
     uint64_t operation_processing_time =
@@ -1560,23 +1560,6 @@ static void s_aws_mqtt5_client_on_connack(
         return;
     }
 
-    if (connack_view->session_present) {
-        /*
-         * TODO 3.2.2-4
-         * If client doesn't have Session State and receives Session Present set to 1, it MUST close the connection
-         */
-    } else {
-        /*
-         * TODO 3.2.2-5
-         * If client has a Session Present, it must be discarded if continuing with this connection
-         */
-    }
-    /*
-     * TODO 3.2.2-16
-     * If client sent a CONNECT with a 0 length Client Identifier, the server will respond with an
-     * assigned Client Identifier. We should store that in this space.
-     */
-
     aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
     s_change_current_state(client, AWS_MCS_CONNECTED);
     s_aws_mqtt5_client_emit_connection_success_lifecycle_event(client, connack_view);
@@ -2623,8 +2606,8 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                 }
 
                 if (client->config->timeout_seconds != 0) {
-                    uint64_t nanos_per_second = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-                    current_operation->timeout_counter = now + (client->config->timeout_seconds * nanos_per_second);
+                    current_operation->timeout_timepoint_ns =
+                        now + aws_timestamp_convert(1, client->config->timeout_seconds, AWS_TIMESTAMP_NANOS, NULL);
                 }
 
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);

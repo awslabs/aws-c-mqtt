@@ -120,7 +120,7 @@ static void s_mqtt5_client_test_init_default_options(
         .min_reconnect_delay_ms = 1000,
         .ping_timeout_ms = 10000,
         .publish_received_handler = s_publish_received_callback,
-        .timout_seconds = 0,
+        .operation_timeout_seconds = 0,
     };
 
     *client_options = local_client_options;
@@ -2337,7 +2337,7 @@ static bool s_received_n_publish_timeouts(void *arg) {
     return test_fixture->timeouts_received >= context->required_event_count;
 }
 
-static void s_wait_for_n_successful_publish_timeouts(struct aws_mqtt5_client_test_wait_for_n_context *context) {
+static void s_wait_for_n_publish_timeouts(struct aws_mqtt5_client_test_wait_for_n_context *context) {
     struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
     aws_mutex_lock(&test_context->lock);
     aws_condition_variable_wait_pred(
@@ -2345,7 +2345,7 @@ static void s_wait_for_n_successful_publish_timeouts(struct aws_mqtt5_client_tes
     aws_mutex_unlock(&test_context->lock);
 }
 
-static bool s_received_n_timeout_publish_packets(void *arg) {
+static bool s_sent_n_timeout_publish_packets(void *arg) {
     struct aws_mqtt5_client_test_wait_for_n_context *context = arg;
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = context->test_fixture;
 
@@ -2358,7 +2358,11 @@ static int s_aws_mqtt5_mock_server_handle_timeout_publish(
     void *user_data) {
 
     (void)user_data;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = connection->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
     ++connection->test_fixture->publishes_received;
+    aws_mutex_unlock(&test_fixture->lock);
 
     return AWS_OP_SUCCESS;
 }
@@ -2367,7 +2371,7 @@ static void s_wait_for_n_successful_server_timeout_publishes(struct aws_mqtt5_cl
     struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
     aws_mutex_lock(&test_context->lock);
     aws_condition_variable_wait_pred(
-        &test_context->signal, &test_context->lock, s_received_n_timeout_publish_packets, context);
+        &test_context->signal, &test_context->lock, s_sent_n_timeout_publish_packets, context);
     aws_mutex_unlock(&test_context->lock);
 }
 
@@ -2387,7 +2391,7 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
     server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_mock_server_handle_timeout_publish;
 
     /* fast publish timeout */
-    client_options.timout_seconds = 5;
+    client_options.operation_timeout_seconds = 5;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
@@ -2403,11 +2407,6 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
 
     s_wait_for_connected_lifecycle_event(&test_context);
 
-    struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
-        .test_fixture = &test_context,
-        .required_event_count = aws_mqtt5_client_random_in_range(3, 20),
-    };
-
     struct aws_mqtt5_publish_completion_options completion_options = {
         .completion_callback = &s_publish_timeout_publish_completion_fn,
         .completion_user_data = &test_context,
@@ -2422,6 +2421,11 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
             },
     };
 
+    struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
+        .test_fixture = &test_context,
+        .required_event_count = aws_mqtt5_client_random_in_range(3, 20),
+    };
+
     /* Send semi-random number of publishes that will not be acked */
     for (size_t publish_count = 0; publish_count < wait_context.required_event_count; ++publish_count) {
         ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &packet_publish_view, &completion_options));
@@ -2429,14 +2433,9 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
 
     s_wait_for_n_successful_server_timeout_publishes(&wait_context);
 
-    size_t unacked_count = 0;
-    unacked_count = aws_hash_table_get_entry_count(&client->operational_state.unacked_operations_table);
-    ASSERT_INT_EQUALS(wait_context.required_event_count, unacked_count);
+    s_wait_for_n_publish_timeouts(&wait_context);
 
-    s_wait_for_n_successful_publish_timeouts(&wait_context);
-
-    unacked_count = aws_hash_table_get_entry_count(&client->operational_state.unacked_operations_table);
-    ASSERT_INT_EQUALS(0, unacked_count);
+    ASSERT_INT_EQUALS(wait_context.required_event_count, test_context.timeouts_received);
 
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 

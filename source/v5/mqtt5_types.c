@@ -331,3 +331,131 @@ const char *aws_mqtt5_packet_type_to_c_string(enum aws_mqtt5_packet_type packet_
             return "UNKNOWN";
     }
 }
+
+const char *aws_mqtt_error_to_c_string(enum aws_mqtt_error mqtt_error) {
+    switch (mqtt_error) {
+        case AWS_ERROR_MQTT_INVALID_RESERVED_BITS:
+            return "Invalid Reserved Bits";
+
+        case AWS_ERROR_MQTT_BUFFER_TOO_BIG:
+            return "Buffer Too Big";
+
+        case AWS_ERROR_MQTT_INVALID_REMAINING_LENGTH:
+            return "Invalid Remaining Length";
+
+        case AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_NAME:
+            return "Unsupported Protocol Name";
+
+        case AWS_ERROR_MQTT_UNSUPPORTED_PROTOCOL_LEVEL:
+            return "Unsupported Protocol Level";
+
+        case AWS_ERROR_MQTT_INVALID_CREDENTIALS:
+            return "Invalid Credentials";
+
+        case AWS_ERROR_MQTT_INVALID_QOS:
+            return "Invalid QoS";
+
+        case AWS_ERROR_MQTT_INVALID_PACKET_TYPE:
+            return "Invalid Packet Type";
+
+        case AWS_ERROR_MQTT_INVALID_TOPIC:
+            return "Invalid Topic";
+
+        case AWS_ERROR_MQTT_TIMEOUT:
+            return "Timeout";
+
+        case AWS_ERROR_MQTT_PROTOCOL_ERROR:
+            return "Protocol Error";
+
+        case AWS_ERROR_MQTT_NOT_CONNECTED:
+            return "Not Connected";
+
+        case AWS_ERROR_MQTT_ALREADY_CONNECTED:
+            return "Already Connected";
+
+        case AWS_ERROR_MQTT_BUILT_WITHOUT_WEBSOCKETS:
+            return "Built Without Websockets";
+
+        case AWS_ERROR_MQTT_UNEXPECTED_HANGUP:
+            return "Unexpected Hangup";
+
+        case AWS_ERROR_MQTT_CONNECTION_SHUTDOWN:
+            return "Connection Shutdown";
+
+        case AWS_ERROR_MQTT_CONNECTION_DESTROYED:
+            return "Connection Destroyed";
+
+        case AWS_ERROR_MQTT_CONNECTION_DISCONNECTING:
+            return "Connection Disconnecting";
+
+        case AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION:
+            return "Cancelled for Clean Session";
+
+        case AWS_ERROR_MQTT_QUEUE_FULL:
+            return "Queue Full";
+
+        case AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION:
+            return "Client Options Validation";
+
+        case AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION:
+            return "Connect Options Validation";
+
+        case AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION:
+            return "Disconnect Options Validation";
+
+        case AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION:
+            return "Publish Options Validation";
+
+        case AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION:
+            return "Subscribe Options Validation";
+
+        case AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION:
+            return "Unsubscribe Options Validation";
+
+        case AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION:
+            return "User Property Validation";
+
+        case AWS_ERROR_MQTT5_PACKET_VALIDATION:
+            return "Packet Validation";
+
+        case AWS_ERROR_MQTT5_ENCODE_FAILURE:
+            return "Encode Failure";
+
+        case AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR:
+            return "Decode Protocol Error";
+
+        case AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED:
+            return "CONNACK Connection Refused";
+
+        case AWS_ERROR_MQTT5_CONNACK_TIMEOUT:
+            return "CONNACK Timeout";
+
+        case AWS_ERROR_MQTT5_PING_RESPONSE_TIMEOUT:
+            return "Ping Response Timeout";
+
+        case AWS_ERROR_MQTT5_USER_REQUESTED_STOP:
+            return "User Requested Stop";
+
+        case AWS_ERROR_MQTT5_DISCONNECT_RECEIVED:
+            return "Disconnect Received";
+
+        case AWS_ERROR_MQTT5_CLIENT_TERMINATED:
+            return "Client Terminated";
+
+        case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT:
+            return "Operation Failed Due to Disconnect";
+
+        case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION:
+            return "Operation Failed Due to Clean Session";
+
+        case AWS_ERROR_MQTT5_ENCODE_SIZE_UNSUPPORTED_PACKET_TYPE:
+            return "Encode Size Unsupported Packet Type";
+
+        case AWS_ERROR_MQTT5_OPERATION_PROCESSING_FAILURE:
+            return "Operation Processing Failure";
+
+        case AWS_ERROR_END_MQTT_RANGE:
+            return "End MQTT Range";
+    }
+    return "Unknown Mqtt Error";
+}

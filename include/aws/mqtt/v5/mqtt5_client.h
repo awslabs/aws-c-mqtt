@@ -417,7 +417,7 @@ struct aws_mqtt5_client_options {
      * failing the packet, notifying the client of failure, and removing it from the retry queue. Defaults
      * to 0 meaning the packet will always be retried upon a reconnect scenario.
      */
-    uint64_t timout_seconds;
+    uint32_t operation_timeout_seconds;
 
     /**
      * Callback for received publish packets

@@ -189,8 +189,6 @@ void aws_mqtt5_negotiated_settings_apply_connack(
     // If a value is not sent by Server, the Client must not send any Topic Aliases to the Server.
     if (connack_data->topic_alias_maximum != NULL) {
         negotiated_settings->topic_alias_maximum_to_server = *connack_data->topic_alias_maximum;
-    } else {
-        negotiated_settings->topic_alias_maximum_to_server = 0;
     }
 
     if (connack_data->wildcard_subscriptions_available != NULL) {

@@ -46,13 +46,13 @@ struct aws_mqtt5_operation_vtable {
 };
 
 /**
- * This is the base structure for all mqtt5 operations.  It includes the type, a ref count, timeout counter,
+ * This is the base structure for all mqtt5 operations.  It includes the type, a ref count, timeout timepoint,
  * and list management.
  */
 struct aws_mqtt5_operation {
     const struct aws_mqtt5_operation_vtable *vtable;
     struct aws_ref_count ref_count;
-    uint64_t timeout_counter;
+    uint64_t timeout_timepoint_ns;
     struct aws_linked_list_node node;
     enum aws_mqtt5_packet_type packet_type;
     const void *packet_view;
