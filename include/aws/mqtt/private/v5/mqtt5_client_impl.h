@@ -289,18 +289,6 @@ struct aws_mqtt5_client_flow_control_state {
     struct aws_rate_limiter_token_bucket publish_throttle;
 };
 
-/*
- * A collection of simple atomic-based read-only integral client properties.
- *
- * APIs exist for the user to query these values.
- */
-struct aws_mqtt5_client_statistics {
-    struct aws_atomic_var queued_operation_count;
-    struct aws_atomic_var queued_operation_total_size;
-    struct aws_atomic_var unacked_operation_count;
-    struct aws_atomic_var unacked_operation_total_size;
-};
-
 struct aws_mqtt5_client {
 
     struct aws_allocator *allocator;
@@ -442,6 +430,13 @@ struct aws_mqtt5_client {
      * state.
      */
     uint64_t next_mqtt_connect_packet_timeout_time;
+
+    /*
+     * Starts false and set to true as soon as a successful connection is established.  If the session resumption
+     * behavior is AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS then this must be true before the client sends CONNECT packets
+     * with clean start set to false.
+     */
+    bool has_connected_successfully;
 };
 
 AWS_EXTERN_C_BEGIN

@@ -381,6 +381,7 @@ struct aws_mqtt5_client_options_storage {
     enum aws_mqtt5_client_session_behavior_type session_behavior;
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
     enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_and_flow_control_options;
+    enum aws_mqtt5_client_operation_queue_behavior_type offline_queue_behavior;
 
     enum aws_exponential_backoff_jitter_mode retry_jitter_mode;
     uint64_t min_reconnect_delay_ms;

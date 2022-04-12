@@ -2695,3 +2695,186 @@ static int s_mqtt5_client_flow_control_iot_core_publish_tps_fn(struct aws_alloca
 }
 
 AWS_TEST_CASE(mqtt5_client_flow_control_iot_core_publish_tps, s_mqtt5_client_flow_control_iot_core_publish_tps_fn)
+
+static int s_aws_mqtt5_mock_server_handle_connect_honor_session(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_connect_view *connect_packet = packet;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+    connack_view.session_present = !connect_packet->clean_start;
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+struct aws_mqtt5_wait_for_n_lifecycle_events_context {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+    enum aws_mqtt5_client_lifecycle_event_type event_type;
+    size_t expected_event_count;
+};
+
+static bool s_received_n_lifecycle_events(void *arg) {
+    struct aws_mqtt5_wait_for_n_lifecycle_events_context *context = arg;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = context->test_fixture;
+
+    size_t matching_events = 0;
+    size_t event_count = aws_array_list_length(&test_fixture->lifecycle_events);
+    for (size_t i = 0; i < event_count; ++i) {
+        struct aws_mqtt5_lifecycle_event_record *record = NULL;
+        aws_array_list_get_at(&test_fixture->lifecycle_events, &record, i);
+
+        if (record->event.event_type == context->event_type) {
+            ++matching_events;
+        }
+    }
+
+    return matching_events >= context->expected_event_count;
+}
+
+static void s_wait_for_n_lifecycle_events(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    enum aws_mqtt5_client_lifecycle_event_type event_type,
+    size_t expected_event_count) {
+    struct aws_mqtt5_wait_for_n_lifecycle_events_context wait_context = {
+        .test_fixture = test_fixture,
+        .event_type = event_type,
+        .expected_event_count = expected_event_count,
+    };
+
+    aws_mutex_lock(&test_fixture->lock);
+    aws_condition_variable_wait_pred(
+        &test_fixture->signal, &test_fixture->lock, s_received_n_lifecycle_events, &wait_context);
+    aws_mutex_unlock(&test_fixture->lock);
+}
+
+static bool s_compute_expected_rejoined_session(
+    enum aws_mqtt5_client_session_behavior_type session_behavior,
+    size_t connect_index) {
+    switch (session_behavior) {
+        case AWS_MQTT5_CSBT_CLEAN:
+            return false;
+
+        case AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS:
+            return connect_index > 0;
+
+        case AWS_MQTT5_CSBT_REJOIN_ALWAYS:
+        default:
+            return true;
+    }
+}
+
+static int s_aws_mqtt5_client_test_init_resume_session_connect_storage(
+    struct aws_mqtt5_packet_connect_storage *storage,
+    struct aws_allocator *allocator) {
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 30,
+        .client_id = aws_byte_cursor_from_string(s_client_id),
+        .clean_start = false,
+    };
+
+    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
+}
+
+#define SESSION_RESUMPTION_CONNECT_COUNT 10
+
+static int s_do_mqtt5_client_session_resumption_test(
+    struct aws_allocator *allocator,
+    enum aws_mqtt5_client_session_behavior_type session_behavior) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    client_options.session_behavior = session_behavior;
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_honor_session;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    for (size_t i = 0; i < SESSION_RESUMPTION_CONNECT_COUNT; ++i) {
+        ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_CONNECTION_SUCCESS, i + 1);
+
+        /* not technically truly safe to query depending on memory model.  Remove if it becomes a problem. */
+        bool expected_rejoined_session = s_compute_expected_rejoined_session(session_behavior, i);
+        ASSERT_INT_EQUALS(expected_rejoined_session, client->negotiated_settings.rejoined_session);
+
+        ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_STOPPED, i + 1);
+    }
+
+    struct aws_mqtt5_packet_connect_storage clean_start_connect_storage;
+    ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_connect_storage(&clean_start_connect_storage, allocator));
+
+    struct aws_mqtt5_packet_connect_storage resume_session_connect_storage;
+    ASSERT_SUCCESS(
+        s_aws_mqtt5_client_test_init_resume_session_connect_storage(&resume_session_connect_storage, allocator));
+
+    struct aws_mqtt5_mock_server_packet_record expected_packets[SESSION_RESUMPTION_CONNECT_COUNT];
+    for (size_t i = 0; i < SESSION_RESUMPTION_CONNECT_COUNT; ++i) {
+        expected_packets[i].packet_type = AWS_MQTT5_PT_CONNECT;
+        if (s_compute_expected_rejoined_session(session_behavior, i)) {
+            expected_packets[i].packet_storage = &resume_session_connect_storage;
+        } else {
+            expected_packets[i].packet_storage = &clean_start_connect_storage;
+        }
+    }
+
+    ASSERT_SUCCESS(
+        s_verify_received_packet_sequence(&test_context, expected_packets, AWS_ARRAY_SIZE(expected_packets)));
+
+    aws_mqtt5_packet_connect_storage_clean_up(&clean_start_connect_storage);
+    aws_mqtt5_packet_connect_storage_clean_up(&resume_session_connect_storage);
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_session_resumption_clean_start_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt5_client_session_resumption_test(allocator, AWS_MQTT5_CSBT_CLEAN));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_session_resumption_clean_start, s_mqtt5_client_session_resumption_clean_start_fn)
+
+static int s_mqtt5_client_session_resumption_always_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt5_client_session_resumption_test(allocator, AWS_MQTT5_CSBT_REJOIN_ALWAYS));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_session_resumption_always, s_mqtt5_client_session_resumption_always_fn)
+
+static int s_mqtt5_client_session_resumption_post_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt5_client_session_resumption_test(allocator, AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_session_resumption_post_success, s_mqtt5_client_session_resumption_post_success_fn)
