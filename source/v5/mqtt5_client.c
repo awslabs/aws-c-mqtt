@@ -364,26 +364,25 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
 
 static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_mqtt5_client *client, uint64_t now) {
     uint64_t next_service_time = 0;
+    uint64_t operation_timeout_time = 0;
 
     /* unacked operations timeout */
     if (client->config->timeout_seconds != 0 && !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
         struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
-        next_service_time = aws_min_u64(next_service_time, operation->timeout_timepoint_ns);
+        operation_timeout_time = operation->timeout_timepoint_ns;
     }
 
     uint64_t operation_processing_time =
         s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
 
-    if (next_service_time == 0) {
+    if (operation_timeout_time == 0) {
         return operation_processing_time;
+    } else if (operation_processing_time == 0) {
+        return operation_timeout_time;
     }
 
-    if (operation_processing_time == 0) {
-        return next_service_time;
-    }
-
-    return aws_min_u64(next_service_time, operation_processing_time);
+    return aws_min_u64(operation_timeout_time, operation_processing_time);
 }
 
 static uint64_t s_compute_next_service_time_client_channel_shutdown(struct aws_mqtt5_client *client, uint64_t now) {
