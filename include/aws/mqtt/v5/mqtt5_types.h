@@ -11,8 +11,6 @@
 #include <aws/common/array_list.h>
 #include <aws/common/byte_buf.h>
 
-struct aws_http_message;
-
 /**
  * Some artificial (non-MQTT spec specified) limits that we place on input packets (publish, subscribe, unsubscibe)
  * which lets us safely do the various packet size calculations with a bare minimum of checked arithmetic.

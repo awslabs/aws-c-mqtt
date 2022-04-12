@@ -217,7 +217,6 @@ struct aws_mqtt5_packet_unsuback_storage {
 struct aws_mqtt5_packet_publish_storage {
     struct aws_mqtt5_packet_publish_view storage_view;
 
-    /* This field is always empty on received messages */
     struct aws_byte_cursor payload;
 
     /* packet_id is only set for QoS 1 and QoS 2 */
@@ -253,6 +252,15 @@ struct aws_mqtt5_packet_publish_storage {
     struct aws_byte_buf storage;
 };
 
+struct aws_mqtt5_operation_publish {
+    struct aws_mqtt5_operation base;
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt5_packet_publish_storage options_storage;
+
+    struct aws_mqtt5_publish_completion_options completion_options;
+};
+
 struct aws_mqtt5_packet_puback_storage {
     struct aws_mqtt5_packet_puback_view storage_view;
 
@@ -268,18 +276,10 @@ struct aws_mqtt5_packet_puback_storage {
     struct aws_byte_buf storage;
 };
 
-struct aws_mqtt5_operation_publish {
-    struct aws_mqtt5_operation base;
-    struct aws_allocator *allocator;
-
-    struct aws_mqtt5_packet_publish_storage options_storage;
-
-    struct aws_mqtt5_publish_completion_options completion_options;
-};
-
 struct aws_mqtt5_operation_puback {
     struct aws_mqtt5_operation base;
     struct aws_allocator *allocator;
+
     struct aws_mqtt5_packet_puback_storage options_storage;
 };
 
@@ -375,7 +375,8 @@ struct aws_mqtt5_client_options_storage {
     aws_mqtt5_transform_websocket_handshake_fn *websocket_handshake_transform;
     void *websocket_handshake_transform_user_data;
 
-    aws_mqtt5_publish_received_fn *publish_received;
+    aws_mqtt5_publish_received_fn *publish_received_handler;
+    void *publish_received_handler_user_data;
 
     enum aws_mqtt5_client_session_behavior_type session_behavior;
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;

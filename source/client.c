@@ -7,13 +7,13 @@
 #include <aws/mqtt/private/client_impl.h>
 #include <aws/mqtt/private/mqtt_client_test_helper.h>
 #include <aws/mqtt/private/packets.h>
+#include <aws/mqtt/private/shared_constants.h>
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/http/proxy.h>
 
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
-#include <aws/io/logging.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 #include <aws/io/uri.h>
@@ -24,7 +24,6 @@
 #include <inttypes.h>
 
 #ifdef AWS_MQTT_WITH_WEBSOCKETS
-#    include <aws/http/connection.h>
 #    include <aws/http/request_response.h>
 #    include <aws/http/websocket.h>
 #endif
@@ -1216,24 +1215,17 @@ static aws_mqtt_transform_websocket_handshake_complete_fn s_websocket_handshake_
 static int s_websocket_connect(struct aws_mqtt_client_connection *connection) {
     AWS_ASSERT(connection->websocket.enabled);
 
-    /* These defaults were chosen because they're commmon in other MQTT libraries.
-     * The user can modify the request in their transform callback if they need to. */
-    const struct aws_byte_cursor default_path = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("/mqtt");
-    const struct aws_http_header default_protocol_header = {
-        .name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("Sec-WebSocket-Protocol"),
-        .value = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("mqtt"),
-    };
-
     /* Build websocket handshake request */
     connection->websocket.handshake_request = aws_http_message_new_websocket_handshake_request(
-        connection->allocator, default_path, aws_byte_cursor_from_string(connection->host_name));
+        connection->allocator, *g_websocket_handshake_default_path, aws_byte_cursor_from_string(connection->host_name));
 
     if (!connection->websocket.handshake_request) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to generate websocket handshake request", (void *)connection);
         goto error;
     }
 
-    if (aws_http_message_add_header(connection->websocket.handshake_request, default_protocol_header)) {
+    if (aws_http_message_add_header(
+            connection->websocket.handshake_request, *g_websocket_handshake_default_protocol_header)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to generate websocket handshake request", (void *)connection);
         goto error;
     }
