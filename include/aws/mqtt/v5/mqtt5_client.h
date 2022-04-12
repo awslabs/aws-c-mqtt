@@ -13,10 +13,10 @@
 
 struct aws_allocator;
 struct aws_client_bootstrap;
+struct aws_http_message;
 struct aws_input_stream;
 struct aws_mqtt5_client;
 struct aws_mqtt5_client_lifecycle_event;
-struct aws_mqtt5_publish_payload_delivery_options;
 struct aws_tls_connection_options;
 struct aws_socket_options;
 
@@ -112,6 +112,8 @@ enum aws_mqtt5_client_operation_queue_behavior_type {
      * Qos 0 publishes that are not complete at the time of disconnection are failed.  Unacked QoS 1+ publishes are
      * requeued at the head of the line for immediate retransmission on a session resumption.  All other operations
      * are requeued in original order behind any retransmissions.
+     *
+     * TODO: not yet supported
      */
     AWS_MQTT5_COQBT_FAIL_QOS0_ON_DISCONNECT,
 };
@@ -220,41 +222,6 @@ typedef void(aws_mqtt5_publish_received_fn)(const struct aws_mqtt5_packet_publis
  */
 typedef void(aws_mqtt5_disconnect_completion_fn)(int error_code, void *complete_ctx);
 
-/**
- * Invoked by the client when there is additional payload data ready to be read by the receiver.
- */
-typedef int(aws_mqtt5_payload_delivery_on_stream_data_callback_fn)(
-    const struct aws_mqtt5_packet_publish_view *message_view,
-    struct aws_byte_cursor payload_data,
-    void *user_data);
-
-/**
- * Invoked by the client when the message payload has been completely streamed.  Message delivery is considered
- * successful and finished at this point.
- */
-typedef void(aws_mqtt5_payload_delivery_on_stream_complete_callback_fn)(
-    const struct aws_mqtt5_packet_publish_view *message_view,
-    void *user_data);
-
-/**
- * Invoked by the client when there's an error during payload stream processing.  User should consider delivery to
- * have failed and a failing PUBACK will be sent to the server if the connection is still good.
- */
-typedef void(aws_mqtt5_payload_delivery_on_stream_error_callback_fn)(
-    const struct aws_mqtt5_packet_publish_view *message_view,
-    int error_code,
-    void *user_data);
-
-/**
- * Fundamental message delivery user callback.
- *
- * Receiver must set all delivery_options_out callback members in order to receive the payload.
- */
-typedef int(aws_mqtt5_on_message_received_callback_fn)(
-    const struct aws_mqtt5_packet_publish_view *message_view,
-    struct aws_mqtt5_publish_payload_delivery_options *delivery_options_out,
-    void *user_data);
-
 /* operation completion options structures */
 
 /**
@@ -349,24 +316,6 @@ struct aws_mqtt5_client_lifecycle_event {
      * If this event was caused by receiving a DISCONNECT, this will be a view of that packet.
      */
     const struct aws_mqtt5_packet_disconnect_view *disconnect_data;
-};
-
-/*
- * Types related to incoming message delivery.
- *
- * We include the message view on the payload callbacks to let the bindings avoid having to persist the message view
- * when they want to deliver the payload in a single buffer.  This implies we need to persist the view and its backing
- * contents in the client/decoder until the message has been fully processed.
- */
-
-/**
- * Configuration options for streaming delivery of an mqtt message payload
- */
-struct aws_mqtt5_publish_payload_delivery_options {
-    aws_mqtt5_payload_delivery_on_stream_data_callback_fn *on_data;
-    aws_mqtt5_payload_delivery_on_stream_complete_callback_fn *on_complete;
-    aws_mqtt5_payload_delivery_on_stream_error_callback_fn *on_error;
-    void *user_data;
 };
 
 /**
@@ -473,7 +422,8 @@ struct aws_mqtt5_client_options {
     /**
      * Callback for received publish packets
      */
-    aws_mqtt5_publish_received_fn *publish_received;
+    aws_mqtt5_publish_received_fn *publish_received_handler;
+    void *publish_received_handler_user_data;
 
     /**
      * Callback and user data for all client lifecycle events.

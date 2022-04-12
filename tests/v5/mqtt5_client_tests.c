@@ -119,8 +119,8 @@ static void s_mqtt5_client_test_init_default_options(
         .min_connected_time_to_reset_reconnect_delay_ms = 30000,
         .min_reconnect_delay_ms = 1000,
         .ping_timeout_ms = 10000,
+        .publish_received_handler = s_publish_received_callback,
         .timout_seconds = 0,
-        .publish_received = s_publish_received_callback,
     };
 
     *client_options = local_client_options;

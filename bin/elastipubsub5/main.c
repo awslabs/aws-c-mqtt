@@ -690,8 +690,7 @@ int main(int argc, char **argv) {
         .ping_timeout_ms = 10000,
         .websocket_handshake_transform = websocket_handshake_transform,
         .websocket_handshake_transform_user_data = websocket_handshake_transform_user_data,
-        .publish_received = s_on_publish_received,
-        .timout_seconds = 5,
+        .publish_received_handler = s_on_publish_received,
     };
 
     struct aws_mqtt5_client *client = aws_mqtt5_client_new(allocator, &client_options);
