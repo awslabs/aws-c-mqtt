@@ -1749,6 +1749,8 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     client->handler.vtable = &s_mqtt5_channel_handler_vtable;
     client->handler.impl = client;
 
+    aws_mqtt5_client_options_storage_log(client->config, AWS_LL_DEBUG);
+
     return client;
 
 on_error:
