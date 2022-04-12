@@ -394,7 +394,7 @@ struct aws_mqtt5_client {
     struct aws_mqtt5_client_flow_control_state flow_control_state;
 
     /*
-     * When should the next PINGREQ be sent?  Automatically pushed out with ever socket write completion.
+     * When should the next PINGREQ be sent?
      */
     uint64_t next_ping_time;
 
@@ -446,10 +446,17 @@ AWS_EXTERN_C_BEGIN
  * exposing what would normally be static functions internal to the implementation.
  */
 
+/*
+ * Override the vtable used by the client; useful for mocking certain scenarios.
+ */
 AWS_MQTT_API void aws_mqtt5_client_set_vtable(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_client_vtable *vtable);
 
+/*
+ * Gets the default vtable used by the client.  In order to mock something, we start with the default and then
+ * mutate it selectively to achieve the scenario we're interested in.
+ */
 AWS_MQTT_API const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_vtable(void);
 
 /*
