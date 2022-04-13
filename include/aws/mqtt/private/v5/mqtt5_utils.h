@@ -218,13 +218,6 @@ AWS_MQTT_API const char *aws_mqtt5_retain_handling_type_to_c_string(
 AWS_MQTT_API const char *aws_mqtt5_packet_type_to_c_string(enum aws_mqtt5_packet_type packet_type);
 
 /**
- *
- * @param mqtt_error type of error
- * @return short string describing the mqtt error
- */
-AWS_MQTT_API const char *aws_mqtt_error_to_c_string(enum aws_mqtt_error mqtt_error);
-
-/**
  * Computes a uniformly-distributed random number in the specified range.  Not intended for cryptographic purposes.
  *
  * @param from one end of the range to sample from

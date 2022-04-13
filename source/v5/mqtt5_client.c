@@ -89,7 +89,7 @@ static void s_complete_operation_list(struct aws_linked_list *operation_list, in
 }
 
 static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
-    if (client->config->timeout_seconds == 0) {
+    if (client->config->operation_timeout_seconds == 0) {
         return;
     }
 
@@ -329,6 +329,18 @@ static uint64_t s_compute_next_service_time_client_mqtt_connect(struct aws_mqtt5
     return aws_min_u64(client->next_mqtt_connect_packet_timeout_time, operation_processing_time);
 }
 
+static uint64_t s_min_non_0_64(uint64_t a, uint64_t b) {
+    if (a == 0) {
+        return b;
+    }
+
+    if (b == 0) {
+        return a;
+    }
+
+    return aws_min_u64(a, b);
+}
+
 static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_client *client, uint64_t now) {
 
     /* ping and ping timeout */
@@ -338,7 +350,8 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
     }
 
     /* unacked operations timeout */
-    if (client->config->timeout_seconds != 0 && !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
+    if (client->config->operation_timeout_seconds != 0 &&
+        !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
         struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
         next_service_time = aws_min_u64(next_service_time, operation->timeout_timepoint_ns);
@@ -350,24 +363,21 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
 
     uint64_t operation_processing_time =
         s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
-    if (operation_processing_time != 0) {
-        next_service_time = aws_min_u64(next_service_time, operation_processing_time);
-    }
+
+    next_service_time = s_min_non_0_64(operation_processing_time, next_service_time);
 
     /* reset reconnect delay interval */
-    if (client->next_reconnect_delay_reset_time_ns > 0) {
-        next_service_time = aws_min_u64(next_service_time, client->next_reconnect_delay_reset_time_ns);
-    }
+    next_service_time = s_min_non_0_64(client->next_reconnect_delay_reset_time_ns, next_service_time);
 
     return next_service_time;
 }
 
 static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_mqtt5_client *client, uint64_t now) {
-    uint64_t next_service_time = 0;
     uint64_t operation_timeout_time = 0;
 
     /* unacked operations timeout */
-    if (client->config->timeout_seconds != 0 && !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
+    if (client->config->operation_timeout_seconds != 0 &&
+        !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
         struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
         operation_timeout_time = operation->timeout_timepoint_ns;
@@ -376,13 +386,7 @@ static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_m
     uint64_t operation_processing_time =
         s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
 
-    if (operation_timeout_time == 0) {
-        return operation_processing_time;
-    } else if (operation_processing_time == 0) {
-        return operation_timeout_time;
-    }
-
-    return aws_min_u64(operation_timeout_time, operation_processing_time);
+    return s_min_non_0_64(operation_timeout_time, operation_processing_time);
 }
 
 static uint64_t s_compute_next_service_time_client_channel_shutdown(struct aws_mqtt5_client *client, uint64_t now) {
@@ -2604,9 +2608,11 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                     break;
                 }
 
-                if (client->config->timeout_seconds != 0) {
+                if (client->config->operation_timeout_seconds != 0) {
                     current_operation->timeout_timepoint_ns =
-                        now + aws_timestamp_convert(1, client->config->timeout_seconds, AWS_TIMESTAMP_NANOS, NULL);
+                        now +
+                        aws_timestamp_convert(
+                            client->config->operation_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
                 }
 
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);
