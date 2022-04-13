@@ -1391,6 +1391,7 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
     /* reset negotiated_settings to default values */
     aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
 
+    /* Simulate negotiated settings that the client may have set to values different from incoming CONNACK settings */
     negotiated_settings.session_expiry_interval = 123;
     negotiated_settings.maximum_qos = s_maximum_qos_at_least_once;
     negotiated_settings.receive_maximum_from_server = 123;
@@ -1399,7 +1400,7 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
     negotiated_settings.topic_alias_maximum_to_client = 123;
     negotiated_settings.server_keep_alive = 123;
 
-    /* Simulate an aws_mqtt5_packet_connack_view with user settings */
+    /* CONNACK settings from a server that should overwrite client settings */
     struct aws_mqtt5_packet_connack_view connack_view = {
         .session_present = false,
         .server_keep_alive = &s_keep_alive_interval_seconds,
@@ -1411,22 +1412,13 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
         .retain_available = &s_retain_available,
         .wildcard_subscriptions_available = &s_wildcard_subscriptions_available,
         .subscription_identifiers_available = &s_subscription_identifiers_available,
+        .shared_subscriptions_available = &s_shared_subscriptions_available,
     };
 
-    /* Apply CONNACK settings that should override client set values */
+    /* Apply CONNACK settings to client values in negotiated_settings */
     aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
 
-    /*
-    Server Values Override Client in Connack
-
-    Wildcard Subscription Available (Server set to 0 should shift client's 1 to 0 (not
-    supported))
-    Subscription Identifier (not present means supported by default. If 0 they're not supported. Try setting
-    to 0 to change client's supported to not) Shared Subscription Available (Same as Subscription Identifier) Server
-    Keep Alive (Client MUST use the value set by the server
-    )
-    */
-
+    /* Assert values that should have been overwritten have been overwritten */
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, s_keep_alive_interval_seconds);
     ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos_at_most_once);
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, s_session_expiry_interval);
@@ -1436,14 +1428,15 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
     ASSERT_FALSE(negotiated_settings.retain_available);
     ASSERT_FALSE(negotiated_settings.wildcard_subscriptions_available);
     ASSERT_FALSE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_FALSE(negotiated_settings.shared_subscriptions_available);
 
     /* reset negotiated_settings to default values */
     aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
 
-    /* Now check CONNACK missing/default overrides */
-
+    /* Simulate negotiated settings that would change based on default/missing settings from a CONNACK */
     negotiated_settings.session_expiry_interval = s_session_expiry_interval_seconds;
 
+    /* NULL CONNACK values that result in an override in negotiated settings */
     connack_view.server_keep_alive = NULL;
     connack_view.topic_alias_maximum = NULL;
     connack_view.maximum_qos = NULL;
@@ -1453,9 +1446,12 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
     connack_view.maximum_packet_size = NULL;
     connack_view.wildcard_subscriptions_available = NULL;
     connack_view.subscription_identifiers_available = NULL;
+    connack_view.shared_subscriptions_available = NULL;
 
+    /* Apply CONNACK settings to client values in negotiated_settings */
     aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
 
+    /* Assert values that should have been overwritten have been overwritten */
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
     ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
     ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos_at_least_once);
@@ -1464,6 +1460,7 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
     ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
     ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
     ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
 
     /*
      * TODO STEVE
