@@ -179,6 +179,7 @@ add_test_case(mqtt5_operation_processing_reconnect_no_session)
 
 add_test_case(mqtt5_negotiated_settings_reset_test)
 add_test_case(mqtt5_negotiated_settings_apply_connack_test)
+add_test_case(mqtt5_negotiated_settings_server_override_test)
 
 # vli encode/decode
 add_test_case(mqtt5_vli_size)

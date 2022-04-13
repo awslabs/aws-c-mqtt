@@ -108,13 +108,12 @@ void aws_mqtt5_negotiated_settings_log(
         negotiated_settings->shared_subscriptions_available ? "true" : "false");
 }
 
+/** Assign defaults values to negotiated_settings */
 void aws_mqtt5_negotiated_settings_reset(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_mqtt5_packet_connect_view *packet_connect_view) {
     AWS_PRECONDITION(negotiated_settings != NULL);
     AWS_PRECONDITION(packet_connect_view != NULL);
-
-    /** Assign defaults values to negotiated_settings */
 
     /* Properties that may be sent in CONNECT to Server. These should only be sent if Client
        changes them from their default values.

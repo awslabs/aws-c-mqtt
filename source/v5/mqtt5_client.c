@@ -2088,6 +2088,15 @@ int aws_mqtt5_client_publish(
         return AWS_OP_ERR;
     }
 
+    if (publish_options->qos > client->negotiated_settings.maximum_qos) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_publish_view - unsupported QoS value in PUBLISH packet options: %d",
+            (void *)publish_options,
+            (int)publish_options->qos);
+        return AWS_OP_ERR;
+    }
+
     if (s_submit_operation(client, &publish_op->base)) {
         goto error;
     }
