@@ -1373,8 +1373,6 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
 
 AWS_TEST_CASE(mqtt5_negotiated_settings_apply_connack_test, mqtt5_negotiated_settings_apply_connack_test_fn)
 
-/* Steve Test Work Here */
-
 static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     (void)allocator;
@@ -1462,11 +1460,6 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
     ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
     ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
 
-    /*
-     * TODO STEVE
-     * Assign Client Identifier if Client doesn't assign one itself. Check if we are insuring we assign one ourselves
-     * in validation of connect packet.
-     */
     return AWS_OP_SUCCESS;
 }
 
