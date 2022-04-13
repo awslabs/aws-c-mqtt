@@ -1901,7 +1901,7 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
         &test_context->dummy_client.operational_state, allocator, &test_context->dummy_client);
 
     struct aws_mqtt5_client_options_storage test_storage = {
-        .timeout_seconds = 0,
+        .operation_timeout_seconds = 0,
     };
 
     test_context->dummy_client.config = &test_storage;
