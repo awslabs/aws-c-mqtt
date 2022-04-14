@@ -660,12 +660,36 @@ int main(int argc, char **argv) {
     uint16_t receive_maximum = 9;
     uint32_t maximum_packet_size = 128 * 1024;
 
+    //
+    struct aws_byte_cursor will_payload_cursor = aws_byte_cursor_from_c_str("will payload");
+    enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
+    uint32_t message_expiry_interval_seconds = 65537;
+    struct aws_byte_cursor will_response_topic = aws_byte_cursor_from_c_str("will response topic");
+    struct aws_byte_cursor will_correlation_data = aws_byte_cursor_from_c_str("will correlation data");
+    struct aws_byte_cursor will_content_type = aws_byte_cursor_from_c_str("Json");
+
+    struct aws_mqtt5_packet_publish_view will_view = {
+        .payload = will_payload_cursor,
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .retain = true,
+        .topic = aws_byte_cursor_from_c_str("will/topic"),
+        .payload_format = &payload_format,
+        .message_expiry_interval_seconds = &message_expiry_interval_seconds,
+        .response_topic = &will_response_topic,
+        .correlation_data = &will_correlation_data,
+        .content_type = &will_content_type,
+        //.user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        //.user_properties = &s_user_properties[0],
+    };
+    //
+
     struct aws_mqtt5_packet_connect_view connect_options = {
         .keep_alive_interval_seconds = 30,
         .client_id = aws_byte_cursor_from_string(s_client_id),
         .clean_start = true,
         .maximum_packet_size_bytes = &maximum_packet_size,
         .receive_maximum = &receive_maximum,
+        .will = &will_view,
     };
 
     aws_mqtt5_transform_websocket_handshake_fn *websocket_handshake_transform = NULL;
