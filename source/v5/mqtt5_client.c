@@ -874,7 +874,6 @@ on_error:
 }
 
 static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client) {
-    (void)client;
     AWS_ASSERT(client->current_state == AWS_MCS_STOPPED || client->current_state == AWS_MCS_PENDING_RECONNECT);
 
     client->current_state = AWS_MCS_CONNECTING;

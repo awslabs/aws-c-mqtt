@@ -3409,3 +3409,128 @@ static int s_mqtt5_client_unsubscribe_success_fn(struct aws_allocator *allocator
 }
 
 AWS_TEST_CASE(mqtt5_client_unsubscribe_success, s_mqtt5_client_unsubscribe_success_fn)
+
+static aws_mqtt5_packet_id_t s_puback_packet_id = 183;
+
+struct aws_mqtt5_server_send_qos1_publish_context {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+    bool publish_sent;
+    bool connack_sent;
+    bool connack_checked;
+};
+
+static int s_aws_mqtt5_mock_server_handle_puback(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_puback_view *puback_view = packet;
+
+    ASSERT_INT_EQUALS(puback_view->packet_id, s_puback_packet_id);
+
+    struct aws_mqtt5_server_send_qos1_publish_context *publish_context =
+        connection->test_fixture->mock_server_user_data;
+    publish_context->connack_checked = true;
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt5_mock_server_send_qos1_publish(
+    struct aws_mqtt5_server_mock_connection_context *mock_server,
+    void *user_data) {
+
+    struct aws_mqtt5_server_send_qos1_publish_context *test_context = user_data;
+    if (test_context->publish_sent || !test_context->connack_sent) {
+        return;
+    }
+
+    test_context->publish_sent = true;
+
+    struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .topic =
+            {
+                .ptr = s_topic,
+                .len = AWS_ARRAY_SIZE(s_topic) - 1,
+            },
+        .packet_id = s_puback_packet_id,
+    };
+
+    s_aws_mqtt5_mock_server_send_packet(mock_server, AWS_MQTT5_PT_PUBLISH, &qos1_publish_view);
+}
+
+static int s_aws_mqtt5_server_publish_qos1_on_connect(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    int result = s_aws_mqtt5_mock_server_handle_connect_always_succeed(packet, connection, user_data);
+
+    struct aws_mqtt5_server_send_qos1_publish_context *test_context = user_data;
+    test_context->connack_sent = true;
+
+    return result;
+}
+
+static bool s_publish_qos1_puback(void *arg) {
+    struct aws_mqtt5_server_send_qos1_publish_context *test_context = arg;
+    return test_context->connack_checked;
+}
+
+static void s_publish_qos1_wait_for_puback(struct aws_mqtt5_server_send_qos1_publish_context *test_context) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = test_context->test_fixture;
+    aws_mutex_lock(&test_fixture->lock);
+    aws_condition_variable_wait_pred(&test_fixture->signal, &test_fixture->lock, s_publish_qos1_puback, test_context);
+    aws_mutex_unlock(&test_fixture->lock);
+}
+
+/* When client receives a QoS1 PUBLISH it must send a valid PUBACK with packet id */
+static int mqtt5_client_receive_qos1_return_puback_test_fn(struct aws_allocator *allocator, void *ctx) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* mock server sends a PUBLISH packet to the client */
+    server_function_table.service_task_fn = s_aws_mqtt5_mock_server_send_qos1_publish;
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBACK] = s_aws_mqtt5_mock_server_handle_puback;
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_server_publish_qos1_on_connect;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_send_qos1_publish_context publish_context = {
+        .test_fixture = &test_context,
+        .publish_sent = false,
+        .connack_sent = false,
+        .connack_checked = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &publish_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    s_publish_qos1_wait_for_puback(&publish_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_receive_qos1_return_puback_test, mqtt5_client_receive_qos1_return_puback_test_fn)
