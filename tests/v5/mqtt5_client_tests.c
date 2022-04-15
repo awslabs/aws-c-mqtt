@@ -3423,12 +3423,12 @@ static int s_aws_mqtt5_mock_server_handle_puback(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
-    (void)packet;
     (void)user_data;
 
     struct aws_mqtt5_packet_puback_view *puback_view = packet;
 
     ASSERT_INT_EQUALS(puback_view->packet_id, s_puback_packet_id);
+    ASSERT_TRUE(puback_view->reason_code == AWS_MQTT5_PARC_SUCCESS);
 
     struct aws_mqtt5_server_send_qos1_publish_context *publish_context =
         connection->test_fixture->mock_server_user_data;
@@ -3461,7 +3461,7 @@ static void s_aws_mqtt5_mock_server_send_qos1_publish(
     s_aws_mqtt5_mock_server_send_packet(mock_server, AWS_MQTT5_PT_PUBLISH, &qos1_publish_view);
 }
 
-static int s_aws_mqtt5_server_publish_qos1_on_connect(
+static int s_aws_mqtt5_server_send_qos1_publish_on_connect(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -3497,7 +3497,7 @@ static int mqtt5_client_receive_qos1_return_puback_test_fn(struct aws_allocator 
     /* mock server sends a PUBLISH packet to the client */
     server_function_table.service_task_fn = s_aws_mqtt5_mock_server_send_qos1_publish;
     server_function_table.packet_handlers[AWS_MQTT5_PT_PUBACK] = s_aws_mqtt5_mock_server_handle_puback;
-    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_server_publish_qos1_on_connect;
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_server_send_qos1_publish_on_connect;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
