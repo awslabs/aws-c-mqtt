@@ -2797,8 +2797,7 @@ static int s_do_mqtt5_client_session_resumption_test(
     s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
 
     client_options.session_behavior = session_behavior;
-
-    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_honor_session;
+    /* Has to normal connect to a non-existing connection before it can reconnect to an existing one */
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
         .client_options = &client_options,
@@ -2810,16 +2809,29 @@ static int s_do_mqtt5_client_session_resumption_test(
 
     struct aws_mqtt5_client *client = test_context.client;
 
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_honor_session;
+
     for (size_t i = 0; i < SESSION_RESUMPTION_CONNECT_COUNT; ++i) {
         ASSERT_SUCCESS(aws_mqtt5_client_start(client));
-        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_CONNECTION_SUCCESS, i + 1);
+        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_CONNECTION_SUCCESS, i + 2);
 
+        /*
+         * LOOK INTO TESTING HERE STEVE
+         * successful with some tests, fails with others. Dig into how these values are being captured
+         */
         /* not technically truly safe to query depending on memory model.  Remove if it becomes a problem. */
         bool expected_rejoined_session = s_compute_expected_rejoined_session(session_behavior, i);
         ASSERT_INT_EQUALS(expected_rejoined_session, client->negotiated_settings.rejoined_session);
 
         ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
-        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_STOPPED, i + 1);
+        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_STOPPED, i + 2);
     }
 
     struct aws_mqtt5_packet_connect_storage clean_start_connect_storage;
@@ -3534,3 +3546,65 @@ static int mqtt5_client_receive_qos1_return_puback_test_fn(struct aws_allocator 
 }
 
 AWS_TEST_CASE(mqtt5_client_receive_qos1_return_puback_test, mqtt5_client_receive_qos1_return_puback_test_fn)
+
+/* steve current test work here */
+static int s_aws_mqtt5_mock_server_handle_connect_session_present(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+    connack_view.session_present = true;
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+/* When client receives a CONNACK with existing session state when one isn't present it should disconnect */
+static int mqtt5_client_receive_nonexisting_session_state_fn(struct aws_allocator *allocator, void *ctx) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* mock server sends a PUBLISH packet to the client */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_aws_mqtt5_mock_server_handle_connect_session_present;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connection_failure_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_receive_nonexisting_session_state, mqtt5_client_receive_nonexisting_session_state_fn)

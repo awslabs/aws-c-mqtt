@@ -1563,6 +1563,16 @@ static void s_aws_mqtt5_client_on_connack(
     }
 
     aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
+
+    if (client->negotiated_settings.rejoined_session) {
+        if (client->config->session_behavior == AWS_MQTT5_CSBT_CLEAN || client->has_connected_successfully == false) {
+            s_aws_mqtt5_client_emit_final_lifecycle_event(
+                client, AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION, connack_view, NULL);
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
+            return;
+        }
+    }
+
     s_change_current_state(client, AWS_MCS_CONNECTED);
     s_aws_mqtt5_client_emit_connection_success_lifecycle_event(client, connack_view);
 }
