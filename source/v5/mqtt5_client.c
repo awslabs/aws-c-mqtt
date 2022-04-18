@@ -1564,7 +1564,17 @@ static void s_aws_mqtt5_client_on_connack(
 
     aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
 
+    /* Check if a session is being rejoined and perform associated rejoin connect logic here */
+    /* steve
+     * Adding this fail check here instead of where other unacked logic is being handled.
+     * Otherwise it will go through change current state and hit aws_mqtt5_client_on_connection_update_operational_state
+     * where it might also be checked but it would return here and emit the success. We could have
+     * s_change_current_state return a success/fail and check that to bounce to a shutdown channel but that feels like
+     * it'd add more complexity than simply doing the baseline check here and then allowing the
+     * aws_mqtt5_client_on_connection_update_operational_state to do its job further down the line.
+     */
     if (client->negotiated_settings.rejoined_session) {
+        /* Disconnect if the server is attempting to connect the client to an unexpected session */
         if (client->config->session_behavior == AWS_MQTT5_CSBT_CLEAN || client->has_connected_successfully == false) {
             s_aws_mqtt5_client_emit_final_lifecycle_event(
                 client, AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION, connack_view, NULL);
