@@ -108,6 +108,25 @@ void aws_mqtt5_negotiated_settings_log(
         negotiated_settings->shared_subscriptions_available ? "true" : "false");
 }
 
+/* steve apply client_id to negotiated settings */
+int aws_mqtt5_negotiated_settings_apply_client_id(
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_negotiated_settings *negotiated_settings,
+    struct aws_byte_cursor *client_id) {
+
+    aws_byte_buf_clean_up_secure(&negotiated_settings->storage);
+
+    if (aws_byte_buf_init(&negotiated_settings->storage, allocator, client_id->len)) {
+        return AWS_OP_ERR;
+    }
+
+    aws_byte_buf_append_and_update(&negotiated_settings->storage, client_id);
+
+    negotiated_settings->client_id = *client_id;
+
+    return AWS_OP_SUCCESS;
+}
+
 /** Assign defaults values to negotiated_settings */
 void aws_mqtt5_negotiated_settings_reset(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
@@ -152,6 +171,7 @@ void aws_mqtt5_negotiated_settings_reset(
 }
 
 void aws_mqtt5_negotiated_settings_apply_connack(
+    struct aws_allocator *allocator,
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_mqtt5_packet_connack_view *connack_data) {
     AWS_PRECONDITION(negotiated_settings != NULL);
@@ -204,6 +224,11 @@ void aws_mqtt5_negotiated_settings_apply_connack(
 
     if (connack_data->server_keep_alive != NULL) {
         negotiated_settings->server_keep_alive = *connack_data->server_keep_alive;
+    }
+
+    if (connack_data->assigned_client_identifier != NULL) {
+        aws_mqtt5_negotiated_settings_apply_client_id(
+            allocator, negotiated_settings, connack_data->assigned_client_identifier);
     }
 
     negotiated_settings->rejoined_session = connack_data->session_present;

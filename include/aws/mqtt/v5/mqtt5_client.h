@@ -269,6 +269,9 @@ struct aws_mqtt5_negotiated_settings {
     bool subscription_identifiers_available;
     bool shared_subscriptions_available;
     bool rejoined_session;
+
+    struct aws_byte_cursor client_id;
+    struct aws_byte_buf storage;
 };
 
 /**

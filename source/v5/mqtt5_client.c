@@ -169,6 +169,8 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 
     aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
 
+    aws_mem_release(client->allocator, &client->negotiated_settings.storage);
+
     aws_http_message_release(client->handshake);
 
     aws_mqtt5_encoder_clean_up(&client->encoder);
@@ -1046,6 +1048,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     connect_view.clean_start = !resume_session;
 
     aws_mqtt5_negotiated_settings_reset(&client->negotiated_settings, &connect_view);
+    connect_view.client_id = client->negotiated_settings.client_id;
 
     struct aws_mqtt5_operation_connect *connect_op = aws_mqtt5_operation_connect_new(client->allocator, &connect_view);
     if (connect_op == NULL) {
@@ -1561,7 +1564,7 @@ static void s_aws_mqtt5_client_on_connack(
         return;
     }
 
-    aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
+    aws_mqtt5_negotiated_settings_apply_connack(client->allocator, &client->negotiated_settings, connack_view);
 
     /* Check if a session is being rejoined and perform associated rejoin connect logic here */
     /* steve
@@ -1863,6 +1866,11 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     };
 
     if (aws_mqtt5_encoder_init(&client->encoder, allocator, &encoder_options)) {
+        goto on_error;
+    }
+
+    if (aws_mqtt5_negotiated_settings_apply_client_id(
+            allocator, &client->negotiated_settings, &options->connect_options->client_id)) {
         goto on_error;
     }
 
