@@ -2769,7 +2769,6 @@ static bool s_compute_expected_rejoined_session(
         case AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS:
             return connect_index > 0;
 
-        case AWS_MQTT5_CSBT_REJOIN_ALWAYS:
         default:
             return true;
     }
@@ -2862,16 +2861,6 @@ static int s_mqtt5_client_session_resumption_clean_start_fn(struct aws_allocator
 }
 
 AWS_TEST_CASE(mqtt5_client_session_resumption_clean_start, s_mqtt5_client_session_resumption_clean_start_fn)
-
-static int s_mqtt5_client_session_resumption_always_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    ASSERT_SUCCESS(s_do_mqtt5_client_session_resumption_test(allocator, AWS_MQTT5_CSBT_REJOIN_ALWAYS));
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(mqtt5_client_session_resumption_always, s_mqtt5_client_session_resumption_always_fn)
 
 static int s_mqtt5_client_session_resumption_post_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

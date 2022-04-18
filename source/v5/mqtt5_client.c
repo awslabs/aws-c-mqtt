@@ -1028,8 +1028,7 @@ static void s_aws_mqtt5_on_socket_write_completion(
 static bool s_should_resume_session(const struct aws_mqtt5_client *client) {
     enum aws_mqtt5_client_session_behavior_type session_behavior = client->config->session_behavior;
 
-    return session_behavior == AWS_MQTT5_CSBT_REJOIN_ALWAYS ||
-           (session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully);
+    return session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully;
 }
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {

@@ -206,7 +206,7 @@ void aws_mqtt5_negotiated_settings_apply_connack(
         negotiated_settings->server_keep_alive = *connack_data->server_keep_alive;
     }
 
-        negotiated_settings->rejoined_session = connack_data->session_present;
+    negotiated_settings->rejoined_session = connack_data->session_present;
 }
 
 const char *aws_mqtt5_client_session_behavior_type_to_c_string(
@@ -216,8 +216,6 @@ const char *aws_mqtt5_client_session_behavior_type_to_c_string(
             return "Clean session always";
         case AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS:
             return "Attempt to resume a session after initial connection success";
-        case AWS_MQTT5_CSBT_REJOIN_ALWAYS:
-            return "Always attempt to resume a session";
     }
 
     return "Unknown session behavior";
