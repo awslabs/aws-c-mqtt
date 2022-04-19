@@ -111,7 +111,7 @@ int aws_mqtt5_negotiated_settings_init(
     struct aws_mqtt5_negotiated_settings *negotatiated_settings,
     const struct aws_byte_cursor *client_id);
 
-void aws_mqtt5_negotiated_settings_destroy(struct aws_mqtt5_negotiated_settings *negotiated_settings);
+void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
 
 /**
  * Assigns and stores a client id for use on CONNECT

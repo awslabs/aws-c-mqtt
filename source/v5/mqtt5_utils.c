@@ -123,7 +123,6 @@ int aws_mqtt5_negotiated_settings_init(
     return AWS_OP_SUCCESS;
 }
 
-/* steve apply client_id to negotiated settings */
 int aws_mqtt5_negotiated_settings_apply_client_id(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_byte_cursor *client_id) {
@@ -134,12 +133,12 @@ int aws_mqtt5_negotiated_settings_apply_client_id(
     return AWS_OP_SUCCESS;
 }
 
-void aws_mqtt5_negotiated_settings_destroy(struct aws_mqtt5_negotiated_settings *negotiated_settings) {
+void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings) {
     if (negotiated_settings == NULL) {
         return;
     }
-
-    aws_mem_release(negotiated_settings->allocator, &negotiated_settings->client_id_storage);
+    aws_byte_buf_clean_up(&negotiated_settings->client_id_storage);
+    // aws_mem_release(negotiated_settings->allocator, &negotiated_settings);
 }
 
 /** Assign defaults values to negotiated_settings */

@@ -3587,8 +3587,6 @@ static int mqtt5_client_receive_nonexisting_session_state_fn(struct aws_allocato
 
 AWS_TEST_CASE(mqtt5_client_receive_nonexisting_session_state, mqtt5_client_receive_nonexisting_session_state_fn)
 
-/* steve current test work here */
-
 static const char *s_receive_assigned_client_id_client_id = "Assigned_Client_ID";
 
 struct aws_mqtt5_server_receive_assigned_client_id_context {
