@@ -112,17 +112,19 @@ void aws_mqtt5_negotiated_settings_log(
 int aws_mqtt5_negotiated_settings_apply_client_id(
     struct aws_allocator *allocator,
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
-    struct aws_byte_cursor *client_id) {
-
-    aws_byte_buf_clean_up_secure(&negotiated_settings->storage);
+    const struct aws_byte_cursor *client_id) {
+    /* Steve Note: This should, in theory, only need to be set once from the server or by the client */
+    if (client_id->len == 0) {
+        return AWS_OP_SUCCESS;
+    }
 
     if (aws_byte_buf_init(&negotiated_settings->storage, allocator, client_id->len)) {
         return AWS_OP_ERR;
     }
 
-    aws_byte_buf_append_and_update(&negotiated_settings->storage, client_id);
+    aws_byte_buf_append(&negotiated_settings->storage, client_id);
 
-    negotiated_settings->client_id = *client_id;
+    negotiated_settings->client_id = aws_byte_cursor_from_buf(&negotiated_settings->storage);
 
     return AWS_OP_SUCCESS;
 }

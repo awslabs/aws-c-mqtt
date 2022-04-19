@@ -109,7 +109,7 @@ void aws_mqtt5_negotiated_settings_log(
 int aws_mqtt5_negotiated_settings_apply_client_id(
     struct aws_allocator *allocator,
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
-    struct aws_byte_cursor *client_id);
+    const struct aws_byte_cursor *client_id);
 
 /**
  * Resets negotiated_settings to defaults reconciled with client set properties.

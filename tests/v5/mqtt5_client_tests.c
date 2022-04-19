@@ -3526,7 +3526,6 @@ static int mqtt5_client_receive_qos1_return_puback_test_fn(struct aws_allocator 
 
 AWS_TEST_CASE(mqtt5_client_receive_qos1_return_puback_test, mqtt5_client_receive_qos1_return_puback_test_fn)
 
-/* steve current test work here */
 static int s_aws_mqtt5_mock_server_handle_connect_session_present(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
@@ -3552,7 +3551,7 @@ static int mqtt5_client_receive_nonexisting_session_state_fn(struct aws_allocato
     struct aws_mqtt5_mock_server_vtable server_function_table;
     s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
 
-    /* mock server sends a PUBLISH packet to the client */
+    /* mock server returns a CONNACK indicating a session is being resumed */
     server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
         s_aws_mqtt5_mock_server_handle_connect_session_present;
 
@@ -3587,3 +3586,110 @@ static int mqtt5_client_receive_nonexisting_session_state_fn(struct aws_allocato
 }
 
 AWS_TEST_CASE(mqtt5_client_receive_nonexisting_session_state, mqtt5_client_receive_nonexisting_session_state_fn)
+
+/* steve current test work here */
+
+static const char *s_receive_assigned_client_id_client_id = "Assigned_Client_ID";
+
+struct aws_mqtt5_server_receive_assigned_client_id_context {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+    bool assigned_client_id_checked;
+};
+
+static int s_aws_mqtt5_mock_server_handle_connect_assigned_client_id(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)user_data;
+
+    struct aws_mqtt5_packet_connect_view *connect_view = packet;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+    struct aws_byte_cursor assigned_client_id = aws_byte_cursor_from_c_str(s_receive_assigned_client_id_client_id);
+
+    /* Server behavior sets the Assigned Client Identifier on a CONNECT packet with an empty Client ID */
+    if (connect_view->client_id.len == 0) {
+        connack_view.assigned_client_identifier = &assigned_client_id;
+    } else {
+        ASSERT_BIN_ARRAYS_EQUALS(
+            assigned_client_id.ptr, assigned_client_id.len, connect_view->client_id.ptr, connect_view->client_id.len);
+        struct aws_mqtt5_server_receive_assigned_client_id_context *test_context = user_data;
+        test_context->assigned_client_id_checked = true;
+    }
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+/*
+ * When client connects with a zero length Client ID, server provides one.
+ * The client should then use the assigned Client ID on reconnection attempts.
+ */
+static int mqtt5_client_receive_assigned_client_id_fn(struct aws_allocator *allocator, void *ctx) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* Empty the Client ID for connect */
+    connect_options.client_id.len = 0;
+
+    /* mock server checks for a client ID and if it's missing sends an assigned one */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_aws_mqtt5_mock_server_handle_connect_assigned_client_id;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    struct aws_mqtt5_server_receive_assigned_client_id_context assinged_id_context = {
+        .test_fixture = &test_context,
+        .assigned_client_id_checked = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &assinged_id_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_byte_cursor assigned_client_id = aws_byte_cursor_from_c_str(s_receive_assigned_client_id_client_id);
+
+    /* Test that Assigned Client ID is stored */
+    ASSERT_BIN_ARRAYS_EQUALS(
+        assigned_client_id.ptr,
+        assigned_client_id.len,
+        client->negotiated_settings.client_id.ptr,
+        client->negotiated_settings.client_id.len);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    /* Check for Assigned Client ID on reconnect */
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    ASSERT_TRUE(assinged_id_context.assigned_client_id_checked);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_receive_assigned_client_id, mqtt5_client_receive_assigned_client_id_fn);
