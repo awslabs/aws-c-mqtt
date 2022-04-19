@@ -111,6 +111,11 @@ int aws_mqtt5_negotiated_settings_init(
     struct aws_mqtt5_negotiated_settings *negotatiated_settings,
     const struct aws_byte_cursor *client_id);
 
+/**
+ * Clean up the byte buf in negotiated_settings
+ *
+ * @param negotiated_settings settings to clean up
+ */
 void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
 
 /**
