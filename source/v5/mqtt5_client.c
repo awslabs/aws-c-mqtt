@@ -169,7 +169,6 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 
     aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
 
-    // aws_mem_release(client->allocator, &client->negotiated_settings);
     aws_mqtt5_negotiated_settings_clean_up(&client->negotiated_settings);
 
     aws_http_message_release(client->handshake);
