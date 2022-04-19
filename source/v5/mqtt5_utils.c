@@ -108,25 +108,38 @@ void aws_mqtt5_negotiated_settings_log(
         negotiated_settings->shared_subscriptions_available ? "true" : "false");
 }
 
-/* steve apply client_id to negotiated settings */
-int aws_mqtt5_negotiated_settings_apply_client_id(
+int aws_mqtt5_negotiated_settings_init(
     struct aws_allocator *allocator,
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_byte_cursor *client_id) {
-    /* Steve Note: This should, in theory, only need to be set once from the server or by the client */
-    if (client_id->len == 0) {
-        return AWS_OP_SUCCESS;
+    negotiated_settings->allocator = allocator;
+    if (aws_byte_buf_init(&negotiated_settings->client_id_storage, allocator, client_id->len)) {
+        return AWS_OP_ERR;
     }
-
-    if (aws_byte_buf_init(&negotiated_settings->storage, allocator, client_id->len)) {
+    if (aws_byte_buf_append_dynamic(&negotiated_settings->client_id_storage, client_id)) {
         return AWS_OP_ERR;
     }
 
-    aws_byte_buf_append(&negotiated_settings->storage, client_id);
+    return AWS_OP_SUCCESS;
+}
 
-    negotiated_settings->client_id = aws_byte_cursor_from_buf(&negotiated_settings->storage);
+/* steve apply client_id to negotiated settings */
+int aws_mqtt5_negotiated_settings_apply_client_id(
+    struct aws_mqtt5_negotiated_settings *negotiated_settings,
+    const struct aws_byte_cursor *client_id) {
+    if (aws_byte_buf_append_dynamic(&negotiated_settings->client_id_storage, client_id)) {
+        return AWS_OP_ERR;
+    }
 
     return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_negotiated_settings_destroy(struct aws_mqtt5_negotiated_settings *negotiated_settings) {
+    if (negotiated_settings == NULL) {
+        return;
+    }
+
+    aws_mem_release(negotiated_settings->allocator, &negotiated_settings->client_id_storage);
 }
 
 /** Assign defaults values to negotiated_settings */
@@ -173,7 +186,6 @@ void aws_mqtt5_negotiated_settings_reset(
 }
 
 void aws_mqtt5_negotiated_settings_apply_connack(
-    struct aws_allocator *allocator,
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_mqtt5_packet_connack_view *connack_data) {
     AWS_PRECONDITION(negotiated_settings != NULL);
@@ -229,8 +241,7 @@ void aws_mqtt5_negotiated_settings_apply_connack(
     }
 
     if (connack_data->assigned_client_identifier != NULL) {
-        aws_mqtt5_negotiated_settings_apply_client_id(
-            allocator, negotiated_settings, connack_data->assigned_client_identifier);
+        aws_mqtt5_negotiated_settings_apply_client_id(negotiated_settings, connack_data->assigned_client_identifier);
     }
 
     negotiated_settings->rejoined_session = connack_data->session_present;

@@ -1321,7 +1321,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
     };
 
     /* Check if everything defaults appropriately if no properties are set in either direction */
-    aws_mqtt5_negotiated_settings_apply_connack(allocator, &negotiated_settings, &connack_view);
+    aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
 
     ASSERT_TRUE(negotiated_settings.maximum_qos == AWS_MQTT5_QOS_AT_LEAST_ONCE);
 
@@ -1351,7 +1351,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
     connack_view.shared_subscriptions_available = &s_shared_subscriptions_available;
     connack_view.server_keep_alive = &s_server_keep_alive;
 
-    aws_mqtt5_negotiated_settings_apply_connack(allocator, &negotiated_settings, &connack_view);
+    aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
 
     ASSERT_TRUE(negotiated_settings.rejoined_session);
     ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos_at_least_once);
@@ -1412,7 +1412,7 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
     };
 
     /* Apply CONNACK settings to client values in negotiated_settings */
-    aws_mqtt5_negotiated_settings_apply_connack(allocator, &negotiated_settings, &connack_view);
+    aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
 
     /* Assert values that should have been overwritten have been overwritten */
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, s_keep_alive_interval_seconds);
@@ -1445,7 +1445,7 @@ static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocato
     connack_view.shared_subscriptions_available = NULL;
 
     /* Apply CONNACK settings to client values in negotiated_settings */
-    aws_mqtt5_negotiated_settings_apply_connack(allocator, &negotiated_settings, &connack_view);
+    aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
 
     /* Assert values that should have been overwritten have been overwritten */
     ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);

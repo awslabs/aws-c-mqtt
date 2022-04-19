@@ -100,14 +100,26 @@ void aws_mqtt5_negotiated_settings_log(
     enum aws_log_level level);
 
 /**
- * Assigns and stores a client id for use on CONNECT
+ * Initializes the Client ID byte buf in negotiated settings
  *
  * @param allocator allocator to use for memory allocation
  * @param negotiated_settings settings to apply client id to
  * @param client_id client id to set
  */
-int aws_mqtt5_negotiated_settings_apply_client_id(
+int aws_mqtt5_negotiated_settings_init(
     struct aws_allocator *allocator,
+    struct aws_mqtt5_negotiated_settings *negotatiated_settings,
+    const struct aws_byte_cursor *client_id);
+
+void aws_mqtt5_negotiated_settings_destroy(struct aws_mqtt5_negotiated_settings *negotiated_settings);
+
+/**
+ * Assigns and stores a client id for use on CONNECT
+ *
+ * @param negotiated_settings settings to apply client id to
+ * @param client_id client id to set
+ */
+int aws_mqtt5_negotiated_settings_apply_client_id(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_byte_cursor *client_id);
 
@@ -131,7 +143,6 @@ void aws_mqtt5_negotiated_settings_reset(
  * @return void
  */
 void aws_mqtt5_negotiated_settings_apply_connack(
-    struct aws_allocator *allocator,
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_mqtt5_packet_connack_view *connack_data);
 

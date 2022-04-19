@@ -255,6 +255,7 @@ struct aws_mqtt5_disconnect_completion_options {
  * Mqtt behavior settings that are dynamically negotiated as part of the CONNECT/CONNACK exchange.
  */
 struct aws_mqtt5_negotiated_settings {
+    struct aws_allocator *allocator;
     enum aws_mqtt5_qos maximum_qos;
 
     uint32_t session_expiry_interval;
@@ -270,8 +271,7 @@ struct aws_mqtt5_negotiated_settings {
     bool shared_subscriptions_available;
     bool rejoined_session;
 
-    struct aws_byte_cursor client_id;
-    struct aws_byte_buf storage;
+    struct aws_byte_buf client_id_storage;
 };
 
 /**

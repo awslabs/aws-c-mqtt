@@ -3663,13 +3663,14 @@ static int mqtt5_client_receive_assigned_client_id_fn(struct aws_allocator *allo
     s_wait_for_connected_lifecycle_event(&test_context);
 
     struct aws_byte_cursor assigned_client_id = aws_byte_cursor_from_c_str(s_receive_assigned_client_id_client_id);
-
+    struct aws_byte_cursor negotiated_settings_client_id =
+        aws_byte_cursor_from_buf(&client->negotiated_settings.client_id_storage);
     /* Test that Assigned Client ID is stored */
     ASSERT_BIN_ARRAYS_EQUALS(
         assigned_client_id.ptr,
         assigned_client_id.len,
-        client->negotiated_settings.client_id.ptr,
-        client->negotiated_settings.client_id.len);
+        negotiated_settings_client_id.ptr,
+        negotiated_settings_client_id.len);
 
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
