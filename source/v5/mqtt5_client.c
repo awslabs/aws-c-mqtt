@@ -1571,8 +1571,8 @@ static void s_aws_mqtt5_client_on_connack(
         /* Disconnect if the server is attempting to connect the client to an unexpected session */
         if (client->config->session_behavior == AWS_MQTT5_CSBT_CLEAN || client->has_connected_successfully == false) {
             s_aws_mqtt5_client_emit_final_lifecycle_event(
-                client, AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION, connack_view, NULL);
-            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
+                client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION, connack_view, NULL);
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
             return;
         }
     }
@@ -2107,15 +2107,6 @@ int aws_mqtt5_client_publish(
         aws_mqtt5_operation_publish_new(client->allocator, client, publish_options, completion_options);
 
     if (publish_op == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    if (publish_options->qos > client->negotiated_settings.maximum_qos) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_publish_view - unsupported QoS value in PUBLISH packet options: %d",
-            (void *)publish_options,
-            (int)publish_options->qos);
         return AWS_OP_ERR;
     }
 
