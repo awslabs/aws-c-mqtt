@@ -500,9 +500,9 @@ static void s_aws_mqtt5_client_operational_state_reset(
     bool is_final) {
     s_complete_operation_list(&client_operational_state->queued_operations, completion_error_code);
     s_complete_operation_list(&client_operational_state->write_completion_operations, completion_error_code);
-    s_complete_operation_list(&client_operational_state->unacked_operations, completion_error_code);
 
     if (is_final) {
+        s_complete_operation_list(&client_operational_state->unacked_operations, AWS_ERROR_MQTT5_CLIENT_TERMINATED);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
     } else {
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
