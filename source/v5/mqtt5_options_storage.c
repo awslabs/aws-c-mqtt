@@ -321,11 +321,6 @@ int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect
                 (void *)connect_options);
             return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
         }
-        if (connect_options->username->len == 0) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_connect_view - username empty", (void *)connect_options);
-            return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
-        }
     }
 
     if (connect_options->password != NULL) {

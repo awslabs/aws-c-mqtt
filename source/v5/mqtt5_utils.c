@@ -112,10 +112,10 @@ int aws_mqtt5_negotiated_settings_init(
     struct aws_allocator *allocator,
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_byte_cursor *client_id) {
-    negotiated_settings->allocator = allocator;
     if (aws_byte_buf_init(&negotiated_settings->client_id_storage, allocator, client_id->len)) {
         return AWS_OP_ERR;
     }
+
     if (aws_byte_buf_append_dynamic(&negotiated_settings->client_id_storage, client_id)) {
         return AWS_OP_ERR;
     }
@@ -126,19 +126,18 @@ int aws_mqtt5_negotiated_settings_init(
 int aws_mqtt5_negotiated_settings_apply_client_id(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_byte_cursor *client_id) {
-    if (aws_byte_buf_append_dynamic(&negotiated_settings->client_id_storage, client_id)) {
-        return AWS_OP_ERR;
+
+    if (negotiated_settings->client_id_storage.len == 0) {
+        if (aws_byte_buf_append_dynamic(&negotiated_settings->client_id_storage, client_id)) {
+            return AWS_OP_ERR;
+        }
     }
 
     return AWS_OP_SUCCESS;
 }
 
 void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings) {
-    if (negotiated_settings == NULL) {
-        return;
-    }
     aws_byte_buf_clean_up(&negotiated_settings->client_id_storage);
-    // aws_mem_release(negotiated_settings->allocator, &negotiated_settings);
 }
 
 /** Assign defaults values to negotiated_settings */

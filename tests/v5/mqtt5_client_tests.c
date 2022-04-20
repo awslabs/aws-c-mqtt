@@ -3421,9 +3421,12 @@ static int s_aws_mqtt5_mock_server_handle_puback(
     ASSERT_INT_EQUALS(puback_view->packet_id, s_puback_packet_id);
     ASSERT_TRUE(puback_view->reason_code == AWS_MQTT5_PARC_SUCCESS);
 
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = connection->test_fixture;
     struct aws_mqtt5_server_send_qos1_publish_context *publish_context =
         connection->test_fixture->mock_server_user_data;
+    aws_mutex_lock(&test_fixture->lock);
     publish_context->connack_checked = true;
+    aws_mutex_unlock(&test_fixture->lock);
 
     return AWS_OP_SUCCESS;
 }
