@@ -1053,10 +1053,11 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     bool resume_session = s_should_resume_session(client);
     struct aws_mqtt5_packet_connect_view connect_view = client->config->connect.storage_view;
     connect_view.clean_start = !resume_session;
-    if (!resume_session) {
-        s_aws_mqtt5_client_clear_unacked_operations(
-            &client->operational_state, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
-    }
+    /* steve test if this is necessary for any tests to succeed
+        if (!resume_session) {
+            s_aws_mqtt5_client_clear_unacked_operations(
+                &client->operational_state, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
+        }*/
 
     aws_mqtt5_negotiated_settings_reset(&client->negotiated_settings, &connect_view);
     connect_view.client_id = aws_byte_cursor_from_buf(&client->negotiated_settings.client_id_storage);
