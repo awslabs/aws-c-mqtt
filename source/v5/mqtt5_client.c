@@ -1575,6 +1575,14 @@ static void s_aws_mqtt5_client_on_connack(
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
             return;
         }
+    } else {
+        /* TODO remove comment
+         * 3.2.2-4 If the client has a session state and recieves a session present set to 0, it must discard
+         * the existing session state or disconnect. We could clear the unacked list here to comply with this.
+         */
+
+        s_complete_operation_list(&client->operational_state.unacked_operations, AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+        aws_hash_table_clear(&client->operational_state.unacked_operations_table);
     }
 
     s_change_current_state(client, AWS_MCS_CONNECTED);

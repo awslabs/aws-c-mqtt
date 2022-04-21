@@ -1484,6 +1484,14 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
         return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
     }
 
+    if (publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE && publish_view->duplicate == true) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_publish_view - duplicate flag must be set to 0 for QoS 0 messages",
+            (void *)publish_view);
+        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+    }
+
     /* 0-length topic is valid if there's an alias, otherwise we need a valid topic */
     if (publish_view->topic.len == 0) {
         if (publish_view->topic_alias == NULL) {
@@ -1623,6 +1631,14 @@ static int s_aws_mqtt5_packet_publish_view_validate_vs_connection_settings(
                     (int)settings->topic_alias_maximum_to_server);
                 return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
             }
+        }
+
+        if (publish_view->retain && settings->retain_available == false) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_publish_view - server does not support Retain",
+                (void *)publish_view);
+            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
         }
     }
 
