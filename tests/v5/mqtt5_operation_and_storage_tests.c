@@ -1187,7 +1187,8 @@ static int s_mqtt5_puback_storage_new_set_all_fn(struct aws_allocator *allocator
 
 AWS_TEST_CASE(mqtt5_puback_storage_new_set_all, s_mqtt5_puback_storage_new_set_all_fn)
 
-static const enum aws_mqtt5_qos s_maximum_qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;
+static const enum aws_mqtt5_qos s_maximum_qos_at_least_once = AWS_MQTT5_QOS_AT_LEAST_ONCE;
+static const enum aws_mqtt5_qos s_maximum_qos_at_most_once = AWS_MQTT5_QOS_AT_MOST_ONCE;
 static const uint16_t s_keep_alive_interval_seconds = 999;
 static const uint32_t s_session_expiry_interval = 999;
 static const uint16_t s_receive_maximum = 999;
@@ -1301,7 +1302,6 @@ AWS_TEST_CASE(mqtt5_negotiated_settings_reset_test, mqtt5_negotiated_settings_re
 
 static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    (void)allocator;
 
     /* aws_mqtt5_negotiated_settings used for testing */
     struct aws_mqtt5_negotiated_settings negotiated_settings;
@@ -1340,7 +1340,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
 
     /* Apply server settings to properties in connack_view */
     connack_view.session_present = true;
-    connack_view.maximum_qos = &s_maximum_qos;
+    connack_view.maximum_qos = &s_maximum_qos_at_least_once;
     connack_view.session_expiry_interval = &s_session_expiry_interval;
     connack_view.receive_maximum = &s_receive_maximum;
     connack_view.retain_available = &s_retain_available;
@@ -1354,7 +1354,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
     aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
 
     ASSERT_TRUE(negotiated_settings.rejoined_session);
-    ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos);
+    ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos_at_least_once);
     ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, *connack_view.session_expiry_interval);
     ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, *connack_view.receive_maximum);
     ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, *connack_view.maximum_packet_size);
@@ -1371,6 +1371,97 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
 }
 
 AWS_TEST_CASE(mqtt5_negotiated_settings_apply_connack_test, mqtt5_negotiated_settings_apply_connack_test_fn)
+
+static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    /* aws_mqtt5_negotiated_settings used for client */
+    struct aws_mqtt5_negotiated_settings negotiated_settings;
+    AWS_ZERO_STRUCT(negotiated_settings);
+
+    /* An aws_mqtt5_packet_connect_view with no user set settings to reset negotiated_settings */
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 0,
+    };
+
+    /* reset negotiated_settings to default values */
+    aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
+
+    /* Simulate negotiated settings that the client may have set to values different from incoming CONNACK settings */
+    negotiated_settings.session_expiry_interval = 123;
+    negotiated_settings.maximum_qos = s_maximum_qos_at_least_once;
+    negotiated_settings.receive_maximum_from_server = 123;
+    negotiated_settings.maximum_packet_size_to_server = 123;
+    negotiated_settings.topic_alias_maximum_to_server = 123;
+    negotiated_settings.topic_alias_maximum_to_client = 123;
+    negotiated_settings.server_keep_alive = 123;
+
+    /* CONNACK settings from a server that should overwrite client settings */
+    struct aws_mqtt5_packet_connack_view connack_view = {
+        .session_present = false,
+        .server_keep_alive = &s_keep_alive_interval_seconds,
+        .maximum_qos = &s_maximum_qos_at_most_once,
+        .session_expiry_interval = &s_session_expiry_interval,
+        .receive_maximum = &s_receive_maximum,
+        .maximum_packet_size = &s_maximum_packet_size,
+        .topic_alias_maximum = &s_topic_alias_maximum,
+        .retain_available = &s_retain_available,
+        .wildcard_subscriptions_available = &s_wildcard_subscriptions_available,
+        .subscription_identifiers_available = &s_subscription_identifiers_available,
+        .shared_subscriptions_available = &s_shared_subscriptions_available,
+    };
+
+    /* Apply CONNACK settings to client values in negotiated_settings */
+    aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
+
+    /* Assert values that should have been overwritten have been overwritten */
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, s_keep_alive_interval_seconds);
+    ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos_at_most_once);
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, s_session_expiry_interval);
+    ASSERT_UINT_EQUALS(negotiated_settings.receive_maximum_from_server, s_receive_maximum);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, s_maximum_packet_size);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, s_topic_alias_maximum);
+    ASSERT_FALSE(negotiated_settings.retain_available);
+    ASSERT_FALSE(negotiated_settings.wildcard_subscriptions_available);
+    ASSERT_FALSE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_FALSE(negotiated_settings.shared_subscriptions_available);
+
+    /* reset negotiated_settings to default values */
+    aws_mqtt5_negotiated_settings_reset(&negotiated_settings, &connect_view);
+
+    /* Simulate negotiated settings that would change based on default/missing settings from a CONNACK */
+    negotiated_settings.session_expiry_interval = s_session_expiry_interval_seconds;
+
+    /* NULL CONNACK values that result in an override in negotiated settings */
+    connack_view.server_keep_alive = NULL;
+    connack_view.topic_alias_maximum = NULL;
+    connack_view.maximum_qos = NULL;
+    connack_view.session_expiry_interval = NULL;
+    connack_view.receive_maximum = NULL;
+    connack_view.retain_available = NULL;
+    connack_view.maximum_packet_size = NULL;
+    connack_view.wildcard_subscriptions_available = NULL;
+    connack_view.subscription_identifiers_available = NULL;
+    connack_view.shared_subscriptions_available = NULL;
+
+    /* Apply CONNACK settings to client values in negotiated_settings */
+    aws_mqtt5_negotiated_settings_apply_connack(&negotiated_settings, &connack_view);
+
+    /* Assert values that should have been overwritten have been overwritten */
+    ASSERT_UINT_EQUALS(negotiated_settings.server_keep_alive, 0);
+    ASSERT_UINT_EQUALS(negotiated_settings.topic_alias_maximum_to_server, 0);
+    ASSERT_TRUE(negotiated_settings.maximum_qos == s_maximum_qos_at_least_once);
+    ASSERT_UINT_EQUALS(negotiated_settings.session_expiry_interval, s_session_expiry_interval_seconds);
+    ASSERT_TRUE(negotiated_settings.retain_available);
+    ASSERT_UINT_EQUALS(negotiated_settings.maximum_packet_size_to_server, AWS_MQTT5_MAXIMUM_PACKET_SIZE);
+    ASSERT_TRUE(negotiated_settings.wildcard_subscriptions_available);
+    ASSERT_TRUE(negotiated_settings.subscription_identifiers_available);
+    ASSERT_TRUE(negotiated_settings.shared_subscriptions_available);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_negotiated_settings_server_override_test, mqtt5_negotiated_settings_server_override_test_fn)
 
 static const struct aws_byte_cursor s_topic = {
     .ptr = (uint8_t *)s_unsub_topic_filter1,
@@ -1821,6 +1912,8 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
 
     /* this keeps operation processing tests from failing operations due to a 0 maximum packet size */
     test_context->dummy_client.negotiated_settings.maximum_packet_size_to_server = AWS_MQTT5_MAXIMUM_PACKET_SIZE;
+
+    test_context->dummy_client.negotiated_settings.maximum_qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;
 
     /* this keeps operation processing tests from crashing when dereferencing config options */
     test_context->dummy_client.config = &test_context->dummy_client_options;

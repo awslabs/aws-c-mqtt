@@ -188,7 +188,7 @@ enum aws_mqtt5_lifecycle_state {
     AWS_MQTT5_LS_CONNECTED,
 };
 
-/* STEVE Add operation related notes for timeout_operations list
+/*
  * Operation-related state notes
  *
  * operation flow:

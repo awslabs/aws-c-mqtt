@@ -35,11 +35,6 @@ enum aws_mqtt5_client_session_behavior_type {
      * Always attempt to rejoin an existing session after an initial connection success.
      */
     AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS,
-
-    /**
-     * Every CONNECT will attempt to rejoin an existing session.
-     */
-    AWS_MQTT5_CSBT_REJOIN_ALWAYS,
 };
 
 /*
@@ -274,6 +269,8 @@ struct aws_mqtt5_negotiated_settings {
     bool subscription_identifiers_available;
     bool shared_subscriptions_available;
     bool rejoined_session;
+
+    struct aws_byte_buf client_id_storage;
 };
 
 /**

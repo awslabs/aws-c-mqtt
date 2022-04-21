@@ -169,6 +169,8 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 
     aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
 
+    aws_mqtt5_negotiated_settings_clean_up(&client->negotiated_settings);
+
     aws_http_message_release(client->handshake);
 
     aws_mqtt5_encoder_clean_up(&client->encoder);
@@ -874,7 +876,6 @@ on_error:
 }
 
 static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client) {
-    (void)client;
     AWS_ASSERT(client->current_state == AWS_MCS_STOPPED || client->current_state == AWS_MCS_PENDING_RECONNECT);
 
     client->current_state = AWS_MCS_CONNECTING;
@@ -1029,8 +1030,7 @@ static void s_aws_mqtt5_on_socket_write_completion(
 static bool s_should_resume_session(const struct aws_mqtt5_client *client) {
     enum aws_mqtt5_client_session_behavior_type session_behavior = client->config->session_behavior;
 
-    return session_behavior == AWS_MQTT5_CSBT_REJOIN_ALWAYS ||
-           (session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully);
+    return session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully;
 }
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {
@@ -1048,6 +1048,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     connect_view.clean_start = !resume_session;
 
     aws_mqtt5_negotiated_settings_reset(&client->negotiated_settings, &connect_view);
+    connect_view.client_id = aws_byte_cursor_from_buf(&client->negotiated_settings.client_id_storage);
 
     struct aws_mqtt5_operation_connect *connect_op = aws_mqtt5_operation_connect_new(client->allocator, &connect_view);
     if (connect_op == NULL) {
@@ -1564,6 +1565,18 @@ static void s_aws_mqtt5_client_on_connack(
     }
 
     aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
+
+    /* Check if a session is being rejoined and perform associated rejoin connect logic here */
+    if (client->negotiated_settings.rejoined_session) {
+        /* Disconnect if the server is attempting to connect the client to an unexpected session */
+        if (client->config->session_behavior == AWS_MQTT5_CSBT_CLEAN || client->has_connected_successfully == false) {
+            s_aws_mqtt5_client_emit_final_lifecycle_event(
+                client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION, connack_view, NULL);
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
+            return;
+        }
+    }
+
     s_change_current_state(client, AWS_MCS_CONNECTED);
     s_aws_mqtt5_client_emit_connection_success_lifecycle_event(client, connack_view);
 }
@@ -1845,6 +1858,11 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     };
 
     if (aws_mqtt5_encoder_init(&client->encoder, allocator, &encoder_options)) {
+        goto on_error;
+    }
+
+    if (aws_mqtt5_negotiated_settings_init(
+            allocator, &client->negotiated_settings, &options->connect_options->client_id)) {
         goto on_error;
     }
 
