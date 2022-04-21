@@ -494,6 +494,13 @@ static void s_enqueue_operation_front(struct aws_mqtt5_client *client, struct aw
     s_reevaluate_service_task(client);
 }
 
+static void s_aws_mqtt5_client_clear_unacked_operations(
+    struct aws_mqtt5_client_operational_state *client_operational_state,
+    int completion_error_code) {
+    s_complete_operation_list(&client_operational_state->unacked_operations, completion_error_code);
+    aws_hash_table_clear(&client_operational_state->unacked_operations_table);
+}
+
 static void s_aws_mqtt5_client_operational_state_reset(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     int completion_error_code,
@@ -502,7 +509,7 @@ static void s_aws_mqtt5_client_operational_state_reset(
     s_complete_operation_list(&client_operational_state->write_completion_operations, completion_error_code);
 
     if (is_final) {
-        s_complete_operation_list(&client_operational_state->unacked_operations, AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+        s_aws_mqtt5_client_clear_unacked_operations(client_operational_state, AWS_ERROR_MQTT5_CLIENT_TERMINATED);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
     } else {
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
@@ -1046,6 +1053,10 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     bool resume_session = s_should_resume_session(client);
     struct aws_mqtt5_packet_connect_view connect_view = client->config->connect.storage_view;
     connect_view.clean_start = !resume_session;
+    if (!resume_session) {
+        s_aws_mqtt5_client_clear_unacked_operations(
+            &client->operational_state, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
+    }
 
     aws_mqtt5_negotiated_settings_reset(&client->negotiated_settings, &connect_view);
     connect_view.client_id = aws_byte_cursor_from_buf(&client->negotiated_settings.client_id_storage);
@@ -1575,14 +1586,6 @@ static void s_aws_mqtt5_client_on_connack(
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
             return;
         }
-    } else {
-        /* TODO remove comment
-         * 3.2.2-4 If the client has a session state and recieves a session present set to 0, it must discard
-         * the existing session state or disconnect. We could clear the unacked list here to comply with this.
-         */
-
-        s_complete_operation_list(&client->operational_state.unacked_operations, AWS_ERROR_MQTT5_CLIENT_TERMINATED);
-        aws_hash_table_clear(&client->operational_state.unacked_operations_table);
     }
 
     s_change_current_state(client, AWS_MCS_CONNECTED);
@@ -2330,8 +2333,8 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
             &client->operational_state.queued_operations, &client->operational_state.unacked_operations);
     } else {
         /* fail all unacked_operations */
-        s_complete_operation_list(
-            &client->operational_state.unacked_operations, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION);
+        s_aws_mqtt5_client_clear_unacked_operations(
+            &client->operational_state, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION);
     }
 
     aws_hash_table_clear(&client->operational_state.unacked_operations_table);
