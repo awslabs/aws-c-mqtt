@@ -3848,6 +3848,7 @@ static int mqtt5_client_restore_session_on_ping_timeout_reconnect_fn(struct aws_
     client_options.session_behavior = AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS;
     /* faster ping timeout */
     client_options.ping_timeout_ms = 3000;
+    connect_options.keep_alive_interval_seconds = 5;
 
     /* don't respond to PINGREQs */
     server_function_table.packet_handlers[AWS_MQTT5_PT_PINGREQ] = NULL;
@@ -3933,11 +3934,6 @@ static int mqtt5_client_restore_session_on_ping_timeout_reconnect_fn(struct aws_
 AWS_TEST_CASE(
     mqtt5_client_restore_session_on_ping_timeout_reconnect,
     mqtt5_client_restore_session_on_ping_timeout_reconnect_fn);
-
-/*
-If a CONNACK packet is received with Clean Start is set to 1, the Client and Server MUST discard any
-existing Session and start a new Session.
-*/
 
 /* If the server returns a Clean Session, client must discard any existing Session and start a new Session */
 static int mqtt5_client_discard_session_on_server_clean_start_fn(struct aws_allocator *allocator, void *ctx) {
