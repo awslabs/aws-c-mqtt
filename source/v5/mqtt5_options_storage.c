@@ -1484,12 +1484,21 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
         return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
     }
 
-    if (publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE && publish_view->duplicate == true) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_publish_view - duplicate flag must be set to 0 for QoS 0 messages",
-            (void *)publish_view);
-        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+    if (publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE) {
+        if (publish_view->duplicate) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_publish_view - duplicate flag must be set to 0 for QoS 0 messages",
+                (void *)publish_view);
+            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        }
+        if (publish_view->packet_id != 0) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_publish_view - Packet ID must not be set for QoS 0 messages",
+                (void *)publish_view);
+            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        }
     }
 
     /* 0-length topic is valid if there's an alias, otherwise we need a valid topic */

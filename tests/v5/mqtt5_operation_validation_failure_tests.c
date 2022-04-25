@@ -862,6 +862,13 @@ static void s_make_qos0_duplicate_true_publish_view(struct aws_mqtt5_packet_publ
 
 AWS_VALIDATION_FAILURE_TEST3(publish, qos0_duplicate_true, s_good_publish_view, s_make_qos0_duplicate_true_publish_view)
 
+static void s_make_qos0_with_packet_id_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->qos = AWS_MQTT5_QOS_AT_MOST_ONCE;
+    view->packet_id = 1;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(publish, qos0_with_packet_id, s_good_publish_view, s_make_qos0_with_packet_id_publish_view)
+
 #define AWS_CLIENT_CREATION_VALIDATION_FAILURE(failure_reason, base_options, mutate_function)                          \
     static int s_mqtt5_client_options_validation_failure_##failure_reason##_fn(                                        \
         struct aws_allocator *allocator, void *ctx) {                                                                  \

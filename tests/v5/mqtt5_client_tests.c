@@ -4021,3 +4021,287 @@ static int mqtt5_client_discard_session_on_server_clean_start_fn(struct aws_allo
 AWS_TEST_CASE(
     mqtt5_client_discard_session_on_server_clean_start,
     mqtt5_client_discard_session_on_server_clean_start_fn);
+
+static uint16_t test_low_server_receive_maximum = 5;
+
+struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+    bool unsubscribe_received;
+    bool puback_received;
+    bool pingreq_received;
+};
+
+static int s_aws_mqtt5_mock_server_handle_connect_low_receive_maximum(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)user_data;
+    (void)packet;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+    /* Set low receive maximum for client to use */
+    connack_view.receive_maximum = &test_low_server_receive_maximum;
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+static int s_aws_mqtt5_mock_server_handle_pingreq_low_receive_maximum(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *received_context =
+        connection->test_fixture->mock_server_user_data;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = received_context->test_fixture;
+
+    if (received_context->pingreq_received == false) {
+        struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_topic,
+                    .len = AWS_ARRAY_SIZE(s_topic) - 1,
+                },
+            .packet_id = s_puback_packet_id,
+        };
+
+        s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &qos1_publish_view);
+
+        aws_mutex_lock(&test_fixture->lock);
+        received_context->pingreq_received = true;
+        aws_mutex_unlock(&test_fixture->lock);
+    }
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PINGRESP, NULL);
+}
+
+static int s_aws_mqtt5_mock_server_handle_puback_low_receive_maximum(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *received_context =
+        connection->test_fixture->mock_server_user_data;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = received_context->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
+    received_context->puback_received = true;
+    aws_mutex_unlock(&test_fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_mock_server_handle_subscribe_low_receive_maximum(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *received_context =
+        connection->test_fixture->mock_server_user_data;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = received_context->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
+    test_fixture->subscribe_complete = true;
+    aws_mutex_unlock(&test_fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_mock_server_handle_unsubscribe_low_receive_maximum(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *received_context =
+        connection->test_fixture->mock_server_user_data;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = received_context->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
+    received_context->unsubscribe_received = true;
+    aws_mutex_unlock(&test_fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static bool s_receive_maximum_qos1_publishes_sent(void *arg) {
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *context = arg;
+    struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
+    return test_context->publishes_received >= test_low_server_receive_maximum;
+}
+
+static void s_receive_maximum_wait_for_publish_sends(
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *context) {
+    struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_receive_maximum_qos1_publishes_sent, context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+static bool s_receive_maximum_received_puback(void *arg) {
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *context = arg;
+    return context->puback_received;
+}
+
+static void s_receive_maximum_wait_for_puback(
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *context) {
+    struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_receive_maximum_received_puback, context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+static bool s_receive_maximum_received_unsubscribe(void *arg) {
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *context = arg;
+    return context->unsubscribe_received;
+}
+
+static void s_receive_maximum_wait_for_unsubscribe(
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *context) {
+    struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_receive_maximum_received_unsubscribe, context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+static bool s_receive_maximum_received_pingreq(void *arg) {
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *context = arg;
+    return context->pingreq_received;
+}
+
+static void s_receive_maximum_wait_for_pingreq(
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context *context) {
+    struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_receive_maximum_received_pingreq, context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+static int mqtt5_client_hit_receive_maximum_and_send_other_packets_fn(struct aws_allocator *allocator, void *ctx) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* Set to rejoin */
+    client_options.session_behavior = AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS;
+    /* faster ping timeout */
+    client_options.ping_timeout_ms = 3000;
+    connect_options.keep_alive_interval_seconds = 5;
+
+    /* mock server will return a CONNACK with a low receive maximum */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_aws_mqtt5_mock_server_handle_connect_low_receive_maximum;
+    /* mock server will not send PUBACKS but keep track of how many PUBLISH packets were sent to it */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_mock_server_handle_timeout_publish;
+    /* mock server will respond to PINGREQ and send QoS1 PUBLISH from Server */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PINGREQ] =
+        s_aws_mqtt5_mock_server_handle_pingreq_low_receive_maximum;
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBACK] =
+        s_aws_mqtt5_mock_server_handle_puback_low_receive_maximum;
+    server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_aws_mqtt5_mock_server_handle_subscribe_low_receive_maximum;
+    server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
+        s_aws_mqtt5_mock_server_handle_unsubscribe_low_receive_maximum;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_receive_maximum_other_packets_recieved_context other_packets_context = {
+        .test_fixture = &test_context,
+        .unsubscribe_received = false,
+        .puback_received = false,
+        .pingreq_received = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &other_packets_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    /* Publish one more QoS1 packets than the receive maximum sent back by the mock server */
+    for (size_t i = 0; i <= test_low_server_receive_maximum; ++i) {
+        struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_topic,
+                    .len = AWS_ARRAY_SIZE(s_topic) - 1,
+                },
+        };
+
+        struct aws_mqtt5_publish_completion_options completion_options = {
+            .completion_callback = s_receive_stored_session_publish_completion_fn,
+            .completion_user_data = &test_context,
+        };
+
+        ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &qos1_publish_view, &completion_options));
+    }
+
+    /* Proceed after expected number of PUBLISH packets are received by mock server */
+    s_receive_maximum_wait_for_publish_sends(&other_packets_context);
+
+    /* Check that PINGREQ is being sent while receive maximum is reached */
+    s_receive_maximum_wait_for_pingreq(&other_packets_context);
+
+    /* Check that PUBACK is being sent while Client receive maximum is reached */
+    s_receive_maximum_wait_for_puback(&other_packets_context);
+
+    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
+        .subscriptions = s_subscriptions,
+        .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
+    };
+
+    aws_mqtt5_client_subscribe(client, &subscribe_view, NULL);
+
+    /* Check that SUBSCRIBE is being sent while Client receive maximum is reached */
+    s_wait_for_suback_received(&test_context);
+
+    /* Check that SUBSCRIBE is still being sent by Client while receive maximum is reached */
+    // s_receive_maximum_wait_for_subscribe(&other_packets_context);
+
+    struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
+        .topic_filters = s_sub_pub_unsub_topic_filters,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_sub_pub_unsub_topic_filters),
+    };
+    aws_mqtt5_client_unsubscribe(client, &unsubscribe_view, NULL);
+
+    /* Check that UNSUBSCRIBE is still being sent by Client while receive maximum is reached */
+    s_receive_maximum_wait_for_unsubscribe(&other_packets_context);
+
+    /* Insure that only 5 PUBLISH packets were received by mock server */
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_hit_receive_maximum_and_send_other_packets,
+    mqtt5_client_hit_receive_maximum_and_send_other_packets_fn)
