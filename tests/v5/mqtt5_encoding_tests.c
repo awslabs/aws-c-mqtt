@@ -1276,4 +1276,5 @@ static int mqtt5_first_byte_reserved_header_check_disconnect_fn(struct aws_alloc
 
     return AWS_OP_SUCCESS;
 }
+
 AWS_TEST_CASE(mqtt5_first_byte_reserved_header_check_disconnect, mqtt5_first_byte_reserved_header_check_disconnect_fn)
