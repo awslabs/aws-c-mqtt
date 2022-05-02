@@ -1,0 +1,23 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      # installing cmake
+      - wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+      - add-apt-repository ppa:ubuntu-toolchain-r/test
+      - apt-add-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-8 main"
+      - apt-get update -y
+      - apt-get install clang-8 cmake softhsm -y -f
+      - apt-get install git -y -f
+  pre_build:
+    commands:
+      - export CC=clang-8
+      - export CXX=clang++-8
+  build:
+    commands:
+      - echo Build Commit $CODEBUILD_RESOLVED_SOURCE_VERSION started on `date` 
+      - echo "INSTALLING LIBS"
+      - $CODEBUILD_SRC_DIR/codebuild/samples/setup-libs.sh
+  post_build:
+    commands:
+      - echo Build completed on `date`
