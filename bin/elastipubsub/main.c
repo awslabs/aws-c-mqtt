@@ -63,8 +63,8 @@ struct app_ctx {
 
 static void s_usage(int exit_code) {
 
-    fprintf(stderr, "usage: elastipubsub [options] endpoint\n");
-    fprintf(stderr, " endpoint: url to connect to\n");
+    fprintf(stderr, "usage: elastipubsub [options] --endpoint\n");
+    fprintf(stderr, " --endpoint: url to connect to \n");
     fprintf(stderr, "\n Options:\n\n");
     fprintf(stderr, "      --cacert FILE: path to a CA certficate file.\n");
     fprintf(stderr, "      --cert FILE: path to a PEM encoded certificate to use with mTLS\n");
