@@ -337,10 +337,12 @@ static void s_mqtt_client_shutdown(
                 }
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
+
             if (!stop_reconnect) {
-                /* Attempt the reconnect immediately, which will schedule a task to retry if it doesn't succeed */
-                connection->reconnect_task->task.fn(
-                    &connection->reconnect_task->task, connection->reconnect_task->task.arg, AWS_TASK_STATUS_RUN_READY);
+                struct aws_event_loop *el =
+                    aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
+                aws_event_loop_schedule_task_future(
+                    el, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt);
             }
             break;
         }
@@ -609,8 +611,6 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             AWS_LS_MQTT_CLIENT,
             "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
             (void *)connection,
-            connection->reconnect_timeouts.current);
-
         /* Check before multiplying to avoid potential overflow */
         if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max / 2) {
             connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
@@ -620,7 +620,6 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
 
         if (s_mqtt_client_connect(
                 connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
-
             /* If reconnect attempt failed, schedule the next attempt */
             struct aws_event_loop *el =
                 aws_event_loop_group_get_next_loop(connection->client->bootstrap->event_loop_group);
@@ -1657,6 +1656,8 @@ int aws_mqtt_client_connection_disconnect(
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
+    connection->reconnect_timeouts.next_attempt_reset_timer = 0;
+
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Closing connection", (void *)connection);
 
     mqtt_disconnect_impl(connection, AWS_OP_SUCCESS);
@@ -2522,7 +2523,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
         /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
          * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
-         * fire fire the on_completion callbacks. */
+         * fire the on_completion callbacks. */
         struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(task_arg->connection, packet_id);
         if (!timeout_task_arg) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
