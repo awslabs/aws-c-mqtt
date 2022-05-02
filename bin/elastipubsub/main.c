@@ -63,8 +63,8 @@ struct app_ctx {
 
 static void s_usage(int exit_code) {
 
-    fprintf(stderr, "usage: elastipubsub [options] endpoint\n");
-    fprintf(stderr, " endpoint: url to connect to\n");
+    fprintf(stderr, "usage: elastipubsub [options] --endpoint\n");
+    fprintf(stderr, " --endpoint: url to connect to \n");
     fprintf(stderr, "\n Options:\n\n");
     fprintf(stderr, "      --cacert FILE: path to a CA certficate file.\n");
     fprintf(stderr, "      --cert FILE: path to a PEM encoded certificate to use with mTLS\n");
@@ -95,14 +95,16 @@ static struct aws_cli_option s_long_options[] = {
     {"pops", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'p'},
     {"verbose", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'v'},
     {"help", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'h'},
+    {"endpoint", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'E'},
     /* Per getopt(3) the last element of the array has to be filled with all zeros */
     {NULL, AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 0},
 };
 
 static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
+    bool uri_found = false;
     while (true) {
         int option_index = 0;
-        int c = aws_cli_getopt_long(argc, argv, "a:c:C:e:f:i:k:l:n:p:v:h", s_long_options, &option_index);
+        int c = aws_cli_getopt_long(argc, argv, "a:c:C:e:f:i:k:l:n:p:v:h:E", s_long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -158,24 +160,26 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
             case 'h':
                 s_usage(0);
                 break;
+            case 'E': {
+                struct aws_byte_cursor uri_cursor = aws_byte_cursor_from_c_str(aws_cli_positional_arg);
+                if (aws_uri_init_parse(&ctx->uri, ctx->allocator, &uri_cursor)) {
+                    fprintf(
+                        stderr,
+                        "Failed to parse uri %s with error %s\n",
+                        (char *)uri_cursor.ptr,
+                        aws_error_debug_str(aws_last_error()));
+                    s_usage(1);
+                }
+                uri_found = true;
+                break;
+            }
             default:
                 fprintf(stderr, "Unknown option\n");
                 s_usage(1);
         }
     }
 
-    if (aws_cli_optind < argc) {
-        struct aws_byte_cursor uri_cursor = aws_byte_cursor_from_c_str(argv[aws_cli_optind++]);
-
-        if (aws_uri_init_parse(&ctx->uri, ctx->allocator, &uri_cursor)) {
-            fprintf(
-                stderr,
-                "Failed to parse uri %s with error %s\n",
-                (char *)uri_cursor.ptr,
-                aws_error_debug_str(aws_last_error()));
-            s_usage(1);
-        };
-    } else {
+    if (!uri_found) {
         fprintf(stderr, "A URI for the request must be supplied.\n");
         s_usage(1);
     }
