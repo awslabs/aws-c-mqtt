@@ -611,6 +611,8 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             AWS_LS_MQTT_CLIENT,
             "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
             (void *)connection,
+            connection->reconnect_timeouts.current);
+
         /* Check before multiplying to avoid potential overflow */
         if (connection->reconnect_timeouts.current > connection->reconnect_timeouts.max / 2) {
             connection->reconnect_timeouts.current = connection->reconnect_timeouts.max;
