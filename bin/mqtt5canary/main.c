@@ -53,18 +53,35 @@ struct app_ctx {
 struct aws_mqtt5_canary_tester_options {
     uint16_t elg_max_threads;
     uint16_t client_count;
-    int tpm;
+    size_t tps;
+    uint64_t tps_sleep_time;
     size_t distributions_total;
+    bool apply_operations_to_all_clients;
 };
+
+static void s_aws_mqtt5_canary_update_tps_sleep_time(struct aws_mqtt5_canary_tester_options *tester_options) {
+    tester_options->tps_sleep_time =
+        (aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL) / tester_options->tps);
+}
+
+static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_tester_options *tester_options) {
+    tester_options->elg_max_threads = 4;
+    tester_options->client_count = 10;
+    /* Can do 200,000 accurately. caps around 260,000 tps */
+    tester_options->tps = 500;
+    tester_options->apply_operations_to_all_clients = false;
+
+    s_aws_mqtt5_canary_update_tps_sleep_time(tester_options);
+}
+
 struct aws_mqtt5_canary_test_client {
     struct aws_mqtt5_client *client;
     const struct aws_mqtt5_negotiated_settings *settings;
     struct aws_byte_cursor client_id;
-    /* Current number of active subscriptions */
     size_t subscription_count;
+    bool is_connected;
 
     size_t index;
-    bool is_connected;
 };
 
 typedef int(aws_mqtt5_canary_operation_fn)(struct aws_mqtt5_canary_test_client *test_client);
@@ -87,7 +104,7 @@ enum aws_mqtt5_canary_operations {
     AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE_BAD = 9,
     AWS_MQTT5_CANARY_OPERATION_PUBLISH_BAD_TOPIC = 10,
     AWS_MQTT5_CANARY_OPERATION_PUBLISH_BAD_PAYLOAD = 11,
-    AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC = 12,
+    AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS0 = 12,
     AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC = 13,
 };
 
@@ -139,45 +156,45 @@ static void s_aws_mqtt5_canary_init_operation_distributions(
         &distribution_storage[AWS_MQTT5_CANARY_OPERATION_SUBSCRIBE],
         distributions,
         AWS_MQTT5_CANARY_OPERATION_SUBSCRIBE,
-        10);
+        20);
     s_aws_mqtt5_canary_add_operation_distribution(
         tester_options,
         &distribution_storage[AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE],
         distributions,
         AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE,
-        10);
+        20);
     s_aws_mqtt5_canary_add_operation_distribution(
         tester_options,
         &distribution_storage[AWS_MQTT5_CANARY_OPERATION_PUBLISH_QOS0],
         distributions,
         AWS_MQTT5_CANARY_OPERATION_PUBLISH_QOS0,
         20);
+    s_aws_mqtt5_canary_add_operation_distribution(
+        tester_options,
+        &distribution_storage[AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS0],
+        distributions,
+        AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS0,
+        200);
 }
 
 static enum aws_mqtt5_canary_operations s_aws_mqtt5_canary_get_next_random_operation(
     struct aws_mqtt5_canary_tester_options *tester_options,
     struct aws_linked_list *distributions) {
+
     size_t next_weighted = rand() % tester_options->distributions_total;
+
     struct aws_linked_list_node *node = aws_linked_list_begin(distributions);
+
     while (node != aws_linked_list_end(distributions)) {
         struct operation_distribution *operation = AWS_CONTAINER_OF(node, struct operation_distribution, node);
-
-        node = aws_linked_list_next(node);
-
         if (next_weighted < operation->probability) {
             return operation->operation;
         }
-
         next_weighted -= operation->probability;
+        node = aws_linked_list_next(node);
     }
 
     return AWS_MQTT5_CANARY_OPERATION_NULL;
-}
-
-static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_tester_options *tester_options) {
-    tester_options->elg_max_threads = 4;
-    tester_options->client_count = 5;
-    tester_options->tpm = 50;
 }
 
 static void s_usage(int exit_code) {
@@ -305,6 +322,7 @@ static void s_handle_lifecycle_event_connection_success(
     test_client->is_connected = true;
     test_client->settings = settings;
     test_client->client_id = aws_byte_cursor_from_buf(&settings->client_id_storage);
+
     fprintf(
         stderr, "ID:" PRInSTR " Lifecycle Event: Connection Success\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
 }
@@ -323,7 +341,7 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
     switch (event->event_type) {
         case AWS_MQTT5_CLET_STOPPED:
             s_handle_lifecycle_event_stopped(event->user_data);
-            // printf("Lifecycle event: Stopped!\n");
+            printf("Lifecycle event: Stopped!\n");
             break;
 
         case AWS_MQTT5_CLET_ATTEMPTING_CONNECT:
@@ -337,13 +355,13 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
 
         case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
             s_handle_lifecycle_event_connection_success(event->user_data, event->settings);
-            // printf("Lifecycle event: Connection Success!\n");
+            printf("Lifecycle event: Connection Success!\n");
             break;
 
         case AWS_MQTT5_CLET_DISCONNECTION:
             s_handle_lifecycle_event_disconnection(event->user_data);
-            // printf("Lifecycle event: Disconnect!\n");
-            // printf("  Error Code: %d(%s)\n", event->error_code, aws_error_debug_str(event->error_code));
+            printf("Lifecycle event: Disconnect!\n");
+            printf("  Error Code: %d(%s)\n", event->error_code, aws_error_debug_str(event->error_code));
             break;
     }
 
@@ -368,6 +386,7 @@ static int s_aws_mqtt5_canary_operation_start(struct aws_mqtt5_canary_test_clien
         return AWS_OP_SUCCESS;
     }
     aws_mqtt5_client_start(test_client->client);
+
     fprintf(stderr, "ID:" PRInSTR " start\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
@@ -378,6 +397,7 @@ static int s_aws_mqtt5_canary_operation_stop(struct aws_mqtt5_canary_test_client
     }
     aws_mqtt5_client_stop(test_client->client, NULL, NULL);
     test_client->is_connected = false;
+
     fprintf(stderr, "ID:" PRInSTR " stop\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
@@ -405,6 +425,41 @@ static int s_aws_mqtt5_canary_operation_publish_qos0(struct aws_mqtt5_canary_tes
     aws_mqtt5_client_publish(test_client->client, &packet_publish_view, &publish_completion_options);
 
     fprintf(stderr, "ID:" PRInSTR " publish qos0\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    return AWS_OP_SUCCESS;
+}
+static int s_aws_mqtt5_canary_operation_publish_to_subscribed_topic_qos0(
+    struct aws_mqtt5_canary_test_client *test_client) {
+    if (!test_client->is_connected) {
+        return s_aws_mqtt5_canary_operation_start(test_client);
+    }
+
+    if (test_client->subscription_count < 1) {
+        return s_aws_mqtt5_canary_operation_publish_qos0(test_client);
+    }
+
+    char topic_array[256] = "";
+    snprintf(
+        topic_array,
+        sizeof topic_array,
+        PRInSTR "_%zu",
+        AWS_BYTE_CURSOR_PRI(test_client->client_id),
+        test_client->subscription_count - 1);
+
+    struct aws_mqtt5_publish_completion_options publish_completion_options = {
+        .completion_callback = NULL,
+        .completion_user_data = NULL,
+    };
+
+    struct aws_mqtt5_packet_publish_view packet_publish_view = {
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .topic = aws_byte_cursor_from_c_str(topic_array),
+        .retain = false,
+        .duplicate = false,
+    };
+
+    aws_mqtt5_client_publish(test_client->client, &packet_publish_view, &publish_completion_options);
+
+    fprintf(stderr, "ID:" PRInSTR " publish to subscribed topic qos0\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
 
@@ -465,6 +520,7 @@ static int s_aws_mqtt5_canary_operation_subscribe(struct aws_mqtt5_canary_test_c
     aws_mqtt5_client_subscribe(test_client->client, &subscribe_view, NULL);
 
     test_client->subscription_count++;
+
     fprintf(stderr, "ID:" PRInSTR " subscribe\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
@@ -490,6 +546,7 @@ static int s_aws_mqtt5_canary_operation_unsubscribe_bad(struct aws_mqtt5_canary_
     };
 
     aws_mqtt5_client_unsubscribe(test_client->client, &unsubscribe_view, NULL);
+
     fprintf(stderr, "ID:" PRInSTR " unsubscribe bad\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
@@ -523,6 +580,7 @@ static int s_aws_mqtt5_canary_operation_unsubscribe(struct aws_mqtt5_canary_test
     };
 
     aws_mqtt5_client_unsubscribe(test_client->client, &unsubscribe_view, NULL);
+
     fprintf(stderr, "ID:" PRInSTR " unsubscribe\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
@@ -530,20 +588,20 @@ static int s_aws_mqtt5_canary_operation_unsubscribe(struct aws_mqtt5_canary_test
 static struct aws_mqtt5_canary_operations_function_table s_aws_mqtt5_canary_operation_table = {
     .operation_by_operation_type =
         {
-            NULL,                                          /* null */
-            &s_aws_mqtt5_canary_operation_start,           /* start */
-            &s_aws_mqtt5_canary_operation_stop,            /* stop */
-            NULL,                                          /* destroy */
-            &s_aws_mqtt5_canary_operation_subscribe,       /* subscribe */
-            &s_aws_mqtt5_canary_operation_unsubscribe,     /* unsubscribe */
-            &s_aws_mqtt5_canary_operation_publish_qos0,    /* publish_qos0 */
-            &s_aws_mqtt5_canary_operation_publish_qos1,    /* publish_qos1 */
-            NULL,                                          /* subscribe_bad */
-            &s_aws_mqtt5_canary_operation_unsubscribe_bad, /* unsubscribe_bad */
-            NULL,                                          /* publish_bad_topic */
-            NULL,                                          /* publish_bad_payload */
-            NULL, /* AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC = 11, */
-            NULL  /* AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC = 12, */
+            NULL,                                                           /* null */
+            &s_aws_mqtt5_canary_operation_start,                            /* start */
+            &s_aws_mqtt5_canary_operation_stop,                             /* stop */
+            NULL,                                                           /* destroy */
+            &s_aws_mqtt5_canary_operation_subscribe,                        /* subscribe */
+            &s_aws_mqtt5_canary_operation_unsubscribe,                      /* unsubscribe */
+            &s_aws_mqtt5_canary_operation_publish_qos0,                     /* publish_qos0 */
+            &s_aws_mqtt5_canary_operation_publish_qos1,                     /* publish_qos1 */
+            NULL,                                                           /* subscribe_bad */
+            &s_aws_mqtt5_canary_operation_unsubscribe_bad,                  /* unsubscribe_bad */
+            NULL,                                                           /* publish_bad_topic */
+            NULL,                                                           /* publish_bad_payload */
+            &s_aws_mqtt5_canary_operation_publish_to_subscribed_topic_qos0, /* publish_to_subscribed_topic_qos1 */
+            NULL /* AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC = 12, */
         },
 };
 
@@ -729,17 +787,28 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Clients created\n");
 
     bool done = false;
+    uint64_t time_next_op = 0;
+    aws_high_res_clock_get_ticks(&time_next_op);
+
     while (!done) {
-        size_t client_index = rand() % tester_options.client_count;
+        uint64_t now = 0;
+        aws_high_res_clock_get_ticks(&now);
+        if (now >= time_next_op) {
+            time_next_op += tester_options.tps_sleep_time;
 
-        enum aws_mqtt5_canary_operations next_operation =
-            s_aws_mqtt5_canary_get_next_random_operation(&tester_options, &distributions);
+            enum aws_mqtt5_canary_operations next_operation =
+                s_aws_mqtt5_canary_get_next_random_operation(&tester_options, &distributions);
+            aws_mqtt5_canary_operation_fn *operation_fn =
+                s_aws_mqtt5_canary_operation_table.operation_by_operation_type[next_operation];
 
-        aws_mqtt5_canary_operation_fn *operation_fn =
-            s_aws_mqtt5_canary_operation_table.operation_by_operation_type[next_operation];
-        (*operation_fn)(&clients[client_index]);
-
-        aws_thread_current_sleep(10000000);
+            if (tester_options.apply_operations_to_all_clients) {
+                for (size_t i = 0; i < tester_options.client_count; ++i) {
+                    (*operation_fn)(&clients[i]);
+                }
+            } else {
+                (*operation_fn)(&clients[rand() % tester_options.client_count]);
+            }
+        }
     }
 
     return 0;
