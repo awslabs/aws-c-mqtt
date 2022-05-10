@@ -18,7 +18,7 @@ env:
   AWS_REGION: us-east-1
   #AWS_S3_CANARY_BUCKET: ${{ secrets.AWS_S3_CANARY_BUCKET_NAME }}
   AWS_S3_CANARY_BUCKET: ncbeard-super-tmp-bucket
-  COMMIT_SHA: {{ github.sha }}
+  COMMIT_SHA: ${{ github.sha }}
 
 jobs:
   linux-compat:
