@@ -16,7 +16,10 @@ env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_REGION: us-east-1
-  
+  #AWS_S3_CANARY_BUCKET: ${{ secrets.AWS_S3_CANARY_BUCKET_NAME }}
+  AWS_S3_CANARY_BUCKET: ncbeard-super-tmp-bucket
+  COMMIT_SHA: {{ github.sha }}
+
 jobs:
   linux-compat:
     runs-on: ubuntu-latest
@@ -118,4 +121,17 @@ jobs:
         chmod a+x builder
         ./builder build -p ${{ env.PACKAGE_NAME }} default-downstream
 
+  canary-hash-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check S3 for canary log
+      run: |
+        aws s3api head-object --bucket ${{env.AWS_S3_BUCKET}} --key ${{env.PACKAGE_NAME}}/${{env.COMMIT_SHA}}.log
+        if [[ $? == 0 ]]
+        then
+          echo "Canary log found!"
+        else
+          echo "Canary log was not found!"
+          exit 1
+        fi
 
