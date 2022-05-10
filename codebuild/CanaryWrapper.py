@@ -13,7 +13,6 @@ import os
 
 # TODO - split this into sub-files for easier management/modularity?
 # TODO - write a fallback using OS if psutil is not present?
-# TODO - find a way to check for expired credentials
 # TODO - create Cloudwatch dashboard(s)?
 
 # Code for metric collection, examination, exporting (cloudwatch, s3, etc)
@@ -68,6 +67,8 @@ class DataSnapshot():
                  cloudwatch_region="us-east-1",
                  s3_bucket_name="canary-wrapper-bucket"):
 
+        # Setting initial values
+        # ==================
         self.first_metric_call = True
         self.metrics = []
         self.metric_report_number = 0
@@ -80,6 +81,35 @@ class DataSnapshot():
         # Watched by the thread creating the snapshot. Will cause the thread to abort and return an error.
         self.abort_due_to_internal_error = False
 
+        self.git_hash = None
+        self.git_repo_name = None
+        self.git_hash_as_namespace = git_hash_as_namespace
+        self.git_fixed_namespace_text = git_fixed_namespace_text
+        self.git_metric_namespace = None
+
+        self.cloudwatch_region = cloudwatch_region
+        self.cloudwatch_client = None
+
+        self.s3_bucket_name = s3_bucket_name
+        self.s3_client = None
+
+        self.output_to_file_filepath = output_log_filepath
+        self.output_to_file = False
+        self.output_file = None
+        self.output_to_console = output_to_console
+        # ==================
+
+        # Check for valid credentials
+        # ==================
+        tmp_sts_client = boto3.client('sts')
+        try:
+            tmp_sts_client.get_caller_identity()
+        except Exception as e:
+            print ("ERROR - AWS credentials are NOT valid!")
+            self.abort_due_to_internal_error = True
+            return
+        # ==================
+
         # Git related stuff
         # ==================
         if (git_hash == None or git_repo_name == None):
@@ -89,8 +119,6 @@ class DataSnapshot():
 
         self.git_hash = git_hash
         self.git_repo_name = git_repo_name
-        self.git_hash_as_namespace = git_hash_as_namespace
-        self.git_fixed_namespace_text = git_fixed_namespace_text
 
         if (self.git_hash_as_namespace == False):
             self.git_metric_namespace = self.git_fixed_namespace_text
@@ -101,8 +129,6 @@ class DataSnapshot():
 
         # Cloudwatch related stuff
         # ==================
-        self.cloudwatch_region = cloudwatch_region
-
         try:
             self.cloudwatch_client = boto3.client('cloudwatch', self.cloudwatch_region)
         except Exception as e:
@@ -115,7 +141,6 @@ class DataSnapshot():
 
         # S3 related stuff
         # ==================
-        self.s3_bucket_name = s3_bucket_name
         try:
             self.s3_client = boto3.client("s3")
         except Exception as e:
@@ -128,15 +153,12 @@ class DataSnapshot():
 
         # File output (logs) related stuff
         # ==================
-        self.output_to_file_filepath = output_log_filepath
         if (not output_log_filepath is None):
             self.output_to_file = True
             self.output_file = open(self.output_to_file_filepath, "w")
         else:
             self.output_to_file = False
             self.output_file = None
-
-        self.output_to_console = output_to_console
         # ==================
 
     # Cleans the class - closing any files, removing alarms, and sending data to S3.
@@ -655,11 +677,14 @@ def snapshot_thread():
         cloudwatch_region=command_parser_arguments.cloudwatch_region,
         s3_bucket_name=command_parser_arguments.s3_bucket_name
     )
+
     # Check for errors
     if (data_snapshot.abort_due_to_internal_error == True):
         snapshot_had_internal_error = True
         snapshot_thread_stopped = True
         snapshot_thread_had_error = True
+        data_snapshot.cleanup()
+        return
 
     # Register metrics
     data_snapshot.register_metric(
@@ -680,6 +705,14 @@ def snapshot_thread():
         new_metric_alarm_threshold=33,
         new_metric_reports_to_skip=0,
         new_metric_alarm_severity=6)
+
+    # Check for errors
+    if (data_snapshot.abort_due_to_internal_error == True):
+        snapshot_had_internal_error = True
+        snapshot_thread_stopped = True
+        snapshot_thread_had_error = True
+        data_snapshot.cleanup()
+        return
 
     # Print general diagnosis information
     data_snapshot.output_diagnosis_information(command_parser_arguments.dependencies)
@@ -747,6 +780,12 @@ def application_thread():
     # Get the command line parser arguments
     global command_parser_arguments
 
+    # Is the snapshot thread already stopped? If so, do not bother running the Canary
+    time.sleep(5) # wait a few seconds to give the snapshot thread some time to start
+    if snapshot_thread_stopped == True:
+        print ("ERROR - the Snapshot thread failed before the application started. This generally means a misconfigured permission or credential.")
+        exit(1)
+
     print("Starting to run application thread...")
 
     canary_arguments = []
@@ -804,6 +843,12 @@ def application_thread():
             print ("Snapshot thread had an unknown error. See logs for details!")
             exit(1)
     else:
+        if (canary_return_code != 0):
+            cut_ticket_using_cloudwatch_from_args(
+                "The Canary returned a non-zero exit code! Something went wrong in the Canary application itself.",
+                "Canary returned non-zero exit code",
+                command_parser_arguments)
+
         exit(canary_return_code)
 
 
@@ -816,4 +861,4 @@ run_thread_application.start()
 # Wait for threads to finish
 run_thread_snapshot.join()
 run_thread_application.join()
-exit(1)
+exit(0)
