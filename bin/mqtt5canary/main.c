@@ -176,12 +176,17 @@ static void s_aws_mqtt5_canary_update_tps_sleep_time(struct aws_mqtt5_canary_tes
 }
 
 static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_tester_options *tester_options) {
+    /* number of eventloop group threads to use */
     tester_options->elg_max_threads = 3;
-    tester_options->client_count = 5;
-    /* Can do 200,000 accurately on local mac against local mosquitto. caps around 260,000 tps */
-    tester_options->tps = 10;
+    /* number of mqtt5 clients to use */
+    tester_options->client_count = 10;
+    /* operations per second to run */
+    tester_options->tps = 50;
+    /* should every operation run on every client */
     tester_options->apply_operations_to_all_clients = false;
-    tester_options->test_run_seconds = 5;
+
+    /* How long to run the test before exiting */
+    tester_options->test_run_seconds = 30;
     tester_options->test_run_minutes = 0;
     tester_options->test_run_hours = 0;
 
@@ -246,11 +251,13 @@ static void s_aws_mqtt5_canary_add_operation_distribution(
     tester_options->distributions_total += probability;
 }
 
-/* Adds operations and their weighted probability to the list of possible operations */
+/* Add operations and their weighted probability to the list of possible operations */
 static void s_aws_mqtt5_canary_init_operation_distributions(
     struct aws_mqtt5_canary_tester_options *tester_options,
     struct operation_distribution distribution_storage[],
     struct aws_linked_list *distributions) {
+
+    /* Start is automatically called on stopped clients when it receives an operation. */
     /*
     s_aws_mqtt5_canary_add_operation_distribution(
         tester_options,
@@ -318,11 +325,9 @@ static void s_aws_mqtt5_canary_init_operation_distributions(
 static enum aws_mqtt5_canary_operations s_aws_mqtt5_canary_get_next_random_operation(
     struct aws_mqtt5_canary_tester_options *tester_options,
     struct aws_linked_list *distributions) {
-
     size_t next_weighted = rand() % tester_options->distributions_total;
 
     struct aws_linked_list_node *node = aws_linked_list_begin(distributions);
-
     while (node != aws_linked_list_end(distributions)) {
         struct operation_distribution *operation = AWS_CONTAINER_OF(node, struct operation_distribution, node);
         if (next_weighted < operation->probability) {
@@ -363,36 +368,25 @@ static void s_handle_lifecycle_event_connection_success(
     test_client->settings = settings;
     test_client->client_id = aws_byte_cursor_from_buf(&settings->client_id_storage);
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL,
-        "ID:" PRInSTR " Lifecycle Event: Connection Success\n",
-        AWS_BYTE_CURSOR_PRI(test_client->client_id));
-
-    // fprintf(
-    //     stderr, "ID:" PRInSTR " Lifecycle Event: Connection Success\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    fprintf(
+        stderr, "ID:" PRInSTR " Lifecycle Event: Connection Success\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
 }
 
 static void s_handle_lifecycle_event_disconnection(struct aws_mqtt5_canary_test_client *test_client) {
     AWS_ASSERT(test_client != NULL);
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL,
-        "ID:" PRInSTR " Lifecycle Event: Disconnect\n",
-        AWS_BYTE_CURSOR_PRI(test_client->client_id));
-    // fprintf(stderr, "ID:" PRInSTR " Lifecycle Event: Disconnect\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    test_client->is_connected = false;
+    fprintf(stderr, "ID:" PRInSTR " Lifecycle Event: Disconnect\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
 }
 
 static void s_handle_lifecycle_event_stopped(struct aws_mqtt5_canary_test_client *test_client) {
     AWS_ASSERT(test_client != NULL);
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL, "ID:" PRInSTR " Lifecycle Event: Stopped\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
-    // fprintf(stderr, "ID:" PRInSTR " Lifecycle Event: Stopped\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    fprintf(stderr, "ID:" PRInSTR " Lifecycle Event: Stopped\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
 }
 
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
     switch (event->event_type) {
         case AWS_MQTT5_CLET_STOPPED:
             s_handle_lifecycle_event_stopped(event->user_data);
-            printf("Lifecycle event: Stopped!\n");
             break;
 
         case AWS_MQTT5_CLET_ATTEMPTING_CONNECT:
@@ -406,12 +400,10 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
 
         case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
             s_handle_lifecycle_event_connection_success(event->user_data, event->settings);
-            printf("Lifecycle event: Connection Success!\n");
             break;
 
         case AWS_MQTT5_CLET_DISCONNECTION:
             s_handle_lifecycle_event_disconnection(event->user_data);
-            printf("Lifecycle event: Disconnect!\n");
             printf("  Error Code: %d(%s)\n", event->error_code, aws_error_debug_str(event->error_code));
             break;
     }
@@ -449,8 +441,6 @@ static int s_aws_mqtt5_canary_operation_stop(struct aws_mqtt5_canary_test_client
         return AWS_OP_SUCCESS;
     }
     aws_mqtt5_client_stop(test_client->client, NULL, NULL);
-    test_client->is_connected = false;
-    test_client->subscription_count = 0;
 
     fprintf(stderr, "ID:" PRInSTR " stop\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
