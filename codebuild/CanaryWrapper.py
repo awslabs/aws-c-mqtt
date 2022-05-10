@@ -387,6 +387,42 @@ class DataSnapshot():
         self.export_metrics_console()
         self.export_metrics_cloudwatch()
 
+    def output_diagnosis_information(self, dependencies_list):
+
+        # Print general diagnosis information
+        self.print_message("\n========== Canary Wrapper diagnosis information ==========")
+        self.print_message("\nRunning Canary for repository: " + self.git_repo_name)
+        self.print_message("\t Commit hash: " + self.git_hash)
+
+        if not dependencies_list == "":
+            self.print_message("\nDependencies:")
+            dependencies_list = dependencies_list.split(";")
+            dependencies_list_found_hash = False
+            for i in range(0, len(dependencies_list)):
+                # There's probably a better way to do this...
+                if (dependencies_list_found_hash == True):
+                    dependencies_list_found_hash = False
+                    continue
+                self.print_message("* " + dependencies_list[i])
+                if (i+1 < len(dependencies_list)):
+                    self.print_message("\t Commit hash: " + dependencies_list[i+1])
+                    dependencies_list_found_hash = True
+                else:
+                    self.print_message("\t Commit hash: Unknown")
+
+        self.print_message("\nMetrics:")
+        for metric in self.metrics:
+            self.print_message("* " + metric.metric_name)
+            if metric.metric_alarm_threshold is not None:
+                self.print_message("\t Alarm Threshold: " + str(metric.metric_alarm_threshold))
+                self.print_message("\t Alarm Severity: " + str(metric.metric_alarm_severity))
+            else:
+                self.print_message("\t No alarm set for metric.")
+
+        self.print_message("\n")
+        self.print_message("==========================================================")
+        self.print_message("\n")
+
 
 # Code for cutting a ticket
 # ================================================================================
@@ -548,8 +584,8 @@ command_parser.add_argument("--cloudwatch_region", type=str, default="us-east-1"
     help="(OPTIONAL, default=us-east-1) The AWS region for Cloudwatch")
 command_parser.add_argument("--s3_bucket_name", type=str, default="canary-wrapper-folder",
     help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
-command_parser.add_argument("--snapshot_wait_time", type=int, default=60,
-    help="(OPTIONAL, default=60) The number of seconds between gathering and sending snapshot reports")
+command_parser.add_argument("--snapshot_wait_time", type=int, default=600,
+    help="(OPTIONAL, default=600) The number of seconds between gathering and sending snapshot reports")
 command_parser.add_argument("--ticket_category", type=str, default="AWS",
     help="(OPTIONAL, default=AWS) The category to register the ticket under")
 command_parser.add_argument("--ticket_type", type=str, default="SDKs and Tools",
@@ -558,6 +594,9 @@ command_parser.add_argument("--ticket_item", type=str, default="IoT SDK for CPP"
     help="(OPTIONAL, default='IoT SDK for CPP') The item to register the ticket under")
 command_parser.add_argument("--ticket_group", type=str, default="AWS IoT Device SDK",
     help="(OPTIONAL, default='AWS IoT Device SDK') The group to register the ticket under")
+command_parser.add_argument("--dependencies", type=str, default="",
+    help="(OPTIONAL, default='') Any dependencies and their commit hashes. \
+        Current expected format is '(name or path);(hash);(next name or path);(hash);(etc...)'.")
 command_parser_arguments = command_parser.parse_args()
 
 if (command_parser_arguments.output_log_filepath == "None"):
@@ -641,6 +680,9 @@ def snapshot_thread():
         new_metric_alarm_threshold=33,
         new_metric_reports_to_skip=0,
         new_metric_alarm_severity=6)
+
+    # Print general diagnosis information
+    data_snapshot.output_diagnosis_information(command_parser_arguments.dependencies)
 
     data_snapshot.print_message("Starting job loop...")
     while True:
