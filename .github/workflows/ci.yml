@@ -124,14 +124,14 @@ jobs:
   canary-hash-check:
     runs-on: ubuntu-latest
     steps:
-    - name: Check S3 for canary log
-      run: |
-        aws s3api head-object --bucket ${{env.AWS_S3_BUCKET}} --key ${{env.PACKAGE_NAME}}/${{env.COMMIT_SHA}}.log
-        if [[ $? == 0 ]]
-        then
-          echo "Canary log found!"
-        else
-          echo "Canary log was not found!"
-          exit 1
-        fi
+      - name: Check S3 for canary log - ${{ env.PACKAGE_NAME }}
+        run: |
+          aws s3api head-object --bucket ${{env.AWS_S3_BUCKET}} --key ${{env.PACKAGE_NAME}}/${{env.COMMIT_SHA}}.log
+          if [[ $? == 0 ]]
+          then
+            echo "Canary log found!"
+          else
+            echo "Canary log was not found!"
+            exit 1
+          fi
 
