@@ -2,10 +2,9 @@ version: 0.2
 phases:
   build:
     commands:
-      - echo Build Commit $CODEBUILD_RESOLVED_SOURCE_VERSION started on `date` 
-      - echo "INSTALLING LIBS"
-      - aws s3 cp s3://aws-crt-test-stuff/ci/v0.8.27/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-      - ./linux-container-ci.sh v0.8.27 aws-crt-ubuntu-16-x64 build -p aws-c-mqtt downstream
+      # installing cmake
+      - aws s3 cp s3://aws-crt-test-stuff/ci/v0.9.15/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+      - ./linux-container-ci.sh v0.9.15 aws-crt-ubuntu-16-x64 build -p aws-c-mqtt downstream
 
   post_build:
     commands:
