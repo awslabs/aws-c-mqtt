@@ -65,6 +65,9 @@ if (command_parser_arguments.snapshot_wait_time <= 0):
 #        However, these variables are only either read or written to from a single thread, no
 #        thread should read and write to these variables.
 
+# NOTE 2 - this needs to be better sorted/defined/handled, as right now it's a bit of a mess
+# For this file, it's mostly just naming needs to be improved I think...
+
 # Tells the snapshot thread to stop running on the next interval
 # (snapshot_thread reads, application_thread writes)
 stop_snapshot_thread = False

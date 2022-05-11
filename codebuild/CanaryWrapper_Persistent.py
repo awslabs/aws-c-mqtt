@@ -3,6 +3,7 @@
 # builds in S3, downloading them, and launching them if they exist (24/7 opperation)
 
 # Needs to be installed prior to running
+from sys import prefix
 import boto3
 import psutil
 # Part of standard packages in Python 3.4+
@@ -11,285 +12,382 @@ import threading
 import subprocess
 import time
 import os
+import subprocess
 # Dependencies in project folder
 from CanaryWrapper_Classes import *
 from CanaryWrapper_MetricFunctions import *
 
+# TODO - Refactor this entire file! It is very messy currently, even if it (mostly) works
+# TODO - Add better error checking!
+#        Right now the code does not use proper error checking to ensure segfaults/exceptions do not occur
+# TODO - Use a persistent cloudwatch namespace/alarm/etc - rather than creating and tearing it down every time
+# TODO - Fix bug where sometimes you have to just try launching it multiple times for it to work...
 
-# Code for command line argument parsing
 # ================================================================================
-command_parser = argparse.ArgumentParser("CanaryWrapper")
-command_parser.add_argument("--canary_executable", type=str, required=True,
-    help="The path to the canary executable (or program - like 'python3')")
-command_parser.add_argument("--canary_arguments", type=str, default="",
-    help="The arguments to pass/launch the canary executable with")
-command_parser.add_argument("--git_hash", type=str, required=True,
-    help="The Git commit hash that we are running the canary with")
-command_parser.add_argument("--git_repo_name", type=str, required=True,
-    help="The name of the Git repository")
-command_parser.add_argument("--git_hash_as_namespace", type=bool, default=False,
-    help="(OPTIONAL, default=False) If true, the git hash will be used as the name of the Cloudwatch namespace")
-command_parser.add_argument("--output_log_filepath", type=str, default="output.log",
-    help="(OPTIONAL, default=output.log) The file to output log info to. Set to 'None' to disable")
-command_parser.add_argument("--output_to_console", type=bool, default=True,
-    help="(OPTIONAL, default=True) If true, info will be output to the console")
-command_parser.add_argument("--cloudwatch_region", type=str, default="us-east-1",
-    help="(OPTIONAL, default=us-east-1) The AWS region for Cloudwatch")
-command_parser.add_argument("--s3_bucket_name", type=str, default="canary-wrapper-folder",
-    help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
-command_parser.add_argument("--snapshot_wait_time", type=int, default=600,
-    help="(OPTIONAL, default=600) The number of seconds between gathering and sending snapshot reports")
-command_parser.add_argument("--ticket_category", type=str, default="AWS",
-    help="(OPTIONAL, default=AWS) The category to register the ticket under")
-command_parser.add_argument("--ticket_type", type=str, default="SDKs and Tools",
-    help="(OPTIONAL, default='SDKs and Tools') The type to register the ticket under")
-command_parser.add_argument("--ticket_item", type=str, default="IoT SDK for CPP",
-    help="(OPTIONAL, default='IoT SDK for CPP') The item to register the ticket under")
-command_parser.add_argument("--ticket_group", type=str, default="AWS IoT Device SDK",
-    help="(OPTIONAL, default='AWS IoT Device SDK') The group to register the ticket under")
-command_parser.add_argument("--dependencies", type=str, default="",
-    help="(OPTIONAL, default='') Any dependencies and their commit hashes. \
-        Current expected format is '(name or path);(hash);(next name or path);(hash);(etc...)'.")
-command_parser_arguments = command_parser.parse_args()
-
-if (command_parser_arguments.output_log_filepath == "None"):
-    command_parser_arguments.output_log_filepath = None
-if (command_parser_arguments.snapshot_wait_time <= 0):
-    command_parser_arguments.snapshot_wait_time = 60
-
-# Code for setting up threads and kicking off the wrapper script so it can function
-# (Also configures wrapper)
-# ================================================================================
-
 # Global variables that both threads use to communicate.
 # NOTE - These should likely be replaced with futures or similar for better thread safety.
 #        However, these variables are only either read or written to from a single thread, no
 #        thread should read and write to these variables.
 
-# Tells the snapshot thread to stop running on the next interval
-# (snapshot_thread reads, application_thread writes)
-stop_snapshot_thread = False
+# NOTE 2 - this needs to be better sorted/defined/handled, as right now it's a bit of a mess
 
-# Tells the application thread that the snapshot thread has stopped
-# (snapshot_thread writes, application_thread reads)
-snapshot_thread_stopped = False
+# S3 checking variables (only used by S3)
+canary_local_application_path = "tmp/canary_application.py"
+canary_s3_check_wait_time = 30
+# If true, the S3 thread will stop. Should only be set by the application thread
+canary_s3_thread_stop = False
+canary_s3_thread_has_stopped = False
 
-# Tells the application thread the snapshot thread stopped due to an error
-# (snapshot_thread writes, application_thread reads)
-snapshot_thread_had_error = False
+# Tell the application thread to finish and get ready to restart.
+# # Will set canary_file_replace_application_thread_ready when it is ready to replace
+canary_file_replace_application_thread_start = False
+# Tell the application thread to restart the canary application again
+canary_file_reaplce_application_thread_restart = False
+# Communication between threads to know when it is okay to replace the file
+canary_file_replace_application_thread_ready = False
 
-# Tells the application thread the snapshot thread detected a Cloudwatch state in ALARM
-# (snapshot_thread writes, application_thread reads)
-snapshot_thread_had_cloudwatch_alarm = False
-snapshot_thread_had_cloudwatch_alarm_names = []
-snapshot_thread_had_cloudwatch_alarm_lowest_severity_value = 6
+# A way to stop both threads
+canary_stop_all_threads = False
+
+# ================================================================================
+class S3_Monitor():
+    global canary_local_application_path
+
+    def __init__(self, s3_bucket_name, s3_file_name) -> None:
+        self.s3_client = boto3.client("s3")
+        self.s3_current_object_version_id = None
+        self.s3_current_object_last_modified = None
+        self.s3_bucket_name = s3_bucket_name
+        self.s3_file_name = s3_file_name
+        self.s3_file_name_only_path, self.s3_file_name_only_extension = os.path.splitext(s3_file_name)
+
+        self.s3_file_needs_replacing = False
 
 
-def snapshot_thread():
-    global stop_snapshot_thread
-    global snapshot_thread_stopped
-    global snapshot_thread_had_error
-    global snapshot_thread_had_cloudwatch_alarm
-    global snapshot_thread_had_cloudwatch_alarm_names
-    global snapshot_thread_had_cloudwatch_alarm_lowest_severity_value
+    def check_for_file_change(self):
 
-    # Get the command line parser arguments
-    global command_parser_arguments
+        version_check_response = self.s3_client.list_object_versions(
+            Bucket=self.s3_bucket_name,
+            Prefix=self.s3_file_name_only_path)
+        if "Versions" in version_check_response:
+            for version in version_check_response["Versions"]:
+                if (version["IsLatest"] == True):
+                    if (version["VersionId"] != self.s3_current_object_version_id or
+                        version["LastModified"] != self.s3_current_object_last_modified):
 
-    snapshot_had_internal_error = False
+                        print ("FOUND NEW VERSION!")
 
-    print("Starting to run snapshot thread...")
-    data_snapshot = DataSnapshot(
-        git_hash=command_parser_arguments.git_hash,
-        git_repo_name=command_parser_arguments.git_repo_name,
-        git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
-        output_log_filepath=command_parser_arguments.output_log_filepath,
-        output_to_console=command_parser_arguments.output_to_console,
-        cloudwatch_region=command_parser_arguments.cloudwatch_region,
-        s3_bucket_name=command_parser_arguments.s3_bucket_name
+                        # Will be checked by thread to trigger replacing the file
+                        self.s3_file_needs_replacing = True
+
+                        self.s3_current_object_version_id = version["VersionId"]
+                        self.s3_current_object_last_modified = version["LastModified"]
+                        break
+
+
+    def replace_current_file_for_new_file(self):
+        print ("Making directory...")
+        if not os.path.exists("tmp"):
+            os.makedirs("tmp")
+
+        # Download the file...
+        s3_resource = boto3.resource("s3")
+        print ("Downloading file...")
+        s3_resource.meta.client.download_file(self.s3_bucket_name, self.s3_file_name, "tmp/new_file" + self.s3_file_name_only_extension)
+
+        print ("Moving file...")
+        os.replace("tmp/new_file" + self.s3_file_name_only_extension, canary_local_application_path)
+
+        print ("New file downloaded and moved into correct location!")
+        self.s3_file_needs_replacing = False
+
+
+def s3_monitor_thread():
+    global canary_s3_check_wait_time
+
+    global canary_file_replace_application_thread_start
+    global canary_file_replace_application_thread_ready
+    global canary_file_reaplce_application_thread_restart
+
+    global canary_s3_thread_stop
+    global canary_s3_thread_has_stopped
+
+    global canary_stop_all_threads
+
+    s3_monitor = S3_Monitor(
+        s3_bucket_name="ncbeard-canary-wrapper-folder",
+        s3_file_name="canary-application/CanaryMockApplication.py"
     )
 
-    # Check for errors
-    if (data_snapshot.abort_due_to_internal_error == True):
-        snapshot_had_internal_error = True
-        snapshot_thread_stopped = True
-        snapshot_thread_had_error = True
-        data_snapshot.cleanup()
-        return
-
-    # Register metrics
-    data_snapshot.register_metric(
-        new_metric_name="total_cpu_usage",
-        new_metric_function=get_metric_total_cpu_usage,
-        new_metric_unit="Percent",
-        new_metric_alarm_threshold=70,
-        new_metric_reports_to_skip=1,
-        new_metric_alarm_severity=5)
-    data_snapshot.register_metric(
-        new_metric_name="total_memory_usage_value",
-        new_metric_function=get_metric_total_memory_usage_value,
-        new_metric_unit="Bytes")
-    data_snapshot.register_metric(
-        new_metric_name="total_memory_usage_percent",
-        new_metric_function=get_metric_total_memory_usage_percent,
-        new_metric_unit="Percent",
-        new_metric_alarm_threshold=50,
-        new_metric_reports_to_skip=0,
-        new_metric_alarm_severity=5)
-
-    # Check for errors
-    if (data_snapshot.abort_due_to_internal_error == True):
-        snapshot_had_internal_error = True
-        snapshot_thread_stopped = True
-        snapshot_thread_had_error = True
-        data_snapshot.cleanup()
-        return
-
-    # Print general diagnosis information
-    data_snapshot.output_diagnosis_information(command_parser_arguments.dependencies)
-
-    data_snapshot.print_message("Starting job loop...")
     while True:
-
-        # Should this thread shutdown?
-        if (stop_snapshot_thread == True and snapshot_had_internal_error == False):
-            # Get a report of all the alarms that might have been set to an alarm state
-            triggered_alarms = data_snapshot.get_cloudwatch_alarm_results()
-            if len(triggered_alarms) > 0:
-                data_snapshot.print_message(
-                    "ERROR - One or more alarms are in state of ALARM")
-                for triggered_alarm in triggered_alarms:
-                    data_snapshot.print_message('    Alarm with name "' + triggered_alarm[1] + '" is in the ALARM state!')
-                    snapshot_thread_had_cloudwatch_alarm_names.append(triggered_alarm[1])
-                    if (triggered_alarm[2] < snapshot_thread_had_cloudwatch_alarm_lowest_severity_value):
-                        snapshot_thread_had_cloudwatch_alarm_lowest_severity_value = triggered_alarm[2]
-                snapshot_thread_stopped = True
-                snapshot_thread_had_error = True
-                snapshot_thread_had_cloudwatch_alarm = True
-
-            data_snapshot.print_message("Stopping job loop...")
+        if (canary_s3_thread_stop == True):
+            break
+        if (canary_stop_all_threads == True):
             break
 
+        s3_monitor.check_for_file_change()
+
+        if (s3_monitor.s3_file_needs_replacing == True):
+
+            # Tell the application thread to stop the application and wait for it to restart
+            canary_file_replace_application_thread_start = True
+            while canary_file_replace_application_thread_ready == False:
+                time.sleep(1)
+
+            s3_monitor.replace_current_file_for_new_file()
+
+            # Tell the application thread to start up again
+            canary_file_reaplce_application_thread_restart = True
+
+        time.sleep(canary_s3_check_wait_time)
+
+    canary_s3_thread_has_stopped = True
+    exit(0)
+
+# ================================================================================
+
+class SnapshotMonitor():
+    def __init__(self) -> None:
+
+        # TODO - replace this so the values are NOT hard coded
+        self.data_snapshot = DataSnapshot(
+            git_hash="1234567890",
+            git_repo_name="aws-c-example",
+            git_hash_as_namespace=False,
+            output_log_filepath="output.log",
+            output_to_console=True,
+            cloudwatch_region="us-east-1",
+            s3_bucket_name="ncbeard-canary-wrapper-folder")
+
+        self.had_interal_error = False
+        self.internal_error_reason = ""
+
+        self.cloudwatch_current_alarms_triggered = []
+        self.cloudwatch_current_alarms_lowest_alarm_severity = 6
+
+        # Check for errors
+        if (self.data_snapshot.abort_due_to_internal_error == True):
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not initialize DataSnapshot. Likely credentials are not setup!"
+            self.data_snapshot.cleanup()
+            return
+
+        # How long to wait before posting a metric
+        self.metric_post_timer = 60
+        self.metric_post_timer_time = 60
+
+         # Print general diagnosis information
+         # TODO - add dependencies here!
+        self.data_snapshot.output_diagnosis_information("")
+
+        # TODO - add a better way to register metrics?
+
+    def cleanup(self):
+        self.data_snapshot.cleanup()
+
+    def application_monitor_loop_function(self, time_passed=30):
         # Check for internal errors
-        if (data_snapshot.abort_due_to_internal_error == True):
-            snapshot_had_internal_error = True
-            snapshot_thread_stopped = True
-            snapshot_thread_had_error = True
-            break
+        if (self.data_snapshot.abort_due_to_internal_error == True):
+            self.had_interal_error = True
+            self.internal_error_reason = "Data Snapshot internal error!"
+            # TODO - add a way to get the error reason from the data snapshot
+            return
 
         # Gather and post the metrics
-        if (snapshot_had_internal_error == False):
-            try:
-                data_snapshot.post_metrics()
-            except:
-                data_snapshot.print_message("ERROR - exception occured posting metrics!")
-                data_snapshot.print_message("(Likely session credentials expired)")
+        self.metric_post_timer -= time_passed
+        if (self.metric_post_timer <= 0):
+            if (self.had_interal_error == False):
+                try:
+                    self.data_snapshot.post_metrics()
+                except:
+                    self.data_snapshot.print_message("ERROR - exception occured posting metrics!")
+                    self.data_snapshot.print_message("(Likely session credentials expired)")
 
-                snapshot_thread_stopped = True
-                snapshot_thread_had_error = True
-                snapshot_had_internal_error = True
-                break
+                    self.had_interal_error = True
+                    self.internal_error_reason = "Exception occured posting metrics! Likely session credentials expired"
+                    return
 
-        # Wait for the next snapshot
-        time.sleep(command_parser_arguments.snapshot_wait_time)
+                try:
+                    # Poll the metric alarms
+                    if (self.had_interal_error == False):
+                        # Get a report of all the alarms that might have been set to an alarm state
+                        triggered_alarms = self.data_snapshot.get_cloudwatch_alarm_results()
+                        if len(triggered_alarms) > 0:
+                            # TODO - instead of clearing instantly, append to new array and check to see if there is a difference.
+                            # If there is, potentially cut a ticket
+                            self.cloudwatch_current_alarms_triggered.clear()
 
-    # Clean up the task (also post-process: sends to s3 on success, removes alarms, etc)
-    data_snapshot.cleanup(snapshot_thread_had_error)
+                            self.data_snapshot.print_message(
+                                "WARNING - One or more alarms are in state of ALARM")
+                            for triggered_alarm in triggered_alarms:
+                                self.data_snapshot.print_message('    Alarm with name "' + triggered_alarm[1] + '" is in the ALARM state!')
+                                self.cloudwatch_current_alarms_triggered.append(triggered_alarm[1])
+                                if (triggered_alarm[2] < self.cloudwatch_current_alarms_lowest_alarm_severity):
+                                    self.cloudwatch_current_alarms_lowest_alarm_severity = triggered_alarm[2]
 
-    snapshot_thread_stopped = True
-    print("Snapshot thread finished...")
+                            # TODO - cut a ticket if the states in alarm are different than cached states in alarm?
+                except:
+                    self.data_snapshot.print_message("ERROR - exception occured checking metric alarms!")
+                    self.data_snapshot.print_message("(Likely session credentials expired)")
+
+                    self.had_interal_error = True
+                    self.internal_error_reason = "Exception occured checking metric alarms! Likely session credentials expired"
+                    return
+
+            # reset the timer
+            self.metric_post_timer += self.metric_post_timer_time
+
+# ================================================================================
+
+class ApplicationMonitor():
+    global canary_local_application_path
+
+    def __init__(self) -> None:
+        self.wrapper_monitor = SnapshotMonitor()
+
+        # Register metrics
+        self.wrapper_monitor.data_snapshot.register_metric(
+            new_metric_name="total_cpu_usage",
+            new_metric_function=get_metric_total_cpu_usage,
+            new_metric_unit="Percent",
+            new_metric_alarm_threshold=70,
+            new_metric_reports_to_skip=1,
+            new_metric_alarm_severity=5)
+        self.wrapper_monitor.data_snapshot.register_metric(
+            new_metric_name="total_memory_usage_value",
+            new_metric_function=get_metric_total_memory_usage_value,
+            new_metric_unit="Bytes")
+        self.wrapper_monitor.data_snapshot.register_metric(
+            new_metric_name="total_memory_usage_percent",
+            new_metric_function=get_metric_total_memory_usage_percent,
+            new_metric_unit="Percent",
+            new_metric_alarm_threshold=50,
+            new_metric_reports_to_skip=0,
+            new_metric_alarm_severity=5)
+
+        self.application_process = None
+
+        self.error_has_occured = False
+        self.error_reason = ""
+        self.error_code = 0
+        pass
+
+
+    def start_application_monitoring(self):
+        if (self.application_process == None):
+            canary_command = "python3 " + canary_local_application_path
+            print ("\n\nAPPLICATION COMMAND: " + canary_command + "\n\n")
+            self.application_process = subprocess.Popen(canary_command, shell=True)
+
+
+    def stop_application_monitoring(self):
+        if (not self.application_process == None):
+            self.application_process.terminate()
+            self.application_process.wait()
+            self.application_process = None
+
+
+    def application_monitor_loop_function(self, time_passed=30):
+        if (self.application_process != None):
+            application_process_return_code = self.application_process.poll()
+            if (application_process_return_code != None):
+                print ("SOMETHING CRASHED IN CANARY!")
+                print ("Got error code: " + str(application_process_return_code))
+                # TODO - store why the error occured
+                # TODO - exit everything
+
+                self.error_has_occured = True
+                self.error_reason = "Canary application crashed!"
+                self.error_code = application_process_return_code
+
+        if (self.wrapper_monitor != None):
+            if (self.wrapper_monitor.had_interal_error == True):
+                self.error_has_occured = True
+                self.error_reason = self.wrapper_monitor.internal_error_reason
+                self.error_code = 1
+            else:
+                self.wrapper_monitor.application_monitor_loop_function(time_passed)
+
+
+    def cleanup_all(self):
+        self.wrapper_monitor.cleanup()
+
 
 
 def application_thread():
-    global stop_snapshot_thread
-    global snapshot_thread_stopped
-    global snapshot_thread_had_error
-    global snapshot_thread_had_cloudwatch_alarm
-    global snapshot_thread_had_cloudwatch_alarm_names
-    global snapshot_thread_had_cloudwatch_alarm_lowest_severity_value
+    global canary_file_replace_application_thread_start
+    global canary_file_replace_application_thread_ready
+    global canary_file_reaplce_application_thread_restart
 
-    # Get the command line parser arguments
-    global command_parser_arguments
+    global canary_s3_thread_stop
+    global canary_s3_thread_has_stopped
 
-    # Is the snapshot thread already stopped? If so, do not bother running the Canary
-    time.sleep(5) # wait a few seconds to give the snapshot thread some time to start
-    if snapshot_thread_stopped == True:
-        print ("ERROR - the Snapshot thread failed before the application started. This generally means a misconfigured permission or credential.")
-        exit(1)
+    global canary_stop_all_threads
 
-    print("Starting to run application thread...")
+    application_monitor = ApplicationMonitor()
 
-    canary_arguments = []
-    canary_arguments.append(command_parser_arguments.canary_executable)
-    canary_arguments.append(command_parser_arguments.canary_arguments)
-    command_parser_arguments
+    while True:
 
-    canary_return_code = 0
-    try:
-        canary_result = subprocess.run(canary_arguments)
-        canary_return_code = canary_result.returncode
-        if (canary_return_code != 0):
-            print("Something in the canary failed!")
-            cut_ticket_using_cloudwatch_from_args(
-                "The Canary result was non-zero, indicating that something in the canary application itself failed.",
-                "Canary result was non-zero",
-                command_parser_arguments)
-    except Exception as e:
-        print("Something in the canary had an exception!")
-        cut_ticket_using_cloudwatch_from_args(
-                "The code running the canary ran into an exception. This indicates that something in the canary crashed and/or segfaulted.",
-                "Canary application ran into an exception",
-                command_parser_arguments)
-        canary_return_code = -1
+        # Stop and restart the canary application
+        if (canary_file_replace_application_thread_start == True):
+            application_monitor.stop_application_monitoring()
+            canary_file_replace_application_thread_ready = True
+            while (canary_file_reaplce_application_thread_restart == False):
+                time.sleep(1)
+            application_monitor.start_application_monitoring()
 
-    # Wait for the snapshot thread to finish
-    stop_snapshot_thread = True
-    while snapshot_thread_stopped == False:
-        time.sleep(1)
-    print("Application thread finished...")
+            # Reset the variables
+            canary_file_replace_application_thread_start = False
+            canary_file_replace_application_thread_ready = False
+            canary_file_reaplce_application_thread_restart = False
+            continue
 
-    # If the snapshot thread had an error, then exit because something is wrong and we do not want
-    # to report "success" even if the canary itself ran okay
-    if (snapshot_thread_had_error == True and canary_return_code == 0):
-        # Was it due to a cloudwatch alarm?
-        if snapshot_thread_had_cloudwatch_alarm == True:
-            cut_ticket_using_cloudwatch_from_args(
-                "Canary alarm(s) that are required to pass are in a state of ALARM. \
-                    List of metrics in alarm: " + str(snapshot_thread_had_cloudwatch_alarm_names) + ".",
-                "Required canary alarm(s) are in state of ALARM",
-                snapshot_thread_had_cloudwatch_alarm_lowest_severity_value,
-                command_parser_arguments)
-            print ("Snapshot thread detected Cloudwatch state(s) in ALARM!")
+        application_monitor.application_monitor_loop_function()
 
-            if (snapshot_thread_had_cloudwatch_alarm_lowest_severity_value < 6):
-                exit(1)
-            else:
-                exit(canary_return_code)
+        if (application_monitor.error_has_occured == True):
+            break
 
-        else:
-            cut_ticket_using_cloudwatch_from_args(
-                "The code running the DataSnapshot had an error. See output.log for more information.",
-                "DataSnapshot (metric gathering) had an error",
-                command_parser_arguments)
-            print ("Snapshot thread had an unknown error. See logs for details!")
-            exit(1)
+        if (canary_s3_thread_has_stopped == True):
+            break
+
+        if (canary_stop_all_threads == True):
+            break
+
+        time.sleep(10)
+
+    # TODO - cut a ticket
+    if (canary_stop_all_threads == True):
+        print ("DEBUG - Application thread stopped due to all thread stop signal sent...")
+    elif (canary_s3_thread_has_stopped == True):
+        print ("Application thread stopped due to S3 thread stopping unexpectedly!")
     else:
-        if (canary_return_code != 0):
-            cut_ticket_using_cloudwatch_from_args(
-                "The Canary returned a non-zero exit code! Something went wrong in the Canary application itself.",
-                "Canary returned non-zero exit code",
-                command_parser_arguments)
+        print ("Application thread stopping due to an internal error in application monitor.")
+        print ("Error reason: " + application_monitor.error_reason)
+        print ("Error code: " + str(application_monitor.error_code))
 
-        exit(canary_return_code)
+    application_monitor.cleanup_all()
 
+    print ("Shutting down S3 check...")
+    canary_s3_thread_stop = True
+    while canary_s3_thread_has_stopped == False:
+        time.sleep(1)
+
+    exit (application_monitor.error_code)
+
+# ================================================================================
 
 # Create the threads
-run_thread_snapshot = threading.Thread(target=snapshot_thread)
+run_thread_s3_monitor = threading.Thread(target=s3_monitor_thread)
 run_thread_application = threading.Thread(target=application_thread)
 # Run the threads
-run_thread_snapshot.start()
+run_thread_s3_monitor.start()
 run_thread_application.start()
+
+# A way to cleanly stop all the processes for debugging...
+input("\n\nDEBUG ONLY -- Press enter to stop program...\n\n")
+canary_stop_all_threads = True
+
 # Wait for threads to finish
-run_thread_snapshot.join()
+run_thread_s3_monitor.join()
 run_thread_application.join()
 exit(0)
