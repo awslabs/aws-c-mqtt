@@ -68,6 +68,9 @@ if (command_parser_arguments.snapshot_wait_time <= 0):
 # NOTE 2 - this needs to be better sorted/defined/handled, as right now it's a bit of a mess
 # For this file, it's mostly just naming needs to be improved I think...
 
+# NOTE 3 - rewrite the threading structure to be similar to the persistent canary wrapper. This would
+# allow using a single thread and process (instead of 2 threads and 1 process)
+
 # Tells the snapshot thread to stop running on the next interval
 # (snapshot_thread reads, application_thread writes)
 stop_snapshot_thread = False

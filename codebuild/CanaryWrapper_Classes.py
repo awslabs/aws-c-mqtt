@@ -73,8 +73,9 @@ class DataSnapshot():
         # This boolean tracks whether we have done the post-initization prior to sending the first report.
         self.perform_final_initialization = True
 
-        # Watched by the thread creating the snapshot. Will cause the thread to abort and return an error.
+        # Watched by the thread creating the snapshot. Will cause the thread(s) to abort and return an error.
         self.abort_due_to_internal_error = False
+        self.abort_due_to_internal_error_reason = ""
 
         self.git_hash = None
         self.git_repo_name = None
@@ -102,6 +103,7 @@ class DataSnapshot():
         except Exception as e:
             print ("ERROR - AWS credentials are NOT valid!")
             self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "AWS credentials are NOT valid!"
             return
         # ==================
 
@@ -110,6 +112,7 @@ class DataSnapshot():
         if (git_hash == None or git_repo_name == None):
             print("ERROR - a Git hash and repository name are REQUIRED for the canary wrapper to run!")
             self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "No Git hash and repository passed!"
             return
 
         self.git_hash = git_hash
@@ -131,6 +134,7 @@ class DataSnapshot():
             self.print_message("Exception: " + str(e))
             self.cloudwatch_client = None
             self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "Could not make Cloudwatch client!"
             return
         # ==================
 
@@ -143,6 +147,7 @@ class DataSnapshot():
             self.print_message("Exception: " + str(e))
             self.s3_client = None
             self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "Could not make S3 client!"
             return
         # ==================
 
@@ -266,6 +271,7 @@ class DataSnapshot():
             self.print_message(
                 "ERROR - No S3 client initialized! Cannot send log to S3")
             self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "S3 client not initialized and therefore cannot send log to S3"
             return
 
         s3_file = open(self.git_hash + ".log", "w")
@@ -305,6 +311,7 @@ class DataSnapshot():
                 "ERROR - could not upload to S3 due to exception!")
             self.print_message("Exception: " + str(e))
             self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "S3 client had exception and therefore could not upload log!"
             os.remove(self.git_hash + ".log")
             return
 
@@ -359,6 +366,7 @@ class DataSnapshot():
             self.print_message(
                 "Error - cannot export Cloudwatch metrics! Cloudwatch was not initiallized.")
             self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "Could not export Cloudwatch metrics due to no Cloudwatch client initialized!"
             return
 
         self.print_message("Preparing to send to Cloudwatch...")
@@ -379,6 +387,7 @@ class DataSnapshot():
                 "Error - something when wrong posting cloudwatch metrics!")
             self.print_message("Exception: " + str(e))
             self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "Could not export Cloudwatch metrics due to exception in Cloudwatch client!"
             return
 
     # Call this at a set interval to post the metrics to Cloudwatch, etc.
@@ -392,6 +401,7 @@ class DataSnapshot():
                 self.print_message(
                     "ERROR - No AWS credentials found! Cannot post metrics")
                 self.abort_due_to_internal_error = True
+                self.abort_due_to_internal_error_reason = "No AWS credentials found!"
                 return
 
             self._init_cloudwatch_pre_first_run()
