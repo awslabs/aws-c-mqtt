@@ -181,7 +181,7 @@ static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_teste
     /* number of mqtt5 clients to use */
     tester_options->client_count = 10;
     /* operations per second to run */
-    tester_options->tps = 50;
+    tester_options->tps = 5;
     /* should every operation run on every client */
     tester_options->apply_operations_to_all_clients = false;
 
@@ -346,9 +346,9 @@ static void s_on_publish_received(const struct aws_mqtt5_packet_publish_view *pu
 
     struct aws_mqtt5_canary_test_client *test_client = user_data;
 
-    fprintf(
-        stderr,
-        "ID:" PRInSTR " Publish Received on topic " PRInSTR "\n",
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CANARY,
+        "ID:" PRInSTR " Publish Received on topic " PRInSTR,
         AWS_BYTE_CURSOR_PRI(test_client->client_id),
         AWS_BYTE_CURSOR_PRI(publish->topic));
 }
@@ -365,19 +365,23 @@ static void s_handle_lifecycle_event_connection_success(
     test_client->settings = settings;
     test_client->client_id = aws_byte_cursor_from_buf(&settings->client_id_storage);
 
-    fprintf(
-        stderr, "ID:" PRInSTR " Lifecycle Event: Connection Success\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CANARY,
+        "ID:" PRInSTR " Lifecycle Event: Connection Success",
+        AWS_BYTE_CURSOR_PRI(test_client->client_id));
 }
 
 static void s_handle_lifecycle_event_disconnection(struct aws_mqtt5_canary_test_client *test_client) {
     AWS_ASSERT(test_client != NULL);
     test_client->is_connected = false;
-    fprintf(stderr, "ID:" PRInSTR " Lifecycle Event: Disconnect\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " Lifecycle Event: Disconnect", AWS_BYTE_CURSOR_PRI(test_client->client_id));
 }
 
 static void s_handle_lifecycle_event_stopped(struct aws_mqtt5_canary_test_client *test_client) {
     AWS_ASSERT(test_client != NULL);
-    fprintf(stderr, "ID:" PRInSTR " Lifecycle Event: Stopped\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " Lifecycle Event: Stopped", AWS_BYTE_CURSOR_PRI(test_client->client_id));
 }
 
 static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
@@ -387,12 +391,13 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
             break;
 
         case AWS_MQTT5_CLET_ATTEMPTING_CONNECT:
-            printf("Lifecycle event: Attempting Connect!\n");
+            AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "Lifecycle event: Attempting Connect!");
             break;
 
         case AWS_MQTT5_CLET_CONNECTION_FAILURE:
-            printf("Lifecycle event: Connection Failure!\n");
-            printf("  Error Code: %d(%s)\n", event->error_code, aws_error_debug_str(event->error_code));
+            AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "Lifecycle event: Connection Failure!");
+            AWS_LOGF_INFO(
+                AWS_LS_MQTT5_CANARY, "  Error Code: %d(%s)", event->error_code, aws_error_debug_str(event->error_code));
             break;
 
         case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
@@ -401,7 +406,8 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
 
         case AWS_MQTT5_CLET_DISCONNECTION:
             s_handle_lifecycle_event_disconnection(event->user_data);
-            printf("  Error Code: %d(%s)\n", event->error_code, aws_error_debug_str(event->error_code));
+            AWS_LOGF_INFO(
+                AWS_LS_MQTT5_CANARY, "  Error Code: %d(%s)", event->error_code, aws_error_debug_str(event->error_code));
             break;
     }
 
@@ -429,7 +435,7 @@ static int s_aws_mqtt5_canary_operation_start(struct aws_mqtt5_canary_test_clien
     }
     aws_mqtt5_client_start(test_client->client);
 
-    fprintf(stderr, "ID:" PRInSTR " start\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " start", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
 
@@ -439,7 +445,7 @@ static int s_aws_mqtt5_canary_operation_stop(struct aws_mqtt5_canary_test_client
     }
     aws_mqtt5_client_stop(test_client->client, NULL, NULL);
 
-    fprintf(stderr, "ID:" PRInSTR " stop\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " stop", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
 
@@ -473,7 +479,7 @@ static int s_aws_mqtt5_canary_operation_publish_qos0(struct aws_mqtt5_canary_tes
     struct aws_byte_cursor topic_cursor;
     AWS_ZERO_STRUCT(topic_cursor);
     topic_cursor = aws_byte_cursor_from_c_str("topic1");
-    fprintf(stderr, "ID:" PRInSTR " publish qos0\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " publish qos0", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return s_aws_mqtt5_canary_operation_publish(test_client, topic_cursor, AWS_MQTT5_QOS_AT_MOST_ONCE);
 }
 static int s_aws_mqtt5_canary_operation_publish_to_subscribed_topic_qos0(
@@ -494,7 +500,10 @@ static int s_aws_mqtt5_canary_operation_publish_to_subscribed_topic_qos0(
         AWS_BYTE_CURSOR_PRI(test_client->client_id),
         test_client->subscription_count - 1);
     struct aws_byte_cursor topic_cursor = aws_byte_cursor_from_c_str(topic_array);
-    fprintf(stderr, "ID:" PRInSTR " publish to subscribed topic qos0\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CANARY,
+        "ID:" PRInSTR " publish to subscribed topic qos0",
+        AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return s_aws_mqtt5_canary_operation_publish(test_client, topic_cursor, AWS_MQTT5_QOS_AT_MOST_ONCE);
 }
 
@@ -505,7 +514,7 @@ static int s_aws_mqtt5_canary_operation_publish_qos1(struct aws_mqtt5_canary_tes
     struct aws_byte_cursor topic_cursor;
     AWS_ZERO_STRUCT(topic_cursor);
     topic_cursor = aws_byte_cursor_from_c_str("topic1");
-    fprintf(stderr, "ID:" PRInSTR " publish qos1\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " publish qos1", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return s_aws_mqtt5_canary_operation_publish(test_client, topic_cursor, AWS_MQTT5_QOS_AT_LEAST_ONCE);
 }
 
@@ -516,7 +525,10 @@ static int s_aws_mqtt5_canary_operation_publish_to_shared_topic_qos0(struct aws_
     struct aws_byte_cursor topic_cursor;
     AWS_ZERO_STRUCT(topic_cursor);
     topic_cursor = aws_byte_cursor_from_c_str("shared_topic");
-    fprintf(stderr, "ID:" PRInSTR " publish to shared topic qos0\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CANARY,
+        "ID:" PRInSTR " publish to shared topic qos0",
+        AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return s_aws_mqtt5_canary_operation_publish(test_client, topic_cursor, AWS_MQTT5_QOS_AT_MOST_ONCE);
 }
 
@@ -527,7 +539,10 @@ static int s_aws_mqtt5_canary_operation_publish_to_shared_topic_qos1(struct aws_
     struct aws_byte_cursor topic_cursor;
     AWS_ZERO_STRUCT(topic_cursor);
     topic_cursor = aws_byte_cursor_from_c_str("shared_topic");
-    fprintf(stderr, "ID:" PRInSTR " publish to shared topic qos1\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CANARY,
+        "ID:" PRInSTR " publish to shared topic qos1",
+        AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return s_aws_mqtt5_canary_operation_publish(test_client, topic_cursor, AWS_MQTT5_QOS_AT_LEAST_ONCE);
 }
 
@@ -567,9 +582,9 @@ static int s_aws_mqtt5_canary_operation_subscribe(struct aws_mqtt5_canary_test_c
 
     test_client->subscription_count++;
 
-    fprintf(
-        stderr,
-        "ID:" PRInSTR " subscribe to " PRInSTR "\n",
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_CANARY,
+        "ID:" PRInSTR " subscribe to " PRInSTR,
         AWS_BYTE_CURSOR_PRI(test_client->client_id),
         AWS_BYTE_CURSOR_PRI(subscriptions->topic_filter));
     return aws_mqtt5_client_subscribe(test_client->client, &subscribe_view, NULL);
@@ -595,7 +610,7 @@ static int s_aws_mqtt5_canary_operation_unsubscribe_bad(struct aws_mqtt5_canary_
         .topic_filter_count = AWS_ARRAY_SIZE(unsubscribes),
     };
 
-    fprintf(stderr, "ID:" PRInSTR " unsubscribe bad\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " unsubscribe bad", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return aws_mqtt5_client_unsubscribe(test_client->client, &unsubscribe_view, NULL);
 }
 
@@ -629,7 +644,7 @@ static int s_aws_mqtt5_canary_operation_unsubscribe(struct aws_mqtt5_canary_test
         .topic_filter_count = AWS_ARRAY_SIZE(unsubscribes),
     };
 
-    fprintf(stderr, "ID:" PRInSTR " unsubscribe\n", AWS_BYTE_CURSOR_PRI(test_client->client_id));
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " unsubscribe", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return aws_mqtt5_client_unsubscribe(test_client->client, &unsubscribe_view, NULL);
 }
 
@@ -689,11 +704,11 @@ int main(int argc, char **argv) {
         } else {
             options.file = stderr;
         }
-    }
-
-    if (aws_logger_init_standard(&logger, allocator, &options)) {
-        fprintf(stderr, "Faled to initialize logger with error %s\n", aws_error_debug_str(aws_last_error()));
-        exit(1);
+        if (aws_logger_init_standard(&logger, allocator, &options)) {
+            fprintf(stderr, "Faled to initialize logger with error %s", aws_error_debug_str(aws_last_error()));
+            exit(1);
+        }
+        aws_logger_set(&logger);
     }
 
     /**********************************************************
@@ -933,7 +948,7 @@ int main(int argc, char **argv) {
 
     aws_mqtt_library_clean_up();
 
-    printf("Operations executed: %zu\n", operations);
+    printf("   Operations executed: %zu\n", operations);
 
     const size_t leaked_bytes = aws_mem_tracer_bytes(allocator);
     if (leaked_bytes) {
