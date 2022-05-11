@@ -25,6 +25,10 @@ from CanaryWrapper_MetricFunctions import *
 # NOTE - There is a bug where you sometimes will have to try launching it a few times to clear exceptions if you
 #        stopped execution using CTRL-C instead of pressing enter. TODO - figure out what causes this and fix it.
 
+# TODO - better support running something like 'python3' as the executable and '<path to python file>' as the argument(s)
+#        currently running 'python3' and setting the arguments works, but it does not place the S3 file in the arguments
+#        filepath and instead places it in a file called python3, which is NOT what we want. Need to think on how to best
+#        support/workaround this...
 
 # ================================================================================
 # Code for command line argument parsing
@@ -58,7 +62,7 @@ canary_local_application_arguments = command_parser_arguments.canary_arguments
 canary_local_git_hash_stub = "Canary"
 # The "Git Repo" name to use for metrics and dimensions. Is hard-coded since this is a 24/7 canary that should only run for MQTT
 # [THIS IS READ ONLY]
-canary_local_git_repo_stub = "Metrics"
+canary_local_git_repo_stub = "MQTT5_Persistent"
 # The Fixed Namespace name for the Canary
 # [THIS IS READ ONLY]
 canary_local_git_fixed_namespace = "MQTT5_Persistent_Canary"
@@ -74,7 +78,7 @@ canary_s3_bucket_application_path = command_parser_arguments.s3_bucket_applicati
 canary_s3_check_wait_time = 30
 # How long (in seconds) to wait before gathering metrics and pushing them to Cloudwatch
 # [THIS IS READ ONLY]
-canary_metrics_wait_time =  600 # 10 minutes
+canary_metrics_wait_time = 600 # 10 minutes
 # How long (in seconds) to run the Application thread loop. Should be around/shorter than the Canary S3 check time
 canary_application_loop_wait_time = 30
 
@@ -108,7 +112,7 @@ class S3_Monitor():
     global canary_local_application_path
 
     def __init__(self, s3_bucket_name, s3_file_name) -> None:
-        self.s3_client = boto3.client("s3")
+        self.s3_client = None
         self.s3_current_object_version_id = None
         self.s3_current_object_last_modified = None
         self.s3_bucket_name = s3_bucket_name
@@ -122,8 +126,8 @@ class S3_Monitor():
 
         # Check for valid credentials
         # ==================
-        tmp_sts_client = boto3.client('sts')
         try:
+            tmp_sts_client = boto3.client('sts')
             tmp_sts_client.get_caller_identity()
         except Exception as e:
             print ("ERROR - (S3 Check) AWS credentials are NOT valid!")
@@ -131,6 +135,14 @@ class S3_Monitor():
             self.internal_error_reason = "AWS credentials are NOT valid!"
             return
         # ==================
+
+        try:
+            self.s3_client = boto3.client("s3")
+        except Exception as e:
+            print ("ERROR - (S3 Check) Could not make S3 client")
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not make S3 client for S3 Monitor"
+            return
 
 
     def check_for_file_change(self):
@@ -266,8 +278,9 @@ class SnapshotMonitor():
         self.had_interal_error = False
         self.internal_error_reason = ""
 
+        # A list of all the alarms triggered in the last check, cached for later
+        # NOTE - this is only the alarm names! Not the severity. This just makes it easier to process
         self.cloudwatch_current_alarms_triggered = []
-        self.cloudwatch_current_alarms_lowest_alarm_severity = 6
 
         # Check for errors
         if (self.data_snapshot.abort_due_to_internal_error == True):
@@ -307,6 +320,66 @@ class SnapshotMonitor():
     def cleanup(self):
         self.data_snapshot.cleanup()
 
+    def check_alarms_for_new_alarms(self, triggered_alarms):
+
+        if len(triggered_alarms) > 0:
+            self.data_snapshot.print_message(
+                "WARNING - One or more alarms are in state of ALARM")
+
+            old_alarms_still_active = []
+            new_alarms = []
+            new_alarms_highest_severity = 6
+            new_alarm_found = True
+            new_alarm_ticket_description = "Persistent Canary has metrics in ALARM state!\n\nMetrics in alarm:\n"
+
+            for triggered_alarm in triggered_alarms:
+                new_alarm_found = True
+
+                # Is this a new alarm?
+                for old_alarm_name in self.cloudwatch_current_alarms_triggered:
+                    if (old_alarm_name == triggered_alarm[1]):
+                        new_alarm_found = False
+                        old_alarms_still_active.append(triggered_alarm[1])
+
+                        new_alarm_ticket_description += "* (STILL IN ALARM) " + triggered_alarm[1] + "\n"
+                        new_alarm_ticket_description += "\tSeverity: " + str(triggered_alarm[2])
+                        new_alarm_ticket_description += "\n"
+                        break
+
+                # If it is a new alarm, then add it to our list so we can cut a new ticket
+                if (new_alarm_found == True):
+                    self.data_snapshot.print_message('    (NEW) Alarm with name "' + triggered_alarm[1] + '" is in the ALARM state!')
+                    new_alarms.append(triggered_alarm[1])
+                    if (triggered_alarm[2] < new_alarms_highest_severity):
+                        new_alarms_highest_severity = triggered_alarm[2]
+                    new_alarm_ticket_description += "* " + triggered_alarm[1] + "\n"
+                    new_alarm_ticket_description += "\tSeverity: " + str(triggered_alarm[2])
+                    new_alarm_ticket_description += "\n"
+
+
+            if len(new_alarms) > 0:
+                cut_ticket_using_cloudwatch(
+                    git_repo_name=canary_local_git_repo_stub,
+                    git_hash=canary_local_git_hash_stub,
+                    git_hash_as_namespace=False,
+                    git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                    cloudwatch_region="us-east-1",
+                    ticket_description="Long running canary application thread stopped due to the S3 checking thread stopping unexpectedly. "
+                                        "This is likely due to a credential error or setup error",
+                    ticket_reason="S3 thread stopped unexpectedly",
+                    ticket_allow_duplicates=True,
+                    ticket_category="AWS",
+                    ticket_item="IoT SDK for CPP",
+                    ticket_group="AWS IoT Device SDK",
+                    ticket_type="SDKs and Tools",
+                    ticket_severity=4)
+
+            # Cache the new alarms and the old alarms
+            self.cloudwatch_current_alarms_triggered = old_alarms_still_active + new_alarms
+
+        else:
+            self.cloudwatch_current_alarms_triggered.clear()
+
 
     def application_monitor_loop_function(self, time_passed=30):
         # Check for internal errors
@@ -334,20 +407,7 @@ class SnapshotMonitor():
                     if (self.had_interal_error == False):
                         # Get a report of all the alarms that might have been set to an alarm state
                         triggered_alarms = self.data_snapshot.get_cloudwatch_alarm_results()
-                        if len(triggered_alarms) > 0:
-                            # TODO - instead of clearing instantly, append to new array and check to see if there is a difference.
-                            # If there is, potentially cut a ticket
-                            self.cloudwatch_current_alarms_triggered.clear()
-
-                            self.data_snapshot.print_message(
-                                "WARNING - One or more alarms are in state of ALARM")
-                            for triggered_alarm in triggered_alarms:
-                                self.data_snapshot.print_message('    Alarm with name "' + triggered_alarm[1] + '" is in the ALARM state!')
-                                self.cloudwatch_current_alarms_triggered.append(triggered_alarm[1])
-                                if (triggered_alarm[2] < self.cloudwatch_current_alarms_lowest_alarm_severity):
-                                    self.cloudwatch_current_alarms_lowest_alarm_severity = triggered_alarm[2]
-
-                            # TODO - cut a ticket if the states in alarm are different than cached states in alarm?
+                        self.check_alarms_for_new_alarms(triggered_alarms)
                 except:
                     self.data_snapshot.print_message("ERROR - exception occured checking metric alarms!")
                     self.data_snapshot.print_message("(Likely session credentials expired)")
@@ -505,7 +565,7 @@ def application_thread():
             canary_file_reaplce_application_thread_restart = False
             continue
 
-        application_monitor.application_monitor_loop_function()
+        application_monitor.application_monitor_loop_function(canary_application_loop_wait_time)
 
         # If an error has occured or otherwise this thead needs to stop, then break the loop
         if (application_monitor.error_has_occured == True or canary_s3_thread_has_stopped == True or canary_stop_all_threads == True):

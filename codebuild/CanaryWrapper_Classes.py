@@ -105,8 +105,8 @@ class DataSnapshot():
 
         # Check for valid credentials
         # ==================
-        tmp_sts_client = boto3.client('sts')
         try:
+            tmp_sts_client = boto3.client('sts')
             tmp_sts_client.get_caller_identity()
         except Exception as e:
             print ("ERROR - AWS credentials are NOT valid!")
