@@ -187,7 +187,7 @@ static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_teste
 
     /* How long to run the test before exiting */
     tester_options->test_run_seconds = 30;
-    tester_options->test_run_minutes = 0;
+    tester_options->test_run_minutes = 1;
     tester_options->test_run_hours = 0;
 
     s_aws_mqtt5_canary_update_tps_sleep_time(tester_options);
@@ -209,7 +209,7 @@ struct aws_mqtt5_canary_test_client {
 
 typedef int(aws_mqtt5_canary_operation_fn)(struct aws_mqtt5_canary_test_client *test_client);
 
-#define AWS_MQTT5_CANARY_DISTRIBUTIONS_COUNT 15
+#define AWS_MQTT5_CANARY_DISTRIBUTIONS_COUNT 12
 struct aws_mqtt5_canary_operations_function_table {
     aws_mqtt5_canary_operation_fn *operation_by_operation_type[AWS_MQTT5_CANARY_DISTRIBUTIONS_COUNT];
 };
@@ -223,13 +223,10 @@ enum aws_mqtt5_canary_operations {
     AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE = 5,
     AWS_MQTT5_CANARY_OPERATION_PUBLISH_QOS0 = 6,
     AWS_MQTT5_CANARY_OPERATION_PUBLISH_QOS1 = 7,
-    AWS_MQTT5_CANARY_OPERATION_SUBSCRIBE_BAD = 8,
-    AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE_BAD = 9,
-    AWS_MQTT5_CANARY_OPERATION_PUBLISH_BAD_TOPIC = 10,
-    AWS_MQTT5_CANARY_OPERATION_PUBLISH_BAD_PAYLOAD = 11,
-    AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS0 = 12,
-    AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC_QOS0 = 13,
-    AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC_QOS1 = 14,
+    AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE_BAD = 8,
+    AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS0 = 9,
+    AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC_QOS0 = 10,
+    AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC_QOS1 = 11,
 };
 
 struct operation_distribution {
@@ -647,10 +644,7 @@ static struct aws_mqtt5_canary_operations_function_table s_aws_mqtt5_canary_oper
             &s_aws_mqtt5_canary_operation_unsubscribe,                      /* unsubscribe */
             &s_aws_mqtt5_canary_operation_publish_qos0,                     /* publish_qos0 */
             &s_aws_mqtt5_canary_operation_publish_qos1,                     /* publish_qos1 */
-            NULL,                                                           /* subscribe_bad */
             &s_aws_mqtt5_canary_operation_unsubscribe_bad,                  /* unsubscribe_bad */
-            NULL,                                                           /* publish_bad_topic */
-            NULL,                                                           /* publish_bad_payload */
             &s_aws_mqtt5_canary_operation_publish_to_subscribed_topic_qos0, /* publish_to_subscribed_topic_qos1 */
             &s_aws_mqtt5_canary_operation_publish_to_shared_topic_qos0,     /* publish_to_shared_topic_qos0 */
             &s_aws_mqtt5_canary_operation_publish_to_shared_topic_qos1,     /* publish_to_shared_topic_qos1 */
@@ -862,6 +856,7 @@ int main(int argc, char **argv) {
      * TESTING
      **********************************************************/
     bool done = false;
+    size_t operations = 0;
     uint64_t time_test_finish = 0;
     aws_high_res_clock_get_ticks(&time_test_finish);
     uint64_t test_time = 0;
@@ -870,6 +865,12 @@ int main(int argc, char **argv) {
     test_time += tester_options.test_run_seconds;
     time_test_finish += aws_timestamp_convert(test_time, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     uint64_t time_next_op = 0;
+
+    printf(
+        "Running test for %zu hours %zu minutes %zu seconds\n",
+        tester_options.test_run_hours,
+        tester_options.test_run_minutes,
+        tester_options.test_run_seconds);
     aws_high_res_clock_get_ticks(&time_next_op);
 
     while (!done) {
@@ -877,6 +878,7 @@ int main(int argc, char **argv) {
         aws_high_res_clock_get_ticks(&now);
         if (now >= time_next_op) {
             time_next_op += tester_options.tps_sleep_time;
+            operations++;
 
             enum aws_mqtt5_canary_operations next_operation =
                 s_aws_mqtt5_canary_get_next_random_operation(&tester_options, &distributions);
@@ -930,6 +932,8 @@ int main(int argc, char **argv) {
     aws_uri_clean_up(&app_ctx.uri);
 
     aws_mqtt_library_clean_up();
+
+    printf("Operations executed: %zu\n", operations);
 
     const size_t leaked_bytes = aws_mem_tracer_bytes(allocator);
     if (leaked_bytes) {
