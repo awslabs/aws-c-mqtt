@@ -1,5 +1,6 @@
-# Python wrapper script for collecting Canary metrics, setting-up/tearing-down alarms, reporting metrics to Cloudwatch,
-# checking the alarms to ensure everything is correct at the end of the run, and pushing the log to S3 if successful.
+# Python wrapper script for collecting Canary metrics, setting up alarms, reporting metrics to Cloudwatch,
+# checking the alarms to ensure everything is correct at the end of the run, and checking for new
+# builds in S3, downloading them, and launching them if they exist (24/7 opperation)
 
 # Needs to be installed prior to running
 import boto3
