@@ -16,8 +16,6 @@ import subprocess
 from CanaryWrapper_Classes import *
 from CanaryWrapper_MetricFunctions import *
 
-# TODO - Use a persistent cloudwatch namespace/alarm/etc - rather than creating and tearing it down every time
-
 # TODO - Using subprocess may not work on Windows for starting/stopping the application thread.
 #        Canary will likely be running on Linux, so it's probably okay, but need to confirm/check at some point....
 
@@ -26,6 +24,21 @@ from CanaryWrapper_MetricFunctions import *
 
 # NOTE - There is a bug where you sometimes will have to try launching it a few times to clear exceptions if you
 #        stopped execution using CTRL-C instead of pressing enter. TODO - figure out what causes this and fix it.
+
+
+# ================================================================================
+# Code for command line argument parsing
+
+command_parser = argparse.ArgumentParser("CanaryWrapper_Persistent")
+command_parser.add_argument("--canary_executable", type=str, required=True,
+    help="The path to the canary executable")
+command_parser.add_argument("--canary_arguments", type=str, default="",
+    help="The arguments to pass/launch the canary executable with")
+command_parser.add_argument("--s3_bucket_name", type=str, default="canary-wrapper-folder",
+    help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
+command_parser.add_argument("--s3_bucket_application", type=str, required=True,
+    help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
+command_parser_arguments = command_parser.parse_args()
 
 # ================================================================================
 # Global variables that both threads use to communicate.
@@ -36,10 +49,34 @@ from CanaryWrapper_MetricFunctions import *
 # The local file path (and extension) of the Canary application that the wrapper will manage
 # (This will also be the filename and directory used when a new file is detected in S3)
 # [THIS IS READ ONLY]
-canary_local_application_path = "tmp/canary_application.py"
+canary_local_application_path = command_parser_arguments.canary_executable #"tmp/canary_application.py"
+# This is the arguments passed to the local file path when starting
+# [THIS IS READ ONLY]
+canary_local_application_arguments = command_parser_arguments.canary_arguments
+# The "Git Hash" to use for metrics and dimensions
+# [THIS IS READ ONLY]
+canary_local_git_hash_stub = "Canary"
+# The "Git Repo" name to use for metrics and dimensions. Is hard-coded since this is a 24/7 canary that should only run for MQTT
+# [THIS IS READ ONLY]
+canary_local_git_repo_stub = "Metrics"
+# The Fixed Namespace name for the Canary
+# [THIS IS READ ONLY]
+canary_local_git_fixed_namespace = "MQTT5_Persistent_Canary"
+# The S3 bucket name to monitor for the application
+# [THIS IS READ ONLY]
+canary_s3_bucket_name = command_parser_arguments.s3_bucket_name
+# The file in the S3 bucket to monitor (The application filepath and file. Example: "canary/canary_application.exe")
+# [THIS IS READ ONLY]
+canary_s3_bucket_application_path = command_parser_arguments.s3_bucket_application
+
 # How long (in seconds) to wait before checking S3
 # [THIS IS READ ONLY]
 canary_s3_check_wait_time = 30
+# How long (in seconds) to wait before gathering metrics and pushing them to Cloudwatch
+# [THIS IS READ ONLY]
+canary_metrics_wait_time =  600 # 10 minutes
+# How long (in seconds) to run the Application thread loop. Should be around/shorter than the Canary S3 check time
+canary_application_loop_wait_time = 30
 
 # If true, the S3 thread will stop. Should only be set by the application thread
 # [THIS IS WRITTEN TO ONLY FROM THE APPLICATION THREAD]
@@ -161,20 +198,16 @@ class S3_Monitor():
 
 def s3_monitor_thread():
     global canary_s3_check_wait_time
-
     global canary_file_replace_application_thread_start
     global canary_file_replace_application_thread_ready
     global canary_file_reaplce_application_thread_restart
-
     global canary_s3_thread_stop
     global canary_s3_thread_has_stopped
-
     global canary_stop_all_threads
 
     s3_monitor = S3_Monitor(
-        s3_bucket_name="ncbeard-canary-wrapper-folder",
-        s3_file_name="canary-application/CanaryMockApplication.py"
-    )
+        s3_bucket_name=canary_s3_bucket_name,
+        s3_file_name=canary_s3_bucket_application_path)
 
     while True:
         if (canary_s3_thread_stop == True or canary_stop_all_threads == True):
@@ -209,20 +242,25 @@ def s3_monitor_thread():
 # ================================================================================
 
 class SnapshotMonitor():
+    global canary_local_git_hash_stub
+    global canary_local_git_repo_stub
+    global canary_local_git_fixed_namespace
+    global canary_metrics_wait_time
+
     def __init__(self) -> None:
 
-        # TODO - replace this so the values are NOT hard coded
         self.data_snapshot = DataSnapshot(
-            git_hash="1234567890",
-            git_repo_name="aws-c-example",
+            git_hash=canary_local_git_hash_stub,
+            git_repo_name=canary_local_git_repo_stub,
             git_hash_as_namespace=False,
+            git_fixed_namespace_text=canary_local_git_fixed_namespace,
             output_log_filepath="output.log",
             output_to_console=True,
             cloudwatch_region="us-east-1",
             cloudwatch_teardown_alarms_on_complete=True,
             cloudwatch_teardown_dashboard_on_complete=True, # TODO - finish dasbhoards and disable this!
             cloudwatch_make_dashboard=False, # TODO - finish dasbhoards and enable this!
-            s3_bucket_name="ncbeard-canary-wrapper-folder",
+            s3_bucket_name="", # We will not be uploading to S3 anyway, so just pass an empty string
             s3_bucket_upload_on_complete=False)
 
         self.had_interal_error = False
@@ -239,8 +277,8 @@ class SnapshotMonitor():
             return
 
         # How long to wait before posting a metric
-        self.metric_post_timer = 60
-        self.metric_post_timer_time = 60
+        self.metric_post_timer = canary_metrics_wait_time
+        self.metric_post_timer_time = canary_metrics_wait_time
 
 
     def register_metric(self, new_metric_name, new_metric_function, new_metric_unit="None", new_metric_alarm_threshold=None,
@@ -360,14 +398,14 @@ class ApplicationMonitor():
             new_metric_reports_to_skip=0,
             new_metric_alarm_severity=5)
 
-        # TODO - pass dependencies list
-        self.wrapper_monitor.output_diagnosis_information("")
+        # No good way to get the dependencies since it could change at any given point. Just skip printing them for the persistent canary
+        self.wrapper_monitor.output_diagnosis_information("Cannot show dependencies in persistent wrapper")
 
 
     def start_application_monitoring(self):
         if (self.application_process == None):
             try:
-                canary_command = "python3 " + canary_local_application_path
+                canary_command = canary_local_application_path + " " + canary_local_application_arguments
                 self.application_process = subprocess.Popen(canary_command, shell=True)
             except Exception as e:
                 print ("ERROR - Could not launch Canary/Application due to exception!")
@@ -434,11 +472,13 @@ def application_thread():
     global canary_file_replace_application_thread_start
     global canary_file_replace_application_thread_ready
     global canary_file_reaplce_application_thread_restart
-
     global canary_s3_thread_stop
     global canary_s3_thread_has_stopped
-
     global canary_stop_all_threads
+    global canary_local_git_hash_stub
+    global canary_local_git_repo_stub
+    global canary_local_git_fixed_namespace
+    global canary_application_loop_wait_time
 
     application_monitor = ApplicationMonitor()
 
@@ -471,17 +511,66 @@ def application_thread():
         if (application_monitor.error_has_occured == True or canary_s3_thread_has_stopped == True or canary_stop_all_threads == True):
             break
 
-        time.sleep(10)
+        time.sleep(canary_application_loop_wait_time)
 
-    # TODO - cut a ticket
+    # Stop the application from running if it is somewhow still running in the background
+    application_monitor.stop_application_monitoring()
+
     if (canary_stop_all_threads == True):
         print ("DEBUG - Application thread stopped due to all thread stop signal sent...")
     elif (canary_s3_thread_has_stopped == True):
         print ("Application thread stopped due to S3 thread stopping unexpectedly!")
+
+        cut_ticket_using_cloudwatch(
+            git_repo_name=canary_local_git_repo_stub,
+            git_hash=canary_local_git_hash_stub,
+            git_hash_as_namespace=False,
+            git_fixed_namespace_text=canary_local_git_fixed_namespace,
+            cloudwatch_region="us-east-1",
+            ticket_description="Long running canary application thread stopped due to the S3 checking thread stopping unexpectedly. "
+                                "This is likely due to a credential error or setup error",
+            ticket_reason="S3 thread stopped unexpectedly",
+            ticket_allow_duplicates=True,
+            ticket_category="AWS",
+            ticket_item="IoT SDK for CPP",
+            ticket_group="AWS IoT Device SDK",
+            ticket_type="SDKs and Tools",
+            ticket_severity=4)
     else:
         print ("Application thread stopping due to an internal error in application monitor.")
         print ("Error reason: " + application_monitor.error_reason)
         print ("Error code: " + str(application_monitor.error_code))
+
+        if (application_monitor.error_code != 0):
+            cut_ticket_using_cloudwatch(
+                git_repo_name=canary_local_git_repo_stub,
+                git_hash=canary_local_git_hash_stub,
+                git_hash_as_namespace=False,
+                git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                cloudwatch_region="us-east-1",
+                ticket_description="The persistent canary exited with a non-zero exit code! This likely means something in the canary failed.",
+                ticket_reason="The persistent canary exited with a non-zero exit code",
+                ticket_allow_duplicates=True,
+                ticket_category="AWS",
+                ticket_item="IoT SDK for CPP",
+                ticket_group="AWS IoT Device SDK",
+                ticket_type="SDKs and Tools",
+                ticket_severity=4)
+        else:
+            cut_ticket_using_cloudwatch(
+                git_repo_name=canary_local_git_repo_stub,
+                git_hash=canary_local_git_hash_stub,
+                git_hash_as_namespace=False,
+                git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                cloudwatch_region="us-east-1",
+                ticket_description="The persistent canary exited with a zero exit code. The canary should run 24/7 and may need to be restarted.",
+                ticket_reason="The persistent canary exited with a zero exit code",
+                ticket_allow_duplicates=True,
+                ticket_category="AWS",
+                ticket_item="IoT SDK for CPP",
+                ticket_group="AWS IoT Device SDK",
+                ticket_type="SDKs and Tools",
+                ticket_severity=5)
 
     application_monitor.cleanup_all()
 
