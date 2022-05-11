@@ -17,8 +17,10 @@ from CanaryWrapper_Classes import *
 from CanaryWrapper_MetricFunctions import *
 
 # TODO - Use a persistent cloudwatch namespace/alarm/etc - rather than creating and tearing it down every time
+
 # TODO - Using subprocess may not work on Windows for starting/stopping the application thread.
 #        Canary will likely be running on Linux, so it's probably okay, but need to confirm/check at some point....
+
 # TODO - Write a method for if the canary has an exception, this script has an exception, etc.
 #        Does the script need to start again? Should someone manually restart the canary? ???
 
@@ -105,7 +107,8 @@ class S3_Monitor():
                         if (version["VersionId"] != self.s3_current_object_version_id or
                             version["LastModified"] != self.s3_current_object_last_modified):
 
-                            print ("FOUND NEW VERSION OF CANARY IN S3!")
+                            print ("S3 monitor - Found new version of Canary/Application in S3!")
+                            print ("Changing running Canary/Application to new one...")
 
                             # Will be checked by thread to trigger replacing the file
                             self.s3_file_needs_replacing = True
@@ -209,7 +212,6 @@ class SnapshotMonitor():
     def __init__(self) -> None:
 
         # TODO - replace this so the values are NOT hard coded
-        # TODO - make this where the namespace and dashboard are NOT cleared and are persistent
         self.data_snapshot = DataSnapshot(
             git_hash="1234567890",
             git_repo_name="aws-c-example",
@@ -217,7 +219,11 @@ class SnapshotMonitor():
             output_log_filepath="output.log",
             output_to_console=True,
             cloudwatch_region="us-east-1",
-            s3_bucket_name="ncbeard-canary-wrapper-folder")
+            cloudwatch_teardown_alarms_on_complete=True,
+            cloudwatch_teardown_dashboard_on_complete=True, # TODO - finish dasbhoards and disable this!
+            cloudwatch_make_dashboard=False, # TODO - finish dasbhoards and enable this!
+            s3_bucket_name="ncbeard-canary-wrapper-folder",
+            s3_bucket_upload_on_complete=False)
 
         self.had_interal_error = False
         self.internal_error_reason = ""
@@ -237,17 +243,17 @@ class SnapshotMonitor():
         self.metric_post_timer_time = 60
 
 
-    def register_metric(self, metric_name, metric_function, metric_unit="None", metric_alarm_threshold=None,
-                        metric_reports_to_skip=0, metric_alarm_severity=6):
+    def register_metric(self, new_metric_name, new_metric_function, new_metric_unit="None", new_metric_alarm_threshold=None,
+                        new_metric_reports_to_skip=0, new_metric_alarm_severity=6):
 
         try:
             self.data_snapshot.register_metric(
-                new_metric_name=metric_name,
-                new_metric_function=metric_function,
-                new_metric_unit=metric_unit,
-                new_metric_alarm_threshold=metric_alarm_threshold,
-                new_metric_reports_to_skip=metric_reports_to_skip,
-                new_metric_alarm_severity=metric_alarm_severity)
+                new_metric_name=new_metric_name,
+                new_metric_function=new_metric_function,
+                new_metric_unit=new_metric_unit,
+                new_metric_alarm_threshold=new_metric_alarm_threshold,
+                new_metric_reports_to_skip=new_metric_reports_to_skip,
+                new_metric_alarm_severity=new_metric_alarm_severity)
         except Exception as e:
             print ("ERROR - could not register metric in data snapshot due to exception!")
             print ("Exception: " + str(e))

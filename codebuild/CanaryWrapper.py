@@ -111,7 +111,11 @@ def snapshot_thread():
         output_log_filepath=command_parser_arguments.output_log_filepath,
         output_to_console=command_parser_arguments.output_to_console,
         cloudwatch_region=command_parser_arguments.cloudwatch_region,
-        s3_bucket_name=command_parser_arguments.s3_bucket_name
+        cloudwatch_teardown_alarms_on_complete=True,
+        cloudwatch_teardown_dashboard_on_complete=True,
+        cloudwatch_make_dashboard=False,
+        s3_bucket_name=command_parser_arguments.s3_bucket_name,
+        s3_bucket_upload_on_complete=True
     )
 
     # Check for errors

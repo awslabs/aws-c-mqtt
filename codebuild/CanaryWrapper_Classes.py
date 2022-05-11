@@ -7,7 +7,6 @@ import boto3
 import time
 import os
 
-# TODO - split this into sub-files for easier management/modularity?
 # TODO - write a fallback using OS if psutil is not present?
 # TODO - create Cloudwatch dashboard(s)?
 
@@ -60,7 +59,11 @@ class DataSnapshot():
                  output_log_filepath=None,
                  output_to_console=True,
                  cloudwatch_region="us-east-1",
-                 s3_bucket_name="canary-wrapper-bucket"):
+                 cloudwatch_make_dashboard=False,
+                 cloudwatch_teardown_alarms_on_complete=True,
+                 cloudwatch_teardown_dashboard_on_complete=True,
+                 s3_bucket_name="canary-wrapper-bucket",
+                 s3_bucket_upload_on_complete=True):
 
         # Setting initial values
         # ==================
@@ -85,9 +88,14 @@ class DataSnapshot():
 
         self.cloudwatch_region = cloudwatch_region
         self.cloudwatch_client = None
+        self.cloudwatch_make_dashboard = cloudwatch_make_dashboard
+        self.cloudwatch_teardown_alarms_on_complete = cloudwatch_teardown_alarms_on_complete
+        self.cloudwatch_teardown_dashboard_on_complete = cloudwatch_teardown_dashboard_on_complete
+        self.cloudwatch_dashboard_name = ""
 
         self.s3_bucket_name = s3_bucket_name
         self.s3_client = None
+        self.s3_bucket_upload_on_complete = s3_bucket_upload_on_complete
 
         self.output_to_file_filepath = output_log_filepath
         self.output_to_file = False
@@ -129,6 +137,7 @@ class DataSnapshot():
         # ==================
         try:
             self.cloudwatch_client = boto3.client('cloudwatch', self.cloudwatch_region)
+            self.cloudwatch_dashboard_name = self.git_metric_namespace
         except Exception as e:
             self.print_message("ERROR - could not make Cloudwatch client due to exception!")
             self.print_message("Exception: " + str(e))
@@ -165,8 +174,12 @@ class DataSnapshot():
     # Should be called at the end when you are totally finished shadowing metrics
     def cleanup(self, error_occured=False):
         if (error_occured == False):
-            self.export_result_to_s3_bucket(True)
+            if (self.s3_bucket_upload_on_complete == True):
+                self.export_result_to_s3_bucket(True)
+
         self._cleanup_cloudwatch_alarms()
+        if (self.cloudwatch_make_dashboard == True):
+            self._cleanup_cloudwatch_dashboard()
 
         if (self.output_file is not None):
             self.output_file.close()
@@ -185,6 +198,35 @@ class DataSnapshot():
         for metric in self.metrics:
             if (not metric.metric_alarm_threshold is None):
                 self._add_cloudwatch_metric_alarm(metric)
+
+        if (self.cloudwatch_make_dashboard == True):
+            self._init_cloudwatch_pre_first_run_dashboard()
+
+    # Utility function - adds the Cloudwatch Dashboard for the currently running data snapshot
+    def _init_cloudwatch_pre_first_run_dashboard(self):
+        try:
+            # TODO - for now, just use a hard-coded solution with no widgets
+            new_dashboard_body = """
+            {
+                "Start": "-PT1H",
+                "widgets": []
+            }
+            """
+
+            # TODO - add function to allow registering widgets to the dashboard
+            #        Should allow for setting the metrics that are on that dashboard, period, start time, etc
+            # TODO - Add code to dynamically create the JSON data from the registered widgets
+
+            self.cloudwatch_client.put_dashboard(
+                DashboardName=self.cloudwatch_dashboard_name,
+                DashboardBody=new_dashboard_body)
+            self.print_message("Added Cloudwatch dashboard successfully")
+        except Exception as e:
+            self.print_message("ERROR - Couldwatch client could not make dashboard due to exception!")
+            self.print_message("Exception: " + str(e))
+            self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "Couldwatch client could not make dashboard due to exception"
+            return
 
     # Utility function - The function that adds each individual metric alarm.
     def _add_cloudwatch_metric_alarm(self, metric):
@@ -214,17 +256,28 @@ class DataSnapshot():
 
     # Utilty function - removes all the Cloudwatch alarms for the metrics
     def _cleanup_cloudwatch_alarms(self):
-        try:
-            for metric in self.metrics:
-                if (not metric.metric_alarm_threshold is None):
-                    self.cloudwatch_client.delete_alarms(AlarmNames=[
-                        metric.metric_alarm_name
-                    ])
-        except Exception as e:
-            self.print_message(
-                "ERROR - could not delete alarms due to exception!")
-            self.print_message("Exception: " + str(e))
-        return
+        if (self.cloudwatch_teardown_alarms_on_complete == True):
+            try:
+                for metric in self.metrics:
+                    if (not metric.metric_alarm_threshold is None):
+                        self.cloudwatch_client.delete_alarms(AlarmNames=[metric.metric_alarm_name])
+            except Exception as e:
+                self.print_message(
+                    "ERROR - could not delete alarms due to exception!")
+                self.print_message("Exception: " + str(e))
+
+    # Utility function - removes all Cloudwatch dashboards created
+    def _cleanup_cloudwatch_dashboard(self):
+        if (self.cloudwatch_teardown_dashboard_on_complete == True):
+            try:
+                self.cloudwatch_client.delete_dashboards(DashboardNames=[self.cloudwatch_dashboard_name])
+                self.print_message("Cloudwatch Dashboards deleted successfully!")
+            except Exception as e:
+                self.print_message("ERROR - dashboard cleaning function failed due to exception!")
+                self.print_message("Exception: " + str(e))
+                self.abort_due_to_internal_error = True
+                self.abort_due_to_internal_error_reason = "Cloudwatch dashboard cleaning function failed due to exception"
+                return
 
     # Returns the results of the metric alarms. Will return a list containing tuples with the following structure:
     # [Boolean (False = the alarm is in the ALARM state), String (Name of the alarm that is in the ALARM state), int (severity of alarm)]
