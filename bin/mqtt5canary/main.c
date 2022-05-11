@@ -230,6 +230,7 @@ static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_teste
 struct aws_mqtt5_canary_test_client {
     struct aws_mqtt5_client *client;
     const struct aws_mqtt5_negotiated_settings *settings;
+    struct aws_byte_cursor shared_topic;
     struct aws_byte_cursor client_id;
     size_t subscription_count;
     bool is_connected;
@@ -515,7 +516,11 @@ static int s_aws_mqtt5_canary_operation_subscribe(struct aws_mqtt5_canary_test_c
             .retain_handling_type = AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE,
         },
         {
-            .topic_filter = aws_byte_cursor_from_c_str("shared_topic"),
+            .topic_filter =
+                {
+                    .ptr = test_client->shared_topic.ptr,
+                    .len = test_client->shared_topic.len,
+                },
             .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
             .no_local = false,
             .retain_as_published = false,
@@ -732,30 +737,24 @@ static int s_aws_mqtt5_canary_operation_publish_to_shared_topic_qos0(struct aws_
     if (!test_client->is_connected) {
         return s_aws_mqtt5_canary_operation_start(test_client);
     }
-    struct aws_byte_cursor topic_cursor;
-    AWS_ZERO_STRUCT(topic_cursor);
-    topic_cursor = aws_byte_cursor_from_c_str("shared_topic");
     AWS_LOGF_INFO(
         AWS_LS_MQTT5_CANARY,
         "ID:" PRInSTR " Publish qos 0 to shared topic: " PRInSTR,
         AWS_BYTE_CURSOR_PRI(test_client->client_id),
-        AWS_BYTE_CURSOR_PRI(topic_cursor));
-    return s_aws_mqtt5_canary_operation_publish(test_client, topic_cursor, AWS_MQTT5_QOS_AT_MOST_ONCE);
+        AWS_BYTE_CURSOR_PRI(test_client->shared_topic));
+    return s_aws_mqtt5_canary_operation_publish(test_client, test_client->shared_topic, AWS_MQTT5_QOS_AT_MOST_ONCE);
 }
 
 static int s_aws_mqtt5_canary_operation_publish_to_shared_topic_qos1(struct aws_mqtt5_canary_test_client *test_client) {
     if (!test_client->is_connected) {
         return s_aws_mqtt5_canary_operation_start(test_client);
     }
-    struct aws_byte_cursor topic_cursor;
-    AWS_ZERO_STRUCT(topic_cursor);
-    topic_cursor = aws_byte_cursor_from_c_str("shared_topic");
     AWS_LOGF_INFO(
         AWS_LS_MQTT5_CANARY,
         "ID:" PRInSTR " Publish qos 1 to shared topic: " PRInSTR,
         AWS_BYTE_CURSOR_PRI(test_client->client_id),
-        AWS_BYTE_CURSOR_PRI(topic_cursor));
-    return s_aws_mqtt5_canary_operation_publish(test_client, topic_cursor, AWS_MQTT5_QOS_AT_LEAST_ONCE);
+        AWS_BYTE_CURSOR_PRI(test_client->shared_topic));
+    return s_aws_mqtt5_canary_operation_publish(test_client, test_client->shared_topic, AWS_MQTT5_QOS_AT_LEAST_ONCE);
 }
 
 static struct aws_mqtt5_canary_operations_function_table s_aws_mqtt5_canary_operation_table = {
@@ -959,13 +958,19 @@ int main(int argc, char **argv) {
     struct aws_mqtt5_canary_test_client clients[tester_options.client_count];
     AWS_ZERO_STRUCT(clients);
 
+    uint64_t start_time = 0;
+    aws_high_res_clock_get_ticks(&start_time);
+    char shared_topic_array[256] = "";
+    snprintf(shared_topic_array, sizeof shared_topic_array, "%llu_shared_topic", start_time);
+    struct aws_byte_cursor shared_topic = aws_byte_cursor_from_c_str(shared_topic_array);
+
     for (size_t i = 0; i < tester_options.client_count; ++i) {
 
         client_options.lifecycle_event_handler_user_data = &clients[i];
         client_options.publish_received_handler_user_data = &clients[i];
 
         clients[i].index = i;
-
+        clients[i].shared_topic = shared_topic;
         clients[i].client = aws_mqtt5_client_new(allocator, &client_options);
 
         aws_mqtt5_canary_operation_fn *operation_fn =
