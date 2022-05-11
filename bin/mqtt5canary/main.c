@@ -608,6 +608,34 @@ static int s_aws_mqtt5_canary_operation_publish(
     uint16_t payload_size = rand() % UINT16_MAX;
     uint8_t payload_data[payload_size];
 
+    struct aws_byte_cursor property_cursor = aws_byte_cursor_from_c_str("property");
+    struct aws_mqtt5_user_property user_properties[] = {
+        {
+            .name =
+                {
+                    .ptr = property_cursor.ptr,
+                    .len = property_cursor.len,
+                },
+            .value =
+                {
+                    .ptr = property_cursor.ptr,
+                    .len = property_cursor.len,
+                },
+        },
+        {
+            .name =
+                {
+                    .ptr = property_cursor.ptr,
+                    .len = property_cursor.len,
+                },
+            .value =
+                {
+                    .ptr = property_cursor.ptr,
+                    .len = property_cursor.len,
+                },
+        },
+    };
+
     struct aws_mqtt5_packet_publish_view packet_publish_view = {
         .qos = qos,
         .topic = topic_filter,
@@ -618,6 +646,8 @@ static int s_aws_mqtt5_canary_operation_publish(
                 .ptr = payload_data,
                 .len = AWS_ARRAY_SIZE(payload_data) - 1,
             },
+        .user_properties = user_properties,
+        .user_property_count = AWS_ARRAY_SIZE(user_properties),
     };
 
     return aws_mqtt5_client_publish(test_client->client, &packet_publish_view, NULL);
