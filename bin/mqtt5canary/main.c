@@ -49,6 +49,18 @@ struct app_ctx {
     enum aws_log_level log_level;
 };
 
+struct aws_mqtt5_canary_tester_options {
+    uint16_t elg_max_threads;
+    uint16_t client_count;
+    size_t tps;
+    uint64_t tps_sleep_time;
+    size_t distributions_total;
+    bool apply_operations_to_all_clients;
+    size_t test_run_hours;
+    size_t test_run_minutes;
+    size_t test_run_seconds;
+};
+
 static void s_usage(int exit_code) {
 
     fprintf(stderr, "usage: elastipubsub5 [options] endpoint\n");
@@ -61,6 +73,13 @@ static void s_usage(int exit_code) {
     fprintf(stderr, "  -l, --log FILE: dumps logs to FILE instead of stderr.\n");
     fprintf(stderr, "  -v, --verbose: ERROR|INFO|DEBUG|TRACE: log level to configure. Default is none.\n");
     fprintf(stderr, "  -w, --websockets: use mqtt-over-websockets rather than direct mqtt\n");
+
+    fprintf(stderr, "  -t, --threads: number of eventloop group threads to use\n");
+    fprintf(stderr, "  -C, --clients: number of mqtt5 clients to use\n");
+    fprintf(stderr, "  -T, --tps: operations to run per second\n");
+    fprintf(stderr, "  -s, --seconds: seconds to run canary test\n");
+    fprintf(stderr, "  -m, --minutes: minutes to run canary test\n");
+    fprintf(stderr, "  -H, --hours: hours to run canary test\n");
     fprintf(stderr, "  -h, --help\n");
     fprintf(stderr, "            Display this message and quit.\n");
     exit(exit_code);
@@ -75,16 +94,27 @@ static struct aws_cli_option s_long_options[] = {
     {"verbose", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'v'},
     {"websockets", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'w'},
     {"help", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'h'},
+
+    {"threads", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 't'},
+    {"clients", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'C'},
+    {"tps", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'T'},
+    {"seconds", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 's'},
+    {"minutes", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'm'},
+    {"hours", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'H'},
     /* Per getopt(3) the last element of the array has to be filled with all zeros */
     {NULL, AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 0},
 };
 
-static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
+static void s_parse_options(
+    int argc,
+    char **argv,
+    struct app_ctx *ctx,
+    struct aws_mqtt5_canary_tester_options *tester_options) {
     bool uri_found = false;
 
     while (true) {
         int option_index = 0;
-        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wh:E", s_long_options, &option_index);
+        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wht:C:T:s:m:H:", s_long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -128,6 +158,24 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
             case 'w':
                 ctx->use_websockets = true;
                 break;
+            case 't':
+                tester_options->elg_max_threads = atoi(aws_cli_optarg);
+                break;
+            case 'C':
+                tester_options->client_count = atoi(aws_cli_optarg);
+                break;
+            case 'T':
+                tester_options->tps = atoi(aws_cli_optarg);
+                break;
+            case 's':
+                tester_options->test_run_seconds = atoi(aws_cli_optarg);
+                break;
+            case 'm':
+                tester_options->test_run_minutes = atoi(aws_cli_optarg);
+                break;
+            case 'H':
+                tester_options->test_run_hours = atoi(aws_cli_optarg);
+                break;
             case 0x02: {
                 struct aws_byte_cursor uri_cursor = aws_byte_cursor_from_c_str(aws_cli_positional_arg);
                 if (aws_uri_init_parse(&ctx->uri, ctx->allocator, &uri_cursor)) {
@@ -158,18 +206,6 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
  * MQTT5 CANARY OPTIONS
  **********************************************************/
 
-struct aws_mqtt5_canary_tester_options {
-    uint16_t elg_max_threads;
-    uint16_t client_count;
-    size_t tps;
-    uint64_t tps_sleep_time;
-    size_t distributions_total;
-    bool apply_operations_to_all_clients;
-    size_t test_run_hours;
-    size_t test_run_minutes;
-    size_t test_run_seconds;
-};
-
 static void s_aws_mqtt5_canary_update_tps_sleep_time(struct aws_mqtt5_canary_tester_options *tester_options) {
     tester_options->tps_sleep_time =
         (aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL) / tester_options->tps);
@@ -186,11 +222,9 @@ static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_teste
     tester_options->apply_operations_to_all_clients = false;
 
     /* How long to run the test before exiting */
-    tester_options->test_run_seconds = 30;
-    tester_options->test_run_minutes = 1;
+    tester_options->test_run_seconds = 1;
+    tester_options->test_run_minutes = 0;
     tester_options->test_run_hours = 0;
-
-    s_aws_mqtt5_canary_update_tps_sleep_time(tester_options);
 }
 
 struct aws_mqtt5_canary_test_client {
@@ -417,8 +451,6 @@ static void s_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_e
                 AWS_LS_MQTT5_CANARY, "  Error Code: %d(%s)", event->error_code, aws_error_debug_str(event->error_code));
             break;
     }
-
-    fflush(stdout);
 }
 
 static void s_aws_mqtt5_transform_websocket_handshake_fn(
@@ -573,7 +605,8 @@ static int s_aws_mqtt5_canary_operation_publish(
     struct aws_byte_cursor topic_filter,
     enum aws_mqtt5_qos qos) {
 
-    uint8_t payload_data[rand() % UINT16_MAX];
+    uint16_t payload_size = rand() % UINT16_MAX;
+    uint8_t payload_data[payload_size];
 
     struct aws_mqtt5_packet_publish_view packet_publish_view = {
         .qos = qos,
@@ -731,10 +764,16 @@ int main(int argc, char **argv) {
     aws_mutex_init(&app_ctx.lock);
     app_ctx.port = 1883;
 
-    s_parse_options(argc, argv, &app_ctx);
+    struct aws_mqtt5_canary_tester_options tester_options;
+    AWS_ZERO_STRUCT(tester_options);
+    s_aws_mqtt5_canary_init_tester_options(&tester_options);
+
+    s_parse_options(argc, argv, &app_ctx, &tester_options);
     if (app_ctx.uri.port) {
         app_ctx.port = app_ctx.uri.port;
     }
+
+    s_aws_mqtt5_canary_update_tps_sleep_time(&tester_options);
 
     /**********************************************************
      * LOGGING
@@ -808,13 +847,6 @@ int main(int argc, char **argv) {
 
         use_tls = true;
     }
-
-    /**********************************************************
-     * TESTER OPTIONS
-     **********************************************************/
-    struct aws_mqtt5_canary_tester_options tester_options;
-    AWS_ZERO_STRUCT(tester_options);
-    s_aws_mqtt5_canary_init_tester_options(&tester_options);
 
     /**********************************************************
      * EVENT LOOP GROUP
