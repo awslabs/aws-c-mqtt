@@ -1,11 +1,5 @@
 version: 0.2
 phases:
-  pre_build:
-    commands:
-      - python3 -m pip install h2
-      - cd ./tests/py_localhost/
-      - python3 server.py &
-      - python3 non_tls_server.py &
   build:
     commands:
       - python3 -c "from urllib.request import urlretrieve; urlretrieve('https://d19elf31gohf1l.cloudfront.net/releases/v0.9.15/builder.pyz?run=2297453248-1329', 'builder.pyz')"
