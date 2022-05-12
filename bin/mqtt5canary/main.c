@@ -31,6 +31,8 @@
 #    pragma warning(disable : 4221) /* Local var in declared initializer */
 #endif
 
+#define AWS_MQTT5_CANARY_CLIENT_CREATION_SLEEP_TIME 10000000
+
 struct app_ctx {
     struct aws_allocator *allocator;
     struct aws_mutex lock;
@@ -226,9 +228,8 @@ static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_teste
     tester_options->tps = 50;
     /* should every operation run on every client */
     tester_options->apply_operations_to_all_clients = false;
-
     /* How long to run the test before exiting */
-    tester_options->test_run_seconds = 10;
+    tester_options->test_run_seconds = 30;
 }
 
 struct aws_mqtt5_canary_test_client {
@@ -274,19 +275,19 @@ static void s_aws_mqtt5_canary_add_operation_to_array(
 static void s_aws_mqtt5_canary_init_operation_distributions(struct aws_mqtt5_canary_tester_options *tester_options) {
 
     s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_STOP, 1);
-    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_SUBSCRIBE, 20);
-    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE, 20);
-    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE_BAD, 10);
-    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_QOS0, 30);
-    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_QOS1, 15);
+    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_SUBSCRIBE, 200);
+    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE, 200);
+    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_UNSUBSCRIBE_BAD, 100);
+    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_QOS0, 300);
+    s_aws_mqtt5_canary_add_operation_to_array(tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_QOS1, 150);
     s_aws_mqtt5_canary_add_operation_to_array(
-        tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS0, 10);
+        tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS0, 100);
     s_aws_mqtt5_canary_add_operation_to_array(
-        tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS1, 5);
+        tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SUBSCRIBED_TOPIC_QOS1, 50);
     s_aws_mqtt5_canary_add_operation_to_array(
-        tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC_QOS0, 10);
+        tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC_QOS0, 50);
     s_aws_mqtt5_canary_add_operation_to_array(
-        tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC_QOS1, 5);
+        tester_options, AWS_MQTT5_CANARY_OPERATION_PUBLISH_TO_SHARED_TOPIC_QOS1, 50);
 }
 
 static enum aws_mqtt5_canary_operations s_aws_mqtt5_canary_get_random_operation(
@@ -407,7 +408,7 @@ static int s_aws_mqtt5_canary_operation_stop(struct aws_mqtt5_canary_test_client
         return AWS_OP_SUCCESS;
     }
     aws_mqtt5_client_stop(test_client->client, NULL, NULL);
-
+    test_client->subscription_count = 0;
     AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " Stop", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return AWS_OP_SUCCESS;
 }
@@ -713,7 +714,7 @@ int main(int argc, char **argv) {
     struct aws_mqtt5_canary_tester_options tester_options;
     AWS_ZERO_STRUCT(tester_options);
     s_aws_mqtt5_canary_init_tester_options(&tester_options);
-    enum aws_mqtt5_canary_operations operations[1000];
+    enum aws_mqtt5_canary_operations operations[10000];
     AWS_ZERO_STRUCT(operations);
     tester_options.operations = operations;
 
@@ -895,7 +896,7 @@ int main(int argc, char **argv) {
             s_aws_mqtt5_canary_operation_table.operation_by_operation_type[AWS_MQTT5_CANARY_OPERATION_START];
         (*operation_fn)(&clients[i]);
 
-        aws_thread_current_sleep(10000000);
+        aws_thread_current_sleep(AWS_MQTT5_CANARY_CLIENT_CREATION_SLEEP_TIME);
     }
 
     fprintf(stderr, "Clients created\n");
@@ -972,6 +973,7 @@ int main(int argc, char **argv) {
     aws_mqtt_library_clean_up();
 
     printf("   Operations executed: %zu\n", operations_executed);
+    printf("   Operating TPS: %zu\n\n", operations_executed / tester_options.test_run_seconds);
 
     const size_t leaked_bytes = aws_mem_tracer_bytes(allocator);
     if (leaked_bytes) {
