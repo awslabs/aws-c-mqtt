@@ -1,9 +1,34 @@
 version: 0.2
 phases:
+  install:
+    commands:
+      # install cmake for codebuild environment. This is an temp solution for build environment. Once we hookup with GitHub CI, we would not need it
+      - apt-get install build-essential libssl-dev -y -f
+      - apt-get update -y
+      - apt-get install cmake -y -f
+      # Install necessary lib for canary wrapper
+      - sudo apt-get install gcc python3-dev -y -f
+      - sudo apt-get install pip -y -f
+      - python3 pip install --no-binary :all: psutil
+      - python3 -m pip install boto3
+  
+  pre_build:
+    commands:
+      - echo test cmake on machine
+      - cmake
+
   build:
     commands:
-      - python3 -c "from urllib.request import urlretrieve; urlretrieve('https://d19elf31gohf1l.cloudfront.net/releases/v0.9.15/builder.pyz?run=2297453248-1329', 'builder.pyz')"
-      - python3 builder.pyz build -p aws-c-http
+      - python3 -c "from urllib.request import urlretrieve; urlretrieve('https://d19elf31gohf1l.cloudfront.net/releases/v0.9.15/builder.pyz?run=0000000000-0000', 'builder.pyz')"
+      - python3 builder.pyz build -p aws-c-mqtt
+      - echo run canary test through wrapper
+      # TODO: The package name should be updated
+      - export PACKAGE_NAME=$aws-c-mqtt-staging
+      - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$PACKAGE_NAME/build/install/bin/mqtt5canary
+      - export ENDPOINT=$(aws secretsmanager get-secret-value --secret-id "Mqtt5MosquittoSever" --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
+      - export GIT_HASH=$(git rev-parse HEAD)
+      # start canary waiting for canary to finish
+      # - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "--minutes 1 endpoint ${ENDPOINT}" --git_hash $(git rev-parse HEAD) --git_repo_name aws-c-mqtt-staging
+
   post_build:
     commands:
-      - echo Build completed on `date`
