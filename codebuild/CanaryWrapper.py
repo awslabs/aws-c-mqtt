@@ -230,8 +230,13 @@ def application_thread():
 
     canary_arguments = []
     canary_arguments.append(command_parser_arguments.canary_executable)
-    canary_arguments.append(command_parser_arguments.canary_arguments)
-    command_parser_arguments
+
+    # Split the input up into arguments by " " characters:
+    canary_arguments_list = command_parser_arguments.canary_arguments.split(" ")
+    for canary_arg in canary_arguments_list:
+        canary_arguments.append(canary_arg)
+    # OLD METHOD:
+    #canary_arguments.append(command_parser_arguments.canary_arguments)
 
     canary_return_code = 0
     try:
