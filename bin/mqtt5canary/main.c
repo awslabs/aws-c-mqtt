@@ -73,10 +73,8 @@ struct aws_mqtt5_canary_tester_options {
     uint16_t client_count;
     size_t tps;
     uint64_t tps_sleep_time;
-
     size_t distributions_total;
     enum aws_mqtt5_canary_operations *operations;
-    bool apply_operations_to_all_clients;
     size_t test_run_seconds;
 };
 
@@ -227,8 +225,6 @@ static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_teste
     tester_options->client_count = 10;
     /* operations per second to run */
     tester_options->tps = 50;
-    /* should every operation run on every client */
-    tester_options->apply_operations_to_all_clients = false;
     /* How long to run the test before exiting */
     tester_options->test_run_seconds = 25200;
 }
@@ -240,8 +236,6 @@ struct aws_mqtt5_canary_test_client {
     struct aws_byte_cursor client_id;
     size_t subscription_count;
     bool is_connected;
-
-    size_t index;
 };
 
 /**********************************************************
@@ -875,7 +869,6 @@ int main(int argc, char **argv) {
         client_options.lifecycle_event_handler_user_data = &clients[i];
         client_options.publish_received_handler_user_data = &clients[i];
 
-        clients[i].index = i;
         clients[i].shared_topic = shared_topic;
         clients[i].client = aws_mqtt5_client_new(allocator, &client_options);
 
@@ -909,13 +902,7 @@ int main(int argc, char **argv) {
         aws_mqtt5_canary_operation_fn *operation_fn =
             s_aws_mqtt5_canary_operation_table.operation_by_operation_type[next_operation];
 
-        if (tester_options.apply_operations_to_all_clients) {
-            for (size_t i = 0; i < tester_options.client_count; ++i) {
-                (*operation_fn)(&clients[i]);
-            }
-        } else {
-            (*operation_fn)(&clients[rand() % tester_options.client_count]);
-        }
+        (*operation_fn)(&clients[rand() % tester_options.client_count]);
 
         if (now > time_test_finish) {
             done = true;
