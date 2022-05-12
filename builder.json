@@ -6,5 +6,13 @@
     "downstream": [
     ],
     "cmake_args": [
-    ]
+    ],
+    "env": {
+        "CANARY_DURATION": 0,
+        "CANARY_THREADS": 3,
+        "CANARY_TPS": 50,
+        "CANARY_CLIENT_COUNT": 10,
+        "CANARY_LOG_FILE": "canary_log.txt",
+        "CANARY_LOG_LEVEL": "TRACE"
+    }
 }
