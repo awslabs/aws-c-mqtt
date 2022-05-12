@@ -56,6 +56,35 @@ if (command_parser_arguments.output_log_filepath == "None"):
 if (command_parser_arguments.snapshot_wait_time <= 0):
     command_parser_arguments.snapshot_wait_time = 60
 
+# Deal with possibly empty values in semi-critical commands/arguments
+if (command_parser_arguments.canary_executable == ""):
+    print ("ERROR - required canary_executable is empty!")
+    exit (1) # cannot run without a canary executable
+if (command_parser_arguments.git_hash == ""):
+    print ("ERROR - required git_hash is empty!")
+    exit (1) # cannot run without git hash
+if (command_parser_arguments.git_repo_name == ""):
+    print ("ERROR - required git_repo_name is empty!")
+    exit (1) # cannot run without git repo name
+if (command_parser_arguments.git_hash_as_namespace is not True and command_parser_arguments.git_hash_as_namespace is not False):
+    command_parser_arguments.git_hash_as_namespace = False
+if (command_parser_arguments.output_log_filepath == ""):
+    command_parser_arguments.output_log_filepath = None
+if (command_parser_arguments.output_to_console is not True and command_parser_arguments.output_to_console is not False):
+    command_parser_arguments.output_to_console = False
+if (command_parser_arguments.cloudwatch_region == ""):
+    command_parser_arguments.cloudwatch_region = "us-east-1"
+if (command_parser_arguments.s3_bucket_name == ""):
+    command_parser_arguments.s3_bucket_name = "canary-wrapper-folder"
+if (command_parser_arguments.ticket_category == ""):
+    command_parser_arguments.ticket_category = "AWS"
+if (command_parser_arguments.ticket_type == ""):
+    command_parser_arguments.ticket_type = "SDKs and Tools"
+if (command_parser_arguments.ticket_item == ""):
+    command_parser_arguments.ticket_item = "IoT SDK for CPP"
+if (command_parser_arguments.ticket_group == ""):
+    command_parser_arguments.ticket_group = "AWS IoT Device SDK"
+
 # Code for setting up threads and kicking off the wrapper script so it can function
 # (Also configures wrapper)
 # ================================================================================
@@ -235,8 +264,6 @@ def application_thread():
     canary_arguments_list = command_parser_arguments.canary_arguments.split(" ")
     for canary_arg in canary_arguments_list:
         canary_arguments.append(canary_arg)
-    # OLD METHOD:
-    #canary_arguments.append(command_parser_arguments.canary_arguments)
 
     canary_return_code = 0
     try:
@@ -245,15 +272,17 @@ def application_thread():
         if (canary_return_code != 0):
             print("Something in the canary failed!")
             cut_ticket_using_cloudwatch_from_args(
-                "The Canary result was non-zero, indicating that something in the canary application itself failed.",
-                "Canary result was non-zero",
-                command_parser_arguments)
+                ticket_description = "The Canary result was non-zero, indicating that something in the canary application itself failed.",
+                ticket_reason = "Canary result was non-zero",
+                ticket_severity = 6,
+                arguments = command_parser_arguments)
     except Exception as e:
         print("Something in the canary had an exception!")
         cut_ticket_using_cloudwatch_from_args(
-                "The code running the canary ran into an exception. This indicates that something in the canary crashed and/or segfaulted.",
-                "Canary application ran into an exception",
-                command_parser_arguments)
+                ticket_description = "The code running the canary ran into an exception. This indicates that something in the canary crashed and/or segfaulted.",
+                ticket_reason = "Canary application ran into an exception",
+                ticket_severity = 6,
+                arguments = command_parser_arguments)
         canary_return_code = -1
 
     # Wait for the snapshot thread to finish
@@ -268,11 +297,11 @@ def application_thread():
         # Was it due to a cloudwatch alarm?
         if snapshot_thread_had_cloudwatch_alarm == True:
             cut_ticket_using_cloudwatch_from_args(
-                "Canary alarm(s) that are required to pass are in a state of ALARM. \
+                ticket_description = "Canary alarm(s) that are required to pass are in a state of ALARM. \
                     List of metrics in alarm: " + str(snapshot_thread_had_cloudwatch_alarm_names) + ".",
-                "Required canary alarm(s) are in state of ALARM",
-                snapshot_thread_had_cloudwatch_alarm_lowest_severity_value,
-                command_parser_arguments)
+                ticket_reason = "Required canary alarm(s) are in state of ALARM",
+                ticket_severity = snapshot_thread_had_cloudwatch_alarm_lowest_severity_value,
+                arguments = command_parser_arguments)
             print ("Snapshot thread detected Cloudwatch state(s) in ALARM!")
 
             if (snapshot_thread_had_cloudwatch_alarm_lowest_severity_value < 6):
@@ -282,17 +311,19 @@ def application_thread():
 
         else:
             cut_ticket_using_cloudwatch_from_args(
-                "The code running the DataSnapshot had an error. See output.log for more information.",
-                "DataSnapshot (metric gathering) had an error",
-                command_parser_arguments)
+                ticket_description = "The code running the DataSnapshot had an error. See output.log for more information.",
+                ticket_reason = "DataSnapshot (metric gathering) had an error",
+                ticket_severity = 6,
+                arguments = command_parser_arguments)
             print ("Snapshot thread had an unknown error. See logs for details!")
             exit(1)
     else:
         if (canary_return_code != 0):
             cut_ticket_using_cloudwatch_from_args(
-                "The Canary returned a non-zero exit code! Something went wrong in the Canary application itself.",
-                "Canary returned non-zero exit code",
-                command_parser_arguments)
+                ticket_description = "The Canary returned a non-zero exit code! Something went wrong in the Canary application itself.",
+                ticket_reason = "Canary returned non-zero exit code",
+                ticket_severity = 6,
+                arguments = command_parser_arguments)
 
         exit(canary_return_code)
 

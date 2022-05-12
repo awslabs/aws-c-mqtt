@@ -53,7 +53,10 @@ command_parser_arguments = command_parser.parse_args()
 # The local file path (and extension) of the Canary application that the wrapper will manage
 # (This will also be the filename and directory used when a new file is detected in S3)
 # [THIS IS READ ONLY]
-canary_local_application_path = command_parser_arguments.canary_executable #"tmp/canary_application.py"
+canary_local_application_path = command_parser_arguments.canary_executable
+if (canary_local_application_path == ""):
+    print ("ERROR - required canary_executable is empty!")
+    exit (1) # cannot run without a canary executable
 # This is the arguments passed to the local file path when starting
 # [THIS IS READ ONLY]
 canary_local_application_arguments = command_parser_arguments.canary_arguments
@@ -69,9 +72,14 @@ canary_local_git_fixed_namespace = "MQTT5_Persistent_Canary"
 # The S3 bucket name to monitor for the application
 # [THIS IS READ ONLY]
 canary_s3_bucket_name = command_parser_arguments.s3_bucket_name
+if (canary_s3_bucket_name == ""):
+    canary_s3_bucket_name = "canary-wrapper-folder"
 # The file in the S3 bucket to monitor (The application filepath and file. Example: "canary/canary_application.exe")
 # [THIS IS READ ONLY]
 canary_s3_bucket_application_path = command_parser_arguments.s3_bucket_application
+if (canary_s3_bucket_application_path == ""):
+    print ("ERROR - required s3_bucket_application is empty!")
+    exit (1) # cannot run without a s3_bucket_application to monitor
 
 # How long (in seconds) to wait before checking S3
 # [THIS IS READ ONLY]
