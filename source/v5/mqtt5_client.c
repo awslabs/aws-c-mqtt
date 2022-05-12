@@ -494,13 +494,6 @@ static void s_enqueue_operation_front(struct aws_mqtt5_client *client, struct aw
     s_reevaluate_service_task(client);
 }
 
-static void s_aws_mqtt5_client_clear_unacked_operations(
-    struct aws_mqtt5_client_operational_state *client_operational_state,
-    int completion_error_code) {
-    s_complete_operation_list(&client_operational_state->unacked_operations, completion_error_code);
-    aws_hash_table_clear(&client_operational_state->unacked_operations_table);
-}
-
 static void s_aws_mqtt5_client_operational_state_reset(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     int completion_error_code,
@@ -509,7 +502,7 @@ static void s_aws_mqtt5_client_operational_state_reset(
     s_complete_operation_list(&client_operational_state->write_completion_operations, completion_error_code);
 
     if (is_final) {
-        s_aws_mqtt5_client_clear_unacked_operations(client_operational_state, AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+        s_complete_operation_list(&client_operational_state->unacked_operations, completion_error_code);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
     } else {
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
@@ -2329,8 +2322,8 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
             &client->operational_state.queued_operations, &client->operational_state.unacked_operations);
     } else {
         /* fail all unacked_operations */
-        s_aws_mqtt5_client_clear_unacked_operations(
-            &client->operational_state, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION);
+        s_complete_operation_list(
+            &client->operational_state.unacked_operations, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION);
     }
 
     aws_hash_table_clear(&client->operational_state.unacked_operations_table);
@@ -2432,35 +2425,6 @@ static uint64_t s_compute_throughput_throttle_wait(const struct aws_mqtt5_client
     return aws_add_u64_saturating(now, throughput_wait);
 }
 
-/* Helper function that moves next non-PUBLISH operation to the front of queue */
-static bool s_aws_mqtt5_client_surface_non_qos1_publish_operation(
-    const struct aws_mqtt5_client_operational_state *client_operational_state) {
-
-    struct aws_linked_list_node *next_processable_operation_node =
-        aws_linked_list_front(&client_operational_state->queued_operations);
-    bool found_non_publish_operation = false;
-
-    while (next_processable_operation_node != aws_linked_list_end(&client_operational_state->queued_operations)) {
-        struct aws_mqtt5_operation *inspected_operation =
-            AWS_CONTAINER_OF(next_processable_operation_node, struct aws_mqtt5_operation, node);
-        AWS_FATAL_ASSERT(inspected_operation != NULL);
-
-        if (inspected_operation->packet_type != AWS_MQTT5_PT_PUBLISH) {
-            found_non_publish_operation = true;
-            break;
-        }
-
-        next_processable_operation_node = next_processable_operation_node->next;
-    }
-
-    if (found_non_publish_operation) {
-        aws_linked_list_remove(next_processable_operation_node);
-        aws_linked_list_push_front(&client_operational_state->queued_operations, next_processable_operation_node);
-    }
-
-    return found_non_publish_operation;
-}
-
 static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
     uint64_t now) {
@@ -2494,18 +2458,6 @@ static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
         AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
 
     AWS_FATAL_ASSERT(next_operation != NULL);
-
-    /* Float non-Publish operations to head of queued_operations if Publishes are blocked by reaching server recieve
-     * maximum */
-    if (client_operational_state->client->flow_control_state.unacked_publish_token_count == 0 &&
-        next_operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
-        /* Check if a non-PUBLISH operation is available. If it is, reassign next_operation to newly set next in queue
-         */
-        if (s_aws_mqtt5_client_surface_non_qos1_publish_operation(client_operational_state)) {
-            next_operation_node = aws_linked_list_front(&client_operational_state->queued_operations);
-            next_operation = AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
-        }
-    }
 
     /*
      * Check the head of the pending operation queue against flow control and client state restrictions
