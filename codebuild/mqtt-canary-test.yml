@@ -9,7 +9,7 @@ phases:
       # Install necessary lib for canary wrapper
       - sudo apt-get install gcc python3-dev -y -f
       - sudo apt-get install pip -y -f
-      - python3 pip install --no-binary :all: psutil
+      - python3 -m pip install psutil
       - python3 -m pip install boto3
   
   pre_build:
@@ -22,13 +22,14 @@ phases:
       - python3 -c "from urllib.request import urlretrieve; urlretrieve('https://d19elf31gohf1l.cloudfront.net/releases/v0.9.15/builder.pyz?run=0000000000-0000', 'builder.pyz')"
       - python3 builder.pyz build -p aws-c-mqtt
       - echo run canary test through wrapper
-      # TODO: The package name should be updated
+      # TODO: The package name should be updated once merged
       - export PACKAGE_NAME=$aws-c-mqtt-staging
       - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$PACKAGE_NAME/build/install/bin/mqtt5canary
       - export ENDPOINT=$(aws secretsmanager get-secret-value --secret-id "Mqtt5MosquittoSever" --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
       - export GIT_HASH=$(git rev-parse HEAD)
-      # start canary waiting for canary to finish
-      # - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "--minutes 1 endpoint ${ENDPOINT}" --git_hash $(git rev-parse HEAD) --git_repo_name aws-c-mqtt-staging
+      # start canary
+      - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "endpoint ${ENDPOINT}" --git_hash $(git rev-parse HEAD) --git_repo_name aws-c-mqtt-staging
 
   post_build:
     commands:
+      - echo Build completed on `date`
