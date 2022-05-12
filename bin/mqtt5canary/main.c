@@ -74,8 +74,6 @@ struct aws_mqtt5_canary_tester_options {
     size_t distributions_total;
     enum aws_mqtt5_canary_operations *operations;
     bool apply_operations_to_all_clients;
-    size_t test_run_hours;
-    size_t test_run_minutes;
     size_t test_run_seconds;
 };
 
@@ -96,8 +94,6 @@ static void s_usage(int exit_code) {
     fprintf(stderr, "  -C, --clients: number of mqtt5 clients to use\n");
     fprintf(stderr, "  -T, --tps: operations to run per second\n");
     fprintf(stderr, "  -s, --seconds: seconds to run canary test\n");
-    fprintf(stderr, "  -m, --minutes: minutes to run canary test\n");
-    fprintf(stderr, "  -H, --hours: hours to run canary test\n");
     fprintf(stderr, "  -h, --help\n");
     fprintf(stderr, "            Display this message and quit.\n");
     exit(exit_code);
@@ -117,8 +113,6 @@ static struct aws_cli_option s_long_options[] = {
     {"clients", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'C'},
     {"tps", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'T'},
     {"seconds", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 's'},
-    {"minutes", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'm'},
-    {"hours", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'H'},
     /* Per getopt(3) the last element of the array has to be filled with all zeros */
     {NULL, AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 0},
 };
@@ -132,7 +126,7 @@ static void s_parse_options(
 
     while (true) {
         int option_index = 0;
-        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wht:C:T:s:m:H:", s_long_options, &option_index);
+        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wht:C:T:s:", s_long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -188,12 +182,6 @@ static void s_parse_options(
             case 's':
                 tester_options->test_run_seconds = atoi(aws_cli_optarg);
                 break;
-            case 'm':
-                tester_options->test_run_minutes = atoi(aws_cli_optarg);
-                break;
-            case 'H':
-                tester_options->test_run_hours = atoi(aws_cli_optarg);
-                break;
             case 0x02: {
                 struct aws_byte_cursor uri_cursor = aws_byte_cursor_from_c_str(aws_cli_positional_arg);
                 if (aws_uri_init_parse(&ctx->uri, ctx->allocator, &uri_cursor)) {
@@ -240,9 +228,7 @@ static void s_aws_mqtt5_canary_init_tester_options(struct aws_mqtt5_canary_teste
     tester_options->apply_operations_to_all_clients = false;
 
     /* How long to run the test before exiting */
-    tester_options->test_run_seconds = 1;
-    tester_options->test_run_minutes = 0;
-    tester_options->test_run_hours = 0;
+    tester_options->test_run_seconds = 10;
 }
 
 struct aws_mqtt5_canary_test_client {
@@ -541,9 +527,6 @@ static int s_aws_mqtt5_canary_operation_publish(
     struct aws_byte_cursor topic_filter,
     enum aws_mqtt5_qos qos) {
 
-    uint16_t payload_size = rand() % UINT16_MAX;
-    uint8_t payload_data[payload_size];
-
     struct aws_byte_cursor property_cursor = aws_byte_cursor_from_c_str("property");
     struct aws_mqtt5_user_property user_properties[] = {
         {
@@ -571,6 +554,9 @@ static int s_aws_mqtt5_canary_operation_publish(
                 },
         },
     };
+
+    uint16_t payload_size = (rand() % UINT16_MAX) + 1;
+    uint8_t payload_data[payload_size];
 
     struct aws_mqtt5_packet_publish_view packet_publish_view = {
         .qos = qos,
@@ -921,18 +907,11 @@ int main(int argc, char **argv) {
     size_t operations_executed = 0;
     uint64_t time_test_finish = 0;
     aws_high_res_clock_get_ticks(&time_test_finish);
-    uint64_t test_time = 0;
-    test_time = tester_options.test_run_hours * 60;
-    test_time = (test_time + tester_options.test_run_minutes) * 60;
-    test_time += tester_options.test_run_seconds;
-    time_test_finish += aws_timestamp_convert(test_time, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    time_test_finish +=
+        aws_timestamp_convert(tester_options.test_run_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     uint64_t time_next_op = 0;
 
-    printf(
-        "Running test for %zu hours %zu minutes %zu seconds\n",
-        tester_options.test_run_hours,
-        tester_options.test_run_minutes,
-        tester_options.test_run_seconds);
+    printf("Running test for %zu seconds\n", tester_options.test_run_seconds);
     aws_high_res_clock_get_ticks(&time_next_op);
 
     while (!done) {
