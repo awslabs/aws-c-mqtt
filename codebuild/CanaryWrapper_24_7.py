@@ -15,6 +15,7 @@ import subprocess
 import time
 import os
 import subprocess
+import json
 # Dependencies in project folder
 from CanaryWrapper_Classes import *
 from CanaryWrapper_MetricFunctions import *
@@ -278,8 +279,8 @@ class SnapshotMonitor():
             output_to_console=True,
             cloudwatch_region="us-east-1",
             cloudwatch_teardown_alarms_on_complete=True,
-            cloudwatch_teardown_dashboard_on_complete=True, # TODO - finish dasbhoards and disable this!
-            cloudwatch_make_dashboard=False, # TODO - finish dasbhoards and enable this!
+            cloudwatch_teardown_dashboard_on_complete=False,
+            cloudwatch_make_dashboard=True,
             s3_bucket_name="", # We will not be uploading to S3 anyway, so just pass an empty string
             s3_bucket_upload_on_complete=False)
 
@@ -320,6 +321,8 @@ class SnapshotMonitor():
             self.internal_error_reason = "Could not register metric in data snapshot due to exception"
             return
 
+    def register_dashboard_widget(self, new_widget_name, metrics_to_add=[]):
+        self.data_snapshot.register_dashboard_widget(new_widget_name=new_widget_name, metrics_to_add=metrics_to_add)
 
     def output_diagnosis_information(self, dependencies=""):
         self.data_snapshot.output_diagnosis_information(dependencies_list=dependencies)
@@ -465,6 +468,8 @@ class ApplicationMonitor():
             new_metric_alarm_threshold=50,
             new_metric_reports_to_skip=0,
             new_metric_alarm_severity=5)
+
+        self.wrapper_monitor.register_dashboard_widget("System Percentages", ["total_cpu_usage", "total_memory_usage_percent"])
 
         # No good way to get the dependencies since it could change at any given point. Just skip printing them for the 24_7 canary
         self.wrapper_monitor.output_diagnosis_information("Cannot show dependencies in 24_7 wrapper")

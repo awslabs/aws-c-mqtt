@@ -6,8 +6,7 @@ import boto3
 # Part of standard packages in Python 3.4+
 import time
 import os
-
-# TODO - create Cloudwatch dashboard(s)?
+import json
 
 # ================================================================================
 
@@ -44,6 +43,44 @@ class DataSnapshot_Metric():
             "Dimensions": self.metric_dimensions,
             "Value": self.metric_value,
             "Unit": self.metric_unit
+        }
+
+class DataSnapshot_Dashboard_Widget():
+    def __init__(self, widget_name, metric_namespace, metric_dimension, cloudwatch_region="us-east-1") -> None:
+        self.metric_list = []
+        self.region = cloudwatch_region
+        self.widget_name = widget_name
+        self.metric_namespace = metric_namespace
+        self.metric_dimension = metric_dimension
+
+    def add_metric_to_widget(self, new_metric_name):
+        try:
+            self.metric_list.append(new_metric_name)
+        except Exception as e:
+            print ("ERROR - could not add metric to dashboard widget due to exception!")
+            print ("Exception: " + str(e))
+
+    def remove_metric_from_widget(self, existing_metric_name):
+        try:
+            self.metric_list.remove(existing_metric_name)
+        except Exception as e:
+            print ("ERROR - could not remove metric from dashboard widget due to exception!")
+            print ("Exception: " + str(e))
+
+    def get_widget_dictionary(self):
+        metric_list_json = []
+        for metric_name in self.metric_list:
+            metric_list_json.append([self.metric_namespace, metric_name, self.metric_dimension, metric_name])
+
+        return {
+            "type":"metric",
+            "properties" : {
+                "metrics" : metric_list_json,
+                "region": self.region,
+                "title": self.widget_name
+            },
+            "width": 14,
+            "height": 10
         }
 
 # ================================================================================
@@ -92,6 +129,7 @@ class DataSnapshot():
         self.cloudwatch_teardown_alarms_on_complete = cloudwatch_teardown_alarms_on_complete
         self.cloudwatch_teardown_dashboard_on_complete = cloudwatch_teardown_dashboard_on_complete
         self.cloudwatch_dashboard_name = ""
+        self.cloudwatch_dashboard_widgets = []
 
         self.s3_bucket_name = s3_bucket_name
         self.s3_client = None
@@ -205,21 +243,19 @@ class DataSnapshot():
     # Utility function - adds the Cloudwatch Dashboard for the currently running data snapshot
     def _init_cloudwatch_pre_first_run_dashboard(self):
         try:
-            # TODO - for now, just use a hard-coded solution with no widgets
-            new_dashboard_body = """
-            {
-                "Start": "-PT1H",
-                "widgets": []
-            }
-            """
+            new_dashboard_widgets_array = []
+            for widget in self.cloudwatch_dashboard_widgets:
+                new_dashboard_widgets_array.append(widget.get_widget_dictionary())
 
-            # TODO - add function to allow registering widgets to the dashboard
-            #        Should allow for setting the metrics that are on that dashboard, period, start time, etc
-            # TODO - Add code to dynamically create the JSON data from the registered widgets
+            new_dashboard_body = {
+                "start": "-PT1H",
+                "widgets": new_dashboard_widgets_array,
+            }
+            new_dashboard_body_json = json.dumps(new_dashboard_body)
 
             self.cloudwatch_client.put_dashboard(
                 DashboardName=self.cloudwatch_dashboard_name,
-                DashboardBody=new_dashboard_body)
+                DashboardBody= new_dashboard_body_json)
             self.print_message("Added Cloudwatch dashboard successfully")
         except Exception as e:
             self.print_message("ERROR - Couldwatch client could not make dashboard due to exception!")
@@ -404,6 +440,55 @@ class DataSnapshot():
             reports_to_skip=new_metric_reports_to_skip
         )
         self.metrics.append(new_metric)
+
+    def register_dashboard_widget(self, new_widget_name, metrics_to_add=[]):
+
+        # We need to know what metric dimension to get the metric(s) from
+        metric_dimension_string = ""
+        if (self.git_hash_as_namespace == False):
+            metric_dimension_string = self.git_repo_name + "-" + self.git_hash
+        else:
+            metric_dimension_string = "System_Metrics"
+
+        widget = self._find_cloudwatch_widget(name=new_widget_name)
+        if (widget == None):
+            widget = DataSnapshot_Dashboard_Widget(
+                widget_name=new_widget_name, metric_namespace=self.git_metric_namespace,
+                metric_dimension=metric_dimension_string,
+                cloudwatch_region=self.cloudwatch_region)
+            self.cloudwatch_dashboard_widgets.append(widget)
+
+        for metric in metrics_to_add:
+            self.register_metric_to_dashboard_widget(widget_name=new_widget_name, metric_name=metric)
+
+    def register_metric_to_dashboard_widget(self, widget_name, metric_name, widget=None):
+        if widget is None:
+            widget = self._find_cloudwatch_widget(name=widget_name)
+            if widget is None:
+                print ("ERROR - could not find widget with name: " + widget_name)
+                return
+
+        # Adjust metric name so it has the git hash, repo, etc
+        metric_name_formatted = metric_name
+
+        widget.add_metric_to_widget(new_metric_name=metric_name_formatted)
+        return
+
+    def remove_metric_from_dashboard_widget(self, widget_name, metric_name, widget=None):
+        if widget is None:
+            widget = self._find_cloudwatch_widget(name=widget_name)
+            if widget is None:
+                print ("ERROR - could not find widget with name: " + widget_name)
+                return
+        widget.remove_metric_from_widget(existing_metric_name=metric_name)
+        return
+
+    def _find_cloudwatch_widget(self, name):
+        result = None
+        for widget in self.cloudwatch_dashboard_widgets:
+            if widget.widget_name == name:
+                return widget
+        return result
 
     # Prints the metrics to the console
     def export_metrics_console(self):

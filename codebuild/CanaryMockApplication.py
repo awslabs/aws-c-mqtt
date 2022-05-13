@@ -38,7 +38,7 @@ class FibonacciRunner():
 
 # Simulate a CPU load
 print ("Starting \"Canary\"...")
-runner = FibonacciRunner(60*3, 1, 0.0)
+runner = FibonacciRunner(60*1, 1, 0.0)
 runner.start()
 print ("\"Canary\" Finished!")
 

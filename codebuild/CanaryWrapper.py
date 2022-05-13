@@ -10,6 +10,7 @@ import threading
 import subprocess
 import time
 import os
+import json
 # Dependencies in project folder
 from CanaryWrapper_Classes import *
 from CanaryWrapper_MetricFunctions import *
@@ -94,11 +95,9 @@ if (command_parser_arguments.ticket_group == ""):
 #        However, these variables are only either read or written to from a single thread, no
 #        thread should read and write to these variables.
 
-# NOTE 2 - this needs to be better sorted/defined/handled, as right now it's a bit of a mess
-# For this file, it's mostly just naming needs to be improved I think...
-
-# NOTE 3 - rewrite the threading structure to be similar to the persistent canary wrapper. This would
-# allow using a single thread and process (instead of 2 threads and 1 process)
+# TODO - rewrite the threading structure to be similar to the persistent canary wrapper. This would
+# allow using a single thread and process (instead of 2 threads and 1 process).
+# This would also make it easier to take/parse arguments from CodeBuild.
 
 # Tells the snapshot thread to stop running on the next interval
 # (snapshot_thread reads, application_thread writes)
