@@ -7,7 +7,6 @@ import boto3
 import time
 import os
 
-# TODO - write a fallback using OS if psutil is not present?
 # TODO - create Cloudwatch dashboard(s)?
 
 # ================================================================================
@@ -15,13 +14,14 @@ import os
 # Class that holds metric data and has a few utility functions for getting that data in a format we can use for Cloudwatch
 class DataSnapshot_Metric():
     def __init__(self, metric_name, metric_function, metric_dimensions=[],
-                metric_unit="None", metric_alarm_threshold=None, metric_alarm_severity=6, git_hash="", reports_to_skip=0):
+                metric_unit="None", metric_alarm_threshold=None, metric_alarm_severity=6,
+                git_hash="", git_repo_name="", reports_to_skip=0):
         self.metric_name = metric_name
         self.metric_function = metric_function
         self.metric_dimensions = metric_dimensions
         self.metric_unit = metric_unit
         self.metric_alarm_threshold = metric_alarm_threshold
-        self.metric_alarm_name = self.metric_name + "-" + git_hash
+        self.metric_alarm_name = self.metric_name + "-" + git_repo_name + "-" + git_hash
         self.metric_alarm_description = 'Alarm for metric "' + self.metric_name + '" - git hash: ' + git_hash
         self.metric_value = None
         self.reports_to_skip = reports_to_skip
@@ -400,6 +400,7 @@ class DataSnapshot():
             metric_alarm_threshold=new_metric_alarm_threshold,
             metric_alarm_severity=new_metric_alarm_severity,
             git_hash=self.git_hash,
+            git_repo_name=self.git_repo_name,
             reports_to_skip=new_metric_reports_to_skip
         )
         self.metrics.append(new_metric)

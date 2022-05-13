@@ -1,6 +1,9 @@
 # Python wrapper script for collecting Canary metrics, setting up alarms, reporting metrics to Cloudwatch,
 # checking the alarms to ensure everything is correct at the end of the run, and checking for new
 # builds in S3, downloading them, and launching them if they exist (24/7 opperation)
+#
+# Will only stop running if the Canary application itself has an issue - in which case it Canary application will
+# need to be fixed and then the wrapper script restarted
 
 # Needs to be installed prior to running
 import boto3
@@ -19,9 +22,6 @@ from CanaryWrapper_MetricFunctions import *
 # TODO - Using subprocess may not work on Windows for starting/stopping the application thread.
 #        Canary will likely be running on Linux, so it's probably okay, but need to confirm/check at some point....
 
-# TODO - Write a method for if the canary has an exception, this script has an exception, etc.
-#        Does the script need to start again? Should someone manually restart the canary? ???
-
 # NOTE - There is a bug where you sometimes will have to try launching it a few times to clear exceptions if you
 #        stopped execution using CTRL-C instead of pressing enter. TODO - figure out what causes this and fix it.
 
@@ -33,7 +33,7 @@ from CanaryWrapper_MetricFunctions import *
 # ================================================================================
 # Code for command line argument parsing
 
-command_parser = argparse.ArgumentParser("CanaryWrapper_Persistent")
+command_parser = argparse.ArgumentParser("CanaryWrapper_24_7")
 command_parser.add_argument("--canary_executable", type=str, required=True,
     help="The path to the canary executable")
 command_parser.add_argument("--canary_arguments", type=str, default="",
@@ -65,10 +65,10 @@ canary_local_application_arguments = command_parser_arguments.canary_arguments
 canary_local_git_hash_stub = "Canary"
 # The "Git Repo" name to use for metrics and dimensions. Is hard-coded since this is a 24/7 canary that should only run for MQTT
 # [THIS IS READ ONLY]
-canary_local_git_repo_stub = "MQTT5_Persistent"
+canary_local_git_repo_stub = "MQTT5_24_7"
 # The Fixed Namespace name for the Canary
 # [THIS IS READ ONLY]
-canary_local_git_fixed_namespace = "MQTT5_Persistent_Canary"
+canary_local_git_fixed_namespace = "MQTT5_24_7_Canary"
 # The S3 bucket name to monitor for the application
 # [THIS IS READ ONLY]
 canary_s3_bucket_name = command_parser_arguments.s3_bucket_name
@@ -338,7 +338,7 @@ class SnapshotMonitor():
             new_alarms = []
             new_alarms_highest_severity = 6
             new_alarm_found = True
-            new_alarm_ticket_description = "Persistent Canary has metrics in ALARM state!\n\nMetrics in alarm:\n"
+            new_alarm_ticket_description = "24_7 Canary has metrics in ALARM state!\n\nMetrics in alarm:\n"
 
             for triggered_alarm in triggered_alarms:
                 new_alarm_found = True
@@ -466,8 +466,8 @@ class ApplicationMonitor():
             new_metric_reports_to_skip=0,
             new_metric_alarm_severity=5)
 
-        # No good way to get the dependencies since it could change at any given point. Just skip printing them for the persistent canary
-        self.wrapper_monitor.output_diagnosis_information("Cannot show dependencies in persistent wrapper")
+        # No good way to get the dependencies since it could change at any given point. Just skip printing them for the 24_7 canary
+        self.wrapper_monitor.output_diagnosis_information("Cannot show dependencies in 24_7 wrapper")
 
 
     def start_application_monitoring(self):
@@ -616,8 +616,8 @@ def application_thread():
                 git_hash_as_namespace=False,
                 git_fixed_namespace_text=canary_local_git_fixed_namespace,
                 cloudwatch_region="us-east-1",
-                ticket_description="The persistent canary exited with a non-zero exit code! This likely means something in the canary failed.",
-                ticket_reason="The persistent canary exited with a non-zero exit code",
+                ticket_description="The 24_7 canary exited with a non-zero exit code! This likely means something in the canary failed.",
+                ticket_reason="The 24_7 canary exited with a non-zero exit code",
                 ticket_allow_duplicates=True,
                 ticket_category="AWS",
                 ticket_item="IoT SDK for CPP",
@@ -631,8 +631,8 @@ def application_thread():
                 git_hash_as_namespace=False,
                 git_fixed_namespace_text=canary_local_git_fixed_namespace,
                 cloudwatch_region="us-east-1",
-                ticket_description="The persistent canary exited with a zero exit code. The canary should run 24/7 and may need to be restarted.",
-                ticket_reason="The persistent canary exited with a zero exit code",
+                ticket_description="The 24_7 canary exited with a zero exit code. The canary should run 24/7 and may need to be restarted.",
+                ticket_reason="The 24_7 canary exited with a zero exit code",
                 ticket_allow_duplicates=True,
                 ticket_category="AWS",
                 ticket_item="IoT SDK for CPP",
