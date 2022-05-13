@@ -483,6 +483,25 @@ class ApplicationMonitor():
                 self.error_code = 1
                 return
 
+    def restart_application_monitoring(self):
+        if (self.application_process != None):
+            try:
+                self.stop_application_monitoring()
+                self.start_application_monitoring()
+            except Exception as e:
+                print ("ERROR - Could not restart Canary/Application due to exception!")
+                print ("Exception: " + str(e))
+                self.error_has_occured = True
+                self.error_reason = "Could not restart Canary/Application due to exception"
+                self.error_code = 1
+                return
+        else:
+            print ("ERROR - Application process restart called but process is/was not running!")
+            self.error_has_occured = True
+            self.error_reason = "Could not restart Canary/Application due to application process not being started initially"
+            self.error_code = 1
+            return
+
 
     def stop_application_monitoring(self):
         if (not self.application_process == None):
@@ -516,11 +535,9 @@ class ApplicationMonitor():
                     self.error_reason = "Canary application crashed!"
                     self.error_code = application_process_return_code
                 else:
-                    # TODO - restart the canary?
-                    print ("ERROR - Canary finished executing!")
-                    self.error_has_occured = True
-                    self.error_reason = "Canary application finished"
-                    self.error_code = application_process_return_code
+                    # Restar the canary
+                    print ("NOTE - Canary finished running and is restarting...")
+                    self.restart_application_monitoring()
 
         if (self.wrapper_monitor != None):
             if (self.wrapper_monitor.had_interal_error == True):
