@@ -84,12 +84,12 @@ if (canary_s3_bucket_application_path == ""):
 
 # How long (in seconds) to wait before checking S3
 # [THIS IS READ ONLY]
-canary_s3_check_wait_time = 30
+canary_s3_check_wait_time = 300 # 5 minutes
 # How long (in seconds) to wait before gathering metrics and pushing them to Cloudwatch
 # [THIS IS READ ONLY]
 canary_metrics_wait_time = 600 # 10 minutes
 # How long (in seconds) to run the Application thread loop. Should be around/shorter than the Canary S3 check time
-canary_application_loop_wait_time = 30
+canary_application_loop_wait_time = 300 # 5 minutes
 
 # If true, the S3 thread will stop. Should only be set by the application thread
 # [THIS IS WRITTEN TO ONLY FROM THE APPLICATION THREAD]
