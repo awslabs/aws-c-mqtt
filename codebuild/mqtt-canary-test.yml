@@ -21,6 +21,8 @@ phases:
     commands:
       - python3 -c "from urllib.request import urlretrieve; urlretrieve('https://d19elf31gohf1l.cloudfront.net/releases/v0.9.15/builder.pyz?run=0000000000-0000', 'builder.pyz')"
       - python3 builder.pyz build -p aws-c-mqtt
+      - zip -r latestSnapshot.zip .
+      - aws s3 cp ./latestSnapshot.zip s3://aws-c-mqtt-staging-canary/source/${GIT_COMMIT}
       - echo run canary test through wrapper
       # TODO: The package name should be updated once merged
       - export PACKAGE_NAME=$aws-c-mqtt-staging
