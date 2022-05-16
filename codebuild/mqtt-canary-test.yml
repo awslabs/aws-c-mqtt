@@ -37,7 +37,7 @@ phases:
       # Build library and test
       - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=0000000000-0000', 'builder.pyz')" 
       # TODO: temporarily disable build test
-      - python3 builder.pyz build -p $PACKAGE_NAME
+      - python3 builder.pyz build -p aws-c-mqtt
       # upload built canary test buld result to s3 bucket 
       - zip -r latestBuild.zip build/install
       - aws s3 cp ./latestBuild.zip $CANARY_BUILD_S3_DST
