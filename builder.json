@@ -6,21 +6,5 @@
     "downstream": [
     ],
     "cmake_args": [
-    ],
-    "env": {
-        "CANARY_DURATION": "60",
-        "CANARY_THREADS": "3",
-        "CANARY_TPS": "50",
-        "CANARY_CLIENT_COUNT": "10",
-        "CANARY_LOG_FILE": "canary_log.txt",
-        "CANARY_LOG_LEVEL": "TRACE",
-        "BUILD_VERSION":"v0.9.15",
-        "BULD_SOURCE": "release",
-        "BUILDER_HOST": "https://d19elf31gohf1l.cloudfront.net",
-        "PACKAGE_NAME":"aws-c-mqtt-staging",
-        "CANARY_TEST_EXE_PATH": "build/install/bin/mqtt5canary",
-        "CANARY_SERVER_ARN": "Mqtt5MosquittoSever",
-        "CANARY_BUILD_S3_DST": "s3://aws-c-mqtt-staging-canary/build/latest"
-
-    }
+    ]
 }
