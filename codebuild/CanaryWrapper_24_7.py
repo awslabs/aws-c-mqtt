@@ -16,6 +16,7 @@ import time
 import os
 import subprocess
 import json
+import zipfile
 # Dependencies in project folder
 from CanaryWrapper_Classes import *
 from CanaryWrapper_MetricFunctions import *
@@ -43,6 +44,8 @@ command_parser.add_argument("--s3_bucket_name", type=str, default="canary-wrappe
     help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
 command_parser.add_argument("--s3_bucket_application", type=str, required=True,
     help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
+command_parser.add_argument("--s3_bucket_application_in_zip", type=str, required=False, default="",
+    help="(OPTIONAL, default="") The file path in the zip folder where the application is stored. Will be ignored if set to empty string")
 command_parser_arguments = command_parser.parse_args()
 
 # ================================================================================
@@ -81,6 +84,12 @@ canary_s3_bucket_application_path = command_parser_arguments.s3_bucket_applicati
 if (canary_s3_bucket_application_path == ""):
     print ("ERROR - required s3_bucket_application is empty!")
     exit (1) # cannot run without a s3_bucket_application to monitor
+# The location of the file in the S3 zip, if the S3 file being monitored is a zip
+# (THIS IS READ ONLY)
+canary_s3_bucket_application_path_zip = command_parser_arguments.s3_bucket_application_in_zip
+if (canary_s3_bucket_application_path_zip == ""):
+    canary_s3_bucket_application_path_zip = None
+
 
 # How long (in seconds) to wait before checking S3
 # [THIS IS READ ONLY]
@@ -120,13 +129,19 @@ canary_stop_all_threads = False
 class S3_Monitor():
     global canary_local_application_path
 
-    def __init__(self, s3_bucket_name, s3_file_name) -> None:
+    def __init__(self, s3_bucket_name, s3_file_name, s3_file_name_in_zip) -> None:
         self.s3_client = None
         self.s3_current_object_version_id = None
         self.s3_current_object_last_modified = None
         self.s3_bucket_name = s3_bucket_name
         self.s3_file_name = s3_file_name
         self.s3_file_name_only_path, self.s3_file_name_only_extension = os.path.splitext(s3_file_name)
+
+        self.s3_file_name_in_zip = s3_file_name_in_zip
+        self.s3_file_name_in_zip_only_path = None
+        self.s3_file_name_in_zip_only_extension = None
+        if (self.s3_file_name_in_zip != None):
+            self.s3_file_name_in_zip_only_path, self.s3_file_name_in_zip_only_extension = os.path.splitext(s3_file_name_in_zip)
 
         self.s3_file_needs_replacing = False
 
@@ -194,19 +209,27 @@ class S3_Monitor():
             return
 
         # Download the file
+        new_file_path = "tmp/new_file" + self.s3_file_name_only_extension
         try:
             print ("Downloading file...")
             s3_resource = boto3.resource("s3")
-            s3_resource.meta.client.download_file(self.s3_bucket_name, self.s3_file_name, "tmp/new_file" + self.s3_file_name_only_extension)
+            s3_resource.meta.client.download_file(self.s3_bucket_name, self.s3_file_name, new_file_path)
         except Exception as e:
             print ("ERROR - could not download latest S3 file into TMP folder!")
             self.had_interal_error = True
             self.internal_error_reason = "Could not download latest S3 file into TMP folder"
             return
 
+        # Is it a zip file?
+        if (self.s3_file_name_in_zip != None):
+            # Unzip it!
+            with zipfile.ZipFile(new_file_path, 'r') as zip_file:
+                zip_file.extractall("tmp/new_file_zip")
+                new_file_path = "tmp/new_file_zip/" + self.s3_file_name_in_zip_only_path + self.s3_file_name_in_zip_only_extension
+
         try:
             print ("Moving file...")
-            os.replace("tmp/new_file" + self.s3_file_name_only_extension, canary_local_application_path)
+            os.replace(new_file_path, canary_local_application_path)
         except Exception as e:
             print ("ERROR - could not move file into local application path!")
             self.had_interal_error = True
@@ -228,7 +251,8 @@ def s3_monitor_thread():
 
     s3_monitor = S3_Monitor(
         s3_bucket_name=canary_s3_bucket_name,
-        s3_file_name=canary_s3_bucket_application_path)
+        s3_file_name=canary_s3_bucket_application_path,
+        s3_file_name_in_zip=canary_s3_bucket_application_path_zip)
 
     while True:
         if (canary_s3_thread_stop == True or canary_stop_all_threads == True):
