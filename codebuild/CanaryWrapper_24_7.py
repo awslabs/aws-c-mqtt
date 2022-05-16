@@ -46,6 +46,8 @@ command_parser.add_argument("--s3_bucket_application", type=str, required=True,
     help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
 command_parser.add_argument("--s3_bucket_application_in_zip", type=str, required=False, default="",
     help="(OPTIONAL, default="") The file path in the zip folder where the application is stored. Will be ignored if set to empty string")
+command_parser.add_argument("--debug_enabled", type=bool, required=False, default=False,
+    help="(OPTIONAL, default=False) If true, you can press enter to stop the program at any time.")
 command_parser_arguments = command_parser.parse_args()
 
 # ================================================================================
@@ -106,6 +108,7 @@ canary_s3_thread_stop = False
 # A variable for the application thread to check if the S3 thread has finished
 # [THIS IS WRITTEN TO ONLY FROM THE S3 THREAD]
 canary_s3_thread_has_stopped = False
+canary_s3_thread_has_stopped_skip_ticket = False
 
 # Tell the application thread to finish and get ready to restart. The application thread is expected
 # to set canary_file_replace_application_thread_ready to true when it has stopped the current application
@@ -124,6 +127,7 @@ canary_file_replace_application_thread_ready = False
 # A way to stop both threads. Primarily used for debugging purposes
 # [THIS IS READ ONLY (except for where we set it in the main process...)]
 canary_stop_all_threads = False
+canary_debug_enable = command_parser_arguments.debug_enabled
 
 # ================================================================================
 class S3_Monitor():
@@ -146,6 +150,7 @@ class S3_Monitor():
         self.s3_file_needs_replacing = False
 
         self.had_interal_error = False
+        self.error_due_to_credentials = False
         self.internal_error_reason = ""
 
         # Check for valid credentials
@@ -156,6 +161,7 @@ class S3_Monitor():
         except Exception as e:
             print ("ERROR - (S3 Check) AWS credentials are NOT valid!")
             self.had_interal_error = True
+            self.error_due_to_credentials = True
             self.internal_error_reason = "AWS credentials are NOT valid!"
             return
         # ==================
@@ -228,10 +234,18 @@ class S3_Monitor():
                 new_file_path = "tmp/new_file_zip/" + self.s3_file_name_in_zip_only_path + self.s3_file_name_in_zip_only_extension
 
         try:
+            # is there a file already present there?
+            if os.path.exists(canary_local_application_path) == True:
+                os.remove(canary_local_application_path)
+
             print ("Moving file...")
             os.replace(new_file_path, canary_local_application_path)
+            print ("Getting execution rights...")
+            os.system("chmod u+x " + canary_local_application_path)
+
         except Exception as e:
-            print ("ERROR - could not move file into local application path!")
+            print ("ERROR - could not move file into local application path due to exception!")
+            print ("Exception: " + str(e))
             self.had_interal_error = True
             self.internal_error_reason = "Could not move file into local application path"
             return
@@ -247,6 +261,7 @@ def s3_monitor_thread():
     global canary_file_reaplce_application_thread_restart
     global canary_s3_thread_stop
     global canary_s3_thread_has_stopped
+    global canary_s3_thread_has_stopped_skip_ticket
     global canary_stop_all_threads
 
     s3_monitor = S3_Monitor(
@@ -260,6 +275,11 @@ def s3_monitor_thread():
         if (s3_monitor.had_interal_error == True):
             print ("Stopping S3 monitor thread. S3 monitor had internal error")
             print ("Error reason: " + s3_monitor.internal_error_reason)
+
+            # Do not cut tickets due to credential errors
+            if (s3_monitor.error_due_to_credentials == True):
+                canary_s3_thread_has_stopped_skip_ticket = True
+
             break
 
         s3_monitor.check_for_file_change()
@@ -309,6 +329,7 @@ class SnapshotMonitor():
             s3_bucket_upload_on_complete=False)
 
         self.had_interal_error = False
+        self.error_due_to_credentials = False
         self.internal_error_reason = ""
 
         # A list of all the alarms triggered in the last check, cached for later
@@ -319,6 +340,8 @@ class SnapshotMonitor():
         if (self.data_snapshot.abort_due_to_internal_error == True):
             self.had_interal_error = True
             self.internal_error_reason = "Could not initialize DataSnapshot. Likely credentials are not setup!"
+            if (self.data_snapshot.abort_due_to_internal_error_due_to_credentials == True):
+                self.error_due_to_credentials = True
             self.data_snapshot.cleanup()
             return
 
@@ -399,9 +422,8 @@ class SnapshotMonitor():
                     git_hash_as_namespace=False,
                     git_fixed_namespace_text=canary_local_git_fixed_namespace,
                     cloudwatch_region="us-east-1",
-                    ticket_description="Long running canary application thread stopped due to the S3 checking thread stopping unexpectedly. "
-                                        "This is likely due to a credential error or setup error",
-                    ticket_reason="S3 thread stopped unexpectedly",
+                    ticket_description="New metric(s) went into alarm for the long-running canary! Metrics in alarm: " + str(new_alarms),
+                    ticket_reason="New metrics went into alarm",
                     ticket_allow_duplicates=True,
                     ticket_category="AWS",
                     ticket_item="IoT SDK for CPP",
@@ -464,6 +486,7 @@ class ApplicationMonitor():
         self.wrapper_monitor = SnapshotMonitor()
         self.application_process = None
         self.error_has_occured = False
+        self.error_due_to_credentials = False
         self.error_reason = ""
         self.error_code = 0
 
@@ -471,6 +494,8 @@ class ApplicationMonitor():
             self.error_has_occured = True
             self.error_reason = "Snapshot monitor had exception on creating!"
             self.error_code = 1
+            if (self.wrapper_monitor.error_due_to_credentials == True):
+                self.error_due_to_credentials = True
             return
 
         # Register metrics
@@ -489,7 +514,7 @@ class ApplicationMonitor():
             new_metric_name="total_memory_usage_percent",
             new_metric_function=get_metric_total_memory_usage_percent,
             new_metric_unit="Percent",
-            new_metric_alarm_threshold=50,
+            new_metric_alarm_threshold=70,
             new_metric_reports_to_skip=0,
             new_metric_alarm_severity=5)
 
@@ -572,6 +597,8 @@ class ApplicationMonitor():
             if (self.wrapper_monitor.had_interal_error == True):
                 self.error_has_occured = True
                 self.error_reason = self.wrapper_monitor.internal_error_reason
+                if (self.wrapper_monitor.error_due_to_credentials == True):
+                    self.error_due_to_credentials = True
                 self.error_code = 1
             else:
                 self.wrapper_monitor.application_monitor_loop_function(time_passed)
@@ -588,6 +615,7 @@ def application_thread():
     global canary_file_reaplce_application_thread_restart
     global canary_s3_thread_stop
     global canary_s3_thread_has_stopped
+    global canary_s3_thread_has_stopped_skip_ticket
     global canary_stop_all_threads
     global canary_local_git_hash_stub
     global canary_local_git_repo_stub
@@ -635,56 +663,58 @@ def application_thread():
     elif (canary_s3_thread_has_stopped == True):
         print ("Application thread stopped due to S3 thread stopping unexpectedly!")
 
-        cut_ticket_using_cloudwatch(
-            git_repo_name=canary_local_git_repo_stub,
-            git_hash=canary_local_git_hash_stub,
-            git_hash_as_namespace=False,
-            git_fixed_namespace_text=canary_local_git_fixed_namespace,
-            cloudwatch_region="us-east-1",
-            ticket_description="Long running canary application thread stopped due to the S3 checking thread stopping unexpectedly. "
-                                "This is likely due to a credential error or setup error",
-            ticket_reason="S3 thread stopped unexpectedly",
-            ticket_allow_duplicates=True,
-            ticket_category="AWS",
-            ticket_item="IoT SDK for CPP",
-            ticket_group="AWS IoT Device SDK",
-            ticket_type="SDKs and Tools",
-            ticket_severity=4)
-    else:
-        print ("Application thread stopping due to an internal error in application monitor.")
-        print ("Error reason: " + application_monitor.error_reason)
-        print ("Error code: " + str(application_monitor.error_code))
-
-        if (application_monitor.error_code != 0):
+        if (canary_s3_thread_has_stopped_skip_ticket == False):
             cut_ticket_using_cloudwatch(
                 git_repo_name=canary_local_git_repo_stub,
                 git_hash=canary_local_git_hash_stub,
                 git_hash_as_namespace=False,
                 git_fixed_namespace_text=canary_local_git_fixed_namespace,
                 cloudwatch_region="us-east-1",
-                ticket_description="The 24_7 canary exited with a non-zero exit code! This likely means something in the canary failed.",
-                ticket_reason="The 24_7 canary exited with a non-zero exit code",
+                ticket_description="Long running canary application thread stopped due to the S3 checking thread stopping unexpectedly. "
+                                    "This is likely due to a credential error or setup error",
+                ticket_reason="S3 thread stopped unexpectedly",
                 ticket_allow_duplicates=True,
                 ticket_category="AWS",
                 ticket_item="IoT SDK for CPP",
                 ticket_group="AWS IoT Device SDK",
                 ticket_type="SDKs and Tools",
                 ticket_severity=4)
-        else:
-            cut_ticket_using_cloudwatch(
-                git_repo_name=canary_local_git_repo_stub,
-                git_hash=canary_local_git_hash_stub,
-                git_hash_as_namespace=False,
-                git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                cloudwatch_region="us-east-1",
-                ticket_description="The 24_7 canary exited with a zero exit code. The canary should run 24/7 and may need to be restarted.",
-                ticket_reason="The 24_7 canary exited with a zero exit code",
-                ticket_allow_duplicates=True,
-                ticket_category="AWS",
-                ticket_item="IoT SDK for CPP",
-                ticket_group="AWS IoT Device SDK",
-                ticket_type="SDKs and Tools",
-                ticket_severity=5)
+    else:
+        print ("Application thread stopping due to an internal error in application monitor.")
+        print ("Error reason: " + application_monitor.error_reason)
+        print ("Error code: " + str(application_monitor.error_code))
+
+        if (application_monitor.error_due_to_credentials == False):
+            if (application_monitor.error_code != 0):
+                cut_ticket_using_cloudwatch(
+                    git_repo_name=canary_local_git_repo_stub,
+                    git_hash=canary_local_git_hash_stub,
+                    git_hash_as_namespace=False,
+                    git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                    cloudwatch_region="us-east-1",
+                    ticket_description="The 24_7 canary exited with a non-zero exit code! This likely means something in the canary failed.",
+                    ticket_reason="The 24_7 canary exited with a non-zero exit code",
+                    ticket_allow_duplicates=True,
+                    ticket_category="AWS",
+                    ticket_item="IoT SDK for CPP",
+                    ticket_group="AWS IoT Device SDK",
+                    ticket_type="SDKs and Tools",
+                    ticket_severity=4)
+            else:
+                cut_ticket_using_cloudwatch(
+                    git_repo_name=canary_local_git_repo_stub,
+                    git_hash=canary_local_git_hash_stub,
+                    git_hash_as_namespace=False,
+                    git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                    cloudwatch_region="us-east-1",
+                    ticket_description="The 24_7 canary exited with a zero exit code. The canary should run 24/7 and may need to be restarted.",
+                    ticket_reason="The 24_7 canary exited with a zero exit code",
+                    ticket_allow_duplicates=True,
+                    ticket_category="AWS",
+                    ticket_item="IoT SDK for CPP",
+                    ticket_group="AWS IoT Device SDK",
+                    ticket_type="SDKs and Tools",
+                    ticket_severity=5)
 
     application_monitor.cleanup_all()
 
@@ -704,10 +734,10 @@ run_thread_application = threading.Thread(target=application_thread)
 run_thread_s3_monitor.start()
 run_thread_application.start()
 
-# FOR DEBUGGING ONLY
-# A way to cleanly stop all the processes for debugging. (Wait a few seconds so we see the message)
-input("\n\nDEBUG ONLY -- Press enter to stop program...\n\n")
-canary_stop_all_threads = True
+if (canary_debug_enable == True):
+    # A way to cleanly stop all the processes for debugging. (Wait a few seconds so we see the message)
+    input("\n\nDEBUG ONLY -- Press enter to stop program...\n\n")
+    canary_stop_all_threads = True
 
 # Wait for threads to finish
 run_thread_s3_monitor.join()

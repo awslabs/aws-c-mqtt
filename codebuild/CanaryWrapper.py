@@ -110,6 +110,7 @@ snapshot_thread_stopped = False
 # Tells the application thread the snapshot thread stopped due to an error
 # (snapshot_thread writes, application_thread reads)
 snapshot_thread_had_error = False
+snapshot_thread_had_error_skip_ticket = False
 
 # Tells the application thread the snapshot thread detected a Cloudwatch state in ALARM
 # (snapshot_thread writes, application_thread reads)
@@ -122,6 +123,7 @@ def snapshot_thread():
     global stop_snapshot_thread
     global snapshot_thread_stopped
     global snapshot_thread_had_error
+    global snapshot_thread_had_error_skip_ticket
     global snapshot_thread_had_cloudwatch_alarm
     global snapshot_thread_had_cloudwatch_alarm_names
     global snapshot_thread_had_cloudwatch_alarm_lowest_severity_value
@@ -151,6 +153,7 @@ def snapshot_thread():
         snapshot_had_internal_error = True
         snapshot_thread_stopped = True
         snapshot_thread_had_error = True
+        snapshot_thread_had_error_skip_ticket = True
         data_snapshot.cleanup()
         return
 
@@ -170,7 +173,7 @@ def snapshot_thread():
         new_metric_name="total_memory_usage_percent",
         new_metric_function=get_metric_total_memory_usage_percent,
         new_metric_unit="Percent",
-        new_metric_alarm_threshold=50,
+        new_metric_alarm_threshold=70,
         new_metric_reports_to_skip=0,
         new_metric_alarm_severity=5)
 
@@ -179,6 +182,7 @@ def snapshot_thread():
         snapshot_had_internal_error = True
         snapshot_thread_stopped = True
         snapshot_thread_had_error = True
+        snapshot_thread_had_error_skip_ticket = True
         data_snapshot.cleanup()
         return
 
@@ -241,6 +245,7 @@ def application_thread():
     global stop_snapshot_thread
     global snapshot_thread_stopped
     global snapshot_thread_had_error
+    global snapshot_thread_had_error_skip_ticket
     global snapshot_thread_had_cloudwatch_alarm
     global snapshot_thread_had_cloudwatch_alarm_names
     global snapshot_thread_had_cloudwatch_alarm_lowest_severity_value
@@ -293,29 +298,29 @@ def application_thread():
     # If the snapshot thread had an error, then exit because something is wrong and we do not want
     # to report "success" even if the canary itself ran okay
     if (snapshot_thread_had_error == True and canary_return_code == 0):
-        # Was it due to a cloudwatch alarm?
-        if snapshot_thread_had_cloudwatch_alarm == True:
-            cut_ticket_using_cloudwatch_from_args(
-                ticket_description = "Canary alarm(s) that are required to pass are in a state of ALARM. \
-                    List of metrics in alarm: " + str(snapshot_thread_had_cloudwatch_alarm_names) + ".",
-                ticket_reason = "Required canary alarm(s) are in state of ALARM",
-                ticket_severity = snapshot_thread_had_cloudwatch_alarm_lowest_severity_value,
-                arguments = command_parser_arguments)
-            print ("Snapshot thread detected Cloudwatch state(s) in ALARM!")
+        if (snapshot_thread_had_error_skip_ticket == False):
+            # Was it due to a cloudwatch alarm?
+            if snapshot_thread_had_cloudwatch_alarm == True:
+                cut_ticket_using_cloudwatch_from_args(
+                    ticket_description = "Canary alarm(s) that are required to pass are in a state of ALARM. \
+                        List of metrics in alarm: " + str(snapshot_thread_had_cloudwatch_alarm_names) + ".",
+                    ticket_reason = "Required canary alarm(s) are in state of ALARM",
+                    ticket_severity = snapshot_thread_had_cloudwatch_alarm_lowest_severity_value,
+                    arguments = command_parser_arguments)
+                print ("Snapshot thread detected Cloudwatch state(s) in ALARM!")
 
-            if (snapshot_thread_had_cloudwatch_alarm_lowest_severity_value < 6):
-                exit(1)
+                if (snapshot_thread_had_cloudwatch_alarm_lowest_severity_value < 6):
+                    exit(1)
+                else:
+                    exit(canary_return_code)
             else:
-                exit(canary_return_code)
-
-        else:
-            cut_ticket_using_cloudwatch_from_args(
-                ticket_description = "The code running the DataSnapshot had an error. See output.log for more information.",
-                ticket_reason = "DataSnapshot (metric gathering) had an error",
-                ticket_severity = 6,
-                arguments = command_parser_arguments)
-            print ("Snapshot thread had an unknown error. See logs for details!")
-            exit(1)
+                cut_ticket_using_cloudwatch_from_args(
+                    ticket_description = "The code running the DataSnapshot had an error. See output.log for more information.",
+                    ticket_reason = "DataSnapshot (metric gathering) had an error",
+                    ticket_severity = 6,
+                    arguments = command_parser_arguments)
+                print ("Snapshot thread had an unknown error. See logs for details!")
+                exit(1)
     else:
         if (canary_return_code != 0):
             cut_ticket_using_cloudwatch_from_args(

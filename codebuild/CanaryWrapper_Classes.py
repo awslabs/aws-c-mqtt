@@ -116,6 +116,7 @@ class DataSnapshot():
         # Watched by the thread creating the snapshot. Will cause the thread(s) to abort and return an error.
         self.abort_due_to_internal_error = False
         self.abort_due_to_internal_error_reason = ""
+        self.abort_due_to_internal_error_due_to_credentials = False
 
         self.git_hash = None
         self.git_repo_name = None
@@ -150,6 +151,7 @@ class DataSnapshot():
             print ("ERROR - AWS credentials are NOT valid!")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "AWS credentials are NOT valid!"
+            self.abort_due_to_internal_error_due_to_credentials = True
             return
         # ==================
 
