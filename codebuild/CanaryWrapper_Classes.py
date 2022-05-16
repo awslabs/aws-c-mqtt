@@ -534,15 +534,6 @@ class DataSnapshot():
     def post_metrics(self):
         if (self.perform_final_initialization == True):
             self.perform_final_initialization = False
-
-            # Make sure we have AWS system environment credentials. If we do not error out
-            if not "AWS_ACCESS_KEY_ID" in os.environ or not "AWS_SECRET_ACCESS_KEY" in os.environ:
-                self.print_message(
-                    "ERROR - No AWS credentials found! Cannot post metrics")
-                self.abort_due_to_internal_error = True
-                self.abort_due_to_internal_error_reason = "No AWS credentials found!"
-                return
-
             self._init_cloudwatch_pre_first_run()
 
         # Update the metric values internally
