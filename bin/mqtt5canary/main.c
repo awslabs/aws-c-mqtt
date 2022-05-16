@@ -735,6 +735,8 @@ int main(int argc, char **argv) {
             exit(1);
         }
         aws_logger_set(&logger);
+    } else {
+        options.file = stderr;
     }
 
     /**********************************************************
