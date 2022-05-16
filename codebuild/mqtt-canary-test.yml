@@ -2,7 +2,7 @@ version: 0.2
 phases:
   install:
     commands:
-      # install cmake for codebuild environment. This is an temp solution for build environment. Once we hookup with GitHub CI, we would not need it
+      # install cmake for codebuild environment.
       - apt-get install build-essential libssl-dev -y -f
       - apt-get update -y
       - apt-get install cmake -y -f
@@ -11,26 +11,21 @@ phases:
       - sudo apt-get install pip -y -f
       - python3 -m pip install psutil
       - python3 -m pip install boto3
-  
-  pre_build:
-    commands:
-      - echo test cmake on machine
-      - cmake
 
   build:
     commands:
-      - python3 -c "from urllib.request import urlretrieve; urlretrieve('https://d19elf31gohf1l.cloudfront.net/releases/v0.9.15/builder.pyz?run=0000000000-0000', 'builder.pyz')"
-      - python3 builder.pyz build -p aws-c-mqtt
-      - zip -r latestSnapshot.zip .
-      - aws s3 cp ./latestSnapshot.zip s3://aws-c-mqtt-staging-canary/source/${GIT_COMMIT}
-      - echo run canary test through wrapper
-      # TODO: The package name should be updated once merged
-      - export PACKAGE_NAME=$aws-c-mqtt-staging
-      - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$PACKAGE_NAME/build/install/bin/mqtt5canary
-      - export ENDPOINT=$(aws secretsmanager get-secret-value --secret-id "Mqtt5MosquittoSever" --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
+      - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$PACKAGE_NAME/${CANARY_TEST_EXE_PATH}
+      - export ENDPOINT=$(aws secretsmanager get-secret-value --secret-id ${CANARY_SERVER_ARN} --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
       - export GIT_HASH=$(git rev-parse HEAD)
+      # Build library and test
+      - python3 -c "from urllib.request import urlretrieve; urlretrieve('${BUILDER_HOST}/${BUILDER_SOURCE}/${BUILDER_VERSION}/builder.pyz?run=${CODEBUILD_BUILD_ID}', 'builder.pyz')"
+      - python3 builder.pyz build -p aws-c-mqtt
+      # upload built canary test buld result to s3 bucket 
+      - zip -r latestBuild.zip build/install
+      - aws s3 cp ./latestBuild.zip ${CANARY_BUILD_S3_DST}
+      - echo run canary test through wrapper
       # start canary
-      - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "endpoint ${ENDPOINT}" --git_hash $(git rev-parse HEAD) --git_repo_name aws-c-mqtt-staging
+      - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "-s ${CANARY_DURATION} -t ${CANARY_THREADS} -T ${CANARY_TPS} -C ${CANARY_CLIENT_COUNT} -l ${CANARY_LOG_FILE} -v ${CANARY_LOG_LEVEL} endpoint ${ENDPOINT}" --git_hash ${GIT_HASH} --git_repo_name ${PACKAGE_NAME}
 
   post_build:
     commands:
