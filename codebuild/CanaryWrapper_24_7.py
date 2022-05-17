@@ -48,7 +48,16 @@ command_parser.add_argument("--s3_bucket_application_in_zip", type=str, required
     help="(OPTIONAL, default="") The file path in the zip folder where the application is stored. Will be ignored if set to empty string")
 command_parser.add_argument("--debug_enabled", type=bool, required=False, default=False,
     help="(OPTIONAL, default=False) If true, you can press enter to stop the program at any time.")
+command_parser.add_argument("--only_kill_pid", type=bool, default=False,
+    help="(OPTIONAL, default=False) Will kill all of the processes in the PID file. \
+        Can be used to manually stop the Canary. \
+        Will stop the PID processes and then stop itself if true, even if other arguments are passed.")
 command_parser_arguments = command_parser.parse_args()
+
+# Is all we are doing killing PIDs?
+if (command_parser_arguments.only_kill_pid == True):
+    pid_command_kill_pids_in_file()
+    exit(0)
 
 # ================================================================================
 # Global variables that both threads use to communicate.
@@ -263,6 +272,9 @@ def s3_monitor_thread():
     global canary_s3_thread_has_stopped
     global canary_s3_thread_has_stopped_skip_ticket
     global canary_stop_all_threads
+
+    # Register our PID
+    pid_command_register_pid(threading.current_thread().ident)
 
     s3_monitor = S3_Monitor(
         s3_bucket_name=canary_s3_bucket_name,
@@ -622,6 +634,9 @@ def application_thread():
     global canary_local_git_fixed_namespace
     global canary_application_loop_wait_time
 
+    # Register our PID
+    pid_command_register_pid(threading.current_thread().ident)
+
     application_monitor = ApplicationMonitor()
 
     while True:
@@ -727,6 +742,11 @@ def application_thread():
 
 # ================================================================================
 
+# Kill the old PIDs, delete the file, and then register our PID
+pid_command_kill_pids_in_file()
+pid_command_clear_pid_file()
+pid_command_register_pid(os.getpid())
+
 # Create the threads
 run_thread_s3_monitor = threading.Thread(target=s3_monitor_thread)
 run_thread_application = threading.Thread(target=application_thread)
@@ -742,4 +762,8 @@ if (canary_debug_enable == True):
 # Wait for threads to finish
 run_thread_s3_monitor.join()
 run_thread_application.join()
+
+# Remove the PID file
+pid_command_clear_pid_file()
+
 exit(0)

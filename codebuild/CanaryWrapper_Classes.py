@@ -605,6 +605,9 @@ def cut_ticket_using_cloudwatch(
     git_fixed_namespace_text="mqtt5_canary",
     cloudwatch_region="us-east-1"):
 
+    # DISABLE FOR NOW
+    return
+
     git_metric_namespace = ""
     if (git_hash_as_namespace == False):
         git_metric_namespace = git_fixed_namespace_text
@@ -696,5 +699,34 @@ def cut_ticket_using_cloudwatch_from_args(
         git_repo_name=arguments.git_repo_name,
         git_hash=arguments.git_hash,
         git_hash_as_namespace=arguments.git_hash_as_namespace)
+
+
+# Registers a PID to the PID file so we can track the processes
+def pid_command_register_pid(pid_to_register):
+    try:
+        with open("pid_file.txt", 'a') as pid_file:
+            pid_file.write(str(pid_to_register) + "\n")
+    except Exception as e:
+        print ("Error registering PID due to exception!")
+        print ("Exception: " + str(e))
+
+# Removes the PID file from the OS
+def pid_command_clear_pid_file():
+    try:
+        os.remove("pid_file.txt")
+    except Exception as e:
+        print ("Could not remove PID file due to exception!")
+        print ("Exception: " + str(e))
+
+# Kills all the processes in the PID file
+def pid_command_kill_pids_in_file():
+    try:
+        # We only need to kill the PID, even in multithreaded situations.
+        # Threads do not count as extra PIDs (though we are storing them in case)
+        with open("pid_file.txt", 'r') as pid_file:
+            os.system("kill -9 " + str(pid_file.readline()))
+    except Exception as e:
+        print ("Could not kill PID in PID file due to exception!")
+        print ("Exception: " + str(e))
 
 # ================================================================================
