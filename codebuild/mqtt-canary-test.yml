@@ -12,8 +12,8 @@ env:
     BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
     PACKAGE_NAME: 'aws-c-mqtt-staging'
     CANARY_TEST_EXE_PATH: 'build/install/bin/mqtt5canary'
-    CANARY_SERVER_ARN: 'Mqtt5MosquittoSever'
-    CANARY_BUILD_S3_DST: 's3://aws-c-mqtt-staging-canary/build/latest'
+    CANARY_SERVER_ARN: Mqtt5MosquittoSever
+    CANARY_BUILD_S3_DST: mqtt5-canary/s3/build
     
 phases:
   install:
@@ -33,14 +33,16 @@ phases:
       - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$PACKAGE_NAME/$CANARY_TEST_EXE_PATH
       - echo $CANNARY_TEST_EXE
       - export ENDPOINT=$(aws secretsmanager get-secret-value --secret-id "$CANARY_SERVER_ARN" --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
+      - export S3_DST=$(aws secretsmanager get-secret-value --secret-id "$CANARY_BUILD_S3_DST" --query "SecretString" | cut -f2,3 -d":" | sed -e 's/[\\\"\}]//g')
+      - echo $S3_DST
       - export GIT_HASH=$(git rev-parse HEAD)
+      - echo $GIT_HASH
       # Build library and test
-      - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=0000000000-0000', 'builder.pyz')" 
-      # TODO: temporarily disable build test
+      - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=$CODEBUILD_BUILD_ID', 'builder.pyz')" 
       - python3 builder.pyz build -p aws-c-mqtt
       # upload built canary test buld result to s3 bucket 
       - zip -r latestBuild.zip build/install
-      - aws s3 cp ./latestBuild.zip $CANARY_BUILD_S3_DST
+      - aws s3 cp ./latestBuild.zip $S3_DST
       - echo run canary test through wrapper
       # start canary
       - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "-s ${CANARY_DURATION} -t ${CANARY_THREADS} -T ${CANARY_TPS} -C ${CANARY_CLIENT_COUNT} -l ${CANARY_LOG_FILE} -v ${CANARY_LOG_LEVEL} endpoint ${ENDPOINT}" --git_hash ${GIT_HASH} --git_repo_name $PACKAGE_NAME
