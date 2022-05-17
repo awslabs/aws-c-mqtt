@@ -605,9 +605,6 @@ def cut_ticket_using_cloudwatch(
     git_fixed_namespace_text="mqtt5_canary",
     cloudwatch_region="us-east-1"):
 
-    # DISABLE FOR NOW
-    return
-
     git_metric_namespace = ""
     if (git_hash_as_namespace == False):
         git_metric_namespace = git_fixed_namespace_text
