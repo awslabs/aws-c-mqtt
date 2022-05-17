@@ -57,6 +57,7 @@ command_parser_arguments = command_parser.parse_args()
 # Is all we are doing killing PIDs?
 if (command_parser_arguments.only_kill_pid == True):
     pid_command_kill_pids_in_file()
+    pid_command_clear_pid_file()
     exit(0)
 
 # ================================================================================
