@@ -32,6 +32,7 @@
 #endif
 
 #define AWS_MQTT5_CANARY_CLIENT_CREATION_SLEEP_TIME 10000000
+#define AWS_MQTT5_CANARY_OPERATION_ARRAY_SIZE 10000
 
 struct app_ctx {
     struct aws_allocator *allocator;
@@ -702,7 +703,7 @@ int main(int argc, char **argv) {
     struct aws_mqtt5_canary_tester_options tester_options;
     AWS_ZERO_STRUCT(tester_options);
     s_aws_mqtt5_canary_init_tester_options(&tester_options);
-    enum aws_mqtt5_canary_operations operations[10000];
+    enum aws_mqtt5_canary_operations operations[AWS_MQTT5_CANARY_OPERATION_ARRAY_SIZE];
     AWS_ZERO_STRUCT(operations);
     tester_options.operations = operations;
 
