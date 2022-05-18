@@ -296,6 +296,35 @@ static int s_verify_client_state_sequence(
     return AWS_OP_SUCCESS;
 }
 
+static int s_verify_client_state_sequence_loose(
+    struct aws_mqtt5_client_mock_test_fixture *test_context,
+    enum aws_mqtt5_client_state *expected_states,
+    size_t expected_states_count) {
+    aws_mutex_lock(&test_context->lock);
+
+    size_t expected_states_remaining = expected_states_count;
+    size_t actual_states_remaining = aws_array_list_length(&test_context->client_states);
+    ASSERT_TRUE(actual_states_remaining >= expected_states_remaining);
+
+    size_t actual_states_index = 0;
+    for (size_t i = 0; i < expected_states_count; ++i) {
+        enum aws_mqtt5_client_state state = AWS_MCS_STOPPED;
+        aws_array_list_get_at(&test_context->client_states, &state, actual_states_index);
+        while (expected_states[i] != state) {
+            expected_states_remaining--;
+            ASSERT_TRUE(actual_states_remaining >= expected_states_remaining);
+            actual_states_index++;
+            aws_array_list_get_at(&test_context->client_states, &state, actual_states_index);
+        }
+        actual_states_remaining--;
+        expected_states_remaining--;
+    }
+
+    aws_mutex_unlock(&test_context->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_verify_simple_lifecycle_event_sequence(
     struct aws_mqtt5_client_mock_test_fixture *test_context,
     struct aws_mqtt5_client_lifecycle_event *expected_events,
@@ -1274,7 +1303,8 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
         AWS_MCS_CHANNEL_SHUTDOWN,
         AWS_MCS_STOPPED,
     };
-    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+    ASSERT_SUCCESS(
+        s_verify_client_state_sequence_loose(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
 
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
