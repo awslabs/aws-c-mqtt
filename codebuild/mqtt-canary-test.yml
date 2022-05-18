@@ -40,12 +40,6 @@ phases:
       # Build library and test
       - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=$CODEBUILD_BUILD_ID', 'builder.pyz')" 
       - python3 builder.pyz build -p aws-c-mqtt
-      # upload built canary test buld result to s3 bucket 
-      - zip -r latestBuild.zip build/install
-      - aws s3 cp ./latestBuild.zip $S3_DST
-      - echo run canary test through wrapper
-      # start canary
-      - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "-s ${CANARY_DURATION} -t ${CANARY_THREADS} -T ${CANARY_TPS} -C ${CANARY_CLIENT_COUNT} -l ${CANARY_LOG_FILE} -v ${CANARY_LOG_LEVEL} endpoint ${ENDPOINT}" --git_hash ${GIT_HASH} --git_repo_name $PACKAGE_NAME
 
   post_build:
     commands:
