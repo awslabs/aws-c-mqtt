@@ -316,6 +316,7 @@ static int s_verify_client_state_sequence_loose(
             actual_states_index++;
             aws_array_list_get_at(&test_context->client_states, &state, actual_states_index);
         }
+        actual_states_index++;
         actual_states_remaining--;
         expected_states_remaining--;
     }
