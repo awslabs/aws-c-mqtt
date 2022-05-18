@@ -20,7 +20,7 @@
 #include <math.h>
 
 #define TEST_IO_MESSAGE_LENGTH 4096
-#define TEST_SLEEP_FOR_SERVER_LOGGING_TIME 1000
+#define TEST_SLEEP_FOR_SERVER_LOGGING_TIME 5000
 
 static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_time, double percentage) {
     double actual_percent = 1.0 - (double)actual_time / (double)expected_time;
