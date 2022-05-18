@@ -110,6 +110,10 @@ canary_s3_thread_stop = False
 canary_s3_thread_has_stopped = False
 canary_s3_thread_has_stopped_skip_ticket = False
 
+# If true, then another ticket will not be cut until a new build is used
+# [THIS IS WRITTEN TO ONLY FROM THE S3 THREAD]
+canary_s3_thread_cut_ticket_for_current_build = False
+
 # Tell the application thread to finish and get ready to restart. The application thread is expected
 # to set canary_file_replace_application_thread_ready to true when it has stopped the current application
 # and is ready for the new application
@@ -132,6 +136,7 @@ canary_debug_enable = command_parser_arguments.debug_enabled
 # ================================================================================
 class S3_Monitor():
     global canary_local_application_path
+    global canary_s3_thread_cut_ticket_for_current_build
 
     def __init__(self, s3_bucket_name, s3_file_name, s3_file_name_in_zip) -> None:
         self.s3_client = None
@@ -252,6 +257,7 @@ class S3_Monitor():
 
         print ("New file downloaded and moved into correct location!")
         self.s3_file_needs_replacing = False
+        canary_s3_thread_cut_ticket_for_current_build = False
 
 
 def s3_monitor_thread():
@@ -416,20 +422,22 @@ class SnapshotMonitor():
 
 
             if len(new_alarms) > 0:
-                cut_ticket_using_cloudwatch(
-                    git_repo_name=canary_local_git_repo_stub,
-                    git_hash=canary_local_git_hash_stub,
-                    git_hash_as_namespace=False,
-                    git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                    cloudwatch_region="us-east-1",
-                    ticket_description="New metric(s) went into alarm for the long-running canary! Metrics in alarm: " + str(new_alarms),
-                    ticket_reason="New metrics went into alarm",
-                    ticket_allow_duplicates=True,
-                    ticket_category="AWS",
-                    ticket_item="IoT SDK for CPP",
-                    ticket_group="AWS IoT Device SDK",
-                    ticket_type="SDKs and Tools",
-                    ticket_severity=4)
+                if (canary_s3_thread_cut_ticket_for_current_build == False):
+                    cut_ticket_using_cloudwatch(
+                        git_repo_name=canary_local_git_repo_stub,
+                        git_hash=canary_local_git_hash_stub,
+                        git_hash_as_namespace=False,
+                        git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                        cloudwatch_region="us-east-1",
+                        ticket_description="New metric(s) went into alarm for the long-running canary! Metrics in alarm: " + str(new_alarms),
+                        ticket_reason="New metrics went into alarm",
+                        ticket_allow_duplicates=True,
+                        ticket_category="AWS",
+                        ticket_item="IoT SDK for CPP",
+                        ticket_group="AWS IoT Device SDK",
+                        ticket_type="SDKs and Tools",
+                        ticket_severity=4)
+                    canary_s3_thread_cut_ticket_for_current_build = True
 
             # Cache the new alarms and the old alarms
             self.cloudwatch_current_alarms_triggered = old_alarms_still_active + new_alarms
@@ -617,6 +625,7 @@ def application_thread():
     global canary_s3_thread_stop
     global canary_s3_thread_has_stopped
     global canary_s3_thread_has_stopped_skip_ticket
+    global canary_s3_thread_cut_ticket_for_current_build
     global canary_stop_all_threads
     global canary_local_git_hash_stub
     global canary_local_git_repo_stub
@@ -668,57 +677,59 @@ def application_thread():
         print ("Application thread stopped due to S3 thread stopping unexpectedly!")
 
         if (canary_s3_thread_has_stopped_skip_ticket == False):
-            cut_ticket_using_cloudwatch(
-                git_repo_name=canary_local_git_repo_stub,
-                git_hash=canary_local_git_hash_stub,
-                git_hash_as_namespace=False,
-                git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                cloudwatch_region="us-east-1",
-                ticket_description="Long running canary application thread stopped due to the S3 checking thread stopping unexpectedly. "
-                                    "This is likely due to a credential error or setup error",
-                ticket_reason="S3 thread stopped unexpectedly",
-                ticket_allow_duplicates=True,
-                ticket_category="AWS",
-                ticket_item="IoT SDK for CPP",
-                ticket_group="AWS IoT Device SDK",
-                ticket_type="SDKs and Tools",
-                ticket_severity=4)
-    else:
-        print ("Application thread stopping due to an internal error in application monitor.")
-        print ("Error reason: " + application_monitor.error_reason)
-        print ("Error code: " + str(application_monitor.error_code))
-
-        if (application_monitor.error_due_to_credentials == False):
-            if (application_monitor.error_code != 0):
+            if (canary_s3_thread_cut_ticket_for_current_build == False):
                 cut_ticket_using_cloudwatch(
                     git_repo_name=canary_local_git_repo_stub,
                     git_hash=canary_local_git_hash_stub,
                     git_hash_as_namespace=False,
                     git_fixed_namespace_text=canary_local_git_fixed_namespace,
                     cloudwatch_region="us-east-1",
-                    ticket_description="The 24_7 canary exited with a non-zero exit code! This likely means something in the canary failed.",
-                    ticket_reason="The 24_7 canary exited with a non-zero exit code",
+                    ticket_description="Long running canary application thread stopped due to the S3 checking thread stopping unexpectedly. "
+                                        "This is likely due to a credential error or setup error",
+                    ticket_reason="S3 thread stopped unexpectedly",
                     ticket_allow_duplicates=True,
                     ticket_category="AWS",
                     ticket_item="IoT SDK for CPP",
                     ticket_group="AWS IoT Device SDK",
                     ticket_type="SDKs and Tools",
                     ticket_severity=4)
-            else:
-                cut_ticket_using_cloudwatch(
-                    git_repo_name=canary_local_git_repo_stub,
-                    git_hash=canary_local_git_hash_stub,
-                    git_hash_as_namespace=False,
-                    git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                    cloudwatch_region="us-east-1",
-                    ticket_description="The 24_7 canary exited with a zero exit code. The canary should run 24/7 and may need to be restarted.",
-                    ticket_reason="The 24_7 canary exited with a zero exit code",
-                    ticket_allow_duplicates=True,
-                    ticket_category="AWS",
-                    ticket_item="IoT SDK for CPP",
-                    ticket_group="AWS IoT Device SDK",
-                    ticket_type="SDKs and Tools",
-                    ticket_severity=5)
+    else:
+        print ("Application thread stopping due to an internal error in application monitor.")
+        print ("Error reason: " + application_monitor.error_reason)
+        print ("Error code: " + str(application_monitor.error_code))
+
+        if (application_monitor.error_due_to_credentials == False):
+            if (canary_s3_thread_cut_ticket_for_current_build == False):
+                if (application_monitor.error_code != 0):
+                    cut_ticket_using_cloudwatch(
+                        git_repo_name=canary_local_git_repo_stub,
+                        git_hash=canary_local_git_hash_stub,
+                        git_hash_as_namespace=False,
+                        git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                        cloudwatch_region="us-east-1",
+                        ticket_description="The 24_7 canary exited with a non-zero exit code! This likely means something in the canary failed.",
+                        ticket_reason="The 24_7 canary exited with a non-zero exit code",
+                        ticket_allow_duplicates=True,
+                        ticket_category="AWS",
+                        ticket_item="IoT SDK for CPP",
+                        ticket_group="AWS IoT Device SDK",
+                        ticket_type="SDKs and Tools",
+                        ticket_severity=3)
+                else:
+                    cut_ticket_using_cloudwatch(
+                        git_repo_name=canary_local_git_repo_stub,
+                        git_hash=canary_local_git_hash_stub,
+                        git_hash_as_namespace=False,
+                        git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                        cloudwatch_region="us-east-1",
+                        ticket_description="The 24_7 canary exited with a zero exit code. The canary should run 24/7 and may need to be restarted.",
+                        ticket_reason="The 24_7 canary exited with a zero exit code",
+                        ticket_allow_duplicates=True,
+                        ticket_category="AWS",
+                        ticket_item="IoT SDK for CPP",
+                        ticket_group="AWS IoT Device SDK",
+                        ticket_type="SDKs and Tools",
+                        ticket_severity=3)
 
     application_monitor.cleanup_all()
 
