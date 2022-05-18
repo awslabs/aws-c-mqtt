@@ -1034,9 +1034,7 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
 
     aws_mutex_lock(&test_fixture->lock);
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL,
-        "mqtt5 test server - received packet of type %s",
-        aws_mqtt5_packet_type_to_c_string(type));
+        AWS_LS_MQTT5_GENERAL, "mqtt5 test server received packet of type %s", aws_mqtt5_packet_type_to_c_string(type));
     aws_array_list_push_back(&test_fixture->server_received_packets, &packet_record);
     aws_mutex_unlock(&test_fixture->lock);
     aws_condition_variable_notify_all(&test_fixture->signal);
