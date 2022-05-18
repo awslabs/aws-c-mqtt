@@ -48,21 +48,7 @@ command_parser.add_argument("--s3_bucket_application_in_zip", type=str, required
     help="(OPTIONAL, default="") The file path in the zip folder where the application is stored. Will be ignored if set to empty string")
 command_parser.add_argument("--debug_enabled", type=bool, required=False, default=False,
     help="(OPTIONAL, default=False) If true, you can press enter to stop the program at any time.")
-# command_parser.add_argument("--only_kill_pid", type=bool, default=False,
-#     help="(OPTIONAL, default=False) Will kill all of the processes in the PID file. \
-#         Can be used to manually stop the Canary. \
-#         Will stop the PID processes and then stop itself if true, even if other arguments are passed.")
 command_parser_arguments = command_parser.parse_args()
-
-# Not needed anymore since we are using screen to keep the command running.
-# If we were not using screen, then we'd need a solution like below
-# Keeping as a reference in case we need it later...
-#
-# Is all we are doing killing PIDs?
-# if (command_parser_arguments.only_kill_pid == True):
-#     pid_command_kill_pids_in_file()
-#     pid_command_clear_pid_file()
-#     exit(0)
 
 # ================================================================================
 # Global variables that both threads use to communicate.
@@ -278,9 +264,6 @@ def s3_monitor_thread():
     global canary_s3_thread_has_stopped_skip_ticket
     global canary_stop_all_threads
 
-    # Register our PID
-    pid_command_register_pid(threading.current_thread().ident)
-
     s3_monitor = S3_Monitor(
         s3_bucket_name=canary_s3_bucket_name,
         s3_file_name=canary_s3_bucket_application_path,
@@ -385,8 +368,8 @@ class SnapshotMonitor():
             self.internal_error_reason = "Could not register metric in data snapshot due to exception"
             return
 
-    def register_dashboard_widget(self, new_widget_name, metrics_to_add=[]):
-        self.data_snapshot.register_dashboard_widget(new_widget_name=new_widget_name, metrics_to_add=metrics_to_add)
+    def register_dashboard_widget(self, new_widget_name, metrics_to_add=[], widget_period=60):
+        self.data_snapshot.register_dashboard_widget(new_widget_name=new_widget_name, metrics_to_add=metrics_to_add, new_widget_period=widget_period)
 
     def output_diagnosis_information(self, dependencies=""):
         self.data_snapshot.output_diagnosis_information(dependencies_list=dependencies)
@@ -497,6 +480,7 @@ class SnapshotMonitor():
 
 class ApplicationMonitor():
     global canary_local_application_path
+    global canary_metrics_wait_time
 
     def __init__(self) -> None:
 
@@ -535,7 +519,7 @@ class ApplicationMonitor():
             new_metric_reports_to_skip=0,
             new_metric_alarm_severity=5)
 
-        self.wrapper_monitor.register_dashboard_widget("System Percentages", ["total_cpu_usage", "total_memory_usage_percent"])
+        self.wrapper_monitor.register_dashboard_widget("System Percentages", ["total_cpu_usage", "total_memory_usage_percent"], canary_metrics_wait_time)
 
         # No good way to get the dependencies since it could change at any given point. Just skip printing them for the 24_7 canary
         self.wrapper_monitor.output_diagnosis_information("Cannot show dependencies in 24_7 wrapper")
@@ -638,9 +622,6 @@ def application_thread():
     global canary_local_git_repo_stub
     global canary_local_git_fixed_namespace
     global canary_application_loop_wait_time
-
-    # Register our PID
-    pid_command_register_pid(threading.current_thread().ident)
 
     application_monitor = ApplicationMonitor()
 
@@ -750,15 +731,6 @@ def application_thread():
 
 # ================================================================================
 
-# Not needed anymore since we are using screen to keep the command running.
-# If we were not using screen, then we'd need a solution like below
-# Keeping as a reference in case we need it later...
-#
-# Kill the old PIDs, delete the file, and then register our PID
-#pid_command_kill_pids_in_file()
-#pid_command_clear_pid_file()
-#pid_command_register_pid(os.getpid())
-
 # Create the threads
 run_thread_s3_monitor = threading.Thread(target=s3_monitor_thread)
 run_thread_application = threading.Thread(target=application_thread)
@@ -774,8 +746,5 @@ if (canary_debug_enable == True):
 # Wait for threads to finish
 run_thread_s3_monitor.join()
 run_thread_application.join()
-
-# Remove the PID file
-#pid_command_clear_pid_file()
 
 exit(0)

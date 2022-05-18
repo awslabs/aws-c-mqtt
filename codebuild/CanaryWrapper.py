@@ -49,21 +49,7 @@ command_parser.add_argument("--ticket_group", type=str, default="AWS IoT Device 
 command_parser.add_argument("--dependencies", type=str, default="",
     help="(OPTIONAL, default='') Any dependencies and their commit hashes. \
         Current expected format is '(name or path);(hash);(next name or path);(hash);(etc...)'.")
-# command_parser.add_argument("--only_kill_pid", type=bool, default=False,
-#     help="(OPTIONAL, default=False) Will kill all of the processes in the PID file. \
-#         Can be used to manually stop the Canary. \
-#         Will stop the PID processes and then stop itself if true, even if other arguments are passed.")
 command_parser_arguments = command_parser.parse_args()
-
-# Not needed anymore since we are using screen to keep the command running.
-# If we were not using screen, then we'd need a solution like below
-# Keeping as a reference in case we need it later...
-#
-# Is all we are doing killing PIDs?
-# if (command_parser_arguments.only_kill_pid == True):
-#     pid_command_kill_pids_in_file()
-#     pid_command_clear_pid_file()
-#     exit(0)
 
 if (command_parser_arguments.output_log_filepath == "None"):
     command_parser_arguments.output_log_filepath = None
@@ -143,9 +129,6 @@ def snapshot_thread():
 
     # Get the command line parser arguments
     global command_parser_arguments
-
-    # Register our PID
-    # pid_command_register_pid(threading.current_thread().ident)
 
     snapshot_had_internal_error = False
 
@@ -269,9 +252,6 @@ def application_thread():
     # Get the command line parser arguments
     global command_parser_arguments
 
-    # Register our PID
-    # pid_command_register_pid(threading.current_thread().ident)
-
     # Is the snapshot thread already stopped? If so, do not bother running the Canary
     time.sleep(5) # wait a few seconds to give the snapshot thread some time to start
     if snapshot_thread_stopped == True:
@@ -350,12 +330,6 @@ def application_thread():
 
         exit(canary_return_code)
 
-
-# Kill the old PIDs, delete the file, and then register our PID
-# pid_command_kill_pids_in_file()
-# pid_command_clear_pid_file()
-# pid_command_register_pid(os.getpid())
-
 # Create the threads
 run_thread_snapshot = threading.Thread(target=snapshot_thread)
 run_thread_application = threading.Thread(target=application_thread)
@@ -365,8 +339,5 @@ run_thread_application.start()
 # Wait for threads to finish
 run_thread_snapshot.join()
 run_thread_application.join()
-
-# Remove the PID file
-# pid_command_clear_pid_file()
 
 exit(0)

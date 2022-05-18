@@ -46,12 +46,13 @@ class DataSnapshot_Metric():
         }
 
 class DataSnapshot_Dashboard_Widget():
-    def __init__(self, widget_name, metric_namespace, metric_dimension, cloudwatch_region="us-east-1") -> None:
+    def __init__(self, widget_name, metric_namespace, metric_dimension, cloudwatch_region="us-east-1", widget_period=60) -> None:
         self.metric_list = []
         self.region = cloudwatch_region
         self.widget_name = widget_name
         self.metric_namespace = metric_namespace
         self.metric_dimension = metric_dimension
+        self.widget_period = widget_period
 
     def add_metric_to_widget(self, new_metric_name):
         try:
@@ -77,7 +78,8 @@ class DataSnapshot_Dashboard_Widget():
             "properties" : {
                 "metrics" : metric_list_json,
                 "region": self.region,
-                "title": self.widget_name
+                "title": self.widget_name,
+                "period": self.widget_period,
             },
             "width": 14,
             "height": 10
@@ -443,7 +445,7 @@ class DataSnapshot():
         )
         self.metrics.append(new_metric)
 
-    def register_dashboard_widget(self, new_widget_name, metrics_to_add=[]):
+    def register_dashboard_widget(self, new_widget_name, metrics_to_add=[], new_widget_period=60):
 
         # We need to know what metric dimension to get the metric(s) from
         metric_dimension_string = ""
@@ -457,7 +459,8 @@ class DataSnapshot():
             widget = DataSnapshot_Dashboard_Widget(
                 widget_name=new_widget_name, metric_namespace=self.git_metric_namespace,
                 metric_dimension=metric_dimension_string,
-                cloudwatch_region=self.cloudwatch_region)
+                cloudwatch_region=self.cloudwatch_region,
+                widget_period=new_widget_period)
             self.cloudwatch_dashboard_widgets.append(widget)
 
         for metric in metrics_to_add:
@@ -696,34 +699,5 @@ def cut_ticket_using_cloudwatch_from_args(
         git_repo_name=arguments.git_repo_name,
         git_hash=arguments.git_hash,
         git_hash_as_namespace=arguments.git_hash_as_namespace)
-
-
-# Registers a PID to the PID file so we can track the processes
-def pid_command_register_pid(pid_to_register):
-    try:
-        with open("pid_file.txt", 'a') as pid_file:
-            pid_file.write(str(pid_to_register) + "\n")
-    except Exception as e:
-        print ("Error registering PID due to exception!")
-        print ("Exception: " + str(e))
-
-# Removes the PID file from the OS
-def pid_command_clear_pid_file():
-    try:
-        os.remove("pid_file.txt")
-    except Exception as e:
-        print ("Could not remove PID file due to exception!")
-        print ("Exception: " + str(e))
-
-# Kills all the processes in the PID file
-def pid_command_kill_pids_in_file():
-    try:
-        # We only need to kill the PID, even in multithreaded situations.
-        # Threads do not count as extra PIDs (though we are storing them in case)
-        with open("pid_file.txt", 'r') as pid_file:
-            os.system("kill -9 " + str(pid_file.readline()))
-    except Exception as e:
-        print ("Could not kill PID in PID file due to exception!")
-        print ("Exception: " + str(e))
 
 # ================================================================================
