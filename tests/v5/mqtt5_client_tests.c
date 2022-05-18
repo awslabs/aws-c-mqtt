@@ -2849,8 +2849,10 @@ static int s_do_mqtt5_client_session_resumption_test(
         s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_CONNECTION_SUCCESS, i + 1);
 
         /* not technically truly safe to query depending on memory model.  Remove if it becomes a problem. */
+        /*
         bool expected_rejoined_session = s_compute_expected_rejoined_session(session_behavior, i);
         ASSERT_INT_EQUALS(expected_rejoined_session, client->negotiated_settings.rejoined_session);
+        */
 
         ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
         s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_STOPPED, i + 1);
