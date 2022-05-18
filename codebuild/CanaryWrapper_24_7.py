@@ -527,7 +527,8 @@ class ApplicationMonitor():
             new_metric_reports_to_skip=0,
             new_metric_alarm_severity=5)
 
-        self.wrapper_monitor.register_dashboard_widget("System Percentages", ["total_cpu_usage", "total_memory_usage_percent"], canary_metrics_wait_time)
+        self.wrapper_monitor.register_dashboard_widget("System Percentages - CPU", ["total_cpu_usage"], canary_metrics_wait_time)
+        self.wrapper_monitor.register_dashboard_widget("System Percentages - Memory", ["total_memory_usage_percent"], canary_metrics_wait_time)
 
         # No good way to get the dependencies since it could change at any given point. Just skip printing them for the 24_7 canary
         self.wrapper_monitor.output_diagnosis_information("Cannot show dependencies in 24_7 wrapper")
