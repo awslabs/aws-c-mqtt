@@ -48,17 +48,21 @@ command_parser.add_argument("--s3_bucket_application_in_zip", type=str, required
     help="(OPTIONAL, default="") The file path in the zip folder where the application is stored. Will be ignored if set to empty string")
 command_parser.add_argument("--debug_enabled", type=bool, required=False, default=False,
     help="(OPTIONAL, default=False) If true, you can press enter to stop the program at any time.")
-command_parser.add_argument("--only_kill_pid", type=bool, default=False,
-    help="(OPTIONAL, default=False) Will kill all of the processes in the PID file. \
-        Can be used to manually stop the Canary. \
-        Will stop the PID processes and then stop itself if true, even if other arguments are passed.")
+# command_parser.add_argument("--only_kill_pid", type=bool, default=False,
+#     help="(OPTIONAL, default=False) Will kill all of the processes in the PID file. \
+#         Can be used to manually stop the Canary. \
+#         Will stop the PID processes and then stop itself if true, even if other arguments are passed.")
 command_parser_arguments = command_parser.parse_args()
 
+# Not needed anymore since we are using screen to keep the command running.
+# If we were not using screen, then we'd need a solution like below
+# Keeping as a reference in case we need it later...
+#
 # Is all we are doing killing PIDs?
-if (command_parser_arguments.only_kill_pid == True):
-    pid_command_kill_pids_in_file()
-    pid_command_clear_pid_file()
-    exit(0)
+# if (command_parser_arguments.only_kill_pid == True):
+#     pid_command_kill_pids_in_file()
+#     pid_command_clear_pid_file()
+#     exit(0)
 
 # ================================================================================
 # Global variables that both threads use to communicate.
@@ -640,6 +644,9 @@ def application_thread():
 
     application_monitor = ApplicationMonitor()
 
+    # Wait just a little bit to give the S3 thread time to find the initial S3 file
+    time.sleep(10)
+
     while True:
 
         # Stop and restart the canary application
@@ -743,10 +750,14 @@ def application_thread():
 
 # ================================================================================
 
+# Not needed anymore since we are using screen to keep the command running.
+# If we were not using screen, then we'd need a solution like below
+# Keeping as a reference in case we need it later...
+#
 # Kill the old PIDs, delete the file, and then register our PID
-pid_command_kill_pids_in_file()
-pid_command_clear_pid_file()
-pid_command_register_pid(os.getpid())
+#pid_command_kill_pids_in_file()
+#pid_command_clear_pid_file()
+#pid_command_register_pid(os.getpid())
 
 # Create the threads
 run_thread_s3_monitor = threading.Thread(target=s3_monitor_thread)
@@ -765,6 +776,6 @@ run_thread_s3_monitor.join()
 run_thread_application.join()
 
 # Remove the PID file
-pid_command_clear_pid_file()
+#pid_command_clear_pid_file()
 
 exit(0)
