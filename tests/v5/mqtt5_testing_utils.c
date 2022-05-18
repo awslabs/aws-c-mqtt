@@ -18,6 +18,37 @@
 
 #include <inttypes.h>
 
+static const char *s_aws_mqtt5_client_state_to_c_str(enum aws_mqtt5_client_state state) {
+    switch (state) {
+        case AWS_MCS_STOPPED:
+            return "STOPPED";
+
+        case AWS_MCS_CONNECTING:
+            return "CONNECTING";
+
+        case AWS_MCS_MQTT_CONNECT:
+            return "MQTT_CONNECT";
+
+        case AWS_MCS_CONNECTED:
+            return "CONNECTED";
+
+        case AWS_MCS_CLEAN_DISCONNECT:
+            return "CLEAN_DISCONNECT";
+
+        case AWS_MCS_CHANNEL_SHUTDOWN:
+            return "CHANNEL_SHUTDOWN";
+
+        case AWS_MCS_PENDING_RECONNECT:
+            return "PENDING_RECONNECT";
+
+        case AWS_MCS_TERMINATED:
+            return "TERMINATED";
+
+        default:
+            return "UNKNOWN";
+    }
+}
+
 int aws_mqtt5_test_verify_user_properties_raw(
     size_t property_count,
     const struct aws_mqtt5_user_property *properties,
