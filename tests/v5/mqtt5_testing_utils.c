@@ -997,14 +997,6 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
             break;
     }
 
-    int result = AWS_OP_SUCCESS;
-    aws_mqtt5_on_mock_server_packet_received_fn *packet_handler =
-        test_fixture->server_function_table->packet_handlers[type];
-    if (packet_handler != NULL) {
-        result =
-            (*packet_handler)(packet_view, server_connection, server_connection->test_fixture->mock_server_user_data);
-    }
-
     packet_record.storage_allocator = test_fixture->allocator;
     packet_record.timestamp = (*test_fixture->client_vtable.get_current_time_fn)();
     packet_record.packet_type = type;
@@ -1017,6 +1009,14 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
     aws_array_list_push_back(&test_fixture->server_received_packets, &packet_record);
     aws_mutex_unlock(&test_fixture->lock);
     aws_condition_variable_notify_all(&test_fixture->signal);
+
+    int result = AWS_OP_SUCCESS;
+    aws_mqtt5_on_mock_server_packet_received_fn *packet_handler =
+        test_fixture->server_function_table->packet_handlers[type];
+    if (packet_handler != NULL) {
+        result =
+            (*packet_handler)(packet_view, server_connection, server_connection->test_fixture->mock_server_user_data);
+    }
 
     return result;
 }
