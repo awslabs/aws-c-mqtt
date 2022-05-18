@@ -311,7 +311,7 @@ static int s_verify_client_state_sequence_loose(
         enum aws_mqtt5_client_state state = AWS_MCS_STOPPED;
         aws_array_list_get_at(&test_context->client_states, &state, actual_states_index);
         while (expected_states[i] != state) {
-            expected_states_remaining--;
+            actual_states_remaining--;
             ASSERT_TRUE(actual_states_remaining >= expected_states_remaining);
             actual_states_index++;
             aws_array_list_get_at(&test_context->client_states, &state, actual_states_index);

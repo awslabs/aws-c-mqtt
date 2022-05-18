@@ -1269,7 +1269,7 @@ void s_aws_mqtt5_test_fixture_lifecycle_event_handler(const struct aws_mqtt5_cli
     aws_mutex_lock(&test_fixture->lock);
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_GENERAL,
-        "mqtt5 test recording lifecycle event of type %s",
+        "mqtt5 test server recording lifecycle event of type %s",
         aws_mqtt5_client_lifecycle_event_type_to_c_string(event->event_type));
     aws_array_list_push_back(&test_fixture->lifecycle_events, &record);
     aws_mutex_unlock(&test_fixture->lock);
@@ -1297,7 +1297,7 @@ void s_aws_mqtt5_test_fixture_state_changed_callback(
     aws_mutex_lock(&test_fixture->lock);
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_GENERAL,
-        "mqtt5 test recording client state change of type %s",
+        "mqtt5 test server recording client state change to %s",
         s_aws_mqtt5_client_state_to_c_str(new_state));
     aws_array_list_push_back(&test_fixture->client_states, &new_state);
     aws_mutex_unlock(&test_fixture->lock);
