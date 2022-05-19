@@ -1,7 +1,7 @@
 version: 0.2
 env:
   variables:
-    CANARY_DURATION: 30
+    CANARY_DURATION: 25200
     CANARY_THREADS: 3
     CANARY_TPS: 50
     CANARY_CLIENT_COUNT: 10
