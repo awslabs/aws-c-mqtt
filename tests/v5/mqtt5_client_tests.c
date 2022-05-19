@@ -2866,7 +2866,6 @@ static int s_do_mqtt5_client_session_resumption_test(
 
         ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
         s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_STOPPED, i + 1);
-        s_wait_for_mock_server_disconnect_packet_processing(&test_context);
     }
 
     struct aws_mqtt5_packet_connect_storage clean_start_connect_storage;
