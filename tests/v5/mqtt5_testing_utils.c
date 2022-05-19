@@ -1036,8 +1036,13 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_GENERAL, "mqtt5 test server received packet of type %s", aws_mqtt5_packet_type_to_c_string(type));
     aws_array_list_push_back(&test_fixture->server_received_packets, &packet_record);
-    if (type == AWS_MQTT5_PT_DISCONNECT) {
-        test_fixture->disconnect_processed_by_server = true;
+    switch (type) {
+        case AWS_MQTT5_PT_DISCONNECT:
+            test_fixture->disconnect_processed_by_server = true;
+            break;
+        case AWS_MQTT5_PT_CONNECT:
+            test_fixture->disconnect_processed_by_server = false;
+            break;
     }
     aws_mutex_unlock(&test_fixture->lock);
     aws_condition_variable_notify_all(&test_fixture->signal);
