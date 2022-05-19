@@ -20,7 +20,6 @@
 #include <math.h>
 
 #define TEST_IO_MESSAGE_LENGTH 4096
-#define TEST_SLEEP_FOR_SERVER_LOGGING_TIME 1000000
 
 static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_time, double percentage) {
     double actual_percent = 1.0 - (double)actual_time / (double)expected_time;
@@ -209,7 +208,19 @@ static void s_wait_for_stopped_lifecycle_event(struct aws_mqtt5_client_mock_test
     aws_condition_variable_wait_pred(
         &test_context->signal, &test_context->lock, s_last_lifecycle_event_is_stopped, test_context);
     aws_mutex_unlock(&test_context->lock);
-    aws_thread_current_sleep(TEST_SLEEP_FOR_SERVER_LOGGING_TIME);
+}
+
+static bool s_mock_server_disconnect_packet_processed(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+    return test_fixture->disconnect_processed_by_server;
+}
+
+static void s_wait_for_mock_server_disconnect_packet_processing(
+    struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_mock_server_disconnect_packet_processed, test_context);
+    aws_mutex_unlock(&test_context->lock);
 }
 
 static bool s_has_lifecycle_event(
@@ -418,6 +429,7 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
 
     s_wait_for_stopped_lifecycle_event(&test_context);
     s_wait_for_disconnect_completion(&test_context);
+    s_wait_for_mock_server_disconnect_packet_processing(&test_context);
 
     struct aws_mqtt5_client_lifecycle_event expected_events[] = {
         {
@@ -1105,6 +1117,7 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, &disconnect_view, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
+    s_wait_for_mock_server_disconnect_packet_processing(&test_context);
 
     struct aws_mqtt5_client_lifecycle_event expected_events[] = {
         {
