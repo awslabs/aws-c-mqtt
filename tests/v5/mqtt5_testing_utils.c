@@ -1043,6 +1043,8 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
         case AWS_MQTT5_PT_CONNECT:
             test_fixture->disconnect_processed_by_server = false;
             break;
+        default:
+            break;
     }
     aws_mutex_unlock(&test_fixture->lock);
     aws_condition_variable_notify_all(&test_fixture->signal);
