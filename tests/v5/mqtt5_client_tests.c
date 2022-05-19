@@ -1490,8 +1490,6 @@ static int s_mqtt5_client_reconnect_failure_backoff_fn(struct aws_allocator *all
         AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN,
     };
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
-
-    aws_thread_current_sleep(TEST_SLEEP_FOR_SERVER_LOGGING_TIME);
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
 
@@ -1717,8 +1715,6 @@ static int s_mqtt5_client_reconnect_backoff_insufficient_reset_fn(struct aws_all
         s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
 
     ASSERT_SUCCESS(s_verify_reconnection_after_success_used_backoff(&test_context, RECONNECT_TEST_MAX_BACKOFF));
-
-    aws_thread_current_sleep(TEST_SLEEP_FOR_SERVER_LOGGING_TIME);
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
 
@@ -1840,8 +1836,6 @@ static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_alloc
         s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
 
     ASSERT_SUCCESS(s_verify_reconnection_after_success_used_backoff(&test_context, RECONNECT_TEST_MIN_BACKOFF));
-
-    aws_thread_current_sleep(TEST_SLEEP_FOR_SERVER_LOGGING_TIME);
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
 
