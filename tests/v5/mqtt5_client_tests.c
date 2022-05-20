@@ -3722,6 +3722,7 @@ static int mqtt5_client_receive_assigned_client_id_fn(struct aws_allocator *allo
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
+    s_wait_for_disconnect_completion(&test_context);
 
     /* Check for Assigned Client ID on reconnect */
     ASSERT_SUCCESS(aws_mqtt5_client_start(client));
