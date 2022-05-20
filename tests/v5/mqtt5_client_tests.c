@@ -457,6 +457,7 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
         AWS_MCS_CHANNEL_SHUTDOWN,
         AWS_MCS_STOPPED,
     };
+
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
 
     struct aws_mqtt5_packet_connect_storage expected_connect_storage;
