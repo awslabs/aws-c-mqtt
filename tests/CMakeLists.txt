@@ -71,6 +71,7 @@ add_test_case(mqtt5_topic_get_segment_count)
 # mqtt operation/storage/view creation/relationship tests
 add_test_case(mqtt5_publish_operation_new_set_no_optional)
 add_test_case(mqtt5_publish_operation_new_set_all)
+add_test_case(mqtt5_publish_operation_new_failure_packet_id)
 add_test_case(mqtt5_subscribe_operation_new_set_no_optional)
 add_test_case(mqtt5_subscribe_operation_new_set_all)
 add_test_case(mqtt5_unsubscribe_operation_new_set_all)
