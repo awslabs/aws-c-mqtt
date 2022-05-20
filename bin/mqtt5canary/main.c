@@ -868,11 +868,7 @@ int main(int argc, char **argv) {
 
     uint64_t start_time = 0;
     aws_high_res_clock_get_ticks(&start_time);
-<<<<<<< HEAD
-    char shared_topic_array[256] = "";
-=======
     char shared_topic_array[AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE] = "";
->>>>>>> mqtt5-canary-testing
     snprintf(shared_topic_array, sizeof shared_topic_array, "%lu_shared_topic", start_time);
     struct aws_byte_cursor shared_topic = aws_byte_cursor_from_c_str(shared_topic_array);
 
