@@ -256,7 +256,6 @@ void aws_mqtt_library_init(struct aws_allocator *allocator) {
 }
 
 void aws_mqtt_library_clean_up(void) {
-    AWS_LOGF_DEBUG(AWS_LS_MQTT5_GENERAL, "mqtt5 library clean up started");
     if (s_mqtt_library_initialized) {
         s_mqtt_library_initialized = false;
         aws_thread_join_all_managed();
