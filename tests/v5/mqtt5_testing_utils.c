@@ -1039,10 +1039,13 @@ static int s_process_read_message(
     int result = aws_mqtt5_decoder_on_data_received(&server_connection->decoder, message_cursor);
     if (result != AWS_OP_SUCCESS) {
         aws_channel_shutdown(server_connection->channel, aws_last_error());
-        return AWS_OP_SUCCESS;
+        goto done;
     }
 
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
+
+done:
+
     aws_mem_release(message->allocator, message);
 
     return AWS_OP_SUCCESS;

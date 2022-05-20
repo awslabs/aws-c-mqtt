@@ -1505,13 +1505,17 @@ static int s_process_read_message(
         } else {
             s_aws_mqtt5_client_shutdown_channel(client, error_code);
         }
-        return AWS_OP_ERR;
+
+        goto done;
     }
 
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
+
+done:
+
     aws_mem_release(message->allocator, message);
 
-    return AWS_OP_SUCCESS;
+    return result;
 }
 
 static int s_shutdown(
