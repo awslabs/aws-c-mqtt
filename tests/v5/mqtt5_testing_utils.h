@@ -102,6 +102,7 @@ struct aws_mqtt5_client_mock_test_fixture {
     struct aws_array_list server_received_packets;
     struct aws_array_list lifecycle_events;
     struct aws_array_list client_states;
+    struct aws_array_list client_statistics;
     bool listener_destroyed;
     bool subscribe_complete;
     bool disconnect_completion_callback_invoked;

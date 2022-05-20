@@ -273,7 +273,7 @@ struct aws_mqtt5_negotiated_settings {
     struct aws_byte_buf client_id_storage;
 };
 
-struct aws_mqtt5_client_stats {
+struct aws_mqtt5_client_operation_statistics {
     uint64_t incomplete_operation_count;
     uint64_t incomplete_operation_size;
 
@@ -549,11 +549,13 @@ int aws_mqtt5_client_unsubscribe(
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
     const struct aws_mqtt5_unsubscribe_completion_options *completion_options);
 
-
+/**
+ * Queries the client's internal statistics for incomplete operations.
+ * @param client client to get statistics for
+ * @param stats set of incomplete operation statistics
+ */
 AWS_MQTT_API
-void aws_mqtt5_client_get_stats(
-    struct aws_mqtt5_client *client,
-    struct aws_mqtt5_client_stats *stats);
+void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt5_client_operation_statistics *stats);
 
 AWS_EXTERN_C_END
 

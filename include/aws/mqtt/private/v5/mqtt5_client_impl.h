@@ -145,6 +145,12 @@ struct aws_mqtt5_client_vtable {
         enum aws_mqtt5_client_state new_state,
         void *vtable_user_data);
 
+    /* This doesn't replace anything, it's just for test verification of statistic changes */
+    void (*on_client_statistics_changed_callback_fn)(
+        struct aws_mqtt5_client *client,
+        struct aws_mqtt5_operation *operation,
+        void *vtable_user_data);
+
     /* aws_channel_acquire_message_from_pool */
     struct aws_io_message *(*aws_channel_acquire_message_from_pool_fn)(
         struct aws_channel *channel,
@@ -290,12 +296,6 @@ struct aws_mqtt5_client_flow_control_state {
     struct aws_rate_limiter_token_bucket publish_throttle;
 };
 
-struct aws_mqtt5_client_statistics {
-    struct aws_mutex lock;
-
-    struct aws_mqtt5_client_stats stats;
-};
-
 struct aws_mqtt5_client {
 
     struct aws_allocator *allocator;
@@ -394,7 +394,8 @@ struct aws_mqtt5_client {
      */
 
     /* Statistics tracking operational state */
-    struct aws_mqtt5_client_statistics statistics;
+    struct aws_mutex operation_statistics_lock;
+    struct aws_mqtt5_client_operation_statistics operation_statistics;
 
     /*
      * Wraps all state related to outbound flow control.
@@ -542,13 +543,10 @@ AWS_MQTT_API uint64_t aws_mqtt5_client_flow_control_state_get_next_operation_ser
     struct aws_mqtt5_operation *operation,
     uint64_t now);
 
-AWS_MQTT_API void aws_mqtt5_client_statistics_init(struct aws_mqtt5_client_statistics *statistics);
-
-AWS_MQTT_API void aws_mqtt5_client_statistics_clean_up(struct aws_mqtt5_client_statistics *statistics);
-
-AWS_MQTT_API void aws_mqtt5_client_statistics_get_stats(struct aws_mqtt5_client_statistics *statistics, struct aws_mqtt5_client_stats *stats_out);
-
-AWS_MQTT_API void aws_mqtt5_client_statistics_change_operation_statistic_state(struct aws_mqtt5_client_statistics *statistics, struct aws_mqtt5_operation *operation, enum aws_mqtt5_operation_statistic_state_flags new_state_flags);
+AWS_MQTT_API void aws_mqtt5_client_statistics_change_operation_statistic_state(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation,
+    enum aws_mqtt5_operation_statistic_state_flags new_state_flags);
 
 AWS_EXTERN_C_END
 

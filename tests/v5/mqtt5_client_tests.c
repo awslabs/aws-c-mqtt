@@ -3695,3 +3695,128 @@ static int mqtt5_client_receive_assigned_client_id_fn(struct aws_allocator *allo
 }
 
 AWS_TEST_CASE(mqtt5_client_receive_assigned_client_id, mqtt5_client_receive_assigned_client_id_fn);
+
+static int s_verify_zero_statistics(struct aws_mqtt5_client_operation_statistics *stats) {
+    ASSERT_INT_EQUALS(stats->incomplete_operation_size, 0);
+    ASSERT_INT_EQUALS(stats->incomplete_operation_count, 0);
+    ASSERT_INT_EQUALS(stats->unacked_operation_size, 0);
+    ASSERT_INT_EQUALS(stats->unacked_operation_count, 0);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_verify_statistics_equal(
+    struct aws_mqtt5_client_operation_statistics *expected_stats,
+    struct aws_mqtt5_client_operation_statistics *actual_stats) {
+    ASSERT_INT_EQUALS(expected_stats->incomplete_operation_size, actual_stats->incomplete_operation_size);
+    ASSERT_INT_EQUALS(expected_stats->incomplete_operation_count, actual_stats->incomplete_operation_count);
+    ASSERT_INT_EQUALS(expected_stats->unacked_operation_size, actual_stats->unacked_operation_size);
+    ASSERT_INT_EQUALS(expected_stats->unacked_operation_size, actual_stats->unacked_operation_size);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_verify_client_statistics(
+    struct aws_mqtt5_client_mock_test_fixture *test_context,
+    struct aws_mqtt5_client_operation_statistics *expected_stats,
+    size_t expected_stats_count) {
+    struct aws_array_list *actual_stats = &test_context->client_statistics;
+    size_t actual_stats_count = aws_array_list_length(actual_stats);
+
+    /* we expect the last stats to be zero, the expected stats represent the stats before that */
+    ASSERT_INT_EQUALS(actual_stats_count, expected_stats_count + 1);
+
+    struct aws_mqtt5_client_operation_statistics *current_stats = NULL;
+    aws_array_list_get_at_ptr(actual_stats, (void **)&current_stats, actual_stats_count - 1);
+    ASSERT_SUCCESS(s_verify_zero_statistics(current_stats));
+
+    for (size_t i = 0; i < expected_stats_count; ++i) {
+        aws_array_list_get_at_ptr(actual_stats, (void **)&current_stats, i);
+        ASSERT_SUCCESS(s_verify_statistics_equal(&expected_stats[i], current_stats));
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static struct aws_mqtt5_client_operation_statistics s_subscribe_test_statistics[] = {
+    {
+        .incomplete_operation_size = 68,
+        .incomplete_operation_count = 1,
+        .unacked_operation_size = 0,
+        .unacked_operation_count = 0,
+    },
+    {
+        .incomplete_operation_size = 68,
+        .incomplete_operation_count = 1,
+        .unacked_operation_size = 68,
+        .unacked_operation_count = 1,
+    },
+};
+
+static int s_mqtt5_client_statistics_subscribe_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] = s_aws_mqtt5_server_send_suback_on_subscribe;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
+        .subscriptions = s_subscriptions,
+        .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
+    };
+
+    struct aws_mqtt5_subscribe_completion_options completion_options = {
+        .completion_callback = s_aws_mqtt5_subscribe_complete_fn,
+        .completion_user_data = &test_context,
+    };
+    aws_mqtt5_client_subscribe(client, &subscribe_view, &completion_options);
+
+    s_wait_for_suback_received(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(s_verify_client_statistics(
+        &test_context, s_subscribe_test_statistics, AWS_ARRAY_SIZE(s_subscribe_test_statistics)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_statistics_subscribe, s_mqtt5_client_statistics_subscribe_fn)
+
+/*
+add_test_case(mqtt5_client_statistics_subscribe)
+add_test_case(mqtt5_client_statistics_unsubscribe)
+add_test_case(mqtt5_client_statistics_publish_qos0)
+add_test_case(mqtt5_client_statistics_publish_qos1)
+add_test_case(mqtt5_client_statistics_publish_qos1_requeue)
+ */
