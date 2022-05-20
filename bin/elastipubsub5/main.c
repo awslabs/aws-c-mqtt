@@ -704,7 +704,8 @@ int main(int argc, char **argv) {
 
         char *line = NULL;
         size_t len = 0;
-        getline(&line, &len, stdin);
+        int ret = getline(&line, &len, stdin);
+        printf("  get stdin: %d\n\n", ret);
         done = s_handle_input(client, allocator, line);
         free(line);
     }
