@@ -1459,6 +1459,7 @@ static void s_destroy_lifecycle_event_storage(struct aws_mqtt5_lifecycle_event_r
 
 void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_test_fixture *test_fixture) {
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_GENERAL, "mqtt5 test client mock test fixture clean up started");
+    aws_thread_current_sleep(10000000);
     aws_mqtt5_client_release(test_fixture->client);
     aws_client_bootstrap_release(test_fixture->client_bootstrap);
     aws_host_resolver_release(test_fixture->host_resolver);
