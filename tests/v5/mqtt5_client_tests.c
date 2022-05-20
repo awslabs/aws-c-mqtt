@@ -3813,10 +3813,198 @@ static int s_mqtt5_client_statistics_subscribe_fn(struct aws_allocator *allocato
 
 AWS_TEST_CASE(mqtt5_client_statistics_subscribe, s_mqtt5_client_statistics_subscribe_fn)
 
+static struct aws_mqtt5_client_operation_statistics s_unsubscribe_test_statistics[] = {
+    {
+        .incomplete_operation_size = 14,
+        .incomplete_operation_count = 1,
+        .unacked_operation_size = 0,
+        .unacked_operation_count = 0,
+    },
+    {
+        .incomplete_operation_size = 14,
+        .incomplete_operation_count = 1,
+        .unacked_operation_size = 14,
+        .unacked_operation_count = 1,
+    },
+};
+
+static int s_mqtt5_client_statistics_unsubscribe_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
+        s_aws_mqtt5_server_send_not_subscribe_unsuback_on_unsubscribe;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    struct aws_mqtt5_sub_pub_unsub_context full_test_context = {
+        .test_fixture = &test_context,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &full_test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
+        .topic_filters = s_sub_pub_unsub_topic_filters,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_sub_pub_unsub_topic_filters),
+    };
+
+    struct aws_mqtt5_unsubscribe_completion_options completion_options = {
+        .completion_callback = s_sub_pub_unsub_unsubscribe_complete_fn,
+        .completion_user_data = &full_test_context,
+    };
+    aws_mqtt5_client_unsubscribe(client, &unsubscribe_view, &completion_options);
+
+    s_sub_pub_unsub_wait_for_unsuback_received(&full_test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(s_verify_client_statistics(
+        &test_context, s_unsubscribe_test_statistics, AWS_ARRAY_SIZE(s_unsubscribe_test_statistics)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_statistics_unsubscribe, s_mqtt5_client_statistics_unsubscribe_fn)
+
+static struct aws_mqtt5_client_operation_statistics s_publish_qos1_test_statistics[] = {
+    {
+        .incomplete_operation_size = 30,
+        .incomplete_operation_count = 1,
+        .unacked_operation_size = 0,
+        .unacked_operation_count = 0,
+    },
+    {
+        .incomplete_operation_size = 30,
+        .incomplete_operation_count = 1,
+        .unacked_operation_size = 30,
+        .unacked_operation_count = 1,
+    },
+};
+
+static int s_do_mqtt5_client_statistics_publish_test(
+    struct aws_allocator *allocator,
+    enum aws_mqtt5_qos qos,
+    struct aws_mqtt5_client_operation_statistics *expected_stats,
+    size_t expected_stats_count) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_server_send_puback_and_forward_on_publish;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    struct aws_mqtt5_sub_pub_unsub_context full_test_context = {
+        .test_fixture = &test_context,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &full_test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .qos = qos,
+        .topic =
+            {
+                .ptr = s_sub_pub_unsub_publish_topic,
+                .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_topic) - 1,
+            },
+        .payload =
+            {
+                .ptr = s_sub_pub_unsub_publish_payload,
+                .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_payload) - 1,
+            },
+    };
+
+    struct aws_mqtt5_publish_completion_options completion_options = {
+        .completion_callback = s_sub_pub_unsub_publish_complete_fn,
+        .completion_user_data = &full_test_context,
+    };
+    aws_mqtt5_client_publish(client, &publish_view, &completion_options);
+
+    s_sub_pub_unsub_wait_for_publish_complete(&full_test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(s_verify_client_statistics(&test_context, expected_stats, expected_stats_count));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_statistics_publish_qos1_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt5_client_statistics_publish_test(
+        allocator,
+        AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        s_publish_qos1_test_statistics,
+        AWS_ARRAY_SIZE(s_publish_qos1_test_statistics)));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_statistics_publish_qos1, s_mqtt5_client_statistics_publish_qos1_fn)
+
+static struct aws_mqtt5_client_operation_statistics s_publish_qos0_test_statistics[] = {
+    {
+        .incomplete_operation_size = 30,
+        .incomplete_operation_count = 1,
+        .unacked_operation_size = 0,
+        .unacked_operation_count = 0,
+    },
+};
+
+static int s_mqtt5_client_statistics_publish_qos0_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt5_client_statistics_publish_test(
+        allocator,
+        AWS_MQTT5_QOS_AT_MOST_ONCE,
+        s_publish_qos0_test_statistics,
+        AWS_ARRAY_SIZE(s_publish_qos0_test_statistics)));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_statistics_publish_qos0, s_mqtt5_client_statistics_publish_qos0_fn)
+
 /*
-add_test_case(mqtt5_client_statistics_subscribe)
-add_test_case(mqtt5_client_statistics_unsubscribe)
-add_test_case(mqtt5_client_statistics_publish_qos0)
-add_test_case(mqtt5_client_statistics_publish_qos1)
 add_test_case(mqtt5_client_statistics_publish_qos1_requeue)
  */

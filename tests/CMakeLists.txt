@@ -231,9 +231,9 @@ add_test_case(mqtt5_client_receive_nonexisting_session_state)
 add_test_case(mqtt5_client_receive_assigned_client_id)
 
 add_test_case(mqtt5_client_statistics_subscribe)
-#add_test_case(mqtt5_client_statistics_unsubscribe)
-#add_test_case(mqtt5_client_statistics_publish_qos0)
-#add_test_case(mqtt5_client_statistics_publish_qos1)
+add_test_case(mqtt5_client_statistics_unsubscribe)
+add_test_case(mqtt5_client_statistics_publish_qos0)
+add_test_case(mqtt5_client_statistics_publish_qos1)
 #add_test_case(mqtt5_client_statistics_publish_qos1_requeue)
 
 add_test_case(rate_limiter_token_bucket_init_invalid)
