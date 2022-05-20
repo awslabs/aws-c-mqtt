@@ -3626,7 +3626,8 @@ static int mqtt5_client_receive_nonexisting_session_state_fn(struct aws_allocato
         AWS_MCS_MQTT_CONNECT,
         AWS_MCS_CHANNEL_SHUTDOWN,
     };
-    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+    ASSERT_SUCCESS(
+        s_verify_client_state_sequence_loose(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
 
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
