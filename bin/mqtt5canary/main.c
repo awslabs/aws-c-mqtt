@@ -33,6 +33,9 @@
 
 #define AWS_MQTT5_CANARY_CLIENT_CREATION_SLEEP_TIME 10000000
 #define AWS_MQTT5_CANARY_OPERATION_ARRAY_SIZE 10000
+#define AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE 256
+#define AWS_MQTT5_CANARY_CLIENT_MAX 50
+#define AWS_MQTT5_CANARY_PAYLOAD_SIZE_MAX UINT16_MAX
 
 struct app_ctx {
     struct aws_allocator *allocator;
@@ -177,6 +180,9 @@ static void s_parse_options(
                 break;
             case 'C':
                 tester_options->client_count = atoi(aws_cli_optarg);
+                if (tester_options->client_count > AWS_MQTT5_CANARY_CLIENT_MAX) {
+                    tester_options->client_count = AWS_MQTT5_CANARY_CLIENT_MAX;
+                }
                 break;
             case 'T':
                 tester_options->tps = atoi(aws_cli_optarg);
@@ -406,7 +412,7 @@ static int s_aws_mqtt5_canary_operation_subscribe(struct aws_mqtt5_canary_test_c
     if (!test_client->is_connected) {
         return s_aws_mqtt5_canary_operation_start(test_client);
     }
-    char topic_array[256] = "";
+    char topic_array[AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE] = "";
     snprintf(
         topic_array,
         sizeof topic_array,
@@ -454,7 +460,7 @@ static int s_aws_mqtt5_canary_operation_unsubscribe_bad(struct aws_mqtt5_canary_
     if (!test_client->is_connected) {
         return s_aws_mqtt5_canary_operation_start(test_client);
     }
-    char topic_array[256] = "";
+    char topic_array[AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE] = "";
     snprintf(
         topic_array, sizeof topic_array, PRInSTR "_non_existing_topic", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     struct aws_byte_cursor topic = aws_byte_cursor_from_c_str(topic_array);
@@ -484,7 +490,7 @@ static int s_aws_mqtt5_canary_operation_unsubscribe(struct aws_mqtt5_canary_test
     }
 
     test_client->subscription_count--;
-    char topic_array[256] = "";
+    char topic_array[AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE] = "";
     snprintf(
         topic_array,
         sizeof topic_array,
@@ -546,7 +552,7 @@ static int s_aws_mqtt5_canary_operation_publish(
     };
 
     uint16_t payload_size = (rand() % UINT16_MAX) + 1;
-    uint8_t payload_data[payload_size];
+    uint8_t payload_data[AWS_MQTT5_CANARY_PAYLOAD_SIZE_MAX];
 
     struct aws_mqtt5_packet_publish_view packet_publish_view = {
         .qos = qos,
@@ -556,7 +562,7 @@ static int s_aws_mqtt5_canary_operation_publish(
         .payload =
             {
                 .ptr = payload_data,
-                .len = AWS_ARRAY_SIZE(payload_data) - 1,
+                .len = payload_size,
             },
         .user_properties = user_properties,
         .user_property_count = AWS_ARRAY_SIZE(user_properties),
@@ -597,8 +603,7 @@ static int s_aws_mqtt5_canary_operation_publish_to_subscribed_topic_qos0(
     if (test_client->subscription_count < 1) {
         return s_aws_mqtt5_canary_operation_publish_qos0(test_client);
     }
-
-    char topic_array[256] = "";
+    char topic_array[AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE] = "";
     snprintf(
         topic_array,
         sizeof topic_array,
@@ -624,7 +629,7 @@ static int s_aws_mqtt5_canary_operation_publish_to_subscribed_topic_qos1(
         return s_aws_mqtt5_canary_operation_publish_qos1(test_client);
     }
 
-    char topic_array[256] = "";
+    char topic_array[AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE] = "";
     snprintf(
         topic_array,
         sizeof topic_array,
@@ -858,12 +863,12 @@ int main(int argc, char **argv) {
         .publish_received_handler = s_on_publish_received,
     };
 
-    struct aws_mqtt5_canary_test_client clients[tester_options.client_count];
+    struct aws_mqtt5_canary_test_client clients[AWS_MQTT5_CANARY_CLIENT_MAX];
     AWS_ZERO_STRUCT(clients);
 
     uint64_t start_time = 0;
     aws_high_res_clock_get_ticks(&start_time);
-    char shared_topic_array[256] = "";
+    char shared_topic_array[AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE] = "";
     snprintf(shared_topic_array, sizeof shared_topic_array, "%llu_shared_topic", start_time);
     struct aws_byte_cursor shared_topic = aws_byte_cursor_from_c_str(shared_topic_array);
 
