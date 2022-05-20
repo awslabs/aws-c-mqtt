@@ -35,11 +35,6 @@ enum aws_mqtt5_client_session_behavior_type {
      * Always attempt to rejoin an existing session after an initial connection success.
      */
     AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS,
-
-    /**
-     * Every CONNECT will attempt to rejoin an existing session.
-     */
-    AWS_MQTT5_CSBT_REJOIN_ALWAYS,
 };
 
 /*
@@ -274,6 +269,8 @@ struct aws_mqtt5_negotiated_settings {
     bool subscription_identifiers_available;
     bool shared_subscriptions_available;
     bool rejoined_session;
+
+    struct aws_byte_buf client_id_storage;
 };
 
 struct aws_mqtt5_client_stats {
@@ -419,6 +416,13 @@ struct aws_mqtt5_client_options {
      * connection will be shut down.
      */
     uint32_t connack_timeout_ms;
+
+    /**
+     * Time interval to wait for an ack after sending a PUBLISH, SUBSCRIBE, or UNSUBSCRIBE with QoS 1+ before
+     * failing the packet, notifying the client of failure, and removing it from the retry queue. Defaults
+     * to 0 meaning the packet will always be retried upon a reconnect scenario.
+     */
+    uint32_t operation_timeout_seconds;
 
     /**
      * Callback for received publish packets

@@ -97,6 +97,78 @@ static void s_complete_operation_list(struct aws_mqtt5_client *client, struct aw
     aws_linked_list_init(operation_list);
 }
 
+static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
+    if (client->config->operation_timeout_seconds == 0) {
+        return;
+    }
+
+    struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
+    while (node != aws_linked_list_end(&client->operational_state.unacked_operations)) {
+        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
+        node = aws_linked_list_next(node);
+        if (operation->timeout_timepoint_ns < now) {
+            /* Timeout for this packet has been reached */
+            aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
+
+            switch (operation->packet_type) {
+                case AWS_MQTT5_PT_SUBSCRIBE:
+                    /* SUBSCRIBE has timed out. */
+                    AWS_LOGF_INFO(
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: SUBSCRIBE packet with id:%d has timed out",
+                        (void *)client,
+                        packet_id);
+                    break;
+
+                case AWS_MQTT5_PT_UNSUBSCRIBE:
+                    /* UNSUBSCRIBE has timed out. */
+                    AWS_LOGF_INFO(
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: UNSUBSCRIBE packet with id:%d has timed out",
+                        (void *)client,
+                        packet_id);
+                    break;
+
+                case AWS_MQTT5_PT_PUBLISH:
+                    /* PUBLISH has timed out. */
+                    AWS_LOGF_INFO(
+                        AWS_LS_MQTT5_CLIENT,
+                        "id=%p: PUBLISH packet with id:%d has timed out",
+                        (void *)client,
+                        packet_id);
+
+                    aws_mqtt5_client_flow_control_state_on_puback(client);
+                    break;
+
+                default:
+                    /* something is wrong, there should be no other packet type in this linked list */
+                    break;
+            }
+
+            struct aws_hash_element *elem = NULL;
+            aws_hash_table_find(&client->operational_state.unacked_operations_table, &packet_id, &elem);
+
+            if (elem == NULL || elem->value == NULL) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT5_CLIENT,
+                    "id=%p: timeout for unknown operation with id %d",
+                    (void *)client,
+                    (int)packet_id);
+                return;
+            }
+
+            aws_linked_list_remove(&operation->node);
+            aws_hash_table_remove(&client->operational_state.unacked_operations_table, &packet_id, NULL, NULL);
+
+            aws_mqtt5_operation_complete(operation, AWS_ERROR_MQTT_TIMEOUT, NULL);
+            aws_mqtt5_operation_release(operation);
+
+        } else {
+            break;
+        }
+    }
+}
+
 static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     if (client == NULL) {
         return;
@@ -105,6 +177,8 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     aws_mqtt5_client_operational_state_clean_up(&client->operational_state);
 
     aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
+
+    aws_mqtt5_negotiated_settings_clean_up(&client->negotiated_settings);
 
     aws_http_message_release(client->handshake);
 
@@ -266,6 +340,18 @@ static uint64_t s_compute_next_service_time_client_mqtt_connect(struct aws_mqtt5
     return aws_min_u64(client->next_mqtt_connect_packet_timeout_time, operation_processing_time);
 }
 
+static uint64_t s_min_non_0_64(uint64_t a, uint64_t b) {
+    if (a == 0) {
+        return b;
+    }
+
+    if (b == 0) {
+        return a;
+    }
+
+    return aws_min_u64(a, b);
+}
+
 static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_client *client, uint64_t now) {
 
     /* ping and ping timeout */
@@ -274,26 +360,44 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
         next_service_time = aws_min_u64(next_service_time, client->next_ping_timeout_time);
     }
 
+    /* unacked operations timeout */
+    if (client->config->operation_timeout_seconds != 0 &&
+        !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
+        struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
+        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
+        next_service_time = aws_min_u64(next_service_time, operation->timeout_timepoint_ns);
+    }
+
     if (client->desired_state != AWS_MCS_CONNECTED) {
         next_service_time = now;
     }
 
     uint64_t operation_processing_time =
         s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
-    if (operation_processing_time != 0) {
-        next_service_time = aws_min_u64(next_service_time, operation_processing_time);
-    }
+
+    next_service_time = s_min_non_0_64(operation_processing_time, next_service_time);
 
     /* reset reconnect delay interval */
-    if (client->next_reconnect_delay_reset_time_ns > 0) {
-        next_service_time = aws_min_u64(next_service_time, client->next_reconnect_delay_reset_time_ns);
-    }
+    next_service_time = s_min_non_0_64(client->next_reconnect_delay_reset_time_ns, next_service_time);
 
     return next_service_time;
 }
 
 static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_mqtt5_client *client, uint64_t now) {
-    return s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
+    uint64_t operation_timeout_time = 0;
+
+    /* unacked operations timeout */
+    if (client->config->operation_timeout_seconds != 0 &&
+        !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
+        struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
+        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
+        operation_timeout_time = operation->timeout_timepoint_ns;
+    }
+
+    uint64_t operation_processing_time =
+        s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
+
+    return s_min_non_0_64(operation_timeout_time, operation_processing_time);
 }
 
 static uint64_t s_compute_next_service_time_client_channel_shutdown(struct aws_mqtt5_client *client, uint64_t now) {
@@ -783,7 +887,6 @@ on_error:
 }
 
 static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client) {
-    (void)client;
     AWS_ASSERT(client->current_state == AWS_MCS_STOPPED || client->current_state == AWS_MCS_PENDING_RECONNECT);
 
     client->current_state = AWS_MCS_CONNECTING;
@@ -938,8 +1041,7 @@ static void s_aws_mqtt5_on_socket_write_completion(
 static bool s_should_resume_session(const struct aws_mqtt5_client *client) {
     enum aws_mqtt5_client_session_behavior_type session_behavior = client->config->session_behavior;
 
-    return session_behavior == AWS_MQTT5_CSBT_REJOIN_ALWAYS ||
-           (session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully);
+    return session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully;
 }
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {
@@ -957,6 +1059,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     connect_view.clean_start = !resume_session;
 
     aws_mqtt5_negotiated_settings_reset(&client->negotiated_settings, &connect_view);
+    connect_view.client_id = aws_byte_cursor_from_buf(&client->negotiated_settings.client_id_storage);
 
     struct aws_mqtt5_operation_connect *connect_op = aws_mqtt5_operation_connect_new(client->allocator, &connect_view);
     if (connect_op == NULL) {
@@ -1266,6 +1369,8 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
         client->next_reconnect_delay_reset_time_ns = 0;
     }
 
+    s_check_timeouts(client, now);
+
     if (aws_mqtt5_client_service_operational_state(&client->operational_state)) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -1280,7 +1385,7 @@ static void s_service_state_connected(struct aws_mqtt5_client *client, uint64_t 
     }
 }
 
-static void s_service_state_clean_disconnect(struct aws_mqtt5_client *client) {
+static void s_service_state_clean_disconnect(struct aws_mqtt5_client *client, uint64_t now) {
     if (aws_mqtt5_client_service_operational_state(&client->operational_state)) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -1293,6 +1398,8 @@ static void s_service_state_clean_disconnect(struct aws_mqtt5_client *client) {
         s_aws_mqtt5_client_shutdown_channel(client, error_code);
         return;
     }
+
+    s_check_timeouts(client, now);
 }
 
 static void s_service_state_channel_shutdown(struct aws_mqtt5_client *client) {
@@ -1337,7 +1444,7 @@ static void s_mqtt5_service_task_fn(struct aws_task *task, void *arg, enum aws_t
             s_service_state_connected(client, now);
             break;
         case AWS_MCS_CLEAN_DISCONNECT:
-            s_service_state_clean_disconnect(client);
+            s_service_state_clean_disconnect(client, now);
             break;
         case AWS_MCS_CHANNEL_SHUTDOWN:
             s_service_state_channel_shutdown(client);
@@ -1469,6 +1576,18 @@ static void s_aws_mqtt5_client_on_connack(
     }
 
     aws_mqtt5_negotiated_settings_apply_connack(&client->negotiated_settings, connack_view);
+
+    /* Check if a session is being rejoined and perform associated rejoin connect logic here */
+    if (client->negotiated_settings.rejoined_session) {
+        /* Disconnect if the server is attempting to connect the client to an unexpected session */
+        if (client->config->session_behavior == AWS_MQTT5_CSBT_CLEAN || client->has_connected_successfully == false) {
+            s_aws_mqtt5_client_emit_final_lifecycle_event(
+                client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION, connack_view, NULL);
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
+            return;
+        }
+    }
+
     s_change_current_state(client, AWS_MCS_CONNECTED);
     s_aws_mqtt5_client_emit_connection_success_lifecycle_event(client, connack_view);
 }
@@ -1555,7 +1674,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
     switch (type) {
         case AWS_MQTT5_PT_PINGRESP:
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: resetting PINGREQ timer", (void *)client);
-
             client->next_ping_timeout_time = 0;
             break;
 
@@ -1572,7 +1690,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: SUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_suback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(
-                &client->operational_state, packet_id, AWS_MQTT5_PT_SUBACK, packet_view);
+                &client->operational_state, packet_id, AWS_MQTT5_PT_SUBACK, packet_view, AWS_ERROR_SUCCESS);
             break;
         }
 
@@ -1580,7 +1698,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: UNSUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_unsuback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(
-                &client->operational_state, packet_id, AWS_MQTT5_PT_UNSUBACK, packet_view);
+                &client->operational_state, packet_id, AWS_MQTT5_PT_UNSUBACK, packet_view, AWS_ERROR_SUCCESS);
             break;
         }
 
@@ -1613,7 +1731,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_puback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(
-                &client->operational_state, packet_id, AWS_MQTT5_PT_PUBACK, packet_view);
+                &client->operational_state, packet_id, AWS_MQTT5_PT_PUBACK, packet_view, AWS_ERROR_SUCCESS);
             break;
         }
 
@@ -1754,6 +1872,11 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
         goto on_error;
     }
 
+    if (aws_mqtt5_negotiated_settings_init(
+            allocator, &client->negotiated_settings, &options->connect_options->client_id)) {
+        goto on_error;
+    }
+
     client->current_reconnect_delay_ms = 0;
 
     client->handler.alloc = client->allocator;
@@ -1848,7 +1971,6 @@ static struct aws_mqtt_change_desired_state_task *s_aws_mqtt_change_desired_stat
     }
 
     aws_task_init(&change_state_task->task, s_change_state_task_fn, (void *)change_state_task, "ChangeStateTask");
-
     change_state_task->allocator = client->allocator;
     change_state_task->client = (desired_state == AWS_MCS_TERMINATED) ? client : aws_mqtt5_client_acquire(client);
     change_state_task->desired_state = desired_state;
@@ -2531,6 +2653,13 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                     break;
                 }
 
+                if (client->config->operation_timeout_seconds != 0) {
+                    current_operation->timeout_timepoint_ns =
+                        now +
+                        aws_timestamp_convert(
+                            client->config->operation_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+                }
+
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);
                 aws_mqtt5_client_statistics_change_operation_statistic_state(
                     &client->statistics, current_operation, AWS_MQTT5_OSS_INCOMPLETE | AWS_MQTT5_OSS_UNACKED);
@@ -2597,7 +2726,8 @@ void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
     enum aws_mqtt5_packet_type packet_type,
-    const void *packet_view) {
+    const void *packet_view,
+    int error_code) {
 
     if (packet_type == AWS_MQTT5_PT_PUBACK) {
         aws_mqtt5_client_flow_control_state_on_puback(client_operational_state->client);
@@ -2626,7 +2756,7 @@ void aws_mqtt5_client_operational_state_handle_ack(
     aws_linked_list_remove(&operation->node);
     aws_hash_table_remove(&client_operational_state->unacked_operations_table, &packet_id, NULL, NULL);
 
-    s_complete_operation(client_operational_state->client, operation, AWS_ERROR_SUCCESS, packet_view);
+    s_complete_operation(client_operational_state->client, operation, error_code, packet_view);
 
     aws_mqtt5_operation_release(operation);
 }

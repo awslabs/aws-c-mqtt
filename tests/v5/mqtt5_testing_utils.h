@@ -106,7 +106,9 @@ struct aws_mqtt5_client_mock_test_fixture {
     bool subscribe_complete;
     bool disconnect_completion_callback_invoked;
     uint32_t total_pubacks_received;
+    uint32_t publishes_received;
     uint32_t successful_pubacks_received;
+    uint32_t timeouts_received;
 
     uint32_t server_maximum_inflight_publishes;
     uint32_t server_current_inflight_publishes;

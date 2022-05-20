@@ -522,7 +522,8 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
     enum aws_mqtt5_packet_type packet_type,
-    const void *packet_view);
+    const void *packet_view,
+    int error_code);
 
 AWS_MQTT_API bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client);
 

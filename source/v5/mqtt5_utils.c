@@ -108,13 +108,44 @@ void aws_mqtt5_negotiated_settings_log(
         negotiated_settings->shared_subscriptions_available ? "true" : "false");
 }
 
+int aws_mqtt5_negotiated_settings_init(
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_negotiated_settings *negotiated_settings,
+    const struct aws_byte_cursor *client_id) {
+    if (aws_byte_buf_init(&negotiated_settings->client_id_storage, allocator, client_id->len)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_byte_buf_append_dynamic(&negotiated_settings->client_id_storage, client_id)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt5_negotiated_settings_apply_client_id(
+    struct aws_mqtt5_negotiated_settings *negotiated_settings,
+    const struct aws_byte_cursor *client_id) {
+
+    if (negotiated_settings->client_id_storage.len == 0) {
+        if (aws_byte_buf_append_dynamic(&negotiated_settings->client_id_storage, client_id)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings) {
+    aws_byte_buf_clean_up(&negotiated_settings->client_id_storage);
+}
+
+/** Assign defaults values to negotiated_settings */
 void aws_mqtt5_negotiated_settings_reset(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_mqtt5_packet_connect_view *packet_connect_view) {
     AWS_PRECONDITION(negotiated_settings != NULL);
     AWS_PRECONDITION(packet_connect_view != NULL);
-
-    /** Assign defaults values to negotiated_settings */
 
     /* Properties that may be sent in CONNECT to Server. These should only be sent if Client
        changes them from their default values.
@@ -207,6 +238,10 @@ void aws_mqtt5_negotiated_settings_apply_connack(
         negotiated_settings->server_keep_alive = *connack_data->server_keep_alive;
     }
 
+    if (connack_data->assigned_client_identifier != NULL) {
+        aws_mqtt5_negotiated_settings_apply_client_id(negotiated_settings, connack_data->assigned_client_identifier);
+    }
+
     negotiated_settings->rejoined_session = connack_data->session_present;
 }
 
@@ -217,8 +252,6 @@ const char *aws_mqtt5_client_session_behavior_type_to_c_string(
             return "Clean session always";
         case AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS:
             return "Attempt to resume a session after initial connection success";
-        case AWS_MQTT5_CSBT_REJOIN_ALWAYS:
-            return "Always attempt to resume a session";
     }
 
     return "Unknown session behavior";
