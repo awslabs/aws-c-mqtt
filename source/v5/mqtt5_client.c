@@ -189,6 +189,8 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     aws_mqtt5_encoder_clean_up(&client->encoder);
     aws_mqtt5_decoder_clean_up(&client->decoder);
 
+    aws_mutex_clean_up(&client->operation_statistics_lock);
+
     aws_mem_release(client->allocator, client);
 }
 
@@ -1892,6 +1894,8 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     client->handler.impl = client;
 
     aws_mqtt5_client_options_storage_log(client->config, AWS_LL_DEBUG);
+
+    aws_mutex_init(&client->operation_statistics_lock);
 
     return client;
 
