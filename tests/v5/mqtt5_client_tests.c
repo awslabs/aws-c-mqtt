@@ -184,6 +184,34 @@ static bool s_last_life_cycle_event_is(
     return record->event.event_type == event_type;
 }
 
+static bool s_last_mock_server_packet_received_is(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    enum aws_mqtt5_packet_type packet_type) {
+    size_t packet_count = aws_array_list_length(&test_fixture->server_received_packets);
+    if (packet_count == 0) {
+        return false;
+    }
+
+    struct aws_mqtt5_mock_server_packet_record *packet = NULL;
+    aws_array_list_get_at_ptr(&test_fixture->server_received_packets, (void **)&packet, packet_count - 1);
+
+    return packet_type == packet->packet_type;
+}
+
+static bool s_last_mock_server_packet_received_is_disconnect(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+
+    return s_last_mock_server_packet_received_is(test_fixture, AWS_MQTT5_PT_DISCONNECT);
+}
+
+static void s_wait_for_mock_server_to_receive_disconnect_packet(
+    struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_last_mock_server_packet_received_is_disconnect, test_context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
 static bool s_last_lifecycle_event_is_connected(void *arg) {
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
 
@@ -207,19 +235,6 @@ static void s_wait_for_stopped_lifecycle_event(struct aws_mqtt5_client_mock_test
     aws_mutex_lock(&test_context->lock);
     aws_condition_variable_wait_pred(
         &test_context->signal, &test_context->lock, s_last_lifecycle_event_is_stopped, test_context);
-    aws_mutex_unlock(&test_context->lock);
-}
-
-static bool s_mock_server_disconnect_packet_processed(void *arg) {
-    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
-    return test_fixture->disconnect_processed_by_server;
-}
-
-static void s_wait_for_mock_server_disconnect_packet_processing(
-    struct aws_mqtt5_client_mock_test_fixture *test_context) {
-    aws_mutex_lock(&test_context->lock);
-    aws_condition_variable_wait_pred(
-        &test_context->signal, &test_context->lock, s_mock_server_disconnect_packet_processed, test_context);
     aws_mutex_unlock(&test_context->lock);
 }
 
@@ -429,7 +444,7 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
 
     s_wait_for_stopped_lifecycle_event(&test_context);
     s_wait_for_disconnect_completion(&test_context);
-    s_wait_for_mock_server_disconnect_packet_processing(&test_context);
+    s_wait_for_mock_server_to_receive_disconnect_packet(&test_context);
 
     struct aws_mqtt5_client_lifecycle_event expected_events[] = {
         {
@@ -1118,7 +1133,7 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, &disconnect_view, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
-    s_wait_for_mock_server_disconnect_packet_processing(&test_context);
+    s_wait_for_mock_server_to_receive_disconnect_packet(&test_context);
 
     struct aws_mqtt5_client_lifecycle_event expected_events[] = {
         {
