@@ -1,33 +1,19 @@
 version: 0.2
 env:
   variables:
-<<<<<<< HEAD
-    CANARY_DURATION: 60
-=======
     CANARY_DURATION: 25200
->>>>>>> mqtt5
     CANARY_THREADS: 3
     CANARY_TPS: 50
     CANARY_CLIENT_COUNT: 10
     CANARY_LOG_FILE: 'canary_log.txt'
-<<<<<<< HEAD
-    CANARY_LOG_LEVEL: 'TRACE'
-=======
     CANARY_LOG_LEVEL: 'ERROR'
->>>>>>> mqtt5
     BUILDER_VERSION: v0.9.15
     BUILDER_SOURCE: releases
     BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
     PACKAGE_NAME: 'aws-c-mqtt-staging'
-<<<<<<< HEAD
-    CANARY_TEST_EXE_PATH: 'build/install/bin/mqtt5canary'
-    CANARY_SERVER_ARN: Mqtt5MosquittoSever
-    CANARY_BUILD_S3_DST: mqtt5-canary/s3/build
-=======
     CANARY_TEST_EXE_PATH: build/install/bin/mqtt5canary
     CANARY_SERVER_ARN: Mqtt5MosquittoSever
     CANARY_BUILD_S3_DST: mqtt5-canary/s3
->>>>>>> mqtt5
     
 phases:
   install:
@@ -44,18 +30,6 @@ phases:
 
   build:
     commands:
-<<<<<<< HEAD
-      - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$PACKAGE_NAME/$CANARY_TEST_EXE_PATH
-      - echo $CANNARY_TEST_EXE
-      - export ENDPOINT=$(aws secretsmanager get-secret-value --secret-id "$CANARY_SERVER_ARN" --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
-      - export S3_DST=$(aws secretsmanager get-secret-value --secret-id "$CANARY_BUILD_S3_DST" --query "SecretString" | cut -f2,3 -d":" | sed -e 's/[\\\"\}]//g')
-      - echo $S3_DST
-      - export GIT_HASH=$(git rev-parse HEAD)
-      - echo $GIT_HASH
-      # Build library and test
-      - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=$CODEBUILD_BUILD_ID', 'builder.pyz')" 
-      - python3 builder.pyz build -p aws-c-mqtt --cmake-extra=-DENABLE_SANITIZERS=true --cmake-extra=-DSANITIZERS=",address,undefined"
-=======
       - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$CANARY_TEST_EXE_PATH
       - echo $CANNARY_TEST_EXE
       - export ENDPOINT=$(aws secretsmanager get-secret-value --secret-id "$CANARY_SERVER_ARN" --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
@@ -72,7 +46,6 @@ phases:
       - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "-s ${CANARY_DURATION} -t ${CANARY_THREADS} -T ${CANARY_TPS} -C ${CANARY_CLIENT_COUNT} -l ${CANARY_LOG_FILE} -v ${CANARY_LOG_LEVEL} endpoint ${ENDPOINT}" --git_hash ${GIT_HASH} --git_repo_name $PACKAGE_NAME
       - aws s3 cp ./${CANARY_LOG_FILE} ${S3_DST}log/${GIT_HASH}/
 
->>>>>>> mqtt5
 
   post_build:
     commands:
