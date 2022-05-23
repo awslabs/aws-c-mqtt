@@ -273,11 +273,32 @@ struct aws_mqtt5_negotiated_settings {
     struct aws_byte_buf client_id_storage;
 };
 
+/**
+ * Contains some simple statistics about the current state of the client's queue of operations
+ */
 struct aws_mqtt5_client_operation_statistics {
+    /*
+     * total number of operations submitted to the client that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
     uint64_t incomplete_operation_count;
+
+    /*
+     * total packet size of operations submitted to the client that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
     uint64_t incomplete_operation_size;
 
+    /*
+     * total number of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
     uint64_t unacked_operation_count;
+
+    /*
+     * total packet size of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
     uint64_t unacked_operation_size;
 };
 

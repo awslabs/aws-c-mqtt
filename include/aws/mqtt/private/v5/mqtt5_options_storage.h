@@ -29,6 +29,7 @@ struct aws_mqtt5_user_property_set {
     struct aws_array_list properties;
 };
 
+/* Basic vtable for all mqtt operations.  Implementations are per-packet type */
 struct aws_mqtt5_operation_vtable {
     void (*aws_mqtt5_operation_completion_fn)(
         struct aws_mqtt5_operation *operation,
@@ -45,9 +46,15 @@ struct aws_mqtt5_operation_vtable {
         const struct aws_mqtt5_client *client);
 };
 
+/* Flags that indicate the way in which an operation is currently affecting the statistics of the client */
 enum aws_mqtt5_operation_statistic_state_flags {
+    /* The operation is not affecting the client's statistics at all */
     AWS_MQTT5_OSS_NONE = 0,
+
+    /* The operation is affecting the client's "incomplete operation" statistics */
     AWS_MQTT5_OSS_INCOMPLETE = 1 << 0,
+
+    /* The operation is affecting the client's "unacked operation" statistics */
     AWS_MQTT5_OSS_UNACKED = 1 << 1,
 };
 
@@ -64,7 +71,10 @@ struct aws_mqtt5_operation {
     enum aws_mqtt5_packet_type packet_type;
     const void *packet_view;
 
+    /* How this operation is currently affecting the statistics of the client */
     enum aws_mqtt5_operation_statistic_state_flags statistic_state_flags;
+
+    /* Size of the MQTT packet this operation represents */
     size_t packet_size;
 
     void *impl;
