@@ -883,6 +883,7 @@ int main(int argc, char **argv) {
         aws_mqtt5_canary_operation_fn *operation_fn =
             s_aws_mqtt5_canary_operation_table.operation_by_operation_type[AWS_MQTT5_CANARY_OPERATION_START];
         (*operation_fn)(&clients[i]);
+
         aws_thread_current_sleep(AWS_MQTT5_CANARY_CLIENT_CREATION_SLEEP_TIME);
     }
 
