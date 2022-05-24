@@ -67,8 +67,7 @@ static const struct aws_mqtt5_user_property s_bad_user_properties_value[] = {
     },
 };
 
-static struct aws_mqtt5_user_property
-    s_bad_user_properties_too_many[AWS_MQTT5_CLIENT_MAXIMUM_USER_PROPERTIES + 1];
+static struct aws_mqtt5_user_property s_bad_user_properties_too_many[AWS_MQTT5_CLIENT_MAXIMUM_USER_PROPERTIES + 1];
 
 /*
  * rather than just checking the bad view, we do a side-by-side before-after view validation as well to give more

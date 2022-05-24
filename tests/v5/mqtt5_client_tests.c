@@ -1048,7 +1048,7 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
 
     /* fast keep alive in order keep tests reasonably short */
     uint16_t keep_alive_seconds =
-        (uint16_t) aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
+        (uint16_t)aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
     connect_options.keep_alive_interval_seconds = keep_alive_seconds;
 
     /* faster ping timeout */
@@ -1201,7 +1201,8 @@ static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixt
 
     uint64_t connected_interval_ms =
         aws_timestamp_convert(disconnected_time - connected_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
-    uint64_t expected_connected_time_ms = TIMEOUT_TEST_PING_INTERVAL_MS + (uint64_t) test_context->client->config->ping_timeout_ms;
+    uint64_t expected_connected_time_ms =
+        TIMEOUT_TEST_PING_INTERVAL_MS + (uint64_t)test_context->client->config->ping_timeout_ms;
 
     ASSERT_TRUE(s_is_within_percentage_of(expected_connected_time_ms, connected_interval_ms, .1));
 
@@ -1225,7 +1226,7 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
 
     /* fast keep alive in order keep tests reasonably short */
     uint16_t keep_alive_seconds =
-        (uint16_t) aws_timestamp_convert(TIMEOUT_TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
+        (uint16_t)aws_timestamp_convert(TIMEOUT_TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
     connect_options.keep_alive_interval_seconds = keep_alive_seconds;
 
     /* don't response to PINGREQs */
