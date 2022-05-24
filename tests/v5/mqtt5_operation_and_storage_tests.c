@@ -1301,6 +1301,7 @@ static int mqtt5_negotiated_settings_reset_test_fn(struct aws_allocator *allocat
 AWS_TEST_CASE(mqtt5_negotiated_settings_reset_test, mqtt5_negotiated_settings_reset_test_fn)
 
 static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     (void)ctx;
 
     /* aws_mqtt5_negotiated_settings used for testing */
@@ -1373,6 +1374,7 @@ static int mqtt5_negotiated_settings_apply_connack_test_fn(struct aws_allocator 
 AWS_TEST_CASE(mqtt5_negotiated_settings_apply_connack_test, mqtt5_negotiated_settings_apply_connack_test_fn)
 
 static int mqtt5_negotiated_settings_server_override_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     (void)ctx;
 
     /* aws_mqtt5_negotiated_settings used for client */
@@ -1794,6 +1796,10 @@ static struct aws_io_message *s_aws_channel_acquire_message_from_pool_success_fn
     size_t size_hint,
     void *user_data) {
 
+    (void)channel;
+    (void)message_type;
+    (void)size_hint;
+
     struct aws_mqtt5_operation_processing_test_context *test_context = user_data;
     struct aws_allocator *allocator = test_context->allocator;
 
@@ -1810,6 +1816,10 @@ static struct aws_io_message *s_aws_channel_acquire_message_from_pool_success_sm
     size_t size_hint,
     void *user_data) {
 
+    (void)channel;
+    (void)message_type;
+    (void)size_hint;
+
     struct aws_mqtt5_operation_processing_test_context *test_context = user_data;
     struct aws_allocator *allocator = test_context->allocator;
 
@@ -1825,6 +1835,9 @@ static struct aws_io_message *s_aws_channel_acquire_message_from_pool_success_se
     enum aws_io_message_type message_type,
     size_t size_hint,
     void *user_data) {
+
+    (void)channel;
+    (void)message_type;
 
     struct aws_mqtt5_operation_processing_test_context *test_context = user_data;
     struct aws_allocator *allocator = test_context->allocator;
@@ -1857,6 +1870,9 @@ static int s_aws_channel_slot_send_message_success_fn(
     struct aws_io_message *message,
     enum aws_channel_direction dir,
     void *user_data) {
+
+    (void)slot;
+    (void)dir;
 
     struct aws_mqtt5_operation_processing_test_context *test_context = user_data;
 
@@ -2503,6 +2519,8 @@ void s_on_subscribe_operation_complete(
     int error_code,
     void *complete_ctx) {
 
+    (void)suback;
+
     struct aws_mqtt5_operation_processing_test_context *test_context = complete_ctx;
 
     aws_array_list_push_back(&test_context->completed_operation_error_codes, &error_code);
@@ -2528,6 +2546,8 @@ void s_on_publish_operation_complete(
     const struct aws_mqtt5_packet_puback_view *puback,
     int error_code,
     void *complete_ctx) {
+
+    (void)puback;
 
     struct aws_mqtt5_operation_processing_test_context *test_context = complete_ctx;
 
