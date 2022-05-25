@@ -3,6 +3,7 @@
 
 # Needs to be installed prior to running
 import boto3
+import psutil
 # Part of standard packages in Python 3.4+
 import time
 import os
@@ -29,15 +30,18 @@ class DataSnapshot_Metric():
         self.metric_alarm_severity = metric_alarm_severity
 
     # Gets the latest metric value from the metric_function callback
-    def get_metric_value(self):
+    def get_metric_value(self, psutil_process : psutil.Process):
         if not self.metric_function is None:
-            self.metric_value = self.metric_function()
+            self.metric_value = self.metric_function(psutil_process)
         return self.metric_value
 
     # Returns the data needed to send to Cloudwatch when posting metrics
     def get_metric_cloudwatch_dictionary(self):
         if (self.reports_to_skip > 0):
             self.reports_to_skip -= 1
+            return None # skips sending to Cloudwatch
+
+        if (self.metric_value == None):
             return None # skips sending to Cloudwatch
 
         return {
@@ -524,6 +528,10 @@ class DataSnapshot():
             if (not metric_data_tmp is None):
                 metrics_data.append(metric_data_tmp)
 
+        if (len(metrics_data) == 0):
+            self.print_message("INFO - no metric data to send. Skipping...")
+            return
+
         try:
             self.cloudwatch_client.put_metric_data(
                 Namespace=self.git_metric_namespace,
@@ -539,14 +547,14 @@ class DataSnapshot():
 
     # Call this at a set interval to post the metrics to Cloudwatch, etc.
     # This is the function you want to call repeatedly after you have everything setup.
-    def post_metrics(self):
+    def post_metrics(self, psutil_process : psutil.Process):
         if (self.perform_final_initialization == True):
             self.perform_final_initialization = False
             self._init_cloudwatch_pre_first_run()
 
         # Update the metric values internally
         for metric in self.metrics:
-            metric.get_metric_value()
+            metric.get_metric_value(psutil_process)
         self.metric_report_number += 1
 
         self.export_metrics_console()
@@ -706,7 +714,7 @@ class SnapshotMonitor():
             self.cloudwatch_current_alarms_triggered.clear()
 
 
-    def monitor_loop_function(self, time_passed=30):
+    def monitor_loop_function(self, psutil_process : psutil.Process, time_passed=30):
         # Check for internal errors
         if (self.data_snapshot.abort_due_to_internal_error == True):
             self.had_interal_error = True
@@ -729,10 +737,12 @@ class SnapshotMonitor():
         if (self.metric_post_timer <= 0):
             if (self.had_interal_error == False):
                 try:
-                    self.data_snapshot.post_metrics()
-                except:
+                    self.data_snapshot.post_metrics(psutil_process)
+                except Exception as e:
                     self.data_snapshot.print_message("ERROR - exception occured posting metrics!")
                     self.data_snapshot.print_message("(Likely session credentials expired)")
+
+                    print (e)
 
                     self.had_interal_error = True
                     self.internal_error_reason = "Exception occured posting metrics! Likely session credentials expired"
@@ -768,6 +778,7 @@ class SnapshotMonitor():
 class ApplicationMonitor():
     def __init__(self, wrapper_application_path, wrapper_application_arguments, wrapper_application_restart_on_finish=True) -> None:
         self.application_process = None
+        self.application_process_psutil = None
         self.error_has_occured = False
         self.error_due_to_credentials = False
         self.error_reason = ""
@@ -781,6 +792,7 @@ class ApplicationMonitor():
             try:
                 canary_command = self.wrapper_application_path + " " + self.wrapper_application_arguments
                 self.application_process = subprocess.Popen(canary_command, shell=True)
+                self.application_process_psutil = psutil.Process(self.application_process.pid)
             except Exception as e:
                 print ("ERROR - Could not launch Canary/Application due to exception!")
                 print ("Exception: " + str(e))

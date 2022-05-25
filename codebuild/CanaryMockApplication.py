@@ -42,5 +42,5 @@ runner = FibonacciRunner(60*2, 1, 0.0)
 runner.start()
 print ("\"Canary\" Finished!")
 
-#exit(0) # successful run
-exit(1) # unsuccessful run
+exit(0) # successful run
+#exit(1) # unsuccessful run

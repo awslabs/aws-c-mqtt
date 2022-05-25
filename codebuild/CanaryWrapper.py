@@ -156,8 +156,10 @@ stopped_due_to_metric_alarm = False
 execution_sleep_time = 30
 def execution_loop():
     while True:
-        snapshot_monitor.monitor_loop_function(execution_sleep_time)
-        application_monitor.monitor_loop_function(execution_sleep_time)
+        snapshot_monitor.monitor_loop_function(
+            time_passed=execution_sleep_time, psutil_process=application_monitor.application_process_psutil)
+        application_monitor.monitor_loop_function(
+            time_passed=execution_sleep_time)
 
         # Did a metric go into alarm?
         if (snapshot_monitor.has_cut_ticket == True):
