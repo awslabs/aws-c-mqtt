@@ -202,8 +202,8 @@ def application_thread():
             cut_ticket_using_cloudwatch(
                 git_repo_name=command_parser_arguments.git_repo_name,
                 git_hash=command_parser_arguments.git_hash,
-                git_hash_as_namespace=False,
-                git_fixed_namespace_text=command_parser_arguments.git_hash_as_namespace,
+                git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
+                git_fixed_namespace_text="mqtt5_canary",
                 cloudwatch_region="us-east-1",
                 ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + snapshot_monitor.internal_error_reason,
                 ticket_reason="Snapshot monitor stopped due to internal error",
@@ -225,8 +225,8 @@ def application_thread():
                 cut_ticket_using_cloudwatch(
                     git_repo_name=command_parser_arguments.git_repo_name,
                     git_hash=command_parser_arguments.git_hash,
-                    git_hash_as_namespace=False,
-                    git_fixed_namespace_text=command_parser_arguments.git_hash_as_namespace,
+                    git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
+                    git_fixed_namespace_text="mqtt5_canary",
                     cloudwatch_region="us-east-1",
                     ticket_description="The Short Running Canary exited with a non-zero exit code! This likely means something in the canary failed.",
                     ticket_reason="The Short Running Canary exited with a non-zero exit code",
@@ -245,8 +245,8 @@ def application_thread():
         cut_ticket_using_cloudwatch(
             git_repo_name=command_parser_arguments.git_repo_name,
             git_hash=command_parser_arguments.git_hash,
-            git_hash_as_namespace=False,
-            git_fixed_namespace_text=command_parser_arguments.git_hash_as_namespace,
+            git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
+            git_fixed_namespace_text="mqtt5_canary",
             cloudwatch_region="us-east-1",
             ticket_description="The Short Running Canary stopped for an unknown reason!",
             ticket_reason="The Short Running Canary stopped for unknown reason",

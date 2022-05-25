@@ -1011,6 +1011,9 @@ class S3_Monitor():
         # Stub - just added for consistency
         pass
 
+    def monitor_loop_function(self, time_passed=30):
+        self.check_for_file_change()
+
 # ================================================================================
 
 
