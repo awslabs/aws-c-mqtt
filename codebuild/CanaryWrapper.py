@@ -2,15 +2,9 @@
 # checking the alarms to ensure everything is correct at the end of the run, and pushing the log to S3 if successful.
 
 # Needs to be installed prior to running
-import boto3
-import psutil
 # Part of standard packages in Python 3.4+
 import argparse
-import threading
-import subprocess
 import time
-import os
-import json
 # Dependencies in project folder
 from CanaryWrapper_Classes import *
 from CanaryWrapper_MetricFunctions import *
@@ -85,259 +79,189 @@ if (command_parser_arguments.ticket_item == ""):
 if (command_parser_arguments.ticket_group == ""):
     command_parser_arguments.ticket_group = "AWS IoT Device SDK"
 
-# Code for setting up threads and kicking off the wrapper script so it can function
-# (Also configures wrapper)
+
+
 # ================================================================================
 
-# Global variables that both threads use to communicate.
-# NOTE - These should likely be replaced with futures or similar for better thread safety.
-#        However, these variables are only either read or written to from a single thread, no
-#        thread should read and write to these variables.
+# Make the snapshot class
+data_snapshot = DataSnapshot(
+    git_hash=command_parser_arguments.git_hash,
+    git_repo_name=command_parser_arguments.git_repo_name,
+    git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
+    git_fixed_namespace_text="mqtt5_canary",
+    output_log_filepath="output.txt",
+    output_to_console=True,
+    cloudwatch_region="us-east-1",
+    cloudwatch_make_dashboard=False,
+    cloudwatch_teardown_alarms_on_complete=True,
+    cloudwatch_teardown_dashboard_on_complete=True,
+    s3_bucket_name=command_parser_arguments.s3_bucket_name,
+    s3_bucket_upload_on_complete=True)
 
-# TODO - rewrite the threading structure to be similar to the persistent canary wrapper. This would
-# allow using a single thread and process (instead of 2 threads and 1 process).
-# This would also make it easier to take/parse arguments from CodeBuild.
+# Make sure nothing failed
+if (data_snapshot.abort_due_to_internal_error == True):
+    print ("INFO - Stopping application due to error caused by credentials")
+    print ("Please fix your credentials and then restart this application again")
+    exit(0)
 
-# Tells the snapshot thread to stop running on the next interval
-# (snapshot_thread reads, application_thread writes)
-stop_snapshot_thread = False
+# Register metrics
+data_snapshot.register_metric(
+    new_metric_name="total_cpu_usage",
+    new_metric_function=get_metric_total_cpu_usage,
+    new_metric_unit="Percent",
+    new_metric_alarm_threshold=70,
+    new_metric_reports_to_skip=1,
+    new_metric_alarm_severity=5)
+data_snapshot.register_metric(
+    new_metric_name="total_memory_usage_value",
+    new_metric_function=get_metric_total_memory_usage_value,
+    new_metric_unit="Bytes")
+data_snapshot.register_metric(
+    new_metric_name="total_memory_usage_percent",
+    new_metric_function=get_metric_total_memory_usage_percent,
+    new_metric_unit="Percent",
+    new_metric_alarm_threshold=70,
+    new_metric_reports_to_skip=0,
+    new_metric_alarm_severity=5)
 
-# Tells the application thread that the snapshot thread has stopped
-# (snapshot_thread writes, application_thread reads)
-snapshot_thread_stopped = False
+# Print diagnosis information
+data_snapshot.output_diagnosis_information(command_parser_arguments.dependencies)
 
-# Tells the application thread the snapshot thread stopped due to an error
-# (snapshot_thread writes, application_thread reads)
-snapshot_thread_had_error = False
-snapshot_thread_had_error_skip_ticket = False
+# Make the snapshot (metrics) monitor
+snapshot_monitor = SnapshotMonitor(
+    wrapper_data_snapshot=data_snapshot,
+    wrapper_metrics_wait_time=command_parser_arguments.snapshot_wait_time)
 
-# Tells the application thread the snapshot thread detected a Cloudwatch state in ALARM
-# (snapshot_thread writes, application_thread reads)
-snapshot_thread_had_cloudwatch_alarm = False
-snapshot_thread_had_cloudwatch_alarm_names = []
-snapshot_thread_had_cloudwatch_alarm_lowest_severity_value = 6
+# Make sure nothing failed
+if (snapshot_monitor.had_interal_error == True):
+    print ("INFO - Stopping application due to error caused by credentials")
+    print ("Please fix your credentials and then restart this application again")
+    exit(0)
 
+# Make the application monitor
+application_monitor = ApplicationMonitor(
+    wrapper_application_path=command_parser_arguments.canary_executable,
+    wrapper_application_arguments=command_parser_arguments.canary_arguments,
+    wrapper_application_restart_on_finish=False)
 
-def snapshot_thread():
-    global stop_snapshot_thread
-    global snapshot_thread_stopped
-    global snapshot_thread_had_error
-    global snapshot_thread_had_error_skip_ticket
-    global snapshot_thread_had_cloudwatch_alarm
-    global snapshot_thread_had_cloudwatch_alarm_names
-    global snapshot_thread_had_cloudwatch_alarm_lowest_severity_value
+# Make sure nothing failed
+if (application_monitor.error_has_occured == True):
+    print ("INFO - Stopping application due to error caused by credentials")
+    print ("Please fix your credentials and then restart this application again")
+    exit(0)
 
-    # Get the command line parser arguments
-    global command_parser_arguments
+# For tracking if we stopped due to a metric alarm
+stopped_due_to_metric_alarm = False
 
-    snapshot_had_internal_error = False
-
-    print("Starting to run snapshot thread...")
-    data_snapshot = DataSnapshot(
-        git_hash=command_parser_arguments.git_hash,
-        git_repo_name=command_parser_arguments.git_repo_name,
-        git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
-        output_log_filepath=command_parser_arguments.output_log_filepath,
-        output_to_console=command_parser_arguments.output_to_console,
-        cloudwatch_region=command_parser_arguments.cloudwatch_region,
-        cloudwatch_teardown_alarms_on_complete=True,
-        cloudwatch_teardown_dashboard_on_complete=True,
-        cloudwatch_make_dashboard=False,
-        s3_bucket_name=command_parser_arguments.s3_bucket_name,
-        s3_bucket_upload_on_complete=True
-    )
-
-    # Check for errors
-    if (data_snapshot.abort_due_to_internal_error == True):
-        snapshot_had_internal_error = True
-        snapshot_thread_stopped = True
-        snapshot_thread_had_error = True
-        snapshot_thread_had_error_skip_ticket = True
-        data_snapshot.cleanup()
-        return
-
-    # Register metrics
-    data_snapshot.register_metric(
-        new_metric_name="total_cpu_usage",
-        new_metric_function=get_metric_total_cpu_usage,
-        new_metric_unit="Percent",
-        new_metric_alarm_threshold=70,
-        new_metric_reports_to_skip=1,
-        new_metric_alarm_severity=5)
-    data_snapshot.register_metric(
-        new_metric_name="total_memory_usage_value",
-        new_metric_function=get_metric_total_memory_usage_value,
-        new_metric_unit="Bytes")
-    data_snapshot.register_metric(
-        new_metric_name="total_memory_usage_percent",
-        new_metric_function=get_metric_total_memory_usage_percent,
-        new_metric_unit="Percent",
-        new_metric_alarm_threshold=70,
-        new_metric_reports_to_skip=0,
-        new_metric_alarm_severity=5)
-
-    # Check for errors
-    if (data_snapshot.abort_due_to_internal_error == True):
-        snapshot_had_internal_error = True
-        snapshot_thread_stopped = True
-        snapshot_thread_had_error = True
-        snapshot_thread_had_error_skip_ticket = True
-        data_snapshot.cleanup()
-        return
-
-    # Print general diagnosis information
-    data_snapshot.output_diagnosis_information(command_parser_arguments.dependencies)
-
-    data_snapshot.print_message("Starting job loop...")
+execution_sleep_time = 30
+def execution_loop():
     while True:
+        snapshot_monitor.monitor_loop_function(execution_sleep_time)
+        application_monitor.monitor_loop_function(execution_sleep_time)
 
-        # Should this thread shutdown?
-        if (stop_snapshot_thread == True and snapshot_had_internal_error == False):
-            # Get a report of all the alarms that might have been set to an alarm state
-            triggered_alarms = data_snapshot.get_cloudwatch_alarm_results()
-            if len(triggered_alarms) > 0:
-                data_snapshot.print_message(
-                    "ERROR - One or more alarms are in state of ALARM")
-                for triggered_alarm in triggered_alarms:
-                    data_snapshot.print_message('    Alarm with name "' + triggered_alarm[1] + '" is in the ALARM state!')
-                    snapshot_thread_had_cloudwatch_alarm_names.append(triggered_alarm[1])
-                    if (triggered_alarm[2] < snapshot_thread_had_cloudwatch_alarm_lowest_severity_value):
-                        snapshot_thread_had_cloudwatch_alarm_lowest_severity_value = triggered_alarm[2]
-                snapshot_thread_stopped = True
-                snapshot_thread_had_error = True
-                snapshot_thread_had_cloudwatch_alarm = True
-
-            data_snapshot.print_message("Stopping job loop...")
+        # Did a metric go into alarm?
+        if (snapshot_monitor.has_cut_ticket == True):
+            # Set that we had an 'internal error' so we go down the right code path
+            snapshot_monitor.had_interal_error = True
             break
 
-        # Check for internal errors
-        if (data_snapshot.abort_due_to_internal_error == True):
-            snapshot_had_internal_error = True
-            snapshot_thread_stopped = True
-            snapshot_thread_had_error = True
+        # If an error has occured or otherwise this thead needs to stop, then break the loop
+        if (application_monitor.error_has_occured == True or snapshot_monitor.had_interal_error == True):
             break
 
-        # Gather and post the metrics
-        if (snapshot_had_internal_error == False):
-            try:
-                data_snapshot.post_metrics()
-            except:
-                data_snapshot.print_message("ERROR - exception occured posting metrics!")
-                data_snapshot.print_message("(Likely session credentials expired)")
-
-                snapshot_thread_stopped = True
-                snapshot_thread_had_error = True
-                snapshot_had_internal_error = True
-                break
-
-        # Wait for the next snapshot
-        time.sleep(command_parser_arguments.snapshot_wait_time)
-
-    # Clean up the task (also post-process: sends to s3 on success, removes alarms, etc)
-    data_snapshot.cleanup(snapshot_thread_had_error)
-
-    snapshot_thread_stopped = True
-    print("Snapshot thread finished...")
+        time.sleep(execution_sleep_time)
 
 
 def application_thread():
-    global stop_snapshot_thread
-    global snapshot_thread_stopped
-    global snapshot_thread_had_error
-    global snapshot_thread_had_error_skip_ticket
-    global snapshot_thread_had_cloudwatch_alarm
-    global snapshot_thread_had_cloudwatch_alarm_names
-    global snapshot_thread_had_cloudwatch_alarm_lowest_severity_value
+    # Start the application going
+    snapshot_monitor.start_monitoring()
+    application_monitor.start_monitoring()
+    # Allow the snapshot monitor to cut tickets
+    snapshot_monitor.can_cut_ticket = True
 
-    # Get the command line parser arguments
-    global command_parser_arguments
+    # Start the execution loop
+    execution_loop()
 
-    # Is the snapshot thread already stopped? If so, do not bother running the Canary
-    time.sleep(5) # wait a few seconds to give the snapshot thread some time to start
-    if snapshot_thread_stopped == True:
-        print ("ERROR - the Snapshot thread failed before the application started. This generally means a misconfigured permission or credential.")
-        exit(1)
+    # Make sure everything is stopped
+    snapshot_monitor.stop_monitoring()
+    application_monitor.stop_monitoring()
 
-    print("Starting to run application thread...")
+    # Track whether this counts as an error (and therefore we should cleanup accordingly) or not
+    wrapper_error_occured = False
 
-    canary_arguments = []
-    canary_arguments.append(command_parser_arguments.canary_executable)
-
-    # Split the input up into arguments by " " characters:
-    canary_arguments_list = command_parser_arguments.canary_arguments.split(" ")
-    for canary_arg in canary_arguments_list:
-        canary_arguments.append(canary_arg)
-
-    canary_return_code = 0
-    try:
-        canary_result = subprocess.run(canary_arguments)
-        canary_return_code = canary_result.returncode
-        if (canary_return_code != 0):
-            print("Something in the canary failed!")
-            cut_ticket_using_cloudwatch_from_args(
-                ticket_description = "The Canary result was non-zero, indicating that something in the canary application itself failed.",
-                ticket_reason = "Canary result was non-zero",
-                ticket_severity = 6,
-                arguments = command_parser_arguments)
-    except Exception as e:
-        print("Something in the canary had an exception!")
-        cut_ticket_using_cloudwatch_from_args(
-                ticket_description = "The code running the canary ran into an exception. This indicates that something in the canary crashed and/or segfaulted.",
-                ticket_reason = "Canary application ran into an exception",
-                ticket_severity = 6,
-                arguments = command_parser_arguments)
-        canary_return_code = -1
-
-    # Wait for the snapshot thread to finish
-    stop_snapshot_thread = True
-    while snapshot_thread_stopped == False:
-        time.sleep(1)
-    print("Application thread finished...")
-
-    # If the snapshot thread had an error, then exit because something is wrong and we do not want
-    # to report "success" even if the canary itself ran okay
-    if (snapshot_thread_had_error == True and canary_return_code == 0):
-        if (snapshot_thread_had_error_skip_ticket == False):
-            # Was it due to a cloudwatch alarm?
-            if snapshot_thread_had_cloudwatch_alarm == True:
-                cut_ticket_using_cloudwatch_from_args(
-                    ticket_description = "Canary alarm(s) that are required to pass are in a state of ALARM. \
-                        List of metrics in alarm: " + str(snapshot_thread_had_cloudwatch_alarm_names) + ".",
-                    ticket_reason = "Required canary alarm(s) are in state of ALARM",
-                    ticket_severity = snapshot_thread_had_cloudwatch_alarm_lowest_severity_value,
-                    arguments = command_parser_arguments)
-                print ("Snapshot thread detected Cloudwatch state(s) in ALARM!")
-
-                if (snapshot_thread_had_cloudwatch_alarm_lowest_severity_value < 6):
-                    exit(1)
-                else:
-                    exit(canary_return_code)
+    # Find out why we stopped
+    if (snapshot_monitor.had_interal_error == True):
+        if (snapshot_monitor.has_cut_ticket == True):
+            # We do not need to cut a ticket here - it's cut by the snapshot monitor!
+            print ("ERROR - Snapshot monitor stopped due to metric in alarm!")
+            wrapper_error_occured = True
+        else:
+            print ("ERROR - Snapshot monitor stopped due to internal error!")
+            cut_ticket_using_cloudwatch(
+                git_repo_name=command_parser_arguments.git_repo_name,
+                git_hash=command_parser_arguments.git_hash,
+                git_hash_as_namespace=False,
+                git_fixed_namespace_text=command_parser_arguments.git_hash_as_namespace,
+                cloudwatch_region="us-east-1",
+                ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + snapshot_monitor.internal_error_reason,
+                ticket_reason="Snapshot monitor stopped due to internal error",
+                ticket_allow_duplicates=True,
+                ticket_category=command_parser_arguments.ticket_category,
+                ticket_item=command_parser_arguments.ticket_item,
+                ticket_group=command_parser_arguments.ticket_group,
+                ticket_type=command_parser_arguments.ticket_type,
+                ticket_severity=4)
+            wrapper_error_occured = True
+    elif (application_monitor.error_has_occured == True):
+        if (application_monitor.error_due_to_credentials == True):
+            print ("INFO - Stopping application due to error caused by credentials")
+            print ("Please fix your credentials and then restart this application again")
+            wrapper_error_occured = True
+        else:
+            # Is the error something in the canary failed?
+            if (application_monitor.error_code != 0):
+                cut_ticket_using_cloudwatch(
+                    git_repo_name=command_parser_arguments.git_repo_name,
+                    git_hash=command_parser_arguments.git_hash,
+                    git_hash_as_namespace=False,
+                    git_fixed_namespace_text=command_parser_arguments.git_hash_as_namespace,
+                    cloudwatch_region="us-east-1",
+                    ticket_description="The Short Running Canary exited with a non-zero exit code! This likely means something in the canary failed.",
+                    ticket_reason="The Short Running Canary exited with a non-zero exit code",
+                    ticket_allow_duplicates=True,
+                    ticket_category=command_parser_arguments.ticket_category,
+                    ticket_item=command_parser_arguments.ticket_item,
+                    ticket_group=command_parser_arguments.ticket_group,
+                    ticket_type=command_parser_arguments.ticket_type,
+                    ticket_severity=4)
+                wrapper_error_occured = True
             else:
-                cut_ticket_using_cloudwatch_from_args(
-                    ticket_description = "The code running the DataSnapshot had an error. See output.log for more information.",
-                    ticket_reason = "DataSnapshot (metric gathering) had an error",
-                    ticket_severity = 6,
-                    arguments = command_parser_arguments)
-                print ("Snapshot thread had an unknown error. See logs for details!")
-                exit(1)
+                print ("INFO - Stopping application. No error has occured, application has stopped normally")
+                wrapper_error_occured = False
     else:
-        if (canary_return_code != 0):
-            cut_ticket_using_cloudwatch_from_args(
-                ticket_description = "The Canary returned a non-zero exit code! Something went wrong in the Canary application itself.",
-                ticket_reason = "Canary returned non-zero exit code",
-                ticket_severity = 6,
-                arguments = command_parser_arguments)
+        print ("ERROR - Short Running Canary stopped due to unknown reason!")
+        cut_ticket_using_cloudwatch(
+            git_repo_name=command_parser_arguments.git_repo_name,
+            git_hash=command_parser_arguments.git_hash,
+            git_hash_as_namespace=False,
+            git_fixed_namespace_text=command_parser_arguments.git_hash_as_namespace,
+            cloudwatch_region="us-east-1",
+            ticket_description="The Short Running Canary stopped for an unknown reason!",
+            ticket_reason="The Short Running Canary stopped for unknown reason",
+            ticket_allow_duplicates=True,
+            ticket_category=command_parser_arguments.ticket_category,
+            ticket_item=command_parser_arguments.ticket_item,
+            ticket_group=command_parser_arguments.ticket_group,
+            ticket_type=command_parser_arguments.ticket_type,
+            ticket_severity=4)
+        wrapper_error_occured = True
 
-        exit(canary_return_code)
+    # Clean everything up and stop
+    snapshot_monitor.cleanup_monitor(error_occured=wrapper_error_occured)
+    application_monitor.cleanup_monitor(error_occured=wrapper_error_occured)
+    print ("Short Running Canary finished!")
+    exit (application_monitor.error_code)
 
-# Create the threads
-run_thread_snapshot = threading.Thread(target=snapshot_thread)
-run_thread_application = threading.Thread(target=application_thread)
-# Run the threads
-run_thread_snapshot.start()
-run_thread_application.start()
-# Wait for threads to finish
-run_thread_snapshot.join()
-run_thread_application.join()
 
-exit(0)
+# Start the application!
+application_thread()

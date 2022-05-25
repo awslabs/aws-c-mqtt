@@ -7,6 +7,8 @@ import boto3
 import time
 import os
 import json
+import subprocess
+import zipfile
 
 # ================================================================================
 
@@ -215,9 +217,8 @@ class DataSnapshot():
     # Cleans the class - closing any files, removing alarms, and sending data to S3.
     # Should be called at the end when you are totally finished shadowing metrics
     def cleanup(self, error_occured=False):
-        if (error_occured == False):
-            if (self.s3_bucket_upload_on_complete == True):
-                self.export_result_to_s3_bucket(True)
+        if (self.s3_bucket_upload_on_complete == True):
+            self.export_result_to_s3_bucket(copy_output_log=True, log_is_error=error_occured)
 
         self._cleanup_cloudwatch_alarms()
         if (self.cloudwatch_make_dashboard == True):
@@ -359,7 +360,7 @@ class DataSnapshot():
     # Exports a file with the same name as the commit Git hash to an S3 bucket in a folder with the Git repo name.
     # By default, this file will only contain the Git hash.
     # If copy_output_log is true, then the output log will be copied into this file, which may be useful for debugging.
-    def export_result_to_s3_bucket(self, copy_output_log=False):
+    def export_result_to_s3_bucket(self, copy_output_log=False, log_is_error=False):
         if (self.s3_client is None):
             self.print_message(
                 "ERROR - No S3 client initialized! Cannot send log to S3")
@@ -396,8 +397,10 @@ class DataSnapshot():
 
         # Upload to S3
         try:
-            self.s3_client.upload_file(
-                self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/" + self.git_hash + ".log")
+            if (log_is_error == False):
+                self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/" + self.git_hash + ".log")
+            else:
+                self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/Failed_Logs/" + self.git_hash + ".log")
             self.print_message("Uploaded to S3!")
         except Exception as e:
             self.print_message(
@@ -587,6 +590,417 @@ class DataSnapshot():
 
 # ================================================================================
 
+class SnapshotMonitor():
+    def __init__(self, wrapper_data_snapshot, wrapper_metrics_wait_time) -> None:
+
+        self.data_snapshot = wrapper_data_snapshot
+        self.had_interal_error = False
+        self.error_due_to_credentials = False
+        self.internal_error_reason = ""
+        self.error_due_to_alarm = False
+
+        self.can_cut_ticket = False
+        self.has_cut_ticket = False
+
+        # A list of all the alarms triggered in the last check, cached for later
+        # NOTE - this is only the alarm names! Not the severity. This just makes it easier to process
+        self.cloudwatch_current_alarms_triggered = []
+
+        # Check for errors
+        if (self.data_snapshot.abort_due_to_internal_error == True):
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not initialize DataSnapshot. Likely credentials are not setup!"
+            if (self.data_snapshot.abort_due_to_internal_error_due_to_credentials == True):
+                self.error_due_to_credentials = True
+            self.data_snapshot.cleanup()
+            return
+
+        # How long to wait before posting a metric
+        self.metric_post_timer = 0
+        self.metric_post_timer_time = wrapper_metrics_wait_time
+
+
+    def register_metric(self, new_metric_name, new_metric_function, new_metric_unit="None", new_metric_alarm_threshold=None,
+                        new_metric_reports_to_skip=0, new_metric_alarm_severity=6):
+
+        try:
+            self.data_snapshot.register_metric(
+                new_metric_name=new_metric_name,
+                new_metric_function=new_metric_function,
+                new_metric_unit=new_metric_unit,
+                new_metric_alarm_threshold=new_metric_alarm_threshold,
+                new_metric_reports_to_skip=new_metric_reports_to_skip,
+                new_metric_alarm_severity=new_metric_alarm_severity)
+        except Exception as e:
+            print ("ERROR - could not register metric in data snapshot due to exception!")
+            print ("Exception: " + str(e))
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not register metric in data snapshot due to exception"
+            return
+
+    def register_dashboard_widget(self, new_widget_name, metrics_to_add=[], widget_period=60):
+        self.data_snapshot.register_dashboard_widget(new_widget_name=new_widget_name, metrics_to_add=metrics_to_add, new_widget_period=widget_period)
+
+    def output_diagnosis_information(self, dependencies=""):
+        self.data_snapshot.output_diagnosis_information(dependencies_list=dependencies)
+
+    def check_alarms_for_new_alarms(self, triggered_alarms):
+
+        if len(triggered_alarms) > 0:
+            self.data_snapshot.print_message(
+                "WARNING - One or more alarms are in state of ALARM")
+
+            old_alarms_still_active = []
+            new_alarms = []
+            new_alarms_highest_severity = 6
+            new_alarm_found = True
+            new_alarm_ticket_description = "Canary has metrics in ALARM state!\n\nMetrics in alarm:\n"
+
+            for triggered_alarm in triggered_alarms:
+                new_alarm_found = True
+
+                # Is this a new alarm?
+                for old_alarm_name in self.cloudwatch_current_alarms_triggered:
+                    if (old_alarm_name == triggered_alarm[1]):
+                        new_alarm_found = False
+                        old_alarms_still_active.append(triggered_alarm[1])
+
+                        new_alarm_ticket_description += "* (STILL IN ALARM) " + triggered_alarm[1] + "\n"
+                        new_alarm_ticket_description += "\tSeverity: " + str(triggered_alarm[2])
+                        new_alarm_ticket_description += "\n"
+                        break
+
+                # If it is a new alarm, then add it to our list so we can cut a new ticket
+                if (new_alarm_found == True):
+                    self.data_snapshot.print_message('    (NEW) Alarm with name "' + triggered_alarm[1] + '" is in the ALARM state!')
+                    new_alarms.append(triggered_alarm[1])
+                    if (triggered_alarm[2] < new_alarms_highest_severity):
+                        new_alarms_highest_severity = triggered_alarm[2]
+                    new_alarm_ticket_description += "* " + triggered_alarm[1] + "\n"
+                    new_alarm_ticket_description += "\tSeverity: " + str(triggered_alarm[2])
+                    new_alarm_ticket_description += "\n"
+
+
+            if len(new_alarms) > 0:
+                if (self.can_cut_ticket == True):
+                    cut_ticket_using_cloudwatch(
+                        git_repo_name=self.data_snapshot.git_repo_name,
+                        git_hash=self.data_snapshot.git_hash,
+                        git_hash_as_namespace=False,
+                        git_fixed_namespace_text=self.data_snapshot.git_fixed_namespace_text,
+                        cloudwatch_region="us-east-1",
+                        ticket_description="New metric(s) went into alarm for the Canary! Metrics in alarm: " + str(new_alarms),
+                        ticket_reason="New metric(s) went into alarm",
+                        ticket_allow_duplicates=True,
+                        ticket_category="AWS",
+                        ticket_item="IoT SDK for CPP",
+                        ticket_group="AWS IoT Device SDK",
+                        ticket_type="SDKs and Tools",
+                        ticket_severity=4)
+                    self.has_cut_ticket = True
+
+            # Cache the new alarms and the old alarms
+            self.cloudwatch_current_alarms_triggered = old_alarms_still_active + new_alarms
+
+        else:
+            self.cloudwatch_current_alarms_triggered.clear()
+
+
+    def monitor_loop_function(self, time_passed=30):
+        # Check for internal errors
+        if (self.data_snapshot.abort_due_to_internal_error == True):
+            self.had_interal_error = True
+            self.internal_error_reason = "Data Snapshot internal error: " + self.data_snapshot.abort_due_to_internal_error_reason
+            return
+
+        try:
+            # Poll the metric alarms
+            if (self.had_interal_error == False):
+                # Get a report of all the alarms that might have been set to an alarm state
+                triggered_alarms = self.data_snapshot.get_cloudwatch_alarm_results()
+                self.check_alarms_for_new_alarms(triggered_alarms)
+        except Exception as e:
+            self.data_snapshot.print_message("ERROR - exception occured checking metric alarms!")
+            self.data_snapshot.print_message("(Likely session credentials expired)")
+            self.had_interal_error = True
+            self.internal_error_reason = "Exception occured checking metric alarms! Likely session credentials expired"
+            return
+
+        if (self.metric_post_timer <= 0):
+            if (self.had_interal_error == False):
+                try:
+                    self.data_snapshot.post_metrics()
+                except:
+                    self.data_snapshot.print_message("ERROR - exception occured posting metrics!")
+                    self.data_snapshot.print_message("(Likely session credentials expired)")
+
+                    self.had_interal_error = True
+                    self.internal_error_reason = "Exception occured posting metrics! Likely session credentials expired"
+                    return
+
+            # reset the timer
+            self.metric_post_timer += self.metric_post_timer_time
+
+        # Gather and post the metrics
+        self.metric_post_timer -= time_passed
+
+
+    def stop_monitoring(self):
+        # Stub - just added for consistency
+        pass
+
+
+    def start_monitoring(self):
+        # Stub - just added for consistency
+        pass
+
+
+    def restart_monitoring(self):
+        # Stub - just added for consistency
+        pass
+
+
+    def cleanup_monitor(self, error_occured=False):
+        self.data_snapshot.cleanup(error_occured=error_occured)
+
+# ================================================================================
+
+class ApplicationMonitor():
+    def __init__(self, wrapper_application_path, wrapper_application_arguments, wrapper_application_restart_on_finish=True) -> None:
+        self.application_process = None
+        self.error_has_occured = False
+        self.error_due_to_credentials = False
+        self.error_reason = ""
+        self.error_code = 0
+        self.wrapper_application_path = wrapper_application_path
+        self.wrapper_application_arguments = wrapper_application_arguments
+        self.wrapper_application_restart_on_finish = wrapper_application_restart_on_finish
+
+    def start_monitoring(self):
+        if (self.application_process == None):
+            try:
+                canary_command = self.wrapper_application_path + " " + self.wrapper_application_arguments
+                self.application_process = subprocess.Popen(canary_command, shell=True)
+            except Exception as e:
+                print ("ERROR - Could not launch Canary/Application due to exception!")
+                print ("Exception: " + str(e))
+                self.error_has_occured = True
+                self.error_reason = "Could not launch Canary/Application due to exception"
+                self.error_code = 1
+                return
+
+    def restart_monitoring(self):
+        if (self.application_process != None):
+            try:
+                self.stop_monitoring()
+                self.start_monitoring()
+            except Exception as e:
+                print ("ERROR - Could not restart Canary/Application due to exception!")
+                print ("Exception: " + str(e))
+                self.error_has_occured = True
+                self.error_reason = "Could not restart Canary/Application due to exception"
+                self.error_code = 1
+                return
+        else:
+            print ("ERROR - Application process restart called but process is/was not running!")
+            self.error_has_occured = True
+            self.error_reason = "Could not restart Canary/Application due to application process not being started initially"
+            self.error_code = 1
+            return
+
+
+    def stop_monitoring(self):
+        if (not self.application_process == None):
+            self.application_process.terminate()
+            self.application_process.wait()
+            self.application_process = None
+
+
+    def monitor_loop_function(self, time_passed=30):
+        if (self.application_process != None):
+
+            application_process_return_code = None
+            try:
+                application_process_return_code = self.application_process.poll()
+            except Exception as e:
+                print ("ERROR - exception occured while trying to poll application status!")
+                print ("Exception: " + str(e))
+                self.error_has_occured = True
+                self.error_reason = "Exception when polling application status"
+                self.error_code = 1
+                return
+
+            # If it is not none, then the application finished
+            if (application_process_return_code != None):
+
+                if (application_process_return_code != 0):
+                    print ("ERROR - Something Crashed in Canary/Application!")
+                    print ("Error code: " + str(application_process_return_code))
+
+                    self.error_has_occured = True
+                    self.error_reason = "Canary application crashed!"
+                    self.error_code = application_process_return_code
+                else:
+                    # Should we restart?
+                    if (self.wrapper_application_restart_on_finish == True):
+                        print ("NOTE - Canary finished running and is restarting...")
+                        self.restart_monitoring()
+                    else:
+                        self.error_has_occured = True
+                        self.error_reason = "Canary Application Finished"
+                        self.error_code = 0
+
+    def cleanup_monitor(self, error_occured=False):
+        pass
+
+# ================================================================================
+
+class S3_Monitor():
+
+    def __init__(self, s3_bucket_name, s3_file_name, s3_file_name_in_zip, canary_local_application_path) -> None:
+        self.s3_client = None
+        self.s3_current_object_version_id = None
+        self.s3_current_object_last_modified = None
+        self.s3_bucket_name = s3_bucket_name
+        self.s3_file_name = s3_file_name
+        self.s3_file_name_only_path, self.s3_file_name_only_extension = os.path.splitext(s3_file_name)
+
+        self.canary_local_application_path = canary_local_application_path
+
+        self.s3_file_name_in_zip = s3_file_name_in_zip
+        self.s3_file_name_in_zip_only_path = None
+        self.s3_file_name_in_zip_only_extension = None
+        if (self.s3_file_name_in_zip != None):
+            self.s3_file_name_in_zip_only_path, self.s3_file_name_in_zip_only_extension = os.path.splitext(s3_file_name_in_zip)
+
+        self.s3_file_needs_replacing = False
+
+        self.had_interal_error = False
+        self.error_due_to_credentials = False
+        self.internal_error_reason = ""
+
+        # Check for valid credentials
+        # ==================
+        try:
+            tmp_sts_client = boto3.client('sts')
+            tmp_sts_client.get_caller_identity()
+        except Exception as e:
+            print ("ERROR - (S3 Check) AWS credentials are NOT valid!")
+            self.had_interal_error = True
+            self.error_due_to_credentials = True
+            self.internal_error_reason = "AWS credentials are NOT valid!"
+            return
+        # ==================
+
+        try:
+            self.s3_client = boto3.client("s3")
+        except Exception as e:
+            print ("ERROR - (S3 Check) Could not make S3 client")
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not make S3 client for S3 Monitor"
+            return
+
+
+    def check_for_file_change(self):
+        try:
+            version_check_response = self.s3_client.list_object_versions(
+                Bucket=self.s3_bucket_name,
+                Prefix=self.s3_file_name_only_path)
+            if "Versions" in version_check_response:
+                for version in version_check_response["Versions"]:
+                    if (version["IsLatest"] == True):
+                        if (version["VersionId"] != self.s3_current_object_version_id or
+                            version["LastModified"] != self.s3_current_object_last_modified):
+
+                            print ("S3 monitor - Found new version of Canary/Application in S3!")
+                            print ("Changing running Canary/Application to new one...")
+
+                            # Will be checked by thread to trigger replacing the file
+                            self.s3_file_needs_replacing = True
+
+                            self.s3_current_object_version_id = version["VersionId"]
+                            self.s3_current_object_last_modified = version["LastModified"]
+                            return
+
+        except Exception as e:
+            print ("ERROR - Could not check for new version of file in S3 due to exception!")
+            print ("Exception: " + str(e))
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not check for S3 file due to exception in S3 client"
+
+
+    def replace_current_file_for_new_file(self):
+        try:
+            print ("Making directory...")
+            if not os.path.exists("tmp"):
+                os.makedirs("tmp")
+        except Exception as e:
+            print ("ERROR - could not make tmp directory to place S3 file into!")
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not make TMP folder for S3 file download"
+            return
+
+        # Download the file
+        new_file_path = "tmp/new_file" + self.s3_file_name_only_extension
+        try:
+            print ("Downloading file...")
+            s3_resource = boto3.resource("s3")
+            s3_resource.meta.client.download_file(self.s3_bucket_name, self.s3_file_name, new_file_path)
+        except Exception as e:
+            print ("ERROR - could not download latest S3 file into TMP folder!")
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not download latest S3 file into TMP folder"
+            return
+
+        # Is it a zip file?
+        if (self.s3_file_name_in_zip != None):
+            # Unzip it!
+            with zipfile.ZipFile(new_file_path, 'r') as zip_file:
+                zip_file.extractall("tmp/new_file_zip")
+                new_file_path = "tmp/new_file_zip/" + self.s3_file_name_in_zip_only_path + self.s3_file_name_in_zip_only_extension
+
+        try:
+            # is there a file already present there?
+            if os.path.exists(self.canary_local_application_path) == True:
+                os.remove(self.canary_local_application_path)
+
+            print ("Moving file...")
+            os.replace(new_file_path, self.canary_local_application_path)
+            print ("Getting execution rights...")
+            os.system("chmod u+x " + self.canary_local_application_path)
+
+        except Exception as e:
+            print ("ERROR - could not move file into local application path due to exception!")
+            print ("Exception: " + str(e))
+            self.had_interal_error = True
+            self.internal_error_reason = "Could not move file into local application path"
+            return
+
+        print ("New file downloaded and moved into correct location!")
+        self.s3_file_needs_replacing = False
+
+
+    def stop_monitoring(self):
+        # Stub - just added for consistency
+        pass
+
+
+    def start_monitoring(self):
+        # Stub - just added for consistency
+        pass
+
+
+    def restart_monitoring(self):
+        # Stub - just added for consistency
+        pass
+
+
+    def cleanup_monitor(self):
+        # Stub - just added for consistency
+        pass
+
+# ================================================================================
+
 
 # Cuts a ticket to SIM using a temporary Cloudwatch metric that is quickly created, triggered, and destroyed.
 # Can be called in any thread - creates its own Cloudwatch client and any data it needs is passed in.
@@ -607,6 +1021,9 @@ def cut_ticket_using_cloudwatch(
     git_hash_as_namespace=False,
     git_fixed_namespace_text="mqtt5_canary",
     cloudwatch_region="us-east-1"):
+
+    # DISABLE FOR NOW
+    return
 
     git_metric_namespace = ""
     if (git_hash_as_namespace == False):
