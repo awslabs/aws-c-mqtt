@@ -186,6 +186,8 @@ def execution_loop():
             s3_monitor.replace_current_file_for_new_file()
             # Start the application
             application_monitor.start_monitoring()
+            # Allow the snapshot monitor to cut a ticket
+            snapshot_monitor.can_cut_ticket = True
 
         snapshot_monitor.monitor_loop_function(
             time_passed=canary_application_loop_wait_time, psutil_process=application_monitor.application_process_psutil)
@@ -194,9 +196,8 @@ def execution_loop():
 
         # Did a metric go into alarm?
         if (snapshot_monitor.has_cut_ticket == True):
-            # Set that we had an 'internal error' so we go down the right code path
-            snapshot_monitor.had_interal_error = True
-            break
+            # Do not allow it to cut anymore tickets until it gets a new build
+            snapshot_monitor.can_cut_ticket = False
 
         # If an error has occured or otherwise this thead needs to stop, then break the loop
         if (application_monitor.error_has_occured == True or snapshot_monitor.had_interal_error == True):
