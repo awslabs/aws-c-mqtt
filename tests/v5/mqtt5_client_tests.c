@@ -258,6 +258,8 @@ static bool s_disconnect_completion_invoked(void *arg) {
 }
 
 static void s_on_disconnect_completion(int error_code, void *user_data) {
+    (void)error_code;
+
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = user_data;
 
     aws_mutex_lock(&test_fixture->lock);
@@ -602,6 +604,8 @@ static void s_mqtt5_client_test_websocket_successful_transform(
     aws_mqtt5_transform_websocket_handshake_complete_fn *complete_fn,
     void *complete_ctx) {
 
+    (void)user_data;
+
     (*complete_fn)(request, AWS_ERROR_SUCCESS, complete_ctx);
 }
 
@@ -681,6 +685,8 @@ static void s_mqtt5_client_test_websocket_failed_transform(
     aws_mqtt5_transform_websocket_handshake_complete_fn *complete_fn,
     void *complete_ctx) {
 
+    (void)user_data;
+
     (*complete_fn)(request, AWS_ERROR_INVALID_STATE, complete_ctx);
 }
 
@@ -718,6 +724,7 @@ static int s_aws_mqtt5_mock_server_handle_connect_always_fail(
 
 /* Connection failure test where overall connection fails due to a CONNACK error code */
 static int s_mqtt5_client_direct_connect_connack_refusal_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     aws_mqtt_library_init(allocator);
 
@@ -775,6 +782,7 @@ AWS_TEST_CASE(mqtt5_client_direct_connect_connack_refusal, s_mqtt5_client_direct
 
 /* Connection failure test where overall connection fails because there's no response to the CONNECT packet */
 static int s_mqtt5_client_direct_connect_connack_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     aws_mqtt_library_init(allocator);
 
@@ -1014,7 +1022,7 @@ static int s_aws_mqtt5_client_test_init_ping_test_connect_storage(
     struct aws_allocator *allocator) {
     struct aws_mqtt5_packet_connect_view connect_view = {
         .keep_alive_interval_seconds =
-            (uint32_t)aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL),
+            (uint16_t)aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL),
         .client_id = aws_byte_cursor_from_string(s_client_id),
         .clean_start = true,
     };
@@ -1039,8 +1047,8 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
 
     /* fast keep alive in order keep tests reasonably short */
-    uint32_t keep_alive_seconds =
-        aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
+    uint16_t keep_alive_seconds =
+        (uint16_t)aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
     connect_options.keep_alive_interval_seconds = keep_alive_seconds;
 
     /* faster ping timeout */
@@ -1166,7 +1174,7 @@ static int s_mqtt5_client_ping_write_pushout_fn(struct aws_allocator *allocator,
 
 AWS_TEST_CASE(mqtt5_client_ping_write_pushout, s_mqtt5_client_ping_write_pushout_fn)
 
-#define TIMEOUT_TEST_PING_INTERVAL_MS 10000
+#define TIMEOUT_TEST_PING_INTERVAL_MS ((uint64_t)10000)
 
 static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixture *test_context) {
     aws_mutex_lock(&test_context->lock);
@@ -1193,7 +1201,8 @@ static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixt
 
     uint64_t connected_interval_ms =
         aws_timestamp_convert(disconnected_time - connected_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
-    uint64_t expected_connected_time_ms = TIMEOUT_TEST_PING_INTERVAL_MS + test_context->client->config->ping_timeout_ms;
+    uint64_t expected_connected_time_ms =
+        TIMEOUT_TEST_PING_INTERVAL_MS + (uint64_t)test_context->client->config->ping_timeout_ms;
 
     ASSERT_TRUE(s_is_within_percentage_of(expected_connected_time_ms, connected_interval_ms, .1));
 
@@ -1216,8 +1225,8 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
     s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
 
     /* fast keep alive in order keep tests reasonably short */
-    uint32_t keep_alive_seconds =
-        aws_timestamp_convert(TIMEOUT_TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
+    uint16_t keep_alive_seconds =
+        (uint16_t)aws_timestamp_convert(TIMEOUT_TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
     connect_options.keep_alive_interval_seconds = keep_alive_seconds;
 
     /* don't response to PINGREQs */
@@ -2125,6 +2134,8 @@ struct send_puback_task {
 };
 
 void send_puback_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
     struct send_puback_task *puback_response_task = arg;
     if (status == AWS_TASK_STATUS_CANCELED) {
         goto done;
@@ -2357,7 +2368,9 @@ static int s_aws_mqtt5_mock_server_handle_timeout_publish(
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
 
+    (void)packet;
     (void)user_data;
+
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = connection->test_fixture;
 
     aws_mutex_lock(&test_fixture->lock);
@@ -2470,6 +2483,8 @@ static int s_aws_mqtt5_mock_server_handle_publish_puback(
 
 #define IOT_CORE_THROUGHPUT_PACKETS 21
 
+static uint8_t s_large_packet_payload[127 * 1024];
+
 static int s_do_iot_core_throughput_test(struct aws_allocator *allocator, bool use_iot_core_limits) {
 
     struct aws_mqtt5_packet_connect_view connect_options;
@@ -2505,8 +2520,7 @@ static int s_do_iot_core_throughput_test(struct aws_allocator *allocator, bool u
     s_wait_for_connected_lifecycle_event(&test_context);
 
     /* send a bunch of large publishes */
-    uint8_t packet_payload[127 * 1024];
-    aws_secure_zero(packet_payload, AWS_ARRAY_SIZE(packet_payload));
+    aws_secure_zero(s_large_packet_payload, AWS_ARRAY_SIZE(s_large_packet_payload));
 
     for (size_t i = 0; i < IOT_CORE_THROUGHPUT_PACKETS; ++i) {
         struct aws_mqtt5_packet_publish_view qos1_publish_view = {
@@ -2516,7 +2530,7 @@ static int s_do_iot_core_throughput_test(struct aws_allocator *allocator, bool u
                     .ptr = s_topic,
                     .len = AWS_ARRAY_SIZE(s_topic) - 1,
                 },
-            .payload = aws_byte_cursor_from_array(packet_payload, AWS_ARRAY_SIZE(packet_payload)),
+            .payload = aws_byte_cursor_from_array(s_large_packet_payload, AWS_ARRAY_SIZE(s_large_packet_payload)),
         };
 
         struct aws_mqtt5_publish_completion_options completion_options = {
@@ -3112,6 +3126,8 @@ void s_sub_pub_unsub_publish_complete_fn(
     int error_code,
     void *complete_ctx) {
 
+    (void)puback;
+
     AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
 
     struct aws_mqtt5_sub_pub_unsub_context *test_context = complete_ctx;
@@ -3482,6 +3498,8 @@ static void s_publish_qos1_wait_for_puback(struct aws_mqtt5_server_send_qos1_pub
 
 /* When client receives a QoS1 PUBLISH it must send a valid PUBACK with packet id */
 static int mqtt5_client_receive_qos1_return_puback_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     aws_mqtt_library_init(allocator);
 
     struct aws_mqtt5_packet_connect_view connect_options;
@@ -3548,6 +3566,8 @@ static int s_aws_mqtt5_mock_server_handle_connect_session_present(
 
 /* When client receives a CONNACK with existing session state when one isn't present it should disconnect */
 static int mqtt5_client_receive_nonexisting_session_state_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     aws_mqtt_library_init(allocator);
 
     struct aws_mqtt5_packet_connect_view connect_options;
@@ -3630,6 +3650,8 @@ static int s_aws_mqtt5_mock_server_handle_connect_assigned_client_id(
  * The client should then use the assigned Client ID on reconnection attempts.
  */
 static int mqtt5_client_receive_assigned_client_id_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     aws_mqtt_library_init(allocator);
 
     struct aws_mqtt5_packet_connect_view connect_options;

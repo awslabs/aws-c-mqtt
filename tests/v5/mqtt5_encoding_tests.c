@@ -751,6 +751,8 @@ int aws_mqtt5_test_verify_subscriptions_raw(
 }
 
 static int s_aws_mqtt5_on_subscribe_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)type;
+
     struct aws_mqtt5_encode_decode_tester *tester = user_data;
 
     ++tester->view_count;
@@ -881,6 +883,8 @@ static const struct aws_byte_cursor s_unsubscribe_topics[] = {
 };
 
 static int s_aws_mqtt5_on_unsubscribe_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)type;
+
     struct aws_mqtt5_encode_decode_tester *tester = user_data;
 
     ++tester->view_count;
@@ -997,6 +1001,8 @@ static char s_publish_correlation_data[] = "test correlation data";
 static char s_publish_content_type[] = "test content type";
 
 static int s_aws_mqtt5_on_publish_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)type;
+
     struct aws_mqtt5_encode_decode_tester *tester = user_data;
 
     ++tester->view_count;
@@ -1095,6 +1101,8 @@ AWS_TEST_CASE(mqtt5_packet_publish_round_trip, s_mqtt5_packet_publish_round_trip
 static char s_puback_reason_string[] = "test reason string";
 
 static int s_aws_mqtt5_on_puback_received_fn(enum aws_mqtt5_packet_type type, void *packet_view, void *user_data) {
+    (void)type;
+
     struct aws_mqtt5_encode_decode_tester *tester = user_data;
 
     ++tester->view_count;

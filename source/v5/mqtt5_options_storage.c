@@ -2032,8 +2032,8 @@ void aws_mqtt5_packet_puback_storage_clean_up(struct aws_mqtt5_packet_puback_sto
 void aws_mqtt5_packet_puback_view_log(
     const struct aws_mqtt5_packet_puback_view *puback_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *packet_logger = aws_logger_get();
+    if (packet_logger == NULL || packet_logger->vtable->get_log_level(packet_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
@@ -2923,8 +2923,8 @@ void aws_mqtt5_packet_suback_storage_clean_up(struct aws_mqtt5_packet_suback_sto
 void aws_mqtt5_packet_suback_view_log(
     const struct aws_mqtt5_packet_suback_view *suback_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *packet_logger = aws_logger_get();
+    if (packet_logger == NULL || packet_logger->vtable->get_log_level(packet_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
@@ -3069,8 +3069,8 @@ void aws_mqtt5_packet_unsuback_storage_clean_up(struct aws_mqtt5_packet_unsuback
 void aws_mqtt5_packet_unsuback_view_log(
     const struct aws_mqtt5_packet_unsuback_view *unsuback_view,
     enum aws_log_level level) {
-    struct aws_logger *logger = aws_logger_get();
-    if (logger == NULL || logger->vtable->get_log_level(logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *packet_logger = aws_logger_get();
+    if (packet_logger == NULL || packet_logger->vtable->get_log_level(packet_logger, AWS_LS_MQTT5_GENERAL) < level) {
         return;
     }
 
