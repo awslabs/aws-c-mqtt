@@ -274,6 +274,35 @@ struct aws_mqtt5_negotiated_settings {
 };
 
 /**
+ * Contains some simple statistics about the current state of the client's queue of operations
+ */
+struct aws_mqtt5_client_operation_statistics {
+    /*
+     * total number of operations submitted to the client that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    uint64_t incomplete_operation_count;
+
+    /*
+     * total packet size of operations submitted to the client that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    uint64_t incomplete_operation_size;
+
+    /*
+     * total number of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    uint64_t unacked_operation_count;
+
+    /*
+     * total packet size of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    uint64_t unacked_operation_size;
+};
+
+/**
  * Details about a client lifecycle event.
  */
 struct aws_mqtt5_client_lifecycle_event {
@@ -540,6 +569,14 @@ int aws_mqtt5_client_unsubscribe(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
     const struct aws_mqtt5_unsubscribe_completion_options *completion_options);
+
+/**
+ * Queries the client's internal statistics for incomplete operations.
+ * @param client client to get statistics for
+ * @param stats set of incomplete operation statistics
+ */
+AWS_MQTT_API
+void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt5_client_operation_statistics *stats);
 
 AWS_EXTERN_C_END
 

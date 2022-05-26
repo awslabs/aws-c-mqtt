@@ -9,6 +9,7 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/common/hash_table.h>
+#include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
 #include <aws/io/channel.h>
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
@@ -142,6 +143,12 @@ struct aws_mqtt5_client_vtable {
         struct aws_mqtt5_client *client,
         enum aws_mqtt5_client_state old_state,
         enum aws_mqtt5_client_state new_state,
+        void *vtable_user_data);
+
+    /* This doesn't replace anything, it's just for test verification of statistic changes */
+    void (*on_client_statistics_changed_callback_fn)(
+        struct aws_mqtt5_client *client,
+        struct aws_mqtt5_operation *operation,
         void *vtable_user_data);
 
     /* aws_channel_acquire_message_from_pool */
@@ -386,7 +393,9 @@ struct aws_mqtt5_client {
      * To-server requires both a table and a list (for LRU)
      */
 
-    /* TODO: statistics that use atomics because we don't care about consistency/isolation */
+    /* Statistics tracking operational state */
+    struct aws_mutex operation_statistics_lock;
+    struct aws_mqtt5_client_operation_statistics operation_statistics;
 
     /*
      * Wraps all state related to outbound flow control.
@@ -488,7 +497,7 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_clean_up(
  * Resets the client's operational state based on a disconnection (from above comment):
  *
  *   Fail all operations in the pending write completion list
- *   Fail all non-qos-1+ publishes in the pending ack list/table
+ *   Fail all subscribe/unsubscribes in the pending ack list/table
  *   Fail the current operation
  *   Fail all operations in the queued_operations list
  */
@@ -510,6 +519,11 @@ AWS_MQTT_API void aws_mqtt5_client_on_connection_update_operational_state(struct
 AWS_MQTT_API int aws_mqtt5_client_service_operational_state(
     struct aws_mqtt5_client_operational_state *client_operational_state);
 
+/*
+ * Updates the client's operational state based on the receipt of an ACK packet from the server.  In general this
+ * means looking up the original operation in the pending ack table, completing it, removing it from both the
+ * pending ack table and list, and then destroying it.
+ */
 AWS_MQTT_API void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
@@ -517,22 +531,51 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_handle_ack(
     const void *packet_view,
     int error_code);
 
+/*
+ * Helper function that returns whether or not the current value of the negotiated settings can be used.  Primarily
+ * a client state check (received CONNACK, not yet disconnected)
+ */
 AWS_MQTT_API bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client);
 
+/*
+ * Initializes the client's flow control state.  This state governs the rates and delays between processing
+ * operations and sending packets.
+ */
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_init(struct aws_mqtt5_client *client);
 
+/*
+ * Resets the client's flow control state to a known baseline.  Invoked right after entering the connected state.
+ */
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_reset(struct aws_mqtt5_client *client);
 
+/*
+ * Updates the client's flow control state based on the receipt of a PUBACK for a Qos1 publish.
+ */
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_on_puback(struct aws_mqtt5_client *client);
 
+/*
+ * Updates the client's flow control state based on successfully encoding an operation into a channel message.
+ */
 AWS_MQTT_API void aws_mqtt5_client_flow_control_state_on_outbound_operation(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation);
 
+/*
+ * Given the next operation in the queue, examines the flow control state to determine when is the earliest time
+ * it should be processed.
+ */
 AWS_MQTT_API uint64_t aws_mqtt5_client_flow_control_state_get_next_operation_service_time(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation,
     uint64_t now);
+
+/*
+ * Updates the client's operation statistics based on a change in the state of an operation.
+ */
+AWS_MQTT_API void aws_mqtt5_client_statistics_change_operation_statistic_state(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation,
+    enum aws_mqtt5_operation_statistic_state_flags new_state_flags);
 
 AWS_EXTERN_C_END
 

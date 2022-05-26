@@ -1039,10 +1039,13 @@ static int s_process_read_message(
     int result = aws_mqtt5_decoder_on_data_received(&server_connection->decoder, message_cursor);
     if (result != AWS_OP_SUCCESS) {
         aws_channel_shutdown(server_connection->channel, aws_last_error());
-        return AWS_OP_SUCCESS;
+        goto done;
     }
 
     aws_channel_slot_increment_read_window(slot, message->message_data.len);
+
+done:
+
     aws_mem_release(message->allocator, message);
 
     return AWS_OP_SUCCESS;
@@ -1260,6 +1263,22 @@ void s_aws_mqtt5_test_fixture_state_changed_callback(
     aws_mutex_unlock(&test_fixture->lock);
 }
 
+void s_aws_mqtt5_test_fixture_statistics_changed_callback(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation,
+    void *vtable_user_data) {
+
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = vtable_user_data;
+
+    struct aws_mqtt5_client_operation_statistics stats;
+    AWS_ZERO_STRUCT(stats);
+
+    aws_mutex_lock(&test_fixture->lock);
+    aws_mqtt5_client_get_stats(client, &stats);
+    aws_array_list_push_back(&test_fixture->client_statistics, &stats);
+    aws_mutex_unlock(&test_fixture->lock);
+}
+
 int aws_mqtt5_client_mock_test_fixture_init(
     struct aws_mqtt5_client_mock_test_fixture *test_fixture,
     struct aws_allocator *allocator,
@@ -1334,6 +1353,8 @@ int aws_mqtt5_client_mock_test_fixture_init(
 
     test_fixture->client_vtable = *aws_mqtt5_client_get_default_vtable();
     test_fixture->client_vtable.on_client_state_change_callback_fn = s_aws_mqtt5_test_fixture_state_changed_callback;
+    test_fixture->client_vtable.on_client_statistics_changed_callback_fn =
+        s_aws_mqtt5_test_fixture_statistics_changed_callback;
     test_fixture->client_vtable.vtable_user_data = test_fixture;
 
     aws_mqtt5_client_set_vtable(test_fixture->client, &test_fixture->client_vtable);
@@ -1345,6 +1366,8 @@ int aws_mqtt5_client_mock_test_fixture_init(
         &test_fixture->lifecycle_events, allocator, 10, sizeof(struct aws_mqtt5_lifecycle_event_record *));
 
     aws_array_list_init_dynamic(&test_fixture->client_states, allocator, 10, sizeof(enum aws_mqtt5_client_state));
+    aws_array_list_init_dynamic(
+        &test_fixture->client_statistics, allocator, 10, sizeof(struct aws_mqtt5_client_operation_statistics));
 
     return AWS_OP_SUCCESS;
 }
@@ -1437,6 +1460,7 @@ void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_te
 
     aws_array_list_clean_up(&test_fixture->lifecycle_events);
     aws_array_list_clean_up(&test_fixture->client_states);
+    aws_array_list_clean_up(&test_fixture->client_statistics);
 
     aws_mutex_clean_up(&test_fixture->lock);
     aws_condition_variable_clean_up(&test_fixture->signal);
