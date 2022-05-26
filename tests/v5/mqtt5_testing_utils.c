@@ -18,37 +18,6 @@
 
 #include <inttypes.h>
 
-static const char *s_aws_mqtt5_client_state_to_c_str(enum aws_mqtt5_client_state state) {
-    switch (state) {
-        case AWS_MCS_STOPPED:
-            return "STOPPED";
-
-        case AWS_MCS_CONNECTING:
-            return "CONNECTING";
-
-        case AWS_MCS_MQTT_CONNECT:
-            return "MQTT_CONNECT";
-
-        case AWS_MCS_CONNECTED:
-            return "CONNECTED";
-
-        case AWS_MCS_CLEAN_DISCONNECT:
-            return "CLEAN_DISCONNECT";
-
-        case AWS_MCS_CHANNEL_SHUTDOWN:
-            return "CHANNEL_SHUTDOWN";
-
-        case AWS_MCS_PENDING_RECONNECT:
-            return "PENDING_RECONNECT";
-
-        case AWS_MCS_TERMINATED:
-            return "TERMINATED";
-
-        default:
-            return "UNKNOWN";
-    }
-}
-
 int aws_mqtt5_test_verify_user_properties_raw(
     size_t property_count,
     const struct aws_mqtt5_user_property *properties,
@@ -1296,7 +1265,7 @@ void s_aws_mqtt5_test_fixture_state_changed_callback(
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_GENERAL,
         "mqtt5 mock server received client state change to %s",
-        s_aws_mqtt5_client_state_to_c_str(new_state));
+        aws_mqtt5_client_state_to_c_string(new_state));
     aws_array_list_push_back(&test_fixture->client_states, &new_state);
     aws_mutex_unlock(&test_fixture->lock);
 }
