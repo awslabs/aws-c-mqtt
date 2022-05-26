@@ -500,9 +500,9 @@ static void s_aws_mqtt5_client_operational_state_reset(
     bool is_final) {
     s_complete_operation_list(&client_operational_state->queued_operations, completion_error_code);
     s_complete_operation_list(&client_operational_state->write_completion_operations, completion_error_code);
-    s_complete_operation_list(&client_operational_state->unacked_operations, completion_error_code);
 
     if (is_final) {
+        s_complete_operation_list(&client_operational_state->unacked_operations, completion_error_code);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
     } else {
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
@@ -1306,7 +1306,7 @@ static int s_aws_mqtt5_client_queue_ping(struct aws_mqtt5_client *client) {
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: queuing PINGREQ", (void *)client);
 
     struct aws_mqtt5_operation_pingreq *pingreq_op = aws_mqtt5_operation_pingreq_new(client->allocator);
-    s_enqueue_operation_back(client, &pingreq_op->base);
+    s_enqueue_operation_front(client, &pingreq_op->base);
 
     return AWS_OP_SUCCESS;
 }

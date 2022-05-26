@@ -1142,3 +1142,139 @@ static int s_mqtt5_packet_puback_round_trip_fn(struct aws_allocator *allocator, 
 }
 
 AWS_TEST_CASE(mqtt5_packet_puback_round_trip, s_mqtt5_packet_puback_round_trip_fn)
+
+static int s_aws_mqtt5_decoder_decode_subscribe_first_byte_check(struct aws_mqtt5_decoder *decoder) {
+    uint8_t first_byte = decoder->packet_first_byte;
+    if ((first_byte & 0x0F) != 2) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+static int s_aws_mqtt5_decoder_decode_unsubscribe_first_byte_check(struct aws_mqtt5_decoder *decoder) {
+    uint8_t first_byte = decoder->packet_first_byte;
+    if ((first_byte & 0x0F) != 2) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+static int s_aws_mqtt5_decoder_decode_disconnect_first_byte_check(struct aws_mqtt5_decoder *decoder) {
+    uint8_t first_byte = decoder->packet_first_byte;
+    if ((first_byte & 0x0F) != 0) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_first_byte_check(
+    struct aws_allocator *allocator,
+    enum aws_mqtt5_packet_type packet_type,
+    void *packet_view) {
+    struct aws_byte_buf whole_dest;
+    aws_byte_buf_init(&whole_dest, allocator, 4096);
+
+    struct aws_mqtt5_encode_decode_tester tester;
+    aws_mqtt5_encode_init_testing_function_table(&tester.encoder_function_table);
+    aws_mqtt5_decode_init_testing_function_table(&tester.decoder_function_table);
+
+    tester.decoder_function_table.decoders_by_packet_type[AWS_MQTT5_PT_SUBSCRIBE] =
+        &s_aws_mqtt5_decoder_decode_subscribe_first_byte_check;
+    tester.decoder_function_table.decoders_by_packet_type[AWS_MQTT5_PT_UNSUBSCRIBE] =
+        &s_aws_mqtt5_decoder_decode_unsubscribe_first_byte_check;
+    tester.decoder_function_table.decoders_by_packet_type[AWS_MQTT5_PT_DISCONNECT] =
+        &s_aws_mqtt5_decoder_decode_disconnect_first_byte_check;
+
+    struct aws_mqtt5_encoder_options encoder_options = {
+        .encoders = &tester.encoder_function_table,
+    };
+
+    struct aws_mqtt5_encoder encoder;
+
+    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, &encoder_options));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_append_packet_encoding(&encoder, packet_type, packet_view));
+
+    enum aws_mqtt5_encoding_result result = AWS_MQTT5_ER_ERROR;
+    result = aws_mqtt5_encoder_encode_to_buffer(&encoder, &whole_dest);
+    ASSERT_INT_EQUALS(AWS_MQTT5_ER_FINISHED, result);
+
+    struct aws_mqtt5_decoder_options decoder_options = {
+        .callback_user_data = &tester,
+        .decoder_table = &tester.decoder_function_table,
+    };
+
+    struct aws_mqtt5_decoder decoder;
+    ASSERT_SUCCESS(aws_mqtt5_decoder_init(&decoder, allocator, &decoder_options));
+
+    struct aws_byte_cursor whole_cursor = aws_byte_cursor_from_buf(&whole_dest);
+    ASSERT_SUCCESS(aws_mqtt5_decoder_on_data_received(&decoder, whole_cursor));
+
+    aws_byte_buf_clean_up(&whole_dest);
+    aws_mqtt5_encoder_clean_up(&encoder);
+    aws_mqtt5_decoder_clean_up(&decoder);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int mqtt5_first_byte_reserved_header_check_subscribe_fn(struct aws_allocator *allocator, void *ctx) {
+
+    aws_mqtt5_packet_id_t packet_id = 47;
+    uint32_t subscription_identifier = 1;
+
+    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
+        .packet_id = packet_id,
+        .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
+        .subscriptions = &s_subscriptions[0],
+        .subscription_identifier = &subscription_identifier,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_first_byte_check(allocator, AWS_MQTT5_PT_SUBSCRIBE, &subscribe_view));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_first_byte_reserved_header_check_subscribe, mqtt5_first_byte_reserved_header_check_subscribe_fn)
+
+static int mqtt5_first_byte_reserved_header_check_unsubscribe_fn(struct aws_allocator *allocator, void *ctx) {
+
+    aws_mqtt5_packet_id_t packet_id = 47;
+
+    struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
+        .packet_id = packet_id,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_unsubscribe_topics),
+        .topic_filters = &s_unsubscribe_topics[0],
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_first_byte_check(allocator, AWS_MQTT5_PT_UNSUBSCRIBE, &unsubscribe_view));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_first_byte_reserved_header_check_unsubscribe, mqtt5_first_byte_reserved_header_check_unsubscribe_fn)
+
+static int mqtt5_first_byte_reserved_header_check_disconnect_fn(struct aws_allocator *allocator, void *ctx) {
+
+    uint32_t session_expiry_interval_seconds = 333;
+    struct aws_byte_cursor reason_string_cursor = aws_byte_cursor_from_c_str(s_reason_string);
+    struct aws_byte_cursor server_reference_cursor = aws_byte_cursor_from_c_str(s_server_reference);
+
+    struct aws_mqtt5_packet_disconnect_view disconnect_view = {
+        .reason_code = AWS_MQTT5_DRC_DISCONNECT_WITH_WILL_MESSAGE,
+        .session_expiry_interval_seconds = &session_expiry_interval_seconds,
+        .reason_string = &reason_string_cursor,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+        .server_reference = &server_reference_cursor,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_first_byte_check(allocator, AWS_MQTT5_PT_DISCONNECT, &disconnect_view));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_first_byte_reserved_header_check_disconnect, mqtt5_first_byte_reserved_header_check_disconnect_fn)
