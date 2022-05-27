@@ -22,7 +22,7 @@
 #define AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH 4096
 #define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
 
-static const char *s_aws_mqtt5_client_state_to_c_str(enum aws_mqtt5_client_state state) {
+const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_client_state state) {
     switch (state) {
         case AWS_MCS_STOPPED:
             return "STOPPED";
@@ -513,13 +513,14 @@ static void s_aws_mqtt5_client_operational_state_reset(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     int completion_error_code,
     bool is_final) {
+
     struct aws_mqtt5_client *client = client_operational_state->client;
 
     s_complete_operation_list(client, &client_operational_state->queued_operations, completion_error_code);
     s_complete_operation_list(client, &client_operational_state->write_completion_operations, completion_error_code);
-    s_complete_operation_list(client, &client_operational_state->unacked_operations, completion_error_code);
 
     if (is_final) {
+        s_complete_operation_list(client, &client_operational_state->unacked_operations, completion_error_code);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
     } else {
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
@@ -550,7 +551,7 @@ static void s_aws_mqtt5_client_shutdown_channel(struct aws_mqtt5_client *client,
             "id=%p: client channel shutdown invoked from unexpected state %d(%s)",
             (void *)client,
             (int)client->current_state,
-            s_aws_mqtt5_client_state_to_c_str(client->current_state));
+            aws_mqtt5_client_state_to_c_string(client->current_state));
         return;
     }
 
@@ -1233,8 +1234,8 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
         AWS_LS_MQTT5_CLIENT,
         "id=%p: switching current state from %s to %s",
         (void *)client,
-        s_aws_mqtt5_client_state_to_c_str(client->current_state),
-        s_aws_mqtt5_client_state_to_c_str(next_state));
+        aws_mqtt5_client_state_to_c_string(client->current_state),
+        aws_mqtt5_client_state_to_c_string(next_state));
 
     if (client->vtable->on_client_state_change_callback_fn != NULL) {
         (*client->vtable->on_client_state_change_callback_fn)(
@@ -1323,7 +1324,7 @@ static int s_aws_mqtt5_client_queue_ping(struct aws_mqtt5_client *client) {
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: queuing PINGREQ", (void *)client);
 
     struct aws_mqtt5_operation_pingreq *pingreq_op = aws_mqtt5_operation_pingreq_new(client->allocator);
-    s_enqueue_operation_back(client, &pingreq_op->base);
+    s_enqueue_operation_front(client, &pingreq_op->base);
 
     return AWS_OP_SUCCESS;
 }
@@ -1946,8 +1947,8 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
             AWS_LS_MQTT5_CLIENT,
             "id=%p: changing desired client state from %s to %s",
             (void *)client,
-            s_aws_mqtt5_client_state_to_c_str(client->desired_state),
-            s_aws_mqtt5_client_state_to_c_str(desired_state));
+            aws_mqtt5_client_state_to_c_string(client->desired_state),
+            aws_mqtt5_client_state_to_c_string(desired_state));
 
         client->desired_state = desired_state;
 
@@ -2017,7 +2018,7 @@ static int s_aws_mqtt5_client_change_desired_state(
             "id=%p: invalid desired state argument %d(%s)",
             (void *)client,
             (int)desired_state,
-            s_aws_mqtt5_client_state_to_c_str(desired_state));
+            aws_mqtt5_client_state_to_c_string(desired_state));
 
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }

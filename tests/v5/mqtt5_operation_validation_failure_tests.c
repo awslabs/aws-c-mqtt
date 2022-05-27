@@ -854,6 +854,20 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_publish_view,
     s_make_user_properties_too_many_publish_view)
 
+static void s_make_qos0_duplicate_true_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->qos = AWS_MQTT5_QOS_AT_MOST_ONCE;
+    view->duplicate = true;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(publish, qos0_duplicate_true, s_good_publish_view, s_make_qos0_duplicate_true_publish_view)
+
+static void s_make_qos0_with_packet_id_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->qos = AWS_MQTT5_QOS_AT_MOST_ONCE;
+    view->packet_id = 1;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(publish, qos0_with_packet_id, s_good_publish_view, s_make_qos0_with_packet_id_publish_view)
+
 #define AWS_CLIENT_CREATION_VALIDATION_FAILURE(failure_reason, base_options, mutate_function)                          \
     static int s_mqtt5_client_options_validation_failure_##failure_reason##_fn(                                        \
         struct aws_allocator *allocator, void *ctx) {                                                                  \
@@ -1154,6 +1168,32 @@ AWS_CONNECTION_SETTINGS_VALIDATION_FAILURE_TEST3(
     s_exceeds_maximum_qos_publish_view,
     s_maximum_qos_init_settings_success_fn,
     s_maximum_qos_init_settings_failure_fn)
+
+static struct aws_mqtt5_packet_publish_view s_invalid_retain_publish_view = {
+    .topic =
+        {
+            .ptr = s_good_topic,
+            .len = AWS_ARRAY_SIZE(s_good_topic) - 1,
+        },
+    .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+    .retain = true,
+};
+
+static void s_invalid_retain_init_settings_success_fn(struct aws_mqtt5_client *dummy_client) {
+    dummy_client->negotiated_settings.maximum_packet_size_to_server = 100;
+    dummy_client->negotiated_settings.retain_available = true;
+}
+
+static void s_invalid_retain_init_settings_failure_fn(struct aws_mqtt5_client *dummy_client) {
+    dummy_client->negotiated_settings.retain_available = false;
+}
+
+AWS_CONNECTION_SETTINGS_VALIDATION_FAILURE_TEST3(
+    publish,
+    invalid_retain,
+    s_invalid_retain_publish_view,
+    s_invalid_retain_init_settings_success_fn,
+    s_invalid_retain_init_settings_failure_fn)
 
 #define AWS_CONNECTION_SETTINGS_VALIDATION_FAILURE_TEST4(                                                              \
     packet_type, failure_reason, view_name, init_success_settings_fn, init_failure_settings_fn)                        \
