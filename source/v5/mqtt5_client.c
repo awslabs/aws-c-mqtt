@@ -497,18 +497,6 @@ static void s_enqueue_operation_back(struct aws_mqtt5_client *client, struct aws
     s_reevaluate_service_task(client);
 }
 
-static void s_enqueue_operation_front(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_CLIENT,
-        "id=%p: enqueuing %s operation to front",
-        (void *)client,
-        aws_mqtt5_packet_type_to_c_string(operation->packet_type));
-
-    aws_linked_list_push_front(&client->operational_state.queued_operations, &operation->node);
-
-    s_reevaluate_service_task(client);
-}
-
 static void s_aws_mqtt5_client_operational_state_reset(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     int completion_error_code,
@@ -1657,6 +1645,33 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
     }
 }
 
+typedef bool (aws_linked_list_node_predicate_fn)(struct aws_linked_list_node *);
+
+static bool s_is_ping_or_puback(struct aws_linked_list_node *operation_node) {
+    struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(operation_node, struct aws_mqtt5_operation, node);
+
+    return operation->packet_type == AWS_MQTT5_PT_PUBACK || operation->packet_type == AWS_MQTT5_PT_PINGREQ;
+}
+
+/*
+ * Start from the front of the queue and iterate towards the back, looking for the first operation that is not a PUBACK
+ * or a PINGREQ.  This will be the correct place to enqueue the new PUBACK.  We have to do this in order to guarantee
+ * that we send PUBACKs in the order we receive them.  If we just enqueued the PUBACKs at the front, they would go out
+ * in reverse order when a bunch of PUBLISHes arrived before we could service the resulting PUBACKs.
+ */
+static void s_insert_node_before_predicate_failure(struct aws_linked_list *list, struct aws_linked_list_node *node, aws_linked_list_node_predicate_fn predicate) {
+    struct aws_linked_list_node *current_node = NULL;
+    for (current_node = aws_linked_list_begin(list); current_node != aws_linked_list_end(list); current_node = aws_linked_list_next(current_node)) {
+        if (!predicate(current_node)) {
+            break;
+        }
+    }
+
+    AWS_FATAL_ASSERT(current_node != NULL);
+
+    aws_linked_list_insert_before(current_node, node);
+}
+
 static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint16_t packet_id) {
     AWS_PRECONDITION(client != NULL);
 
@@ -1671,7 +1686,14 @@ static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint
         return AWS_OP_ERR;
     }
 
-    s_enqueue_operation_front(client, &puback_op->base);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: enqueuing PUBACK operation to first position in queue that is not a PUBACK or PINGREQ",
+        (void *)client);
+
+    s_insert_node_before_predicate_failure(&client->operational_state.queued_operations, &puback_op->base.node, s_is_ping_or_puback);
+
+    s_reevaluate_service_task(client);
 
     return AWS_OP_SUCCESS;
 }
