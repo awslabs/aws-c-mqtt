@@ -1658,6 +1658,39 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
     }
 }
 
+typedef bool(aws_linked_list_node_predicate_fn)(struct aws_linked_list_node *);
+
+/*
+ * This predicate finds the first (if any) operation in the queue that is not a PUBACK or a PINGREQ.
+ */
+static bool s_is_ping_or_puback(struct aws_linked_list_node *operation_node) {
+    struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(operation_node, struct aws_mqtt5_operation, node);
+
+    return operation->packet_type == AWS_MQTT5_PT_PUBACK || operation->packet_type == AWS_MQTT5_PT_PINGREQ;
+}
+
+/*
+ * Helper function to insert a node (operation) into a list (operation queue) in the correct spot.  Currently, this
+ * is only used to enqueue PUBACKs after existing PUBACKs and PINGREQs.  This ensure that PUBACKs go out in the order
+ * the corresponding PUBLISH was received, regardless of whether or not there was an intervening service call.
+ */
+static void s_insert_node_before_predicate_failure(
+    struct aws_linked_list *list,
+    struct aws_linked_list_node *node,
+    aws_linked_list_node_predicate_fn predicate) {
+    struct aws_linked_list_node *current_node = NULL;
+    for (current_node = aws_linked_list_begin(list); current_node != aws_linked_list_end(list);
+         current_node = aws_linked_list_next(current_node)) {
+        if (!predicate(current_node)) {
+            break;
+        }
+    }
+
+    AWS_FATAL_ASSERT(current_node != NULL);
+
+    aws_linked_list_insert_before(current_node, node);
+}
+
 static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint16_t packet_id) {
     AWS_PRECONDITION(client != NULL);
 
@@ -1672,7 +1705,21 @@ static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint
         return AWS_OP_ERR;
     }
 
-    s_enqueue_operation_front(client, &puback_op->base);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: enqueuing PUBACK operation to first position in queue that is not a PUBACK or PINGREQ",
+        (void *)client);
+
+    /*
+     * Put the PUBACK ahead of all user-submitted operations (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT), but behind
+     * all pre-existing "internal" operations (PINGREQ, PUBACK).
+     *
+     * Qos 2 support will need to extend the predicate to include Qos 2 publish packets.
+     */
+    s_insert_node_before_predicate_failure(
+        &client->operational_state.queued_operations, &puback_op->base.node, s_is_ping_or_puback);
+
+    s_reevaluate_service_task(client);
 
     return AWS_OP_SUCCESS;
 }
