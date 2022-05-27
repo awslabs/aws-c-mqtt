@@ -95,7 +95,7 @@ AWS_MQTT_API extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
  */
 AWS_MQTT_API uint8_t aws_mqtt5_compute_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags);
 
-void aws_mqtt5_negotiated_settings_log(
+AWS_MQTT_API void aws_mqtt5_negotiated_settings_log(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     enum aws_log_level level);
 
@@ -106,7 +106,7 @@ void aws_mqtt5_negotiated_settings_log(
  * @param negotiated_settings settings to apply client id to
  * @param client_id client id to set
  */
-int aws_mqtt5_negotiated_settings_init(
+AWS_MQTT_API int aws_mqtt5_negotiated_settings_init(
     struct aws_allocator *allocator,
     struct aws_mqtt5_negotiated_settings *negotatiated_settings,
     const struct aws_byte_cursor *client_id);
@@ -116,7 +116,7 @@ int aws_mqtt5_negotiated_settings_init(
  *
  * @param negotiated_settings settings to clean up
  */
-void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
+AWS_MQTT_API void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
 
 /**
  * Assigns and stores a client id for use on CONNECT
@@ -124,7 +124,7 @@ void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings
  * @param negotiated_settings settings to apply client id to
  * @param client_id client id to set
  */
-int aws_mqtt5_negotiated_settings_apply_client_id(
+AWS_MQTT_API int aws_mqtt5_negotiated_settings_apply_client_id(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_byte_cursor *client_id);
 
@@ -136,7 +136,7 @@ int aws_mqtt5_negotiated_settings_apply_client_id(
  * @param packet_connect_view Read-only snapshot of a CONNECT packet
  * @return void
  */
-void aws_mqtt5_negotiated_settings_reset(
+AWS_MQTT_API void aws_mqtt5_negotiated_settings_reset(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_mqtt5_packet_connect_view *packet_connect_view);
 
@@ -147,7 +147,7 @@ void aws_mqtt5_negotiated_settings_reset(
  * @param connack_data Read-only snapshot of a CONNACK packet
  * @return void
  */
-void aws_mqtt5_negotiated_settings_apply_connack(
+AWS_MQTT_API void aws_mqtt5_negotiated_settings_apply_connack(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_mqtt5_packet_connack_view *connack_data);
 
@@ -245,14 +245,6 @@ AWS_MQTT_API const char *aws_mqtt5_retain_handling_type_to_c_string(
  * @return short string describing the packet type
  */
 AWS_MQTT_API const char *aws_mqtt5_packet_type_to_c_string(enum aws_mqtt5_packet_type packet_type);
-
-/**
- * Converts a client state type to a readable description.
- *
- * @param state client state
- * @return short string describing the client state
- */
-AWS_MQTT_API const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_client_state state);
 
 /**
  * Computes a uniformly-distributed random number in the specified range.  Not intended for cryptographic purposes.

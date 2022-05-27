@@ -1159,14 +1159,14 @@ int aws_mqtt5_encoder_append_packet_encoding(
     return (*encoding_fn)(encoder, packet_view);
 }
 
-static int s_compute_packet_size(uint32_t total_remaining_length, size_t *packet_size) {
+static int s_compute_packet_size(size_t total_remaining_length, size_t *packet_size) {
     /* 1 (packet type + flags) + vli_length(total_remaining_length) + total_remaining_length */
     size_t encode_size = 0;
     if (aws_mqtt5_get_variable_length_encode_size(total_remaining_length, &encode_size)) {
         return AWS_OP_ERR;
     }
 
-    size_t prefix = 1 + (uint32_t)encode_size;
+    size_t prefix = (size_t)1 + encode_size;
 
     if (aws_add_size_checked(prefix, total_remaining_length, packet_size)) {
         return AWS_OP_ERR;
