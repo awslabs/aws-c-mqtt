@@ -4511,6 +4511,7 @@ static int s_aws_mqtt5_server_send_multiple_publishes(
     (void)packet;
     (void)user_data;
 
+    /* in order: send PUBLISH packet ids 1, 2, 3, 4, 5 */
     for (size_t i = 0; i < PUBACK_ORDERING_PUBLISH_COUNT; ++i) {
         struct aws_mqtt5_packet_publish_view publish_view = {
             .packet_id = (uint16_t)i + 1,
@@ -4564,6 +4565,8 @@ static int s_verify_mock_puback_order(struct aws_mqtt5_client_mock_test_fixture 
 
     uint16_t expected_packet_id = 1;
     size_t packet_count = aws_array_list_length(&test_context->server_received_packets);
+
+    /* in order: received PUBACK packet ids 1, 2, 3, 4, 5 */
     for (size_t i = 0; i < packet_count; ++i) {
         struct aws_mqtt5_mock_server_packet_record *packet = NULL;
         aws_array_list_get_at_ptr(&test_context->server_received_packets, (void **)&packet, i);

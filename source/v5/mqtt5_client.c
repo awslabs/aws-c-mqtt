@@ -1660,6 +1660,10 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
 
 typedef bool(aws_linked_list_node_predicate_fn)(struct aws_linked_list_node *);
 
+/*
+ * This predicate find the first (if any) operation in the queue that is not a PUBACK or a PINGREQ.  When queuing a
+ * PUBACK, it is spec-correct to place the PUBACK in *front* of the first operation that meets this condition.
+ */
 static bool s_is_ping_or_puback(struct aws_linked_list_node *operation_node) {
     struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(operation_node, struct aws_mqtt5_operation, node);
 
@@ -1667,10 +1671,9 @@ static bool s_is_ping_or_puback(struct aws_linked_list_node *operation_node) {
 }
 
 /*
- * Start from the front of the queue and iterate towards the back, looking for the first operation that is not a PUBACK
- * or a PINGREQ.  This will be the correct place to enqueue the new PUBACK.  We have to do this in order to guarantee
- * that we send PUBACKs in the order we receive them.  If we just enqueued the PUBACKs at the front, they would go out
- * in reverse order when a bunch of PUBLISHes arrived before we could service the resulting PUBACKs.
+ * Helper function to insert a node (operation) into a list (operation queue) in the correct spot.  Currently, this
+ * is only used to enqueue PUBACKS after existing PUBACKS and PINGREQs.  This ensure that PUBACKs go out in the order
+ * the corresponding PUBLISH was received, regardless of whether or not there was an intervening service call.
  */
 static void s_insert_node_before_predicate_failure(
     struct aws_linked_list *list,
@@ -1708,6 +1711,10 @@ static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint
         "id=%p: enqueuing PUBACK operation to first position in queue that is not a PUBACK or PINGREQ",
         (void *)client);
 
+    /*
+     * Put the PUBACK ahead of all user-submitted operations (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT), but behind
+     * all pre-existing "internal" operations (PINGREQ, PUBACK).
+     */
     s_insert_node_before_predicate_failure(
         &client->operational_state.queued_operations, &puback_op->base.node, s_is_ping_or_puback);
 
