@@ -997,6 +997,17 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
             break;
     }
 
+    packet_record.storage_allocator = test_fixture->allocator;
+    packet_record.timestamp = (*test_fixture->client_vtable.get_current_time_fn)();
+    packet_record.packet_type = type;
+
+    aws_mutex_lock(&test_fixture->lock);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL, "mqtt5 mock server received packet of type %s", aws_mqtt5_packet_type_to_c_string(type));
+    aws_array_list_push_back(&test_fixture->server_received_packets, &packet_record);
+    aws_mutex_unlock(&test_fixture->lock);
+    aws_condition_variable_notify_all(&test_fixture->signal);
+
     int result = AWS_OP_SUCCESS;
     aws_mqtt5_on_mock_server_packet_received_fn *packet_handler =
         test_fixture->server_function_table->packet_handlers[type];
@@ -1004,19 +1015,6 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
         result =
             (*packet_handler)(packet_view, server_connection, server_connection->test_fixture->mock_server_user_data);
     }
-
-    packet_record.storage_allocator = test_fixture->allocator;
-    packet_record.timestamp = (*test_fixture->client_vtable.get_current_time_fn)();
-    packet_record.packet_type = type;
-
-    aws_mutex_lock(&test_fixture->lock);
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_GENERAL,
-        "mqtt5 test server - received packet of type %s",
-        aws_mqtt5_packet_type_to_c_string(type));
-    aws_array_list_push_back(&test_fixture->server_received_packets, &packet_record);
-    aws_mutex_unlock(&test_fixture->lock);
-    aws_condition_variable_notify_all(&test_fixture->signal);
 
     return result;
 }
@@ -1236,6 +1234,10 @@ void s_aws_mqtt5_test_fixture_lifecycle_event_handler(const struct aws_mqtt5_cli
     }
 
     aws_mutex_lock(&test_fixture->lock);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "mqtt5 mock server received lifecycle event of type %s",
+        aws_mqtt5_client_lifecycle_event_type_to_c_string(event->event_type));
     aws_array_list_push_back(&test_fixture->lifecycle_events, &record);
     aws_mutex_unlock(&test_fixture->lock);
     aws_condition_variable_notify_all(&test_fixture->signal);
@@ -1260,6 +1262,10 @@ void s_aws_mqtt5_test_fixture_state_changed_callback(
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = vtable_user_data;
 
     aws_mutex_lock(&test_fixture->lock);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_GENERAL,
+        "mqtt5 mock server received client state change to %s",
+        aws_mqtt5_client_state_to_c_string(new_state));
     aws_array_list_push_back(&test_fixture->client_states, &new_state);
     aws_mutex_unlock(&test_fixture->lock);
 }

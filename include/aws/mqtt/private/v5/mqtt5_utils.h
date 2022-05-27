@@ -247,6 +247,14 @@ AWS_MQTT_API const char *aws_mqtt5_retain_handling_type_to_c_string(
 AWS_MQTT_API const char *aws_mqtt5_packet_type_to_c_string(enum aws_mqtt5_packet_type packet_type);
 
 /**
+ * Converts a client state type to a readable description.
+ *
+ * @param state client state
+ * @return short string describing the client state
+ */
+AWS_MQTT_API const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_client_state state);
+
+/**
  * Computes a uniformly-distributed random number in the specified range.  Not intended for cryptographic purposes.
  *
  * @param from one end of the range to sample from
