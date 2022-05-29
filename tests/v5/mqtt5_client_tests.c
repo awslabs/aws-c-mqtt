@@ -184,6 +184,34 @@ static bool s_last_life_cycle_event_is(
     return record->event.event_type == event_type;
 }
 
+static bool s_last_mock_server_packet_received_is(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    enum aws_mqtt5_packet_type packet_type) {
+    size_t packet_count = aws_array_list_length(&test_fixture->server_received_packets);
+    if (packet_count == 0) {
+        return false;
+    }
+
+    struct aws_mqtt5_mock_server_packet_record *packet = NULL;
+    aws_array_list_get_at_ptr(&test_fixture->server_received_packets, (void **)&packet, packet_count - 1);
+
+    return packet_type == packet->packet_type;
+}
+
+static bool s_last_mock_server_packet_received_is_disconnect(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+
+    return s_last_mock_server_packet_received_is(test_fixture, AWS_MQTT5_PT_DISCONNECT);
+}
+
+static void s_wait_for_mock_server_to_receive_disconnect_packet(
+    struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_last_mock_server_packet_received_is_disconnect, test_context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
 static bool s_last_lifecycle_event_is_connected(void *arg) {
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
 
@@ -388,6 +416,7 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
 
     s_wait_for_stopped_lifecycle_event(&test_context);
     s_wait_for_disconnect_completion(&test_context);
+    s_wait_for_mock_server_to_receive_disconnect_packet(&test_context);
 
     struct aws_mqtt5_client_lifecycle_event expected_events[] = {
         {
@@ -415,6 +444,7 @@ static int s_mqtt5_client_direct_connect_success_fn(struct aws_allocator *alloca
         AWS_MCS_CHANNEL_SHUTDOWN,
         AWS_MCS_STOPPED,
     };
+
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
 
     struct aws_mqtt5_packet_connect_storage expected_connect_storage;
@@ -603,7 +633,6 @@ static void s_mqtt5_client_test_websocket_successful_transform(
     void *user_data,
     aws_mqtt5_transform_websocket_handshake_complete_fn *complete_fn,
     void *complete_ctx) {
-
     (void)user_data;
 
     (*complete_fn)(request, AWS_ERROR_SUCCESS, complete_ctx);
@@ -1081,6 +1110,7 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, &disconnect_view, NULL));
 
     s_wait_for_stopped_lifecycle_event(&test_context);
+    s_wait_for_mock_server_to_receive_disconnect_packet(&test_context);
 
     struct aws_mqtt5_client_lifecycle_event expected_events[] = {
         {
@@ -1229,7 +1259,7 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
         (uint16_t)aws_timestamp_convert(TIMEOUT_TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
     connect_options.keep_alive_interval_seconds = keep_alive_seconds;
 
-    /* don't response to PINGREQs */
+    /* don't respond to PINGREQs */
     server_function_table.packet_handlers[AWS_MQTT5_PT_PINGREQ] = NULL;
 
     /* faster ping timeout */
@@ -1279,7 +1309,6 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
         AWS_MCS_CONNECTED,
         AWS_MCS_CLEAN_DISCONNECT,
         AWS_MCS_CHANNEL_SHUTDOWN,
-        AWS_MCS_STOPPED,
     };
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
 
@@ -1466,7 +1495,6 @@ static int s_mqtt5_client_reconnect_failure_backoff_fn(struct aws_allocator *all
         AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN,
     };
     ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
-
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
 
@@ -1692,7 +1720,6 @@ static int s_mqtt5_client_reconnect_backoff_insufficient_reset_fn(struct aws_all
         s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
 
     ASSERT_SUCCESS(s_verify_reconnection_after_success_used_backoff(&test_context, RECONNECT_TEST_MAX_BACKOFF));
-
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
 
@@ -1814,7 +1841,6 @@ static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_alloc
         s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
 
     ASSERT_SUCCESS(s_verify_reconnection_after_success_used_backoff(&test_context, RECONNECT_TEST_MIN_BACKOFF));
-
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
     aws_mqtt_library_clean_up();
 
@@ -2370,7 +2396,6 @@ static int s_aws_mqtt5_mock_server_handle_timeout_publish(
 
     (void)packet;
     (void)user_data;
-
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = connection->test_fixture;
 
     aws_mutex_lock(&test_fixture->lock);
@@ -3719,6 +3744,328 @@ static int mqtt5_client_receive_assigned_client_id_fn(struct aws_allocator *allo
 
 AWS_TEST_CASE(mqtt5_client_receive_assigned_client_id, mqtt5_client_receive_assigned_client_id_fn);
 
+#define TEST_PUBLISH_COUNT 10
+
+static int s_aws_mqtt5_mock_server_handle_publish_no_puback_on_first_connect(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)user_data;
+
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = connection->test_fixture;
+    struct aws_mqtt5_packet_publish_view *publish_view = packet;
+
+    aws_mutex_lock(&test_fixture->lock);
+    ++connection->test_fixture->publishes_received;
+    aws_mutex_unlock(&test_fixture->lock);
+
+    /* Only send the PUBACK on the second attempt after a reconnect and restored session */
+    if (publish_view->duplicate) {
+        struct aws_mqtt5_packet_puback_view puback_view = {
+            .packet_id = publish_view->packet_id,
+        };
+        return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBACK, &puback_view);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_receive_stored_session_publish_completion_fn(
+    const struct aws_mqtt5_packet_puback_view *puback,
+    int error_code,
+    void *complete_ctx) {
+
+    (void)puback;
+    (void)error_code;
+
+    struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
+
+    aws_mutex_lock(&test_context->lock);
+
+    if (error_code == AWS_ERROR_SUCCESS && puback->reason_code < 128) {
+        ++test_context->successful_pubacks_received;
+    }
+
+    aws_mutex_unlock(&test_context->lock);
+    aws_condition_variable_notify_all(&test_context->signal);
+}
+
+static bool s_received_n_unacked_publishes(void *arg) {
+    struct aws_mqtt5_client_test_wait_for_n_context *context = arg;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = context->test_fixture;
+
+    return test_fixture->publishes_received >= context->required_event_count;
+}
+
+static void s_wait_for_n_unacked_publishes(struct aws_mqtt5_client_test_wait_for_n_context *context) {
+
+    struct aws_mqtt5_client_mock_test_fixture *test_context = context->test_fixture;
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_received_n_unacked_publishes, context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+static int mqtt5_client_restore_session_on_client_stop_fn(struct aws_allocator *allocator, void *ctx) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* Set to rejoin */
+    client_options.session_behavior = AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS;
+
+    /* mock server will not send PUBACKS on initial connect */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        s_aws_mqtt5_mock_server_handle_publish_no_puback_on_first_connect;
+    /* Simulate reconnecting to an existing connection */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_honor_session;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    for (size_t i = 0; i < TEST_PUBLISH_COUNT; ++i) {
+        struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_topic,
+                    .len = AWS_ARRAY_SIZE(s_topic) - 1,
+                },
+        };
+
+        struct aws_mqtt5_publish_completion_options completion_options = {
+            .completion_callback = s_receive_stored_session_publish_completion_fn,
+            .completion_user_data = &test_context,
+        };
+
+        ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &qos1_publish_view, &completion_options));
+    }
+
+    /* Wait for publishes to have gone out from client */
+    struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
+        .test_fixture = &test_context,
+        .required_event_count = TEST_PUBLISH_COUNT,
+    };
+    s_wait_for_n_unacked_publishes(&wait_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    s_wait_for_n_successful_publishes(&wait_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_restore_session_on_client_stop, mqtt5_client_restore_session_on_client_stop_fn);
+
+static int mqtt5_client_restore_session_on_ping_timeout_reconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* Set to rejoin */
+    client_options.session_behavior = AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS;
+    /* faster ping timeout */
+    client_options.ping_timeout_ms = 3000;
+    connect_options.keep_alive_interval_seconds = 5;
+
+    /* don't respond to PINGREQs */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PINGREQ] = NULL;
+    /* mock server will not send PUBACKS on initial connect */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        s_aws_mqtt5_mock_server_handle_publish_no_puback_on_first_connect;
+    /* Simulate reconnecting to an existing connection */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] = s_aws_mqtt5_mock_server_handle_connect_honor_session;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    for (size_t i = 0; i < TEST_PUBLISH_COUNT; ++i) {
+        struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_topic,
+                    .len = AWS_ARRAY_SIZE(s_topic) - 1,
+                },
+        };
+
+        struct aws_mqtt5_publish_completion_options completion_options = {
+            .completion_callback = s_receive_stored_session_publish_completion_fn,
+            .completion_user_data = &test_context,
+        };
+
+        ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &qos1_publish_view, &completion_options));
+    }
+
+    /* Wait for publishes to have gone out from client */
+    struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
+        .test_fixture = &test_context,
+        .required_event_count = TEST_PUBLISH_COUNT,
+    };
+    s_wait_for_n_unacked_publishes(&wait_context);
+
+    /* disconnect due to failed ping */
+    s_wait_for_disconnection_lifecycle_event(&test_context);
+
+    /* Reconnect from a disconnect automatically */
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    s_wait_for_n_successful_publishes(&wait_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CONNECTED,
+        AWS_MCS_CLEAN_DISCONNECT,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+        AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CONNECTED,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+        AWS_MCS_STOPPED,
+    };
+
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_restore_session_on_ping_timeout_reconnect,
+    mqtt5_client_restore_session_on_ping_timeout_reconnect_fn);
+
+/* If the server returns a Clean Session, client must discard any existing Session and start a new Session */
+static int mqtt5_client_discard_session_on_server_clean_start_fn(struct aws_allocator *allocator, void *ctx) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    /* Set to rejoin */
+    client_options.session_behavior = AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS;
+
+    /* mock server will not send PUBACKS on initial connect */
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        s_aws_mqtt5_mock_server_handle_publish_no_puback_on_first_connect;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    for (size_t i = 0; i < TEST_PUBLISH_COUNT; ++i) {
+        struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_topic,
+                    .len = AWS_ARRAY_SIZE(s_topic) - 1,
+                },
+        };
+
+        struct aws_mqtt5_publish_completion_options completion_options = {
+            .completion_callback = s_receive_stored_session_publish_completion_fn,
+            .completion_user_data = &test_context,
+        };
+
+        ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &qos1_publish_view, &completion_options));
+    }
+
+    /* Wait for QoS1 publishes to have gone out from client */
+    struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
+        .test_fixture = &test_context,
+        .required_event_count = TEST_PUBLISH_COUNT,
+    };
+    s_wait_for_n_unacked_publishes(&wait_context);
+
+    /* Disconnect with unacked publishes */
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    /* Reconnect with a Client Stored Session */
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    /* Provide time for Client to process any queued operations */
+    aws_thread_current_sleep(1000000000);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    /* Check that no publishes were resent after the initial batch on first connect */
+    ASSERT_INT_EQUALS(test_context.publishes_received, TEST_PUBLISH_COUNT);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_discard_session_on_server_clean_start,
+    mqtt5_client_discard_session_on_server_clean_start_fn);
+
 static int s_verify_zero_statistics(struct aws_mqtt5_client_operation_statistics *stats) {
     ASSERT_INT_EQUALS(stats->incomplete_operation_size, 0);
     ASSERT_INT_EQUALS(stats->incomplete_operation_count, 0);
@@ -4154,3 +4501,148 @@ static int s_mqtt5_client_statistics_publish_qos1_requeue_fn(struct aws_allocato
 }
 
 AWS_TEST_CASE(mqtt5_client_statistics_publish_qos1_requeue, s_mqtt5_client_statistics_publish_qos1_requeue_fn)
+
+#define PUBACK_ORDERING_PUBLISH_COUNT 5
+
+static int s_aws_mqtt5_server_send_multiple_publishes(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    /* in order: send PUBLISH packet ids 1, 2, 3, 4, 5 */
+    for (size_t i = 0; i < PUBACK_ORDERING_PUBLISH_COUNT; ++i) {
+        struct aws_mqtt5_packet_publish_view publish_view = {
+            .packet_id = (uint16_t)i + 1,
+            .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+            .topic =
+                {
+                    .ptr = s_sub_pub_unsub_publish_topic,
+                    .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_topic) - 1,
+                },
+            .payload =
+                {
+                    .ptr = s_sub_pub_unsub_publish_payload,
+                    .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_payload) - 1,
+                },
+        };
+
+        if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static bool s_server_received_all_pubacks(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+
+    size_t pubacks_received = 0;
+    size_t packet_count = aws_array_list_length(&test_fixture->server_received_packets);
+    for (size_t i = 0; i < packet_count; ++i) {
+        struct aws_mqtt5_mock_server_packet_record *packet = NULL;
+        aws_array_list_get_at_ptr(&test_fixture->server_received_packets, (void **)&packet, i);
+        if (packet->packet_type == AWS_MQTT5_PT_PUBACK) {
+            ++pubacks_received;
+        }
+    }
+
+    return pubacks_received == PUBACK_ORDERING_PUBLISH_COUNT;
+}
+
+static void s_wait_for_mock_server_pubacks(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(
+        &test_context->signal, &test_context->lock, s_server_received_all_pubacks, test_context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
+static int s_verify_mock_puback_order(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+
+    aws_mutex_lock(&test_context->lock);
+
+    uint16_t expected_packet_id = 1;
+    size_t packet_count = aws_array_list_length(&test_context->server_received_packets);
+
+    /* in order: received PUBACK packet ids 1, 2, 3, 4, 5 */
+    for (size_t i = 0; i < packet_count; ++i) {
+        struct aws_mqtt5_mock_server_packet_record *packet = NULL;
+        aws_array_list_get_at_ptr(&test_context->server_received_packets, (void **)&packet, i);
+        if (packet->packet_type == AWS_MQTT5_PT_PUBACK) {
+            struct aws_mqtt5_packet_puback_view *puback_view =
+                &((struct aws_mqtt5_packet_puback_storage *)(packet->packet_storage))->storage_view;
+            ASSERT_INT_EQUALS(expected_packet_id, puback_view->packet_id);
+            ++expected_packet_id;
+        }
+    }
+
+    ASSERT_INT_EQUALS(PUBACK_ORDERING_PUBLISH_COUNT + 1, expected_packet_id);
+
+    aws_mutex_unlock(&test_context->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_puback_ordering_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_server_send_multiple_publishes;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    struct aws_mqtt5_sub_pub_unsub_context full_test_context = {
+        .test_fixture = &test_context,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &full_test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .topic =
+            {
+                .ptr = s_sub_pub_unsub_publish_topic,
+                .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_topic) - 1,
+            },
+        .payload =
+            {
+                .ptr = s_sub_pub_unsub_publish_payload,
+                .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_payload) - 1,
+            },
+    };
+
+    aws_mqtt5_client_publish(client, &publish_view, NULL);
+
+    s_wait_for_mock_server_pubacks(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(s_verify_mock_puback_order(&test_context));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_puback_ordering, s_mqtt5_client_puback_ordering_fn)

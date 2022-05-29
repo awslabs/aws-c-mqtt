@@ -577,6 +577,14 @@ AWS_MQTT_API void aws_mqtt5_client_statistics_change_operation_statistic_state(
     struct aws_mqtt5_operation *operation,
     enum aws_mqtt5_operation_statistic_state_flags new_state_flags);
 
+/**
+ * Converts a client state type to a readable description.
+ *
+ * @param state client state
+ * @return short string describing the client state
+ */
+AWS_MQTT_API const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_client_state state);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT5_CLIENT_IMPL_H */

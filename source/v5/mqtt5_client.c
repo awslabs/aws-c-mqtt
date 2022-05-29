@@ -22,7 +22,7 @@
 #define AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH 4096
 #define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
 
-static const char *s_aws_mqtt5_client_state_to_c_str(enum aws_mqtt5_client_state state) {
+const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_client_state state) {
     switch (state) {
         case AWS_MCS_STOPPED:
             return "STOPPED";
@@ -513,13 +513,14 @@ static void s_aws_mqtt5_client_operational_state_reset(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     int completion_error_code,
     bool is_final) {
+
     struct aws_mqtt5_client *client = client_operational_state->client;
 
     s_complete_operation_list(client, &client_operational_state->queued_operations, completion_error_code);
     s_complete_operation_list(client, &client_operational_state->write_completion_operations, completion_error_code);
-    s_complete_operation_list(client, &client_operational_state->unacked_operations, completion_error_code);
 
     if (is_final) {
+        s_complete_operation_list(client, &client_operational_state->unacked_operations, completion_error_code);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
     } else {
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
@@ -550,7 +551,7 @@ static void s_aws_mqtt5_client_shutdown_channel(struct aws_mqtt5_client *client,
             "id=%p: client channel shutdown invoked from unexpected state %d(%s)",
             (void *)client,
             (int)client->current_state,
-            s_aws_mqtt5_client_state_to_c_str(client->current_state));
+            aws_mqtt5_client_state_to_c_string(client->current_state));
         return;
     }
 
@@ -1233,8 +1234,8 @@ static void s_change_current_state(struct aws_mqtt5_client *client, enum aws_mqt
         AWS_LS_MQTT5_CLIENT,
         "id=%p: switching current state from %s to %s",
         (void *)client,
-        s_aws_mqtt5_client_state_to_c_str(client->current_state),
-        s_aws_mqtt5_client_state_to_c_str(next_state));
+        aws_mqtt5_client_state_to_c_string(client->current_state),
+        aws_mqtt5_client_state_to_c_string(next_state));
 
     if (client->vtable->on_client_state_change_callback_fn != NULL) {
         (*client->vtable->on_client_state_change_callback_fn)(
@@ -1323,7 +1324,7 @@ static int s_aws_mqtt5_client_queue_ping(struct aws_mqtt5_client *client) {
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: queuing PINGREQ", (void *)client);
 
     struct aws_mqtt5_operation_pingreq *pingreq_op = aws_mqtt5_operation_pingreq_new(client->allocator);
-    s_enqueue_operation_back(client, &pingreq_op->base);
+    s_enqueue_operation_front(client, &pingreq_op->base);
 
     return AWS_OP_SUCCESS;
 }
@@ -1657,6 +1658,39 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
     }
 }
 
+typedef bool(aws_linked_list_node_predicate_fn)(struct aws_linked_list_node *);
+
+/*
+ * This predicate finds the first (if any) operation in the queue that is not a PUBACK or a PINGREQ.
+ */
+static bool s_is_ping_or_puback(struct aws_linked_list_node *operation_node) {
+    struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(operation_node, struct aws_mqtt5_operation, node);
+
+    return operation->packet_type == AWS_MQTT5_PT_PUBACK || operation->packet_type == AWS_MQTT5_PT_PINGREQ;
+}
+
+/*
+ * Helper function to insert a node (operation) into a list (operation queue) in the correct spot.  Currently, this
+ * is only used to enqueue PUBACKs after existing PUBACKs and PINGREQs.  This ensure that PUBACKs go out in the order
+ * the corresponding PUBLISH was received, regardless of whether or not there was an intervening service call.
+ */
+static void s_insert_node_before_predicate_failure(
+    struct aws_linked_list *list,
+    struct aws_linked_list_node *node,
+    aws_linked_list_node_predicate_fn predicate) {
+    struct aws_linked_list_node *current_node = NULL;
+    for (current_node = aws_linked_list_begin(list); current_node != aws_linked_list_end(list);
+         current_node = aws_linked_list_next(current_node)) {
+        if (!predicate(current_node)) {
+            break;
+        }
+    }
+
+    AWS_FATAL_ASSERT(current_node != NULL);
+
+    aws_linked_list_insert_before(current_node, node);
+}
+
 static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint16_t packet_id) {
     AWS_PRECONDITION(client != NULL);
 
@@ -1671,7 +1705,21 @@ static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint
         return AWS_OP_ERR;
     }
 
-    s_enqueue_operation_front(client, &puback_op->base);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: enqueuing PUBACK operation to first position in queue that is not a PUBACK or PINGREQ",
+        (void *)client);
+
+    /*
+     * Put the PUBACK ahead of all user-submitted operations (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT), but behind
+     * all pre-existing "internal" operations (PINGREQ, PUBACK).
+     *
+     * Qos 2 support will need to extend the predicate to include Qos 2 publish packets.
+     */
+    s_insert_node_before_predicate_failure(
+        &client->operational_state.queued_operations, &puback_op->base.node, s_is_ping_or_puback);
+
+    s_reevaluate_service_task(client);
 
     return AWS_OP_SUCCESS;
 }
@@ -1946,8 +1994,8 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
             AWS_LS_MQTT5_CLIENT,
             "id=%p: changing desired client state from %s to %s",
             (void *)client,
-            s_aws_mqtt5_client_state_to_c_str(client->desired_state),
-            s_aws_mqtt5_client_state_to_c_str(desired_state));
+            aws_mqtt5_client_state_to_c_string(client->desired_state),
+            aws_mqtt5_client_state_to_c_string(desired_state));
 
         client->desired_state = desired_state;
 
@@ -2017,7 +2065,7 @@ static int s_aws_mqtt5_client_change_desired_state(
             "id=%p: invalid desired state argument %d(%s)",
             (void *)client,
             (int)desired_state,
-            s_aws_mqtt5_client_state_to_c_str(desired_state));
+            aws_mqtt5_client_state_to_c_string(desired_state));
 
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
