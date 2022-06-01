@@ -33,7 +33,7 @@ command_parser.add_argument("--s3_bucket_application", type=str, required=True,
     help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
 command_parser.add_argument("--s3_bucket_application_in_zip", type=str, required=False, default="",
     help="(OPTIONAL, default="") The file path in the zip folder where the application is stored. Will be ignored if set to empty string")
-command_parser.add_argument("--lambda_name", type=str, default="CanarySendEmailLambda",
+command_parser.add_argument("--lambda_name", type=str, default="iot-send-email-lambda",
     help="(OPTIONAL, default='CanarySendEmailLambda') The name of the Lambda used to send emails")
 command_parser_arguments = command_parser.parse_args()
 

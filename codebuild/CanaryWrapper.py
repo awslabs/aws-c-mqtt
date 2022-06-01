@@ -43,7 +43,7 @@ command_parser.add_argument("--ticket_group", type=str, default="AWS IoT Device 
 command_parser.add_argument("--dependencies", type=str, default="",
     help="(OPTIONAL, default='') Any dependencies and their commit hashes. \
         Current expected format is '(name or path);(hash);(next name or path);(hash);(etc...)'.")
-command_parser.add_argument("--lambda_name", type=str, default="CanarySendEmailLambda",
+command_parser.add_argument("--lambda_name", type=str, default="iot-send-email-lambda",
     help="(OPTIONAL, default='CanarySendEmailLambda') The name of the Lambda used to send emails")
 command_parser_arguments = command_parser.parse_args()
 
