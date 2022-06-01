@@ -290,7 +290,7 @@ def application_thread():
     finished_email_body += "\n\nYou can find the log file for this run at the following S3 location: "
     finished_email_body += "https://s3.console.aws.amazon.com/s3/object/"
     finished_email_body += command_parser_arguments.s3_bucket_name
-    finished_email_body += "?region" + command_parser_arguments.cloudwatch_region
+    finished_email_body += "?region=" + command_parser_arguments.cloudwatch_region
     finished_email_body += "&prefix=" + command_parser_arguments.git_repo_name + "/"
     if (wrapper_error_occured == True):
         finished_email_body += "Failed_Logs/"

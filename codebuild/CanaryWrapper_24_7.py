@@ -145,6 +145,9 @@ data_snapshot.register_metric(
     new_metric_reports_to_skip=0,
     new_metric_alarm_severity=5)
 
+data_snapshot.register_dashboard_widget("Process CPU Usage - Percentage", ["total_cpu_usage"], 60)
+data_snapshot.register_dashboard_widget("Process Memory Usage - Percentage", ["total_memory_usage_percent"], 60)
+
 # Print diagnosis information
 data_snapshot.output_diagnosis_information("24/7 Canary cannot show dependencies!")
 
@@ -357,7 +360,7 @@ def application_thread():
     finished_email_body += "\n\nYou can find the log file for this run at the following S3 location: "
     finished_email_body += "https://s3.console.aws.amazon.com/s3/object/"
     finished_email_body += command_parser_arguments.s3_bucket_name
-    finished_email_body += "?region" + command_parser_arguments.cloudwatch_region
+    finished_email_body += "?region=us-east-1"
     finished_email_body += "&prefix=" + command_parser_arguments.git_repo_name + "/"
     if (wrapper_error_occured == True):
         finished_email_body += "Failed_Logs/"
