@@ -2492,6 +2492,18 @@ static int s_aws_mqtt5_validate_subscription(
         return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
     }
 
+    /* mqtt5 forbids no_local to be set to 1 if the topic filter represents a shared subscription */
+    if (subscription->no_local) {
+        if (aws_mqtt_is_topic_filter_shared_subscription(subscription->topic_filter)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_subscribe_view - no_local cannot be 1 if the topic filter is a shared"
+                "subscription",
+                log_context);
+            return aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
+        }
+    }
+
     return AWS_OP_SUCCESS;
 }
 

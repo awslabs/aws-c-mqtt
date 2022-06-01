@@ -382,3 +382,61 @@ bool aws_mqtt_is_valid_topic_for_iot_core(struct aws_byte_cursor topic_cursor) {
 
     return post_rule_suffix.len <= AWS_IOT_CORE_MAXIMUM_TOPIC_LENGTH;
 }
+
+static uint8_t s_shared_subscription_prefix[] = "$share";
+
+static bool s_is_not_hash_or_plus(uint8_t byte) {
+    return byte != '+' && byte != '#';
+}
+
+/* $share/{ShareName}/{filter} */
+bool aws_mqtt_is_topic_filter_shared_subscription(struct aws_byte_cursor topic_cursor) {
+
+    /* shared subscription filters must have an initial segment of "$share" */
+    struct aws_byte_cursor first_segment_cursor;
+    AWS_ZERO_STRUCT(first_segment_cursor);
+    if (!aws_byte_cursor_next_split(&topic_cursor, '/', &first_segment_cursor)) {
+        return false;
+    }
+
+    struct aws_byte_cursor share_prefix_cursor = {
+        .ptr = s_shared_subscription_prefix,
+        .len = AWS_ARRAY_SIZE(s_shared_subscription_prefix) - 1, /* skip null terminator */
+    };
+
+    if (!aws_byte_cursor_eq_ignore_case(&share_prefix_cursor, &first_segment_cursor)) {
+        return false;
+    }
+
+    /*
+     * The next segment must be non-empty and cannot include '#', '/', or '+'.  In this case we know it already
+     * does not include '/'
+     */
+    struct aws_byte_cursor second_segment_cursor = first_segment_cursor;
+    if (!aws_byte_cursor_next_split(&topic_cursor, '/', &second_segment_cursor)) {
+        return false;
+    }
+
+    if (second_segment_cursor.len == 0 ||
+        !aws_byte_cursor_satisfies_pred(&second_segment_cursor, s_is_not_hash_or_plus)) {
+        return false;
+    }
+
+    /*
+     * Everything afterwards must form a normal, valid topic filter.
+     */
+    struct aws_byte_cursor remaining_cursor = topic_cursor;
+    size_t remaining_length =
+        topic_cursor.ptr + topic_cursor.len - (second_segment_cursor.len + second_segment_cursor.ptr);
+    if (remaining_length == 0) {
+        return false;
+    }
+
+    aws_byte_cursor_advance(&remaining_cursor, topic_cursor.len - remaining_length + 1);
+
+    if (!aws_mqtt_is_valid_topic_filter(&remaining_cursor)) {
+        return false;
+    }
+
+    return true;
+}

@@ -86,3 +86,30 @@ static int s_mqtt5_topic_get_segment_count_fn(struct aws_allocator *allocator, v
 }
 
 AWS_TEST_CASE(mqtt5_topic_get_segment_count, s_mqtt5_topic_get_segment_count_fn)
+
+static int s_mqtt5_shared_subscription_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("oof")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$sha")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share//")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share//test")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m+/")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m#/")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m")));
+    ASSERT_FALSE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m/")));
+
+    ASSERT_TRUE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m/#")));
+    ASSERT_TRUE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m/great")));
+    ASSERT_TRUE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m/test/+")));
+    ASSERT_TRUE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m/+/test")));
+    ASSERT_TRUE(aws_mqtt_is_topic_filter_shared_subscription(aws_byte_cursor_from_c_str("$share/m/test/#")));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_shared_subscription_validation, s_mqtt5_shared_subscription_validation_fn)
