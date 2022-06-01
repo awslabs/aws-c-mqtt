@@ -108,7 +108,8 @@ class DataSnapshot():
                  cloudwatch_teardown_alarms_on_complete=True,
                  cloudwatch_teardown_dashboard_on_complete=True,
                  s3_bucket_name="canary-wrapper-bucket",
-                 s3_bucket_upload_on_complete=True):
+                 s3_bucket_upload_on_complete=True,
+                 lambda_name="CanarySendEmailLambda"):
 
         # Setting initial values
         # ==================
@@ -148,6 +149,9 @@ class DataSnapshot():
         self.output_to_file = False
         self.output_file = None
         self.output_to_console = output_to_console
+
+        self.lambda_client = None
+        self.lambda_name = lambda_name
         # ==================
 
         # Check for valid credentials
@@ -444,7 +448,7 @@ class DataSnapshot():
 
         try:
             self.lambda_client.invoke(
-                FunctionName="TestEmailLambda",
+                FunctionName=self.lambda_name,
                 InvocationType="Event",
                 ClientContext="MQTT Wrapper Script",
                 Payload=payload_string

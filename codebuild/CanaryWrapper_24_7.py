@@ -33,6 +33,8 @@ command_parser.add_argument("--s3_bucket_application", type=str, required=True,
     help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
 command_parser.add_argument("--s3_bucket_application_in_zip", type=str, required=False, default="",
     help="(OPTIONAL, default="") The file path in the zip folder where the application is stored. Will be ignored if set to empty string")
+command_parser.add_argument("--lambda_name", type=str, default="CanarySendEmailLambda",
+    help="(OPTIONAL, default='CanarySendEmailLambda') The name of the Lambda used to send emails")
 command_parser_arguments = command_parser.parse_args()
 
 # ================================================================================
@@ -114,7 +116,8 @@ data_snapshot = DataSnapshot(
     cloudwatch_teardown_alarms_on_complete=True,
     cloudwatch_teardown_dashboard_on_complete=False,
     s3_bucket_name=canary_s3_bucket_name,
-    s3_bucket_upload_on_complete=True)
+    s3_bucket_upload_on_complete=True,
+    lambda_name=command_parser_arguments.lambda_name)
 
 # Make sure nothing failed
 if (data_snapshot.abort_due_to_internal_error == True):

@@ -43,6 +43,8 @@ command_parser.add_argument("--ticket_group", type=str, default="AWS IoT Device 
 command_parser.add_argument("--dependencies", type=str, default="",
     help="(OPTIONAL, default='') Any dependencies and their commit hashes. \
         Current expected format is '(name or path);(hash);(next name or path);(hash);(etc...)'.")
+command_parser.add_argument("--lambda_name", type=str, default="CanarySendEmailLambda",
+    help="(OPTIONAL, default='CanarySendEmailLambda') The name of the Lambda used to send emails")
 command_parser_arguments = command_parser.parse_args()
 
 if (command_parser_arguments.output_log_filepath == "None"):
@@ -96,7 +98,8 @@ data_snapshot = DataSnapshot(
     cloudwatch_teardown_alarms_on_complete=True,
     cloudwatch_teardown_dashboard_on_complete=True,
     s3_bucket_name=command_parser_arguments.s3_bucket_name,
-    s3_bucket_upload_on_complete=True)
+    s3_bucket_upload_on_complete=True,
+    lambda_name=command_parser_arguments.lambda_name)
 
 # Make sure nothing failed
 if (data_snapshot.abort_due_to_internal_error == True):
