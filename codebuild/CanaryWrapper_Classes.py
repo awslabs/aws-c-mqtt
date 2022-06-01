@@ -208,6 +208,19 @@ class DataSnapshot():
             return
         # ==================
 
+        # Lambda related stuff
+        # ==================
+        try:
+            self.lambda_client = boto3.client("lambda", self.cloudwatch_region)
+        except Exception as e:
+            self.print_message("ERROR - could not make Lambda client due to exception!")
+            self.print_message("Exception: " + str(e))
+            self.lambda_client = None
+            self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "Could not make Lambda client!"
+            return
+        # ==================
+
         # File output (logs) related stuff
         # ==================
         if (not output_log_filepath is None):
@@ -252,6 +265,9 @@ class DataSnapshot():
     # Utility function - adds the Cloudwatch Dashboard for the currently running data snapshot
     def _init_cloudwatch_pre_first_run_dashboard(self):
         try:
+            # Remove the old dashboard if it exists before adding a new one
+            self._cleanup_cloudwatch_dashboard()
+
             new_dashboard_widgets_array = []
             for widget in self.cloudwatch_dashboard_widgets:
                 new_dashboard_widgets_array.append(widget.get_widget_dictionary())
@@ -417,6 +433,28 @@ class DataSnapshot():
 
         # Delete the file when finished
         os.remove(self.git_hash + ".log")
+
+    # Sends an email via a special lambda. The payload has to contain a message and a subject
+    # * (REQUIRED) message is the message you want to send in the body of the email
+    # * (REQUIRED) subject is the subject that the email will be sent with
+    def lambda_send_email(self, message, subject):
+
+        payload = {"Message":message, "Subject":subject}
+        payload_string = json.dumps(payload)
+
+        try:
+            self.lambda_client.invoke(
+                FunctionName="TestEmailLambda",
+                InvocationType="Event",
+                ClientContext="MQTT Wrapper Script",
+                Payload=payload_string
+            )
+        except Exception as e:
+            self.print_message("ERROR - could not send email via Lambda due to exception!")
+            self.print_message("Exception: " + str(e))
+            self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = "Lambda email function had an exception!"
+            return
 
     # Registers a metric to be polled by the Snapshot.
     # * (REQUIRED) new_metric_name is the name of the metric. Cloudwatch will use this name
@@ -755,6 +793,13 @@ class SnapshotMonitor():
         self.metric_post_timer -= time_passed
 
 
+    def send_email(self, email_body, email_subject_text_append=None):
+        if (email_subject_text_append != None):
+            self.data_snapshot.lambda_send_email(email_body, "Canary: " + self.data_snapshot.git_repo_name + ":" + self.data_snapshot.git_hash + " - " + email_subject_text_append)
+        else:
+            self.data_snapshot.lambda_send_email(email_body, "Canary: " + self.data_snapshot.git_repo_name + ":" + self.data_snapshot.git_hash)
+
+
     def stop_monitoring(self):
         # Stub - just added for consistency
         pass
@@ -1036,9 +1081,6 @@ def cut_ticket_using_cloudwatch(
     git_hash_as_namespace=False,
     git_fixed_namespace_text="mqtt5_canary",
     cloudwatch_region="us-east-1"):
-
-    # DISABLE FOR NOW
-    return
 
     git_metric_namespace = ""
     if (git_hash_as_namespace == False):
