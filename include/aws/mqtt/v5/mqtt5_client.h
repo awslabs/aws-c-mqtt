@@ -255,19 +255,64 @@ struct aws_mqtt5_disconnect_completion_options {
  * Mqtt behavior settings that are dynamically negotiated as part of the CONNECT/CONNACK exchange.
  */
 struct aws_mqtt5_negotiated_settings {
+    /**
+     * The maximum QoS used between the server and client.
+     */
     enum aws_mqtt5_qos maximum_qos;
 
+    /**
+     * the amount of time in seconds the server will retain the session after a disconnect.
+     */
     uint32_t session_expiry_interval;
+
+    /**
+     * the number of QoS 1 and QoS2 publications the server is willing to process concurrently.
+     */
     uint16_t receive_maximum_from_server;
+
+    /**
+     * the maximum packet size the server is willing to accept.
+     */
     uint32_t maximum_packet_size_to_server;
+
+    /**
+     * the highest value that the server will accept as a Topic Alias sent by the client.
+     */
     uint16_t topic_alias_maximum_to_server;
+
+    /**
+     * the highest value that the client will accept as a Topic Alias sent by the server.
+     */
     uint16_t topic_alias_maximum_to_client;
+
+    /**
+     * the amount of time in seconds before the server will disconnect the client for inactivity.
+     */
     uint16_t server_keep_alive;
 
+    /**
+     * whether the server supports retained messages.
+     */
     bool retain_available;
+
+    /**
+     * whether the server supports wildcard subscriptions.
+     */
     bool wildcard_subscriptions_available;
+
+    /**
+     * whether the server supports subscription identifiers
+     */
     bool subscription_identifiers_available;
+
+    /**
+     * whether the server supports shared subscriptions
+     */
     bool shared_subscriptions_available;
+
+    /**
+     * whether the client has rejoined an existing session.
+     */
     bool rejoined_session;
 
     struct aws_byte_buf client_id_storage;
