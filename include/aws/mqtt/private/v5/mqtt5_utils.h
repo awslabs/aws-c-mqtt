@@ -285,6 +285,11 @@ AWS_MQTT_API bool aws_mqtt_is_valid_topic_filter_for_iot_core(struct aws_byte_cu
  */
 AWS_MQTT_API bool aws_mqtt_is_valid_topic_for_iot_core(struct aws_byte_cursor topic_cursor);
 
+/**
+ * Checks if a topic filter matches a shared subscription according to the mqtt5 spec
+ * @param topic_cursor topic to check
+ * @return true if this matches the definition of a shared subscription, false otherwise
+ */
 AWS_MQTT_API bool aws_mqtt_is_topic_filter_shared_subscription(struct aws_byte_cursor topic_cursor);
 
 AWS_EXTERN_C_END
