@@ -267,6 +267,42 @@ static int s_mqtt5_publish_operation_new_set_all_fn(struct aws_allocator *alloca
 
 AWS_TEST_CASE(mqtt5_publish_operation_new_set_all, s_mqtt5_publish_operation_new_set_all_fn)
 
+static int s_mqtt5_publish_operation_new_failure_packet_id_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt5_packet_publish_view publish_options = {
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .retain = true,
+        .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
+    };
+
+    struct aws_mqtt5_publish_completion_options completion_options = {
+        .completion_callback = &s_aws_mqtt5_publish_completion_fn,
+        .completion_user_data = (void *)0xFFFF,
+    };
+
+    struct aws_mqtt5_operation_publish *publish_op =
+        aws_mqtt5_operation_publish_new(allocator, NULL, &publish_options, &completion_options);
+    ASSERT_NOT_NULL(publish_op);
+    aws_mqtt5_operation_release(&publish_op->base);
+
+    publish_options.packet_id = 1,
+    publish_op = aws_mqtt5_operation_publish_new(allocator, NULL, &publish_options, &completion_options);
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION, aws_last_error());
+    ASSERT_NULL(publish_op);
+
+    aws_raise_error(AWS_ERROR_SUCCESS);
+
+    publish_options.qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;
+    publish_op = aws_mqtt5_operation_publish_new(allocator, NULL, &publish_options, &completion_options);
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION, aws_last_error());
+    ASSERT_NULL(publish_op);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_publish_operation_new_failure_packet_id, s_mqtt5_publish_operation_new_failure_packet_id_fn)
+
 static const char s_topic_filter1[] = "some/topic/+";
 static const char s_topic_filter2[] = "another/topic/*";
 

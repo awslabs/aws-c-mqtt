@@ -178,6 +178,13 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
         return;
     }
 
+    aws_mqtt5_client_termination_completion_fn *client_termination_handler = NULL;
+    void *client_termination_handler_user_data = NULL;
+    if (client->config != NULL) {
+        client_termination_handler = client->config->client_termination_handler;
+        client_termination_handler_user_data = client->config->client_termination_handler_user_data;
+    }
+
     aws_mqtt5_client_operational_state_clean_up(&client->operational_state);
 
     aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
@@ -192,6 +199,10 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
     aws_mutex_clean_up(&client->operation_statistics_lock);
 
     aws_mem_release(client->allocator, client);
+
+    if (client_termination_handler != NULL) {
+        (*client_termination_handler)(client_termination_handler_user_data);
+    }
 }
 
 static void s_on_mqtt5_client_zero_ref_count(void *user_data) {
@@ -1211,8 +1222,6 @@ static void s_update_reconnect_delay_for_pending_reconnect(struct aws_mqtt5_clie
 }
 
 static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client *client) {
-    AWS_ASSERT(client->current_state == AWS_MCS_CONNECTING || client->current_state == AWS_MCS_CHANNEL_SHUTDOWN);
-
     client->current_state = AWS_MCS_PENDING_RECONNECT;
 
     s_update_reconnect_delay_for_pending_reconnect(client);

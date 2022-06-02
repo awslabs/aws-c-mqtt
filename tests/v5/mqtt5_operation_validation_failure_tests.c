@@ -498,6 +498,29 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_subscribe_view,
     s_make_invalid_retain_type_subscribe_view)
 
+static uint8_t s_shared_topic[] = "$share/sharename/topic/filter";
+
+static struct aws_mqtt5_subscription_view s_invalid_no_local_subscription[] = {
+    {
+        .topic_filter =
+            {
+                .ptr = s_shared_topic,
+                .len = AWS_ARRAY_SIZE(s_shared_topic) - 1,
+            },
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .no_local = true,
+        .retain_handling_type = AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE,
+        .retain_as_published = false,
+    },
+};
+
+static void s_make_invalid_no_local_subscribe_view(struct aws_mqtt5_packet_subscribe_view *view) {
+    view->subscriptions = s_invalid_no_local_subscription;
+    view->subscription_count = AWS_ARRAY_SIZE(s_invalid_no_local_subscription);
+}
+
+AWS_VALIDATION_FAILURE_TEST3(subscribe, invalid_no_local, s_good_subscribe_view, s_make_invalid_no_local_subscribe_view)
+
 static uint8_t s_too_many_slashes_topic_filter[] = "///a///b///c/d/#";
 
 static struct aws_mqtt5_subscription_view s_invalid_topic_filter_for_iot_core_subscription[] = {

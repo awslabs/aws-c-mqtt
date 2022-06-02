@@ -225,31 +225,66 @@ static void s_aws_mqtt5_encode_decoder_tester_init_single_view(
     aws_mqtt5_decode_init_testing_function_table(&tester->decoder_function_table);
 }
 
+int s_check_packet_encoding_reserved_flags(struct aws_byte_buf *encoding, enum aws_mqtt5_packet_type packet_type) {
+    if (packet_type == AWS_MQTT5_PT_PUBLISH) {
+        return AWS_OP_SUCCESS;
+    }
+
+    uint8_t expected_reserved_flags_value = 0;
+    switch (packet_type) {
+        case AWS_MQTT5_PT_PUBREL:
+        case AWS_MQTT5_PT_SUBSCRIBE:
+        case AWS_MQTT5_PT_UNSUBSCRIBE:
+            expected_reserved_flags_value = 0x02;
+            break;
+
+        default:
+            break;
+    }
+
+    uint8_t first_byte = encoding->buffer[0];
+
+    uint8_t encoded_packet_type = (first_byte >> 4) & 0x0F;
+    ASSERT_INT_EQUALS(packet_type, encoded_packet_type);
+
+    uint8_t reserved_flags = first_byte & 0x0F;
+    ASSERT_INT_EQUALS(expected_reserved_flags_value, reserved_flags);
+
+    return AWS_OP_SUCCESS;
+}
+
+typedef int(aws_mqtt5_check_encoding_fn)(struct aws_byte_buf *encoding);
+
+struct aws_mqtt5_packet_round_trip_test_context {
+    struct aws_allocator *allocator;
+    enum aws_mqtt5_packet_type packet_type;
+    void *packet_view;
+    aws_mqtt5_on_packet_received_fn *decoder_callback;
+    aws_mqtt5_check_encoding_fn *encoding_checker;
+};
+
 static int s_aws_mqtt5_encode_decode_round_trip_test(
-    struct aws_allocator *allocator,
-    enum aws_mqtt5_packet_type packet_type,
-    void *packet_view,
-    aws_mqtt5_on_packet_received_fn *decoder_callback,
+    struct aws_mqtt5_packet_round_trip_test_context *context,
     size_t encode_fragment_size,
     size_t decode_fragment_size) {
     struct aws_byte_buf whole_dest;
-    aws_byte_buf_init(&whole_dest, allocator, 4096);
+    aws_byte_buf_init(&whole_dest, context->allocator, 4096);
 
     struct aws_mqtt5_encode_decode_tester tester;
-    s_aws_mqtt5_encode_decoder_tester_init_single_view(&tester, packet_view);
+    s_aws_mqtt5_encode_decoder_tester_init_single_view(&tester, context->packet_view);
 
     struct aws_mqtt5_encoder_options encoder_options = {
         .encoders = &tester.encoder_function_table,
     };
 
     struct aws_mqtt5_encoder encoder;
-    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, &encoder_options));
-    ASSERT_SUCCESS(aws_mqtt5_encoder_append_packet_encoding(&encoder, packet_type, packet_view));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, context->allocator, &encoder_options));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_append_packet_encoding(&encoder, context->packet_type, context->packet_view));
 
     enum aws_mqtt5_encoding_result result = AWS_MQTT5_ER_OUT_OF_ROOM;
     while (result == AWS_MQTT5_ER_OUT_OF_ROOM) {
         struct aws_byte_buf fragment_dest;
-        aws_byte_buf_init(&fragment_dest, allocator, encode_fragment_size);
+        aws_byte_buf_init(&fragment_dest, context->allocator, encode_fragment_size);
 
         result = aws_mqtt5_encoder_encode_to_buffer(&encoder, &fragment_dest);
         ASSERT_TRUE(result != AWS_MQTT5_ER_ERROR);
@@ -265,20 +300,22 @@ static int s_aws_mqtt5_encode_decode_round_trip_test(
      * calculation matches the length we encoded
      */
     size_t expected_packet_size = 0;
-    if (!aws_mqtt5_packet_view_get_encoded_size(packet_type, packet_view, &expected_packet_size)) {
+    if (!aws_mqtt5_packet_view_get_encoded_size(context->packet_type, context->packet_view, &expected_packet_size)) {
         ASSERT_INT_EQUALS(whole_dest.len, expected_packet_size);
     }
+
+    ASSERT_SUCCESS(s_check_packet_encoding_reserved_flags(&whole_dest, context->packet_type));
 
     ASSERT_INT_EQUALS(AWS_MQTT5_ER_FINISHED, result);
 
     struct aws_mqtt5_decoder_options decoder_options = {
-        .on_packet_received = decoder_callback,
+        .on_packet_received = context->decoder_callback,
         .callback_user_data = &tester,
         .decoder_table = &tester.decoder_function_table,
     };
 
     struct aws_mqtt5_decoder decoder;
-    ASSERT_SUCCESS(aws_mqtt5_decoder_init(&decoder, allocator, &decoder_options));
+    ASSERT_SUCCESS(aws_mqtt5_decoder_init(&decoder, context->allocator, &decoder_options));
 
     struct aws_byte_cursor whole_cursor = aws_byte_cursor_from_buf(&whole_dest);
     while (whole_cursor.len > 0) {
@@ -300,18 +337,14 @@ static int s_aws_mqtt5_encode_decode_round_trip_test(
 static size_t s_encode_fragment_sizes[] = {4, 5, 7, 65536};
 static size_t s_decode_fragment_sizes[] = {1, 2, 3, 11, 65536};
 
-static int s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-    struct aws_allocator *allocator,
-    enum aws_mqtt5_packet_type packet_type,
-    void *packet_view,
-    aws_mqtt5_on_packet_received_fn *decoder_callback) {
+static int s_aws_mqtt5_encode_decode_round_trip_matrix_test(struct aws_mqtt5_packet_round_trip_test_context *context) {
     for (size_t i = 0; i < AWS_ARRAY_SIZE(s_encode_fragment_sizes); ++i) {
         size_t encode_fragment_size = s_encode_fragment_sizes[i];
         for (size_t j = 0; j < AWS_ARRAY_SIZE(s_decode_fragment_sizes); ++j) {
             size_t decode_fragment_size = s_decode_fragment_sizes[j];
 
-            ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_test(
-                allocator, packet_type, packet_view, decoder_callback, encode_fragment_size, decode_fragment_size));
+            ASSERT_SUCCESS(
+                s_aws_mqtt5_encode_decode_round_trip_test(context, encode_fragment_size, decode_fragment_size));
         }
     }
 
@@ -366,8 +399,13 @@ static int s_mqtt5_packet_disconnect_round_trip_fn(struct aws_allocator *allocat
         .server_reference = &server_reference_cursor,
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_DISCONNECT, &disconnect_view, s_aws_mqtt5_on_disconnect_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_DISCONNECT,
+        .packet_view = &disconnect_view,
+        .decoder_callback = s_aws_mqtt5_on_disconnect_received_fn,
+    };
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -388,8 +426,13 @@ static int s_aws_mqtt5_on_pingreq_received_fn(enum aws_mqtt5_packet_type type, v
 static int s_mqtt5_packet_pingreq_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_PINGREQ, NULL, s_aws_mqtt5_on_pingreq_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_PINGREQ,
+        .packet_view = NULL,
+        .decoder_callback = s_aws_mqtt5_on_pingreq_received_fn,
+    };
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -410,8 +453,14 @@ static int s_aws_mqtt5_on_pingresp_received_fn(enum aws_mqtt5_packet_type type, 
 static int s_mqtt5_packet_pingresp_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_PINGRESP, NULL, s_aws_mqtt5_on_pingresp_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_PINGRESP,
+        .packet_view = NULL,
+        .decoder_callback = s_aws_mqtt5_on_pingresp_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -512,6 +561,28 @@ static int s_aws_mqtt5_on_connect_received_fn(enum aws_mqtt5_packet_type type, v
     return AWS_OP_SUCCESS;
 }
 
+static int s_mqtt5_packet_encode_connect_to_buffer(
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_packet_connect_view *connect_view,
+    struct aws_byte_buf *buffer) {
+    AWS_ZERO_STRUCT(*buffer);
+    aws_byte_buf_init(buffer, allocator, 4096);
+
+    struct aws_mqtt5_encoder_options encoder_options;
+    AWS_ZERO_STRUCT(encoder_options);
+
+    struct aws_mqtt5_encoder encoder;
+    ASSERT_SUCCESS(aws_mqtt5_encoder_init(&encoder, allocator, &encoder_options));
+    ASSERT_SUCCESS(aws_mqtt5_encoder_append_packet_encoding(&encoder, AWS_MQTT5_PT_CONNECT, connect_view));
+
+    enum aws_mqtt5_encoding_result result = aws_mqtt5_encoder_encode_to_buffer(&encoder, buffer);
+    ASSERT_INT_EQUALS(AWS_MQTT5_ER_FINISHED, result);
+
+    aws_mqtt5_encoder_clean_up(&encoder);
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_mqtt5_packet_connect_round_trip_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -567,8 +638,32 @@ static int s_mqtt5_packet_connect_round_trip_fn(struct aws_allocator *allocator,
         .authentication_data = &authentication_data,
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_CONNECT, &connect_view, s_aws_mqtt5_on_connect_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_CONNECT,
+        .packet_view = &connect_view,
+        .decoder_callback = s_aws_mqtt5_on_connect_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
+
+    struct aws_byte_buf encoding_buffer;
+    ASSERT_SUCCESS(s_mqtt5_packet_encode_connect_to_buffer(allocator, &connect_view, &encoding_buffer));
+
+    /*
+     * For this packet: 1 byte packet type + flags, 2 bytes vli remaining length + 7 bytes protocol prefix
+     * (0x00, 0x04, "MQTT", 0x05), then we're at the CONNECT flags which we want to check
+     */
+    size_t connect_flags_byte_index = 10;
+    uint8_t connect_flags = encoding_buffer.buffer[connect_flags_byte_index];
+
+    /*
+     * Verify Will flag (0x04), Will QoS (0x08), Will Retain (0x20), Username (0x80),
+     * clean start (0x02), password (0x40) flags are set
+     */
+    ASSERT_INT_EQUALS(connect_flags, 0xEE);
+
+    aws_byte_buf_clean_up(&encoding_buffer);
 
     return AWS_OP_SUCCESS;
 }
@@ -684,8 +779,14 @@ static int s_mqtt5_packet_connack_round_trip_fn(struct aws_allocator *allocator,
         .authentication_data = &authentication_data,
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_CONNACK, &connack_view, s_aws_mqtt5_on_connack_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_CONNACK,
+        .packet_view = &connack_view,
+        .decoder_callback = s_aws_mqtt5_on_connack_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -793,8 +894,14 @@ static int s_mqtt5_packet_subscribe_round_trip_fn(struct aws_allocator *allocato
         .user_properties = &s_user_properties[0],
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_SUBSCRIBE, &subscribe_view, s_aws_mqtt5_on_subscribe_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_SUBSCRIBE,
+        .packet_view = &subscribe_view,
+        .decoder_callback = s_aws_mqtt5_on_subscribe_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -855,8 +962,14 @@ static int s_mqtt5_packet_suback_round_trip_fn(struct aws_allocator *allocator, 
         .reason_codes = &reason_codes[0],
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_SUBACK, &suback_view, s_aws_mqtt5_on_suback_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_SUBACK,
+        .packet_view = &suback_view,
+        .decoder_callback = s_aws_mqtt5_on_suback_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -924,8 +1037,14 @@ static int s_mqtt5_packet_unsubscribe_round_trip_fn(struct aws_allocator *alloca
         .user_properties = &s_user_properties[0],
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_UNSUBSCRIBE, &unsubscribe_view, s_aws_mqtt5_on_unsubscribe_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_UNSUBSCRIBE,
+        .packet_view = &unsubscribe_view,
+        .decoder_callback = s_aws_mqtt5_on_unsubscribe_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -986,8 +1105,14 @@ static int s_mqtt5_packet_unsuback_round_trip_fn(struct aws_allocator *allocator
         .reason_codes = &reason_codes[0],
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_UNSUBACK, &unsuback_view, s_aws_mqtt5_on_unsuback_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_UNSUBACK,
+        .packet_view = &unsuback_view,
+        .decoder_callback = s_aws_mqtt5_on_unsuback_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -1090,8 +1215,14 @@ static int s_mqtt5_packet_publish_round_trip_fn(struct aws_allocator *allocator,
         .user_properties = &s_user_properties[0],
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_PUBLISH, &publish_view, s_aws_mqtt5_on_publish_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_PUBLISH,
+        .packet_view = &publish_view,
+        .decoder_callback = s_aws_mqtt5_on_publish_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
@@ -1143,13 +1274,389 @@ static int s_mqtt5_packet_puback_round_trip_fn(struct aws_allocator *allocator, 
         .user_properties = &s_user_properties[0],
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(
-        allocator, AWS_MQTT5_PT_PUBACK, &puback_view, s_aws_mqtt5_on_puback_received_fn));
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_PUBACK,
+        .packet_view = &puback_view,
+        .decoder_callback = s_aws_mqtt5_on_puback_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(mqtt5_packet_puback_round_trip, s_mqtt5_packet_puback_round_trip_fn)
+
+static int s_aws_mqtt5_on_no_will_connect_received_fn(
+    enum aws_mqtt5_packet_type type,
+    void *packet_view,
+    void *user_data) {
+    struct aws_mqtt5_encode_decode_tester *tester = user_data;
+
+    ++tester->view_count;
+
+    ASSERT_INT_EQUALS((uint32_t)AWS_MQTT5_PT_CONNECT, (uint32_t)type);
+
+    struct aws_mqtt5_packet_connect_view *connect_view = packet_view;
+    struct aws_mqtt5_packet_connect_view *expected_view = tester->expected_views;
+
+    ASSERT_INT_EQUALS(expected_view->keep_alive_interval_seconds, connect_view->keep_alive_interval_seconds);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->client_id.ptr,
+        expected_view->client_id.len,
+        connect_view->client_id.ptr,
+        connect_view->client_id.len);
+
+    if (expected_view->username != NULL) {
+        ASSERT_BIN_ARRAYS_EQUALS(
+            expected_view->username->ptr,
+            expected_view->username->len,
+            connect_view->username->ptr,
+            connect_view->username->len);
+    } else {
+        ASSERT_NULL(connect_view->username);
+    }
+
+    if (expected_view->password != NULL) {
+        ASSERT_BIN_ARRAYS_EQUALS(
+            expected_view->password->ptr,
+            expected_view->password->len,
+            connect_view->password->ptr,
+            connect_view->password->len);
+    } else {
+        ASSERT_NULL(connect_view->password);
+    }
+
+    ASSERT_TRUE(expected_view->clean_start == connect_view->clean_start);
+    ASSERT_INT_EQUALS(*expected_view->session_expiry_interval_seconds, *connect_view->session_expiry_interval_seconds);
+
+    ASSERT_INT_EQUALS(*expected_view->request_response_information, *connect_view->request_response_information);
+    ASSERT_INT_EQUALS(*expected_view->request_problem_information, *connect_view->request_problem_information);
+    ASSERT_INT_EQUALS(*expected_view->receive_maximum, *connect_view->receive_maximum);
+    ASSERT_INT_EQUALS(*expected_view->topic_alias_maximum, *connect_view->topic_alias_maximum);
+    ASSERT_INT_EQUALS(*expected_view->maximum_packet_size_bytes, *connect_view->maximum_packet_size_bytes);
+
+    ASSERT_NULL(connect_view->will_delay_interval_seconds);
+
+    ASSERT_NULL(connect_view->will);
+
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        expected_view->user_property_count,
+        expected_view->user_properties,
+        connect_view->user_property_count,
+        connect_view->user_properties));
+
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->authentication_method->ptr,
+        expected_view->authentication_method->len,
+        connect_view->authentication_method->ptr,
+        connect_view->authentication_method->len);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_view->authentication_data->ptr,
+        expected_view->authentication_data->len,
+        connect_view->authentication_data->ptr,
+        connect_view->authentication_data->len);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_packet_encode_connect_no_will_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str(s_username);
+    struct aws_byte_cursor password = aws_byte_cursor_from_c_str(s_password);
+    uint32_t session_expiry_interval_seconds = 3600;
+    uint8_t request_response_information = 1;
+    uint8_t request_problem_information = 1;
+    uint16_t receive_maximum = 50;
+    uint16_t topic_alias_maximum = 16;
+    uint32_t maximum_packet_size_bytes = 1ULL << 24;
+    uint32_t will_delay_interval_seconds = 30;
+    struct aws_byte_cursor authentication_method = aws_byte_cursor_from_c_str("AuthMethod");
+    struct aws_byte_cursor authentication_data = aws_byte_cursor_from_c_str("SuperSecret");
+
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 1200,
+        .client_id = aws_byte_cursor_from_c_str(s_client_id),
+        .username = &username,
+        .password = &password,
+        .clean_start = true,
+        .session_expiry_interval_seconds = &session_expiry_interval_seconds,
+        .request_response_information = &request_response_information,
+        .request_problem_information = &request_problem_information,
+        .receive_maximum = &receive_maximum,
+        .topic_alias_maximum = &topic_alias_maximum,
+        .maximum_packet_size_bytes = &maximum_packet_size_bytes,
+        .will_delay_interval_seconds = &will_delay_interval_seconds,
+        .will = NULL,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+        .authentication_method = &authentication_method,
+        .authentication_data = &authentication_data,
+    };
+
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_CONNECT,
+        .packet_view = &connect_view,
+        .decoder_callback = s_aws_mqtt5_on_no_will_connect_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
+
+    struct aws_byte_buf encoding_buffer;
+    ASSERT_SUCCESS(s_mqtt5_packet_encode_connect_to_buffer(allocator, &connect_view, &encoding_buffer));
+
+    /*
+     * For this packet: 1 byte packet type + flags, 2 bytes vli remaining length + 7 bytes protocol prefix
+     * (0x00, 0x04, "MQTT", 0x05), then we're at the CONNECT flags which we want to check
+     */
+    size_t connect_flags_byte_index = 10;
+    uint8_t connect_flags = encoding_buffer.buffer[connect_flags_byte_index];
+
+    /*
+     * Verify Will flag, Will QoS, Will Retain are all zero,
+     * while clean start (0x02), password (0x40) and username (0x80) flags are set
+     */
+    ASSERT_INT_EQUALS(connect_flags, 0xC2);
+
+    aws_byte_buf_clean_up(&encoding_buffer);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_packet_encode_connect_no_will, s_mqtt5_packet_encode_connect_no_will_fn)
+
+static int s_mqtt5_packet_encode_connect_no_username_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_cursor password = aws_byte_cursor_from_c_str(s_password);
+    uint32_t session_expiry_interval_seconds = 3600;
+    uint8_t request_response_information = 1;
+    uint8_t request_problem_information = 1;
+    uint16_t receive_maximum = 50;
+    uint16_t topic_alias_maximum = 16;
+    uint32_t maximum_packet_size_bytes = 1ULL << 24;
+    uint32_t will_delay_interval_seconds = 30;
+    struct aws_byte_cursor authentication_method = aws_byte_cursor_from_c_str("AuthMethod");
+    struct aws_byte_cursor authentication_data = aws_byte_cursor_from_c_str("SuperSecret");
+
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 1200,
+        .client_id = aws_byte_cursor_from_c_str(s_client_id),
+        .username = NULL,
+        .password = &password,
+        .clean_start = true,
+        .session_expiry_interval_seconds = &session_expiry_interval_seconds,
+        .request_response_information = &request_response_information,
+        .request_problem_information = &request_problem_information,
+        .receive_maximum = &receive_maximum,
+        .topic_alias_maximum = &topic_alias_maximum,
+        .maximum_packet_size_bytes = &maximum_packet_size_bytes,
+        .will_delay_interval_seconds = &will_delay_interval_seconds,
+        .will = NULL,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+        .authentication_method = &authentication_method,
+        .authentication_data = &authentication_data,
+    };
+
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_CONNECT,
+        .packet_view = &connect_view,
+        .decoder_callback = s_aws_mqtt5_on_no_will_connect_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
+
+    struct aws_byte_buf encoding_buffer;
+    ASSERT_SUCCESS(s_mqtt5_packet_encode_connect_to_buffer(allocator, &connect_view, &encoding_buffer));
+
+    /*
+     * For this packet: 1 byte packet type + flags, 2 bytes vli remaining length + 7 bytes protocol prefix
+     * (0x00, 0x04, "MQTT", 0x05), then we're at the CONNECT flags which we want to check
+     */
+    size_t connect_flags_byte_index = 10;
+    uint8_t connect_flags = encoding_buffer.buffer[connect_flags_byte_index];
+
+    /*
+     * Verify Will flag, Will QoS, Will Retain, Username are all zero,
+     * while clean start (0x02), password (0x40) flags are set
+     */
+    ASSERT_INT_EQUALS(connect_flags, 0x42);
+
+    aws_byte_buf_clean_up(&encoding_buffer);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_packet_encode_connect_no_username, s_mqtt5_packet_encode_connect_no_username_fn)
+
+static int s_mqtt5_packet_encode_connect_no_password_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str(s_username);
+    uint32_t session_expiry_interval_seconds = 3600;
+    uint8_t request_response_information = 1;
+    uint8_t request_problem_information = 1;
+    uint16_t receive_maximum = 50;
+    uint16_t topic_alias_maximum = 16;
+    uint32_t maximum_packet_size_bytes = 1ULL << 24;
+    uint32_t will_delay_interval_seconds = 30;
+    struct aws_byte_cursor authentication_method = aws_byte_cursor_from_c_str("AuthMethod");
+    struct aws_byte_cursor authentication_data = aws_byte_cursor_from_c_str("SuperSecret");
+
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 1200,
+        .client_id = aws_byte_cursor_from_c_str(s_client_id),
+        .username = &username,
+        .password = NULL,
+        .clean_start = true,
+        .session_expiry_interval_seconds = &session_expiry_interval_seconds,
+        .request_response_information = &request_response_information,
+        .request_problem_information = &request_problem_information,
+        .receive_maximum = &receive_maximum,
+        .topic_alias_maximum = &topic_alias_maximum,
+        .maximum_packet_size_bytes = &maximum_packet_size_bytes,
+        .will_delay_interval_seconds = &will_delay_interval_seconds,
+        .will = NULL,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+        .authentication_method = &authentication_method,
+        .authentication_data = &authentication_data,
+    };
+
+    struct aws_mqtt5_packet_round_trip_test_context context = {
+        .allocator = allocator,
+        .packet_type = AWS_MQTT5_PT_CONNECT,
+        .packet_view = &connect_view,
+        .decoder_callback = s_aws_mqtt5_on_no_will_connect_received_fn,
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_encode_decode_round_trip_matrix_test(&context));
+
+    struct aws_byte_buf encoding_buffer;
+    ASSERT_SUCCESS(s_mqtt5_packet_encode_connect_to_buffer(allocator, &connect_view, &encoding_buffer));
+
+    /*
+     * For this packet: 1 byte packet type + flags, 1 byte vli remaining length + 7 bytes protocol prefix
+     * (0x00, 0x04, "MQTT", 0x05), then we're at the CONNECT flags which we want to check
+     */
+    size_t connect_flags_byte_index = 9;
+    uint8_t connect_flags = encoding_buffer.buffer[connect_flags_byte_index];
+
+    /*
+     * Verify Will flag, Will QoS, Will Retain, Password are all zero,
+     * while clean start (0x02), username (0x80) flags are set
+     */
+    ASSERT_INT_EQUALS(connect_flags, 0x82);
+
+    aws_byte_buf_clean_up(&encoding_buffer);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_packet_encode_connect_no_password, s_mqtt5_packet_encode_connect_no_password_fn)
+
+static int s_mqtt5_packet_encode_connect_will_property_order_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_cursor will_payload_cursor = aws_byte_cursor_from_c_str(s_will_payload);
+    enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
+    uint32_t message_expiry_interval_seconds = 65537;
+    struct aws_byte_cursor will_response_topic = aws_byte_cursor_from_c_str(s_will_response_topic);
+    struct aws_byte_cursor will_correlation_data = aws_byte_cursor_from_c_str(s_will_correlation_data);
+    struct aws_byte_cursor will_content_type = aws_byte_cursor_from_c_str(s_will_content_type);
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str(s_username);
+    struct aws_byte_cursor password = aws_byte_cursor_from_c_str(s_password);
+    uint32_t session_expiry_interval_seconds = 3600;
+    uint8_t request_response_information = 1;
+    uint8_t request_problem_information = 1;
+    uint16_t receive_maximum = 50;
+    uint16_t topic_alias_maximum = 16;
+    uint32_t maximum_packet_size_bytes = 1ULL << 24;
+    uint32_t will_delay_interval_seconds = 30;
+    struct aws_byte_cursor authentication_method = aws_byte_cursor_from_c_str("AuthMethod");
+    struct aws_byte_cursor authentication_data = aws_byte_cursor_from_c_str("SuperSecret");
+
+    struct aws_mqtt5_packet_publish_view will_view = {
+        .payload = will_payload_cursor,
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .retain = true,
+        .topic = aws_byte_cursor_from_c_str(s_will_topic),
+        .payload_format = &payload_format,
+        .message_expiry_interval_seconds = &message_expiry_interval_seconds,
+        .response_topic = &will_response_topic,
+        .correlation_data = &will_correlation_data,
+        .content_type = &will_content_type,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+    };
+
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 1200,
+        .client_id = aws_byte_cursor_from_c_str(s_client_id),
+        .username = &username,
+        .password = &password,
+        .clean_start = true,
+        .session_expiry_interval_seconds = &session_expiry_interval_seconds,
+        .request_response_information = &request_response_information,
+        .request_problem_information = &request_problem_information,
+        .receive_maximum = &receive_maximum,
+        .topic_alias_maximum = &topic_alias_maximum,
+        .maximum_packet_size_bytes = &maximum_packet_size_bytes,
+        .will_delay_interval_seconds = &will_delay_interval_seconds,
+        .will = &will_view,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = &s_user_properties[0],
+        .authentication_method = &authentication_method,
+        .authentication_data = &authentication_data,
+    };
+
+    struct aws_byte_buf encoding_buffer;
+    ASSERT_SUCCESS(s_mqtt5_packet_encode_connect_to_buffer(allocator, &connect_view, &encoding_buffer));
+
+    struct aws_byte_cursor encoding_cursor = aws_byte_cursor_from_buf(&encoding_buffer);
+
+    struct aws_byte_cursor client_id_cursor;
+    AWS_ZERO_STRUCT(client_id_cursor);
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&encoding_cursor, &connect_view.client_id, &client_id_cursor));
+
+    struct aws_byte_cursor will_topic_cursor;
+    AWS_ZERO_STRUCT(will_topic_cursor);
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&encoding_cursor, &will_view.topic, &will_topic_cursor));
+
+    struct aws_byte_cursor will_message_payload_cursor;
+    AWS_ZERO_STRUCT(will_message_payload_cursor);
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&encoding_cursor, &will_view.payload, &will_message_payload_cursor));
+
+    struct aws_byte_cursor username_cursor;
+    AWS_ZERO_STRUCT(username_cursor);
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&encoding_cursor, connect_view.username, &username_cursor));
+
+    struct aws_byte_cursor password_cursor;
+    AWS_ZERO_STRUCT(password_cursor);
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&encoding_cursor, connect_view.password, &password_cursor));
+
+    ASSERT_NOT_NULL(client_id_cursor.ptr);
+    ASSERT_NOT_NULL(will_topic_cursor.ptr);
+    ASSERT_NOT_NULL(will_message_payload_cursor.ptr);
+    ASSERT_NOT_NULL(username_cursor.ptr);
+    ASSERT_NOT_NULL(password_cursor.ptr);
+
+    ASSERT_TRUE(client_id_cursor.ptr < will_topic_cursor.ptr);
+    ASSERT_TRUE(will_topic_cursor.ptr < will_message_payload_cursor.ptr);
+    ASSERT_TRUE(will_message_payload_cursor.ptr < username_cursor.ptr);
+    ASSERT_TRUE(username_cursor.ptr < password_cursor.ptr);
+
+    aws_byte_buf_clean_up(&encoding_buffer);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_packet_encode_connect_will_property_order, s_mqtt5_packet_encode_connect_will_property_order_fn)
 
 static int s_aws_mqtt5_decoder_decode_subscribe_first_byte_check(struct aws_mqtt5_decoder *decoder) {
     uint8_t first_byte = decoder->packet_first_byte;

@@ -1211,6 +1211,17 @@ static void s_wait_on_listener_cleanup(struct aws_mqtt5_client_mock_test_fixture
     aws_mutex_unlock(&test_fixture->lock);
 }
 
+static bool s_has_client_terminated(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+    return test_fixture->client_terminated;
+}
+
+static void s_wait_for_client_terminated(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+    aws_mutex_lock(&test_context->lock);
+    aws_condition_variable_wait_pred(&test_context->signal, &test_context->lock, s_has_client_terminated, test_context);
+    aws_mutex_unlock(&test_context->lock);
+}
+
 void s_aws_mqtt5_test_fixture_lifecycle_event_handler(const struct aws_mqtt5_client_lifecycle_event *event) {
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = event->user_data;
 
@@ -1273,7 +1284,7 @@ void s_aws_mqtt5_test_fixture_state_changed_callback(
     aws_mutex_unlock(&test_fixture->lock);
 }
 
-void s_aws_mqtt5_test_fixture_statistics_changed_callback(
+static void s_aws_mqtt5_test_fixture_statistics_changed_callback(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation,
     void *vtable_user_data) {
@@ -1287,6 +1298,15 @@ void s_aws_mqtt5_test_fixture_statistics_changed_callback(
     aws_mqtt5_client_get_stats(client, &stats);
     aws_array_list_push_back(&test_fixture->client_statistics, &stats);
     aws_mutex_unlock(&test_fixture->lock);
+}
+
+static void s_on_test_client_termination(void *user_data) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = user_data;
+
+    aws_mutex_lock(&test_fixture->lock);
+    test_fixture->client_terminated = true;
+    aws_mutex_unlock(&test_fixture->lock);
+    aws_condition_variable_notify_all(&test_fixture->signal);
 }
 
 int aws_mqtt5_client_mock_test_fixture_init(
@@ -1358,6 +1378,9 @@ int aws_mqtt5_client_mock_test_fixture_init(
     options->client_options->port = test_fixture->endpoint.port;
     options->client_options->socket_options = &test_fixture->socket_options;
     options->client_options->bootstrap = test_fixture->client_bootstrap;
+
+    options->client_options->client_termination_handler = s_on_test_client_termination;
+    options->client_options->client_termination_handler_user_data = test_fixture;
 
     test_fixture->client = aws_mqtt5_client_new(allocator, options->client_options);
 
@@ -1441,6 +1464,7 @@ static void s_destroy_lifecycle_event_storage(struct aws_mqtt5_lifecycle_event_r
 
 void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_test_fixture *test_fixture) {
     aws_mqtt5_client_release(test_fixture->client);
+    s_wait_for_client_terminated(test_fixture);
     aws_client_bootstrap_release(test_fixture->client_bootstrap);
     aws_host_resolver_release(test_fixture->host_resolver);
     aws_server_bootstrap_destroy_socket_listener(test_fixture->server_bootstrap, test_fixture->listener);

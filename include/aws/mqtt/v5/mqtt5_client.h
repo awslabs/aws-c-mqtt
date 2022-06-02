@@ -110,7 +110,15 @@ enum aws_mqtt5_client_operation_queue_behavior_type {
      *
      * TODO: not yet supported
      */
-    AWS_MQTT5_COQBT_FAIL_QOS0_ON_DISCONNECT,
+    AWS_MQTT5_COQBT_FAIL_QOS0_PUBLISH_ON_DISCONNECT,
+
+    /*
+     * Requeues QoS 1+ publishes on disconnect; unacked publishes go to the front, unprocessed publishes stay
+     * in place.  All other operations (QoS 0 publishes, subscribe, unsubscribe) are failed.
+     *
+     * TODO: not yet supported
+     */
+    AWS_MQTT5_COQBT_FAIL_NON_QOS1_PUBLISH_ON_DISCONNECT,
 };
 
 /**
@@ -216,6 +224,11 @@ typedef void(aws_mqtt5_publish_received_fn)(const struct aws_mqtt5_packet_publis
  * Signature of callback to invoke when a DISCONNECT is fully written to the socket (or fails to be)
  */
 typedef void(aws_mqtt5_disconnect_completion_fn)(int error_code, void *complete_ctx);
+
+/**
+ * Signature of callback invoked when a client has completely destroyed itself
+ */
+typedef void(aws_mqtt5_client_termination_completion_fn)(void *complete_ctx);
 
 /* operation completion options structures */
 
@@ -508,6 +521,12 @@ struct aws_mqtt5_client_options {
      */
     aws_mqtt5_client_connection_event_callback_fn *lifecycle_event_handler;
     void *lifecycle_event_handler_user_data;
+
+    /**
+     * Callback for when the client has completely destroyed itself
+     */
+    aws_mqtt5_client_termination_completion_fn *client_termination_handler;
+    void *client_termination_handler_user_data;
 };
 
 AWS_EXTERN_C_BEGIN
