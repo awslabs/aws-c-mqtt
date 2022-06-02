@@ -348,6 +348,9 @@ struct aws_mqtt5_client_options_storage {
 
     aws_mqtt5_client_connection_event_callback_fn *lifecycle_event_handler;
     void *lifecycle_event_handler_user_data;
+
+    aws_mqtt5_client_termination_completion_fn *client_termination_handler;
+    void *client_termination_handler_user_data;
 };
 
 AWS_EXTERN_C_BEGIN

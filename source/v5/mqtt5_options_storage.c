@@ -3574,6 +3574,9 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->lifecycle_event_handler = options->lifecycle_event_handler;
     options_storage->lifecycle_event_handler_user_data = options->lifecycle_event_handler_user_data;
 
+    options_storage->client_termination_handler = options->client_termination_handler;
+    options_storage->client_termination_handler_user_data = options->client_termination_handler_user_data;
+
     return options_storage;
 
 error:
