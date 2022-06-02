@@ -1222,8 +1222,6 @@ static void s_update_reconnect_delay_for_pending_reconnect(struct aws_mqtt5_clie
 }
 
 static void s_change_current_state_to_pending_reconnect(struct aws_mqtt5_client *client) {
-    AWS_ASSERT(client->current_state == AWS_MCS_CONNECTING || client->current_state == AWS_MCS_CHANNEL_SHUTDOWN);
-
     client->current_state = AWS_MCS_PENDING_RECONNECT;
 
     s_update_reconnect_delay_for_pending_reconnect(client);
