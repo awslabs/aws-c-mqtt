@@ -203,7 +203,7 @@ def application_thread():
     wrapper_error_occured = False
     # Finished Email
     send_finished_email = True
-    finished_email_body = "MQTT5 Short Running Canary has stopped."
+    finished_email_body = "MQTT5 Short Running Canary Wrapper has stopped."
     finished_email_body += "\n\n"
 
     # Find out why we stopped
@@ -298,9 +298,9 @@ def application_thread():
     # Send the finish email
     if (send_finished_email == True):
         if (wrapper_error_occured == True):
-            snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Had an error!")
+            snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Had an error")
         else:
-            snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Finished successfully!")
+            snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Finished")
 
     exit (application_monitor.error_code)
 

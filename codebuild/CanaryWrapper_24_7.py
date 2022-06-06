@@ -78,7 +78,12 @@ if (canary_s3_bucket_application_path == ""):
 canary_s3_bucket_application_path_zip = command_parser_arguments.s3_bucket_application_in_zip
 if (canary_s3_bucket_application_path_zip == ""):
     canary_s3_bucket_application_path_zip = None
-
+# The name of the email lambda. If an empty string is set, it defaults to 'iot-send-email-lambda'
+if (command_parser_arguments.lambda_name == ""):
+    command_parser_arguments.lambda_name = "iot-send-email-lambda"
+# The region the canary is running in
+# (THIS IS READ ONLY)
+canary_region_stub = "us-east-1"
 
 # How long (in seconds) to wait before gathering metrics and pushing them to Cloudwatch
 canary_metrics_wait_time = 600 # 10 minutes
@@ -111,7 +116,7 @@ data_snapshot = DataSnapshot(
     git_fixed_namespace_text=canary_local_git_fixed_namespace,
     output_log_filepath="output.txt",
     output_to_console=True,
-    cloudwatch_region="us-east-1",
+    cloudwatch_region=canary_region_stub,
     cloudwatch_make_dashboard=True,
     cloudwatch_teardown_alarms_on_complete=True,
     cloudwatch_teardown_dashboard_on_complete=False,
@@ -220,7 +225,7 @@ def application_thread():
     snapshot_monitor.can_cut_ticket = True
 
     start_email_body = "MQTT5 24/7 Canary Wrapper has started. This will run and continue to test new MQTT5 application builds as"
-    start_email_body += " pass CodeBuild and are uploaded to S3."
+    start_email_body += " they pass CodeBuild and are uploaded to S3."
     snapshot_monitor.send_email(email_body=start_email_body, email_subject_text_append="Started")
 
     # Start the execution loop
@@ -234,7 +239,7 @@ def application_thread():
     wrapper_error_occured = False
 
     send_finished_email = True
-    finished_email_body = "MQTT5 Short Running Canary has stopped."
+    finished_email_body = "MQTT5 24/7 Canary Wrapper has stopped."
     finished_email_body += "\n\n"
 
     # Find out why we stopped
@@ -247,7 +252,7 @@ def application_thread():
                 git_hash=canary_local_git_hash_stub,
                 git_hash_as_namespace=False,
                 git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                cloudwatch_region="us-east-1",
+                cloudwatch_region=canary_region_stub,
                 ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + s3_monitor.internal_error_reason,
                 ticket_reason="S3 monitor stopped due to internal error",
                 ticket_allow_duplicates=True,
@@ -275,7 +280,7 @@ def application_thread():
                 git_hash=canary_local_git_hash_stub,
                 git_hash_as_namespace=False,
                 git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                cloudwatch_region="us-east-1",
+                cloudwatch_region=canary_region_stub,
                 ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + snapshot_monitor.internal_error_reason,
                 ticket_reason="Snapshot monitor stopped due to internal error",
                 ticket_allow_duplicates=True,
@@ -302,7 +307,7 @@ def application_thread():
                     git_hash=canary_local_git_hash_stub,
                     git_hash_as_namespace=False,
                     git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                    cloudwatch_region="us-east-1",
+                    cloudwatch_region=canary_region_stub,
                     ticket_description="The 24/7 Canary exited with a non-zero exit code! This likely means something in the canary failed.",
                     ticket_reason="The 24/7 Canary exited with a non-zero exit code",
                     ticket_allow_duplicates=True,
@@ -320,7 +325,7 @@ def application_thread():
                     git_hash=canary_local_git_hash_stub,
                     git_hash_as_namespace=False,
                     git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                    cloudwatch_region="us-east-1",
+                    cloudwatch_region=canary_region_stub,
                     ticket_description="The 24/7 Canary exited with a zero exit code but did not restart!",
                     ticket_reason="The 24/7 Canary exited with a zero exit code but did not restart",
                     ticket_allow_duplicates=True,
@@ -340,7 +345,7 @@ def application_thread():
             git_hash=canary_local_git_hash_stub,
             git_hash_as_namespace=False,
             git_fixed_namespace_text=canary_local_git_fixed_namespace,
-            cloudwatch_region="us-east-1",
+            cloudwatch_region=canary_region_stub,
             ticket_description="The 24/7 Canary stopped for an unknown reason!",
             ticket_reason="The 24/7 Canary stopped for unknown reason",
             ticket_allow_duplicates=True,
@@ -360,17 +365,17 @@ def application_thread():
     finished_email_body += "\n\nYou can find the log file for this run at the following S3 location: "
     finished_email_body += "https://s3.console.aws.amazon.com/s3/object/"
     finished_email_body += command_parser_arguments.s3_bucket_name
-    finished_email_body += "?region=us-east-1"
-    finished_email_body += "&prefix=" + command_parser_arguments.git_repo_name + "/"
+    finished_email_body += "?region=" + canary_region_stub
+    finished_email_body += "&prefix=" + canary_local_git_repo_stub + "/"
     if (wrapper_error_occured == True):
         finished_email_body += "Failed_Logs/"
-    finished_email_body += command_parser_arguments.git_hash + ".log"
+    finished_email_body += canary_local_git_hash_stub + ".log"
     # Send the finish email
     if (send_finished_email == True):
         if (wrapper_error_occured == True):
-            snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Had an error!")
+            snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Had an error")
         else:
-            snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Finished successfully!")
+            snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Finished")
 
     exit (-1)
 
