@@ -1485,6 +1485,12 @@ static void s_mqtt5_service_task_fn(struct aws_task *task, void *arg, enum aws_t
     s_reevaluate_service_task(client);
 }
 
+static bool s_should_client_disconnect_cleanly(struct aws_mqtt5_client *client) {
+    enum aws_mqtt5_client_state current_state = client->current_state;
+
+    return current_state == AWS_MCS_CONNECTED;
+}
+
 static int s_process_read_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -1512,7 +1518,7 @@ static int s_process_read_message(
             error_code,
             aws_error_debug_str(error_code));
 
-        if (error_code == AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR && client->current_state != AWS_MCS_CONNECTING) {
+        if (error_code == AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR && s_should_client_disconnect_cleanly(client)) {
             s_aws_mqtt5_client_shutdown_channel_clean(client, error_code, AWS_MQTT5_DRC_PROTOCOL_ERROR);
         } else {
             s_aws_mqtt5_client_shutdown_channel(client, error_code);
