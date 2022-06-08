@@ -1512,7 +1512,7 @@ static int s_process_read_message(
             error_code,
             aws_error_debug_str(error_code));
 
-        if (error_code == AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR) {
+        if (error_code == AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR && client->current_state != AWS_MCS_CONNECTING) {
             s_aws_mqtt5_client_shutdown_channel_clean(client, error_code, AWS_MQTT5_DRC_PROTOCOL_ERROR);
         } else {
             s_aws_mqtt5_client_shutdown_channel(client, error_code);
@@ -1527,7 +1527,7 @@ done:
 
     aws_mem_release(message->allocator, message);
 
-    return result;
+    return AWS_OP_SUCCESS;
 }
 
 static int s_shutdown(
