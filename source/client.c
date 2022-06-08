@@ -2412,7 +2412,7 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_ud) {
 
-    struct subscribe_task_arg *task_arg = aws_mem_acquire(connection->allocator, sizeof(struct subscribe_task_arg));
+    struct subscribe_task_arg *task_arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT, "id=%p: failed to allocate storage for resubscribe arguments", (void *)connection);
