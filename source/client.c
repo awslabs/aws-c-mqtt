@@ -2279,16 +2279,17 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
     bool initing_packet = task_arg->subscribe.fixed_header.packet_type == 0;
     struct aws_io_message *message = NULL;
 
-    size_t sub_count = aws_mqtt_topic_tree_get_sub_count(&task_arg->connection->thread_data.subscriptions);
+    const size_t sub_count = aws_mqtt_topic_tree_get_sub_count(&task_arg->connection->thread_data.subscriptions);
+    /* Init the topics list even if there are no topics because the s_resubscribe_complete callback will always run. */
+    if (aws_array_list_init_dynamic(&task_arg->topics, task_arg->connection->allocator, sub_count, sizeof(void *))) {
+        goto handle_error;
+    }
     if (sub_count == 0) {
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Not subscribed to any topics. Resubscribe is unnecessary, no packet will be sent.",
             (void *)task_arg->connection);
         return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
-    }
-    if (aws_array_list_init_dynamic(&task_arg->topics, task_arg->connection->allocator, sub_count, sizeof(void *))) {
-        goto handle_error;
     }
     aws_mqtt_topic_tree_iterate(&task_arg->connection->thread_data.subscriptions, s_reconnect_resub_iterator, task_arg);
 
@@ -2358,6 +2359,11 @@ static void s_resubscribe_complete(
 
     struct subscribe_task_arg *task_arg = userdata;
 
+    const size_t list_len = aws_array_list_length(&task_arg->topics);
+    if (list_len <= 0) {
+        goto clean_up;
+    }
+
     struct subscribe_task_topic *topic = NULL;
     aws_array_list_get_at(&task_arg->topics, &topic, 0);
     AWS_ASSUME(topic);
@@ -2369,7 +2375,6 @@ static void s_resubscribe_complete(
         packet_id,
         error_code);
 
-    size_t list_len = aws_array_list_length(&task_arg->topics);
     if (task_arg->on_suback.multi) {
         /* create a list of aws_mqtt_topic_subscription pointers from topics for the callback */
         AWS_VARIABLE_LENGTH_ARRAY(uint8_t, cb_list_buf, list_len * sizeof(void *));
@@ -2388,6 +2393,8 @@ static void s_resubscribe_complete(
         task_arg->on_suback.single(
             connection, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
     }
+
+clean_up:
 
     /* We need to cleanup the subscribe_task_topics, since they are not inserted into the topic tree by resubscribe. We
      * take the ownership to clean it up */
