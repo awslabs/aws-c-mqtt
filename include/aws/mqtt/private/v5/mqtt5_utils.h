@@ -112,13 +112,6 @@ AWS_MQTT_API int aws_mqtt5_negotiated_settings_init(
     const struct aws_byte_cursor *client_id);
 
 /**
- * Clean up the byte buf in negotiated_settings
- *
- * @param negotiated_settings settings to clean up
- */
-AWS_MQTT_API void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
-
-/**
  * Assigns and stores a client id for use on CONNECT
  *
  * @param negotiated_settings settings to apply client id to
