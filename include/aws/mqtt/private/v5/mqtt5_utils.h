@@ -100,18 +100,6 @@ AWS_MQTT_API void aws_mqtt5_negotiated_settings_log(
     enum aws_log_level level);
 
 /**
- * Initializes the Client ID byte buf in negotiated settings
- *
- * @param allocator allocator to use for memory allocation
- * @param negotiated_settings settings to apply client id to
- * @param client_id client id to set
- */
-AWS_MQTT_API int aws_mqtt5_negotiated_settings_init(
-    struct aws_allocator *allocator,
-    struct aws_mqtt5_negotiated_settings *negotatiated_settings,
-    const struct aws_byte_cursor *client_id);
-
-/**
  * Assigns and stores a client id for use on CONNECT
  *
  * @param negotiated_settings settings to apply client id to

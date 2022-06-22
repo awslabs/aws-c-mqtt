@@ -94,7 +94,9 @@ enum aws_mqtt5_extended_validation_and_flow_control_options {
 };
 
 /**
- * Controls how disconnects affect the queued and in-progress operations submitted to the client.
+ * Controls how disconnects affect the queued and in-progress operations submitted to the client. Also controls
+ * how operations are handled while the client is not connected.  In particular, if the client is not connected,
+ * then any operation that would be failed on disconnect (according to these rules) will be rejected.
  */
 enum aws_mqtt5_client_operation_queue_behavior_type {
     /*
@@ -641,6 +643,39 @@ int aws_mqtt5_client_unsubscribe(
  */
 AWS_MQTT_API
 void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt5_client_operation_statistics *stats);
+
+/* Misc related type APIs */
+
+/**
+ * Initializes the Client ID byte buf in negotiated settings
+ *
+ * @param allocator allocator to use for memory allocation
+ * @param negotiated_settings settings to apply client id to
+ * @param client_id client id to set
+ */
+AWS_MQTT_API int aws_mqtt5_negotiated_settings_init(
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_negotiated_settings *negotiated_settings,
+    const struct aws_byte_cursor *client_id);
+
+/**
+ * Makes an owning copy of a negotiated settings structure
+ *
+ * @param source settings to copy from
+ * @param dest settings to copy into.  Must be in a zeroed or initialized state because it gets clean up
+ *  called on it as the first step of the copy process.
+ * @return success/failure
+ */
+AWS_MQTT_API int aws_mqtt5_negotiated_settings_copy(
+    const struct aws_mqtt5_negotiated_settings *source,
+    struct aws_mqtt5_negotiated_settings *dest);
+
+/**
+ * Clean up owned memory in negotiated_settings
+ *
+ * @param negotiated_settings settings to clean up
+ */
+AWS_MQTT_API void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
 
 AWS_EXTERN_C_END
 

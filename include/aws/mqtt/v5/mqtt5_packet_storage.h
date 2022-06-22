@@ -323,15 +323,6 @@ AWS_MQTT_API int aws_mqtt5_packet_unsuback_storage_init_from_external_storage(
 AWS_MQTT_API void aws_mqtt5_packet_unsuback_storage_clean_up(
     struct aws_mqtt5_packet_unsuback_storage *unsuback_storage);
 
-/* Misc */
-
-/**
- * Clean up owned memory in negotiated_settings
- *
- * @param negotiated_settings settings to clean up
- */
-AWS_MQTT_API void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
-
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT5_PACKET_STORAGE_H */
