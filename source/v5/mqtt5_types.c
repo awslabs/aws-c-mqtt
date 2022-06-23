@@ -244,8 +244,8 @@ const char *aws_mqtt5_unsuback_reason_code_to_c_string(enum aws_mqtt5_unsuback_r
             return s_implementation_specific_error;
         case AWS_MQTT5_UARC_NOT_AUTHORIZED:
             return s_not_authorized;
-        case AWS_MQTT5_UARC_TOPIC_NAME_INVALID:
-            return s_topic_name_invalid;
+        case AWS_MQTT5_UARC_TOPIC_FILTER_INVALID:
+            return s_topic_filter_invalid;
         case AWS_MQTT5_UARC_PACKET_IDENTIFIER_IN_USE:
             return s_packet_identifier_in_use;
     }
