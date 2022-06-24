@@ -1223,6 +1223,104 @@ static int s_mqtt5_puback_storage_new_set_all_fn(struct aws_allocator *allocator
 
 AWS_TEST_CASE(mqtt5_puback_storage_new_set_all, s_mqtt5_puback_storage_new_set_all_fn)
 
+static int s_verify_publish_subscription_identifiers_raw(
+    const uint32_t *subscription_identifiers,
+    size_t subscription_identifier_count,
+    const struct aws_mqtt5_packet_publish_view *original_view) {
+    ASSERT_UINT_EQUALS(subscription_identifier_count, original_view->subscription_identifier_count);
+
+    for (size_t i = 0; i < subscription_identifier_count; ++i) {
+        ASSERT_UINT_EQUALS(subscription_identifiers[i], original_view->subscription_identifiers[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_verify_publish_subscription_identifiers(
+    const struct aws_mqtt5_packet_publish_storage *publish_storage,
+    const struct aws_mqtt5_packet_publish_view *original_view) {
+
+    ASSERT_SUCCESS(s_verify_publish_subscription_identifiers_raw(
+        publish_storage->subscription_identifiers.data,
+        aws_array_list_length(&publish_storage->subscription_identifiers),
+        original_view));
+
+    const struct aws_mqtt5_packet_publish_view *storage_view = &publish_storage->storage_view;
+    ASSERT_SUCCESS(s_verify_publish_subscription_identifiers_raw(
+        storage_view->subscription_identifiers, storage_view->subscription_identifier_count, original_view));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_publish_storage_new_set_all_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_cursor response_topic = aws_byte_cursor_from_c_str(s_response_topic);
+    struct aws_byte_cursor correlation_data = aws_byte_cursor_from_c_str(s_correlation_data);
+    struct aws_byte_cursor content_type = aws_byte_cursor_from_c_str(s_content_type);
+    enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
+    struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD);
+    uint32_t subscription_identifiers[] = {2, 128000};
+
+    struct aws_mqtt5_packet_publish_view publish_options = {
+        .packet_id = 333,
+        .payload = payload_cursor,
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .retain = false,
+        .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
+        .payload_format = &payload_format,
+        .message_expiry_interval_seconds = &s_message_expiry_interval_seconds,
+        .topic_alias = &s_topic_alias,
+        .response_topic = &response_topic,
+        .correlation_data = &correlation_data,
+        .subscription_identifier_count = AWS_ARRAY_SIZE(subscription_identifiers),
+        .subscription_identifiers = subscription_identifiers,
+        .content_type = &content_type,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = s_user_properties,
+    };
+
+    struct aws_mqtt5_packet_publish_storage publish_storage;
+    AWS_ZERO_STRUCT(publish_storage);
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_storage_init(&publish_storage, allocator, &publish_options));
+
+    struct aws_mqtt5_packet_publish_view *stored_view = &publish_storage.storage_view;
+
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_UINT(&publish_storage, &publish_options, packet_id);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_CURSOR(&publish_storage, &publish_options, payload);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_UINT(&publish_storage, &publish_options, qos);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_UINT(&publish_storage, &publish_options, retain);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_CURSOR(&publish_storage, &publish_options, topic);
+
+    /* optional fields */
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_UINT(&publish_storage, &publish_options, payload_format);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_UINT(
+        &publish_storage, &publish_options, message_expiry_interval_seconds);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_UINT(&publish_storage, &publish_options, topic_alias);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&publish_storage, &publish_options, response_topic);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&publish_storage, &publish_options, correlation_data);
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&publish_storage, &publish_options, content_type);
+
+    ASSERT_SUCCESS(s_verify_publish_subscription_identifiers(&publish_storage, &publish_options));
+
+    ASSERT_SUCCESS(s_verify_user_properties(
+        &publish_storage.user_properties, AWS_ARRAY_SIZE(s_user_properties), s_user_properties));
+    ASSERT_SUCCESS(aws_mqtt5_test_verify_user_properties_raw(
+        stored_view->user_property_count,
+        stored_view->user_properties,
+        AWS_ARRAY_SIZE(s_user_properties),
+        s_user_properties));
+
+    aws_mqtt5_packet_publish_view_log(stored_view, AWS_LL_DEBUG);
+
+    aws_mqtt5_packet_publish_storage_clean_up(&publish_storage);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_publish_storage_new_set_all, s_mqtt5_publish_storage_new_set_all_fn)
+
 static const enum aws_mqtt5_qos s_maximum_qos_at_least_once = AWS_MQTT5_QOS_AT_LEAST_ONCE;
 static const enum aws_mqtt5_qos s_maximum_qos_at_most_once = AWS_MQTT5_QOS_AT_MOST_ONCE;
 static const uint16_t s_keep_alive_interval_seconds = 999;

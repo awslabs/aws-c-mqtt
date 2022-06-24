@@ -87,6 +87,7 @@ add_test_case(mqtt5_suback_storage_new_set_all)
 add_test_case(mqtt5_unsuback_storage_new_set_no_optional)
 add_test_case(mqtt5_unsuback_storage_new_set_all)
 add_test_case(mqtt5_puback_storage_new_set_all)
+add_test_case(mqtt5_publish_storage_new_set_all)
 
 # operation/view validation failure tests
 add_test_case(mqtt5_operation_disconnect_validation_failure_server_reference)

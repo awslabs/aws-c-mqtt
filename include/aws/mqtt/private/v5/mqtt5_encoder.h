@@ -303,6 +303,12 @@ AWS_EXTERN_C_END
         ADD_ENCODE_STEP_U32(encoder, *(value_ptr));                                                                    \
     }
 
+#define ADD_ENCODE_STEP_OPTIONAL_VLI_PROPERTY(encoder, property_value, value_ptr)                                      \
+    if ((value_ptr) != NULL) {                                                                                         \
+        ADD_ENCODE_STEP_U8(encoder, property_value);                                                                   \
+        ADD_ENCODE_STEP_VLI(encoder, *(value_ptr));                                                                    \
+    }
+
 #define ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(encoder, property_type, cursor_ptr)                                   \
     if ((cursor_ptr) != NULL) {                                                                                        \
         ADD_ENCODE_STEP_U8(encoder, property_type);                                                                    \
