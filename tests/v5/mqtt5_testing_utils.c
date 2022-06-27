@@ -1720,3 +1720,14 @@ bool aws_mqtt5_client_test_are_packets_equal(
             return false;
     }
 }
+
+size_t aws_mqtt5_linked_list_length(struct aws_linked_list *list) {
+    size_t length = 0;
+    struct aws_linked_list_node *node = aws_linked_list_begin(list);
+    while (node != aws_linked_list_end(list)) {
+        ++length;
+        node = aws_linked_list_next(node);
+    }
+
+    return length;
+}

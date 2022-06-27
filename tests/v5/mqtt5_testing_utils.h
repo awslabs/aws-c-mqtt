@@ -140,6 +140,8 @@ AWS_MQTT_API bool aws_mqtt5_client_test_are_packets_equal(
     void *lhs_packet_storage,
     void *rhs_packet_storage);
 
+AWS_MQTT_API size_t aws_mqtt5_linked_list_length(struct aws_linked_list *list);
+
 AWS_EXTERN_C_END
 
 #endif /* MQTT_MQTT5_TESTING_UTILS_H */
