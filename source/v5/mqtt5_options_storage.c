@@ -1742,6 +1742,15 @@ void aws_mqtt5_packet_publish_view_log(
             AWS_BYTE_CURSOR_PRI(*publish_view->content_type));
     }
 
+    for (size_t i = 0; i < publish_view->subscription_identifier_count; ++i) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_publish_view subscription identifier %d: %" PRIu32,
+            (void *)publish_view,
+            (int)i,
+            publish_view->subscription_identifiers[i]);
+    }
+
     s_aws_mqtt5_user_property_set_log(
         publish_view->user_properties,
         publish_view->user_property_count,
@@ -1781,6 +1790,10 @@ int aws_mqtt5_packet_publish_storage_init(
     AWS_ZERO_STRUCT(*publish_storage);
     size_t storage_capacity = s_aws_mqtt5_packet_publish_compute_storage_size(publish_options);
     if (aws_byte_buf_init(&publish_storage->storage, allocator, storage_capacity)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_array_list_init_dynamic(&publish_storage->subscription_identifiers, allocator, 0, sizeof(uint32_t))) {
         return AWS_OP_ERR;
     }
 
@@ -1835,6 +1848,14 @@ int aws_mqtt5_packet_publish_storage_init(
         storage_view->correlation_data = &publish_storage->correlation_data;
     }
 
+    for (size_t i = 0; i < publish_options->subscription_identifier_count; ++i) {
+        aws_array_list_push_back(
+            &publish_storage->subscription_identifiers, &publish_options->subscription_identifiers[i]);
+    }
+
+    storage_view->subscription_identifier_count = aws_array_list_length(&publish_storage->subscription_identifiers);
+    storage_view->subscription_identifiers = publish_storage->subscription_identifiers.data;
+
     if (publish_options->content_type != NULL) {
         publish_storage->content_type = *publish_options->content_type;
         if (aws_byte_buf_append_and_update(&publish_storage->storage, &publish_storage->content_type)) {
@@ -1867,11 +1888,16 @@ int aws_mqtt5_packet_publish_storage_init_from_external_storage(
         return AWS_OP_ERR;
     }
 
+    if (aws_array_list_init_dynamic(&publish_storage->subscription_identifiers, allocator, 0, sizeof(uint32_t))) {
+        return AWS_OP_ERR;
+    }
+
     return AWS_OP_SUCCESS;
 }
 
 void aws_mqtt5_packet_publish_storage_clean_up(struct aws_mqtt5_packet_publish_storage *publish_storage) {
     aws_mqtt5_user_property_set_clean_up(&publish_storage->user_properties);
+    aws_array_list_clean_up(&publish_storage->subscription_identifiers);
     aws_byte_buf_clean_up(&publish_storage->storage);
 }
 

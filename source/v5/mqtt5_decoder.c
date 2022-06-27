@@ -408,7 +408,8 @@ static int s_read_publish_property(
             uint32_t subscription_identifier = 0;
             AWS_MQTT5_DECODE_VLI(packet_cursor, &subscription_identifier, done);
             aws_array_list_push_back(&storage->subscription_identifiers, &subscription_identifier);
-        } break;
+            break;
+        }
 
         case AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE:
             AWS_MQTT5_DECODE_LENGTH_PREFIXED_CURSOR_OPTIONAL(
@@ -491,6 +492,9 @@ static int s_aws_mqtt5_decoder_decode_publish(struct aws_mqtt5_decoder *decoder)
             goto done;
         }
     }
+
+    storage_view->subscription_identifier_count = aws_array_list_length(&storage.subscription_identifiers);
+    storage_view->subscription_identifiers = storage.subscription_identifiers.data;
 
     storage_view->user_property_count = aws_mqtt5_user_property_set_size(&storage.user_properties);
     storage_view->user_properties = storage.user_properties.properties.data;

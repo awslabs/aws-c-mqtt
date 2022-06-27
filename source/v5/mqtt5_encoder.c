@@ -727,6 +727,14 @@ static int s_compute_publish_variable_length_fields(
     ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->correlation_data, publish_property_section_length);
     ADD_OPTIONAL_CURSOR_PROPERTY_LENGTH(publish_view->content_type, publish_property_section_length);
 
+    for (size_t i = 0; i < publish_view->subscription_identifier_count; ++i) {
+        size_t encoding_size = 0;
+        if (aws_mqtt5_get_variable_length_encode_size(publish_view->subscription_identifiers[i], &encoding_size)) {
+            return AWS_OP_ERR;
+        }
+        publish_property_section_length += 1 + encoding_size;
+    }
+
     *publish_properties_length = (uint32_t)publish_property_section_length;
 
     /*
@@ -842,6 +850,12 @@ static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, 
         encoder, AWS_MQTT5_PROPERTY_TYPE_RESPONSE_TOPIC, publish_view->response_topic);
     ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(
         encoder, AWS_MQTT5_PROPERTY_TYPE_CORRELATION_DATA, publish_view->correlation_data);
+
+    for (size_t i = 0; i < publish_view->subscription_identifier_count; ++i) {
+        ADD_ENCODE_STEP_OPTIONAL_VLI_PROPERTY(
+            encoder, AWS_MQTT5_PROPERTY_TYPE_SUBSCRIPTION_IDENTIFIER, &publish_view->subscription_identifiers[i]);
+    }
+
     ADD_ENCODE_STEP_OPTIONAL_CURSOR_PROPERTY(encoder, AWS_MQTT5_PROPERTY_TYPE_CONTENT_TYPE, publish_view->content_type);
 
     aws_mqtt5_add_user_property_encoding_steps(

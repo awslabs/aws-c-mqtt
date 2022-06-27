@@ -1190,6 +1190,8 @@ static int s_mqtt5_packet_publish_round_trip_fn(struct aws_allocator *allocator,
         .len = AWS_ARRAY_SIZE(s_publish_content_type) - 1,
     };
 
+    uint32_t subscription_identifiers[2] = {2, 3};
+
     struct aws_mqtt5_packet_publish_view publish_view = {
         .payload =
             {
@@ -1210,6 +1212,8 @@ static int s_mqtt5_packet_publish_round_trip_fn(struct aws_allocator *allocator,
         .topic_alias = &topic_alias,
         .response_topic = &response_topic,
         .correlation_data = &correlation_data,
+        .subscription_identifier_count = AWS_ARRAY_SIZE(subscription_identifiers),
+        .subscription_identifiers = subscription_identifiers,
         .content_type = &content_type,
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = &s_user_properties[0],
