@@ -241,7 +241,15 @@ static void s_mqtt_client_shutdown(
                 /* disconnect requested by user */
                 /* Successfully shutdown, so clear the outstanding requests */
                 /* TODO: respect the cleansession, clear the table when needed */
+
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Discard ongoing requests and pending requests when a disconnect requested by user.",
+                    (void *)connection);
+                aws_linked_list_move_all_back(&cancelling_requests, &connection->thread_data.ongoing_requests_list);
+                aws_linked_list_move_all_back(&cancelling_requests, &connection->synced_data.pending_requests_list);
                 aws_hash_table_clear(&connection->synced_data.outstanding_requests_table);
+
                 disconnected_state = true;
                 AWS_LOGF_DEBUG(
                     AWS_LS_MQTT_CLIENT,
