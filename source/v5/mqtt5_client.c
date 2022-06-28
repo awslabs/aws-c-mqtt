@@ -2224,9 +2224,24 @@ struct aws_mqtt5_submit_operation_task {
 static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
+    int completion_error_code = AWS_ERROR_MQTT5_CLIENT_TERMINATED;
     struct aws_mqtt5_submit_operation_task *submit_operation_task = arg;
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto error;
+    }
+
+    /*
+     * If we're offline and this operation doesn't meet the requirements of the offline queue retention policy,
+     * fail it immediately.
+     */
+    struct aws_mqtt5_client *client = submit_operation_task->client;
+    struct aws_mqtt5_operation *operation = submit_operation_task->operation;
+    if (client->current_state != AWS_MCS_CONNECTED) {
+        if (!s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(
+                operation, client->config->offline_queue_behavior)) {
+            completion_error_code = AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY;
+            goto error;
+        }
     }
 
     aws_mqtt5_operation_acquire(submit_operation_task->operation);
@@ -2242,7 +2257,7 @@ static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, e
 
 error:
 
-    s_complete_operation(NULL, submit_operation_task->operation, AWS_ERROR_MQTT5_CLIENT_TERMINATED, NULL);
+    s_complete_operation(NULL, submit_operation_task->operation, completion_error_code, NULL);
 
 done:
 
