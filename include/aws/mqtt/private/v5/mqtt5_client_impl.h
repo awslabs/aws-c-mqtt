@@ -216,22 +216,27 @@ enum aws_mqtt5_lifecycle_state {
  *      QoS 1+ requires both a table and a list holding the same operations in order to support fast lookups by
  *      mqtt packet id and in-order re-queueing in the case of a disconnection (required by spec)
  *
- *   On PUBLISH completely received (and final callback invoked):
+ *   On Qos 1 PUBLISH completely received (and final callback invoked):
  *      Add PUBACK at head of queued_operations
  *
  *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
  *      If current_operation, move current_operation to head of queued_operations
- *      If disconnect_queue_policy is fail(x):
- *          Fail, release, and remove everything in queued_operations with property (x)
- *          Release and remove: PUBACK, DISCONNECT
+ *      Fail all operations in the pending write completion list
+ *      Fail, remove, and release operations in queued_operations where
+ *         (1) They fail the offline queue policy OR
+ *         (2) They are a PUBACK, PINGREQ, or DISCONNECT
  *      Fail, remove, and release unacked_operations if:
- *          Operation is not Qos 1+ publish
+ *         (1) They fail the offline queue policy AND
+ *         (2) operation is not Qos 1+ publish
  *
  *   On reconnect (post CONNACK):
- *      if rejoined_session == false:
- *          Fail, remove, and release unacked_operations
+ *      if rejoined_session:
+ *          Move-and-append all non-qos1+-publishes in unacked_operations to the front of queued_operations
+ *          Move-and-append remaining operations (qos1+ publishes) to the front of queued_operations
+ *      else:
+ *          Fail, remove, and release unacked_operations that fail the offline queue policy
+ *          Move and append unacked operations to front of queued_operations
  *
- *      Move-Append unacked_operations to the head of queued_operations
  *      Clear unacked_operations_table
  */
 struct aws_mqtt5_client_operational_state {
@@ -496,20 +501,30 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_clean_up(
 /*
  * Resets the client's operational state based on a disconnection (from above comment):
  *
- *   Fail all operations in the pending write completion list
- *   Fail all subscribe/unsubscribes in the pending ack list/table
- *   Fail the current operation
- *   Fail all operations in the queued_operations list
+ *      If current_operation
+ *         move current_operation to head of queued_operations
+ *      Fail all operations in the pending write completion list
+ *      Fail, remove, and release operations in queued_operations where they fail the offline queue policy
+ *      Iterate unacked_operations:
+ *         If qos1+ publish
+ *            set dup flag
+ *         else
+ *            unset/release packet id
+ *      Fail, remove, and release unacked_operations if:
+ *         (1) They fail the offline queue policy AND
+ *         (2) the operation is not Qos 1+ publish
  */
 AWS_MQTT_API void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5_client *client);
 
 /*
- * Updates the client's operational state based on a successfully established connection event.
+ * Updates the client's operational state based on a successfully established connection event:
  *
- * If a session was resumed:
- *    Moves unacked QoS 1+ publishes in the unacked_operations list to the head of the pending operation queue
- * Else
- *    Fails and releases all operations in the unacked_operations list (which must be QoS 1+ publishes)
+ *      if rejoined_session:
+ *          Move-and-append all non-qos1+-publishes in unacked_operations to the front of queued_operations
+ *          Move-and-append remaining operations (qos1+ publishes) to the front of queued_operations
+ *      else:
+ *          Fail, remove, and release unacked_operations that fail the offline queue policy
+ *          Move and append unacked operations to front of queued_operations
  */
 AWS_MQTT_API void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_client *client);
 

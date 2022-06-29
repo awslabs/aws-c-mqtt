@@ -109,16 +109,12 @@ enum aws_mqtt5_client_operation_queue_behavior_type {
      * Qos 0 publishes that are not complete at the time of disconnection are failed.  Unacked QoS 1+ publishes are
      * requeued at the head of the line for immediate retransmission on a session resumption.  All other operations
      * are requeued in original order behind any retransmissions.
-     *
-     * TODO: not yet supported
      */
     AWS_MQTT5_COQBT_FAIL_QOS0_PUBLISH_ON_DISCONNECT,
 
     /*
      * Requeues QoS 1+ publishes on disconnect; unacked publishes go to the front, unprocessed publishes stay
      * in place.  All other operations (QoS 0 publishes, subscribe, unsubscribe) are failed.
-     *
-     * TODO: not yet supported
      */
     AWS_MQTT5_COQBT_FAIL_NON_QOS1_PUBLISH_ON_DISCONNECT,
 };
@@ -161,7 +157,8 @@ enum aws_mqtt5_client_lifecycle_event_type {
     AWS_MQTT5_CLET_DISCONNECTION,
 
     /**
-     * Lifecycle event notifying the user that the client has entered the STOPPED state.
+     * Lifecycle event notifying the user that the client has entered the STOPPED state.  Entering this state will
+     * cause the client to wipe all MQTT session state.
      *
      * Mandatory event fields: client, user_data
      */
@@ -576,7 +573,8 @@ AWS_MQTT_API
 int aws_mqtt5_client_start(struct aws_mqtt5_client *client);
 
 /**
- * Asynchronous notify to the mqtt5 client that you want it to transition to the stopped state.
+ * Asynchronous notify to the mqtt5 client that you want it to transition to the stopped state.  When the client
+ * reaches the stopped state, all session state is erased.
  *
  * @param client mqtt5 client to stop
  * @param disconnect_options (optional) properties of a DISCONNECT packet to send as part of the shutdown process

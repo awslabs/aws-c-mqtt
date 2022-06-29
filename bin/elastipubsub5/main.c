@@ -193,11 +193,8 @@ static void s_on_publish_complete_fn(
     (void)complete_ctx;
 
     switch (error_code) {
-        case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_CLEAN_SESSION:
-            printf("PUBLISH FAILED due to Clean Session");
-            break;
-        case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_DISCONNECT:
-            printf("PUBLISH FAILED due to Disconnect");
+        case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY:
+            printf("PUBLISH FAILED due to disconnect and offline queue policy");
             break;
         case AWS_ERROR_MQTT_TIMEOUT:
             printf("PUBLISH FAILED due to MQTT Timeout");

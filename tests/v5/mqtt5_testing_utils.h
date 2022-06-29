@@ -87,6 +87,7 @@ struct aws_mqtt5_client_mock_test_fixture {
     struct aws_socket_endpoint endpoint;
     struct aws_socket_options socket_options;
     struct aws_socket *listener;
+    struct aws_channel *server_channel;
 
     const struct aws_mqtt5_mock_server_vtable *server_function_table;
     void *mock_server_user_data;
@@ -139,6 +140,8 @@ AWS_MQTT_API bool aws_mqtt5_client_test_are_packets_equal(
     enum aws_mqtt5_packet_type packet_type,
     void *lhs_packet_storage,
     void *rhs_packet_storage);
+
+AWS_MQTT_API size_t aws_mqtt5_linked_list_length(struct aws_linked_list *list);
 
 AWS_EXTERN_C_END
 
