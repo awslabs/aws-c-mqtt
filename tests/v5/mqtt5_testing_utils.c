@@ -1170,6 +1170,10 @@ static void s_on_incoming_channel_setup_fn(
 
         aws_mqtt5_decoder_init(&server_connection->decoder, server_connection->allocator, &decoder_options);
 
+        aws_mutex_lock(&test_fixture->lock);
+        test_fixture->server_channel = channel;
+        aws_mutex_unlock(&test_fixture->lock);
+
         /*
          * Just like the tls tests in aws-c-io, it's possible for the server channel setup to execute after the client
          * channel setup has already posted data to the socket.  In this case, the read notification gets lost because

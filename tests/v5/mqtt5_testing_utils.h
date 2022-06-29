@@ -87,6 +87,7 @@ struct aws_mqtt5_client_mock_test_fixture {
     struct aws_socket_endpoint endpoint;
     struct aws_socket_options socket_options;
     struct aws_socket *listener;
+    struct aws_channel *server_channel;
 
     const struct aws_mqtt5_mock_server_vtable *server_function_table;
     void *mock_server_user_data;

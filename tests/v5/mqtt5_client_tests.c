@@ -2825,7 +2825,7 @@ static int s_aws_mqtt5_client_test_init_resume_session_connect_storage(
     return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
 }
 
-#define SESSION_RESUMPTION_CONNECT_COUNT 10
+#define SESSION_RESUMPTION_CONNECT_COUNT 5
 
 static int s_do_mqtt5_client_session_resumption_test(
     struct aws_allocator *allocator,
@@ -2858,8 +2858,10 @@ static int s_do_mqtt5_client_session_resumption_test(
         bool expected_rejoined_session = s_compute_expected_rejoined_session(session_behavior, i);
         ASSERT_INT_EQUALS(expected_rejoined_session, client->negotiated_settings.rejoined_session);
 
-        ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
-        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_STOPPED, i + 1);
+        /* can't use stop as that wipes session state */
+        aws_channel_shutdown(test_context.server_channel, AWS_ERROR_UNKNOWN);
+
+        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_DISCONNECTION, i + 1);
     }
 
     struct aws_mqtt5_packet_connect_storage clean_start_connect_storage;
@@ -3819,7 +3821,7 @@ static void s_wait_for_n_unacked_publishes(struct aws_mqtt5_client_test_wait_for
     aws_mutex_unlock(&test_context->lock);
 }
 
-static int mqtt5_client_restore_session_on_client_stop_fn(struct aws_allocator *allocator, void *ctx) {
+static int mqtt5_client_no_session_after_client_stop_fn(struct aws_allocator *allocator, void *ctx) {
     aws_mqtt_library_init(allocator);
 
     struct aws_mqtt5_packet_connect_view connect_options;
@@ -3884,7 +3886,13 @@ static int mqtt5_client_restore_session_on_client_stop_fn(struct aws_allocator *
 
     s_wait_for_connected_lifecycle_event(&test_context);
 
-    s_wait_for_n_successful_publishes(&wait_context);
+    aws_mutex_lock(&test_context.lock);
+    size_t event_count = aws_array_list_length(&test_context.lifecycle_events);
+    struct aws_mqtt5_lifecycle_event_record *record = NULL;
+    aws_array_list_get_at(&test_context.lifecycle_events, &record, event_count - 1);
+    aws_mutex_unlock(&test_context.lock);
+
+    ASSERT_FALSE(record->connack_storage.storage_view.session_present);
 
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
     s_wait_for_stopped_lifecycle_event(&test_context);
@@ -3895,7 +3903,7 @@ static int mqtt5_client_restore_session_on_client_stop_fn(struct aws_allocator *
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(mqtt5_client_restore_session_on_client_stop, mqtt5_client_restore_session_on_client_stop_fn);
+AWS_TEST_CASE(mqtt5_client_no_session_after_client_stop, mqtt5_client_no_session_after_client_stop_fn);
 
 static int mqtt5_client_restore_session_on_ping_timeout_reconnect_fn(struct aws_allocator *allocator, void *ctx) {
     aws_mqtt_library_init(allocator);

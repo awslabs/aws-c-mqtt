@@ -615,9 +615,9 @@ static void s_aws_mqtt5_client_operational_state_reset(
 
     s_complete_operation_list(client, &client_operational_state->queued_operations, completion_error_code);
     s_complete_operation_list(client, &client_operational_state->write_completion_operations, completion_error_code);
+    s_complete_operation_list(client, &client_operational_state->unacked_operations, completion_error_code);
 
     if (is_final) {
-        s_complete_operation_list(client, &client_operational_state->unacked_operations, completion_error_code);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
     } else {
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
@@ -630,6 +630,9 @@ static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
     client->current_state = AWS_MCS_STOPPED;
 
     s_aws_mqtt5_client_operational_state_reset(&client->operational_state, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, false);
+
+    /* Stop works as a complete session wipe, and so the next time we connect, we want it to be clean */
+    client->has_connected_successfully = false;
 
     s_aws_mqtt5_client_emit_stopped_lifecycle_event(client);
 }
