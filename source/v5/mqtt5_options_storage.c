@@ -1222,7 +1222,8 @@ static int s_aws_mqtt5_packet_disconnect_view_validate_vs_connection_settings(
          * the server to skip tracking session state, and we can't undo that now)
          */
         const uint32_t *session_expiry_ptr = client->config->connect.storage_view.session_expiry_interval_seconds;
-        if (session_expiry_ptr == NULL || *session_expiry_ptr == 0) {
+        if (*disconnect_view->session_expiry_interval_seconds > 0 &&
+            (session_expiry_ptr == NULL || *session_expiry_ptr == 0)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_disconnect_view - cannot specify a positive session expiry after "
