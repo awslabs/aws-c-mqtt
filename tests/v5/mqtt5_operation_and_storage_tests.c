@@ -6,7 +6,9 @@
 #include <aws/common/string.h>
 
 #include "mqtt5_testing_utils.h"
-#include <aws/io/stream.h>
+#include <aws/io/channel_bootstrap.h>
+#include <aws/io/event_loop.h>
+#include <aws/io/host_resolver.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
@@ -3054,6 +3056,10 @@ static int s_mqtt5_operation_processing_reconnect_no_session_fail_all_fn(struct 
 
     test_context.dummy_client.current_state = AWS_MCS_CONNECTED;
 
+    struct aws_mqtt5_client_options_storage *config =
+        (struct aws_mqtt5_client_options_storage *)test_context.dummy_client.config;
+    config->offline_queue_behavior = AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT;
+
     struct aws_mqtt5_operation *publish1_op =
         &s_make_completable_publish_operation(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, &test_context)->base;
     struct aws_mqtt5_operation *publish2_op =
@@ -3212,3 +3218,64 @@ static int s_mqtt5_operation_processing_reconnect_no_session_fail_non_qos1_fn(
 AWS_TEST_CASE(
     mqtt5_operation_processing_reconnect_no_session_fail_non_qos1,
     s_mqtt5_operation_processing_reconnect_no_session_fail_non_qos1_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_host_name, "derp.com");
+
+static int s_mqtt5_client_options_defaults_set_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_event_loop_group *elg = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    struct aws_host_resolver_default_options hr_options = {
+        .el_group = elg,
+        .max_entries = 1,
+    };
+    struct aws_host_resolver *hr = aws_host_resolver_new_default(allocator, &hr_options);
+
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = elg,
+        .host_resolver = hr,
+    };
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    AWS_ZERO_STRUCT(connect_options);
+
+    struct aws_mqtt5_client_options client_options = {
+        .host_name = aws_byte_cursor_from_string(s_host_name),
+        .port = 1883,
+        .bootstrap = bootstrap,
+        .lifecycle_event_handler = (void *)1,
+        .publish_received_handler = (void *)1,
+        .connect_options = &connect_options,
+    };
+
+    struct aws_mqtt5_client_options_storage *client_options_storage =
+        aws_mqtt5_client_options_storage_new(allocator, &client_options);
+
+    ASSERT_INT_EQUALS(
+        AWS_MQTT5_DEFAULT_SOCKET_CONNECT_TIMEOUT_MS, client_options_storage->socket_options.connect_timeout_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_MIN_RECONNECT_DELAY_MS, client_options_storage->min_reconnect_delay_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_MAX_RECONNECT_DELAY_MS, client_options_storage->max_reconnect_delay_ms);
+    ASSERT_INT_EQUALS(
+        AWS_MQTT5_CLIENT_DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS,
+        client_options_storage->min_connected_time_to_reset_reconnect_delay_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS, client_options_storage->ping_timeout_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_CONNACK_TIMEOUT_MS, client_options_storage->connack_timeout_ms);
+    ASSERT_INT_EQUALS(
+        AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS, client_options_storage->operation_timeout_seconds);
+
+    aws_mqtt5_client_options_storage_destroy(client_options_storage);
+    aws_client_bootstrap_release(bootstrap);
+    aws_host_resolver_release(hr);
+    aws_event_loop_group_release(elg);
+
+    aws_thread_join_all_managed();
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_options_defaults_set, s_mqtt5_client_options_defaults_set_fn)

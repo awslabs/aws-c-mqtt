@@ -992,8 +992,12 @@ AWS_CLIENT_CREATION_VALIDATION_FAILURE(
     s_good_client_options,
     s_make_no_publish_received_client_options)
 
+static struct aws_socket_options s_bad_socket_options = {
+    .type = AWS_SOCKET_DGRAM,
+};
+
 static void s_make_invalid_socket_options_client_options(struct aws_mqtt5_client_options *options) {
-    options->socket_options = NULL;
+    options->socket_options = &s_bad_socket_options;
 };
 
 AWS_CLIENT_CREATION_VALIDATION_FAILURE(
@@ -1045,6 +1049,7 @@ static void s_make_client_id_too_long_for_iot_core_client_options(struct aws_mqt
     }
 
     options->connect_options = &s_client_id_too_long_for_iot_core_connect_view;
+    options->extended_validation_and_flow_control_options = AWS_MQTT5_EVAFCO_AWS_IOT_CORE_DEFAULTS;
 }
 
 AWS_CLIENT_CREATION_VALIDATION_FAILURE(

@@ -100,10 +100,10 @@ enum aws_mqtt5_extended_validation_and_flow_control_options {
  */
 enum aws_mqtt5_client_operation_queue_behavior_type {
     /*
-     * All operations that are not complete at the time of disconnection are failed, except those operations that
-     * the mqtt 5 spec requires to be retransmitted (unacked qos1+ publishes).
+     * Requeues QoS 1+ publishes on disconnect; unacked publishes go to the front, unprocessed publishes stay
+     * in place.  All other operations (QoS 0 publishes, subscribe, unsubscribe) are failed.
      */
-    AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT,
+    AWS_MQTT5_COQBT_FAIL_NON_QOS1_PUBLISH_ON_DISCONNECT,
 
     /*
      * Qos 0 publishes that are not complete at the time of disconnection are failed.  Unacked QoS 1+ publishes are
@@ -113,10 +113,10 @@ enum aws_mqtt5_client_operation_queue_behavior_type {
     AWS_MQTT5_COQBT_FAIL_QOS0_PUBLISH_ON_DISCONNECT,
 
     /*
-     * Requeues QoS 1+ publishes on disconnect; unacked publishes go to the front, unprocessed publishes stay
-     * in place.  All other operations (QoS 0 publishes, subscribe, unsubscribe) are failed.
+     * All operations that are not complete at the time of disconnection are failed, except those operations that
+     * the mqtt 5 spec requires to be retransmitted (unacked qos1+ publishes).
      */
-    AWS_MQTT5_COQBT_FAIL_NON_QOS1_PUBLISH_ON_DISCONNECT,
+    AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT,
 };
 
 /**
@@ -475,30 +475,41 @@ struct aws_mqtt5_client_options {
      * Minimum and maximum amount of time to wait to reconnect after a disconnect.
      */
     enum aws_exponential_backoff_jitter_mode retry_jitter_mode;
+
+    /**
+     * Minimum amount of time in ms to wait before attempting to reconnect.  If this is zero, a default of 1000 ms will
+     * be used.
+     */
     uint64_t min_reconnect_delay_ms;
+
+    /**
+     * Maximum amount of time in ms to wait before attempting to reconnect.  If this is zero, a default of 120000 ms
+     * will be used.
+     */
     uint64_t max_reconnect_delay_ms;
 
     /**
-     * Amount of time that must elapse with a good connection before the reconnect delay is reset to the minimum.
+     * Amount of time that must elapse with a good connection before the reconnect delay is reset to the minimum.  If
+     * this zero, a default of 30000 ms will be used.
      */
     uint64_t min_connected_time_to_reset_reconnect_delay_ms;
 
     /**
      * Time interval to wait after sending a PINGREQ for a PINGRESP to arrive.  If one does not arrive, the connection
-     * will be shut down.
+     * will be shut down.  If this is zero, a default of 30000 ms will be used.
      */
     uint32_t ping_timeout_ms;
 
     /**
      * Time interval to wait after sending a CONNECT request for a CONNACK to arrive.  If one does not arrive, the
-     * connection will be shut down.
+     * connection will be shut down.  If this zero, a default of 20000 ms will be used.
      */
     uint32_t connack_timeout_ms;
 
     /**
-     * Time interval to wait for an ack after sending a PUBLISH, SUBSCRIBE, or UNSUBSCRIBE with QoS 1+ before
-     * failing the packet, notifying the client of failure, and removing it from the retry queue. Defaults
-     * to 0 meaning the packet will always be retried upon a reconnect scenario.
+     * Time interval to wait for an ack after sending a SUBSCRIBE, UNSUBSCRIBE, or PUBLISH with QoS 1+ before
+     * failing the packet, notifying the client of failure, and removing it.  If this is zero, a default of 60 seconds
+     * will be used.
      */
     uint32_t operation_timeout_seconds;
 
