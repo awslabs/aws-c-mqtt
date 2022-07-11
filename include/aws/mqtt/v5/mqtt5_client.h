@@ -472,7 +472,9 @@ struct aws_mqtt5_client_options {
     enum aws_mqtt5_client_operation_queue_behavior_type offline_queue_behavior;
 
     /**
-     * Minimum and maximum amount of time to wait to reconnect after a disconnect.
+     * Controls the exponential backoff behavior when the client is waiting to reconnect.
+     *
+     * See: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
      */
     enum aws_exponential_backoff_jitter_mode retry_jitter_mode;
 
