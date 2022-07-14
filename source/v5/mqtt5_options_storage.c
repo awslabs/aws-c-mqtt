@@ -3558,6 +3558,15 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
             goto error;
         }
         options_storage->tls_options_ptr = &options_storage->tls_options;
+
+        if (!options_storage->tls_options.server_name) {
+            struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(options_storage->host_name);
+            if (aws_tls_connection_options_set_server_name(&options_storage->tls_options, allocator, &host_name_cur)) {
+
+                AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "Failed to set TLS Connection Options server name");
+                goto error;
+            }
+        }
     }
 
     if (options->http_proxy_options != NULL) {
