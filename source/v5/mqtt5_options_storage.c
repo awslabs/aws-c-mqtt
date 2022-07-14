@@ -3217,10 +3217,11 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
     }
 
     /* forbid no-timeout until someone convinces me otherwise */
-    if (options->socket_options == NULL || options->socket_options->type == AWS_SOCKET_DGRAM ||
-        options->socket_options->connect_timeout_ms == 0) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid socket options in mqtt5 client configuration");
-        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+    if (options->socket_options != NULL) {
+        if (options->socket_options->type == AWS_SOCKET_DGRAM || options->socket_options->connect_timeout_ms == 0) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid socket options in mqtt5 client configuration");
+            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+        }
     }
 
     if (options->http_proxy_options != NULL) {
@@ -3252,12 +3253,20 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
     }
 
     /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
-    uint64_t keep_alive_ms = aws_timestamp_convert(
-        options->connect_options->keep_alive_interval_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
-    uint64_t one_second_ms = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
-    if (options->ping_timeout_ms + one_second_ms > keep_alive_ms) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
-        return AWS_OP_ERR;
+    if (options->connect_options->keep_alive_interval_seconds > 0) {
+        uint64_t keep_alive_ms = aws_timestamp_convert(
+            options->connect_options->keep_alive_interval_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
+        uint64_t one_second_ms = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
+
+        uint64_t ping_timeout_ms = options->ping_timeout_ms;
+        if (ping_timeout_ms == 0) {
+            ping_timeout_ms = AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS;
+        }
+
+        if (ping_timeout_ms + one_second_ms > keep_alive_ms) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
+            return AWS_OP_ERR;
+        }
     }
 
     if (options->extended_validation_and_flow_control_options != AWS_MQTT5_EVAFCO_NONE) {
@@ -3527,6 +3536,34 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
     aws_mem_release(options_storage->allocator, options_storage);
 }
 
+static void s_apply_zero_valued_defaults_to_client_options_storage(
+    struct aws_mqtt5_client_options_storage *options_storage) {
+    if (options_storage->min_reconnect_delay_ms == 0) {
+        options_storage->min_reconnect_delay_ms = AWS_MQTT5_CLIENT_DEFAULT_MIN_RECONNECT_DELAY_MS;
+    }
+
+    if (options_storage->max_reconnect_delay_ms == 0) {
+        options_storage->max_reconnect_delay_ms = AWS_MQTT5_CLIENT_DEFAULT_MAX_RECONNECT_DELAY_MS;
+    }
+
+    if (options_storage->min_connected_time_to_reset_reconnect_delay_ms == 0) {
+        options_storage->min_connected_time_to_reset_reconnect_delay_ms =
+            AWS_MQTT5_CLIENT_DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS;
+    }
+
+    if (options_storage->ping_timeout_ms == 0) {
+        options_storage->ping_timeout_ms = AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS;
+    }
+
+    if (options_storage->connack_timeout_ms == 0) {
+        options_storage->connack_timeout_ms = AWS_MQTT5_CLIENT_DEFAULT_CONNACK_TIMEOUT_MS;
+    }
+
+    if (options_storage->operation_timeout_seconds == 0) {
+        options_storage->operation_timeout_seconds = AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS;
+    }
+}
+
 struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_client_options *options) {
@@ -3551,7 +3588,13 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
 
     options_storage->port = options->port;
     options_storage->bootstrap = aws_client_bootstrap_acquire(options->bootstrap);
-    options_storage->socket_options = *options->socket_options;
+
+    if (options->socket_options != NULL) {
+        options_storage->socket_options = *options->socket_options;
+    } else {
+        options_storage->socket_options.type = AWS_SOCKET_STREAM;
+        options_storage->socket_options.connect_timeout_ms = AWS_MQTT5_DEFAULT_SOCKET_CONNECT_TIMEOUT_MS;
+    }
 
     if (options->tls_options != NULL) {
         if (aws_tls_connection_options_copy(&options_storage->tls_options, options->tls_options)) {
@@ -3612,6 +3655,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
 
     options_storage->client_termination_handler = options->client_termination_handler;
     options_storage->client_termination_handler_user_data = options->client_termination_handler_user_data;
+
+    s_apply_zero_valued_defaults_to_client_options_storage(options_storage);
 
     return options_storage;
 
