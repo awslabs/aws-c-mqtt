@@ -258,7 +258,7 @@ class DataSnapshot():
         if self.output_to_file == True:
             self.output_file.write(message + "\n")
         if self.output_to_console == True:
-            print(message)
+            print(message, flush=True)
 
     # Utilty function - adds the metric alarms to Cloudwatch. We do run this right before the first
     # collection of metrics so we can register metrics before we initialize Cloudwatch
@@ -523,7 +523,7 @@ class DataSnapshot():
         if widget is None:
             widget = self._find_cloudwatch_widget(name=widget_name)
             if widget is None:
-                print ("ERROR - could not find widget with name: " + widget_name)
+                print ("ERROR - could not find widget with name: " + widget_name, flush=True)
                 return
 
         # Adjust metric name so it has the git hash, repo, etc
@@ -536,7 +536,7 @@ class DataSnapshot():
         if widget is None:
             widget = self._find_cloudwatch_widget(name=widget_name)
             if widget is None:
-                print ("ERROR - could not find widget with name: " + widget_name)
+                print ("ERROR - could not find widget with name: " + widget_name, flush=True)
                 return
         widget.remove_metric_from_widget(existing_metric_name=metric_name)
         return
@@ -687,7 +687,7 @@ class SnapshotMonitor():
                 new_metric_alarm_severity=new_metric_alarm_severity)
         except Exception as e:
             print ("ERROR - could not register metric in data snapshot due to exception!")
-            print ("Exception: " + str(e))
+            print ("Exception: " + str(e), flush=True)
             self.had_interal_error = True
             self.internal_error_reason = "Could not register metric in data snapshot due to exception"
             return
@@ -788,7 +788,7 @@ class SnapshotMonitor():
                     self.data_snapshot.print_message("ERROR - exception occured posting metrics!")
                     self.data_snapshot.print_message("(Likely session credentials expired)")
 
-                    print (e)
+                    print (e, flush=True)
 
                     self.had_interal_error = True
                     self.internal_error_reason = "Exception occured posting metrics! Likely session credentials expired"
@@ -841,41 +841,41 @@ class ApplicationMonitor():
         self.wrapper_application_restart_on_finish = wrapper_application_restart_on_finish
 
     def start_monitoring(self):
-        print ("Starting to monitor application...")
+        print ("Starting to monitor application...", flush=True)
 
         if (self.application_process == None):
             try:
                 canary_command = self.wrapper_application_path + " " + self.wrapper_application_arguments
                 self.application_process = subprocess.Popen(canary_command, shell=True)
                 self.application_process_psutil = psutil.Process(self.application_process.pid)
-                print ("Application started...")
+                print ("Application started...", flush=True)
             except Exception as e:
                 print ("ERROR - Could not launch Canary/Application due to exception!")
-                print ("Exception: " + str(e))
+                print ("Exception: " + str(e), flush=True)
                 self.error_has_occured = True
                 self.error_reason = "Could not launch Canary/Application due to exception"
                 self.error_code = 1
                 return
         else:
-            print ("ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!")
+            print ("ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!", flush=True)
 
     def restart_monitoring(self):
-        print ("Restarting monitor application...")
+        print ("Restarting monitor application...", flush=True)
 
         if (self.application_process != None):
             try:
                 self.stop_monitoring()
                 self.start_monitoring()
-                print ("Restarted monitor application!")
+                print ("Restarted monitor application!", flush=True)
             except Exception as e:
                 print ("ERROR - Could not restart Canary/Application due to exception!")
-                print ("Exception: " + str(e))
+                print ("Exception: " + str(e), flush=True)
                 self.error_has_occured = True
                 self.error_reason = "Could not restart Canary/Application due to exception"
                 self.error_code = 1
                 return
         else:
-            print ("ERROR - Application process restart called but process is/was not running!")
+            print ("ERROR - Application process restart called but process is/was not running!", flush=True)
             self.error_has_occured = True
             self.error_reason = "Could not restart Canary/Application due to application process not being started initially"
             self.error_code = 1
@@ -883,14 +883,14 @@ class ApplicationMonitor():
 
 
     def stop_monitoring(self):
-        print ("Stopping monitor application...")
+        print ("Stopping monitor application...", flush=True)
         if (not self.application_process == None):
             self.application_process.terminate()
             self.application_process.wait()
             self.application_process = None
-            print ("Stopped monitor application!")
+            print ("Stopped monitor application!", flush=True)
         else:
-            print ("ERROR - cannot stop monitor application because no process is found!")
+            print ("ERROR - cannot stop monitor application because no process is found!", flush=True)
 
 
     def monitor_loop_function(self, time_passed=30):
@@ -901,7 +901,7 @@ class ApplicationMonitor():
                 application_process_return_code = self.application_process.poll()
             except Exception as e:
                 print ("ERROR - exception occured while trying to poll application status!")
-                print ("Exception: " + str(e))
+                print ("Exception: " + str(e), flush=True)
                 self.error_has_occured = True
                 self.error_reason = "Exception when polling application status"
                 self.error_code = 1
@@ -910,11 +910,11 @@ class ApplicationMonitor():
             # If it is not none, then the application finished
             if (application_process_return_code != None):
 
-                print ("Monitor application has stopped! Processing result...")
+                print ("Monitor application has stopped! Processing result...", flush=True)
 
                 if (application_process_return_code != 0):
                     print ("ERROR - Something Crashed in Canary/Application!")
-                    print ("Error code: " + str(application_process_return_code))
+                    print ("Error code: " + str(application_process_return_code), flush=True)
 
                     self.error_has_occured = True
                     self.error_reason = "Canary application crashed!"
@@ -922,10 +922,10 @@ class ApplicationMonitor():
                 else:
                     # Should we restart?
                     if (self.wrapper_application_restart_on_finish == True):
-                        print ("NOTE - Canary finished running and is restarting...")
+                        print ("NOTE - Canary finished running and is restarting...", flush=True)
                         self.restart_monitoring()
                     else:
-                        print ("Monitor application has stopped and monitor is not supposed to restart... Finishing...")
+                        print ("Monitor application has stopped and monitor is not supposed to restart... Finishing...", flush=True)
                         self.error_has_occured = True
                         self.error_reason = "Canary Application Finished"
                         self.error_code = 0
@@ -965,7 +965,7 @@ class S3_Monitor():
             tmp_sts_client = boto3.client('sts')
             tmp_sts_client.get_caller_identity()
         except Exception as e:
-            print ("ERROR - (S3 Check) AWS credentials are NOT valid!")
+            print ("ERROR - (S3 Check) AWS credentials are NOT valid!", flush=True)
             self.had_interal_error = True
             self.error_due_to_credentials = True
             self.internal_error_reason = "AWS credentials are NOT valid!"
@@ -975,7 +975,7 @@ class S3_Monitor():
         try:
             self.s3_client = boto3.client("s3")
         except Exception as e:
-            print ("ERROR - (S3 Check) Could not make S3 client")
+            print ("ERROR - (S3 Check) Could not make S3 client", flush=True)
             self.had_interal_error = True
             self.internal_error_reason = "Could not make S3 client for S3 Monitor"
             return
@@ -993,7 +993,7 @@ class S3_Monitor():
                             version["LastModified"] != self.s3_current_object_last_modified):
 
                             print ("S3 monitor - Found new version of Canary/Application in S3!")
-                            print ("Changing running Canary/Application to new one...")
+                            print ("Changing running Canary/Application to new one...", flush=True)
 
                             # Will be checked by thread to trigger replacing the file
                             self.s3_file_needs_replacing = True
@@ -1004,18 +1004,18 @@ class S3_Monitor():
 
         except Exception as e:
             print ("ERROR - Could not check for new version of file in S3 due to exception!")
-            print ("Exception: " + str(e))
+            print ("Exception: " + str(e), flush=True)
             self.had_interal_error = True
             self.internal_error_reason = "Could not check for S3 file due to exception in S3 client"
 
 
     def replace_current_file_for_new_file(self):
         try:
-            print ("Making directory...")
+            print ("Making directory...", flush=True)
             if not os.path.exists("tmp"):
                 os.makedirs("tmp")
         except Exception as e:
-            print ("ERROR - could not make tmp directory to place S3 file into!")
+            print ("ERROR - could not make tmp directory to place S3 file into!", flush=True)
             self.had_interal_error = True
             self.internal_error_reason = "Could not make TMP folder for S3 file download"
             return
@@ -1023,11 +1023,11 @@ class S3_Monitor():
         # Download the file
         new_file_path = "tmp/new_file" + self.s3_file_name_only_extension
         try:
-            print ("Downloading file...")
+            print ("Downloading file...", flush=True)
             s3_resource = boto3.resource("s3")
             s3_resource.meta.client.download_file(self.s3_bucket_name, self.s3_file_name, new_file_path)
         except Exception as e:
-            print ("ERROR - could not download latest S3 file into TMP folder!")
+            print ("ERROR - could not download latest S3 file into TMP folder!", flush=True)
             self.had_interal_error = True
             self.internal_error_reason = "Could not download latest S3 file into TMP folder"
             return
@@ -1044,14 +1044,14 @@ class S3_Monitor():
             if os.path.exists(self.canary_local_application_path) == True:
                 os.remove(self.canary_local_application_path)
 
-            print ("Moving file...")
+            print ("Moving file...", flush=True)
             os.replace(new_file_path, self.canary_local_application_path)
-            print ("Getting execution rights...")
+            print ("Getting execution rights...", flush=True)
             os.system("chmod u+x " + self.canary_local_application_path)
 
         except Exception as e:
             print ("ERROR - could not move file into local application path due to exception!")
-            print ("Exception: " + str(e))
+            print ("Exception: " + str(e), flush=True)
             self.had_interal_error = True
             self.internal_error_reason = "Could not move file into local application path"
             return
@@ -1159,18 +1159,18 @@ def cut_ticket_using_cloudwatch(
             StateReason="AUTO TICKET CUT")
     except Exception as e:
         print ("ERROR - could not cut ticket due to exception!")
-        print ("Exception: " + str(e))
+        print ("Exception: " + str(e), flush=True)
         return
 
-    print("Waiting for ticket metric to trigger...")
+    print("Waiting for ticket metric to trigger...", flush=True)
     # Wait a little bit (2 seconds)...
     time.sleep(2)
 
     # Remove the metric
-    print("Removing ticket metric...")
+    print("Removing ticket metric...", flush=True)
     cloudwatch_client.delete_alarms(AlarmNames=[ticket_alarm_name])
 
-    print ("Finished cutting ticket via Cloudwatch!")
+    print ("Finished cutting ticket via Cloudwatch!", flush=True)
     return
 
 # A helper function that gets the majority of the ticket information from the arguments result from argparser.
