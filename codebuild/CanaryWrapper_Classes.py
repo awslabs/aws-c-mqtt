@@ -235,6 +235,8 @@ class DataSnapshot():
             self.output_file = None
         # ==================
 
+        self.print_message("Data snapshot created!")
+
     # Cleans the class - closing any files, removing alarms, and sending data to S3.
     # Should be called at the end when you are totally finished shadowing metrics
     def cleanup(self, error_occured=False):
@@ -244,6 +246,8 @@ class DataSnapshot():
         self._cleanup_cloudwatch_alarms()
         if (self.cloudwatch_make_dashboard == True):
             self._cleanup_cloudwatch_dashboard()
+
+        self.print_message("Data snapshot cleaned!")
 
         if (self.output_file is not None):
             self.output_file.close()
@@ -837,11 +841,14 @@ class ApplicationMonitor():
         self.wrapper_application_restart_on_finish = wrapper_application_restart_on_finish
 
     def start_monitoring(self):
+        print ("Starting to monitor application...")
+
         if (self.application_process == None):
             try:
                 canary_command = self.wrapper_application_path + " " + self.wrapper_application_arguments
                 self.application_process = subprocess.Popen(canary_command, shell=True)
                 self.application_process_psutil = psutil.Process(self.application_process.pid)
+                print ("Application started...")
             except Exception as e:
                 print ("ERROR - Could not launch Canary/Application due to exception!")
                 print ("Exception: " + str(e))
@@ -849,12 +856,17 @@ class ApplicationMonitor():
                 self.error_reason = "Could not launch Canary/Application due to exception"
                 self.error_code = 1
                 return
+        else:
+            print ("ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!")
 
     def restart_monitoring(self):
+        print ("Restarting monitor application...")
+
         if (self.application_process != None):
             try:
                 self.stop_monitoring()
                 self.start_monitoring()
+                print ("Restarted monitor application!")
             except Exception as e:
                 print ("ERROR - Could not restart Canary/Application due to exception!")
                 print ("Exception: " + str(e))
@@ -871,10 +883,14 @@ class ApplicationMonitor():
 
 
     def stop_monitoring(self):
+        print ("Stopping monitor application...")
         if (not self.application_process == None):
             self.application_process.terminate()
             self.application_process.wait()
             self.application_process = None
+            print ("Stopped monitor application!")
+        else:
+            print ("ERROR - cannot stop monitor application because no process is found!")
 
 
     def monitor_loop_function(self, time_passed=30):
@@ -894,6 +910,8 @@ class ApplicationMonitor():
             # If it is not none, then the application finished
             if (application_process_return_code != None):
 
+                print ("Monitor application has stopped! Processing result...")
+
                 if (application_process_return_code != 0):
                     print ("ERROR - Something Crashed in Canary/Application!")
                     print ("Error code: " + str(application_process_return_code))
@@ -907,6 +925,7 @@ class ApplicationMonitor():
                         print ("NOTE - Canary finished running and is restarting...")
                         self.restart_monitoring()
                     else:
+                        print ("Monitor application has stopped and monitor is not supposed to restart... Finishing...")
                         self.error_has_occured = True
                         self.error_reason = "Canary Application Finished"
                         self.error_code = 0
