@@ -343,7 +343,7 @@ struct aws_mqtt5_packet_publish_view {
     bool duplicate;
     bool retain;
     struct aws_byte_cursor topic;
-    enum aws_mqtt5_payload_format_indicator *payload_format;
+    const enum aws_mqtt5_payload_format_indicator *payload_format;
     const uint32_t *message_expiry_interval_seconds;
     const uint16_t *topic_alias;
     const struct aws_byte_cursor *response_topic;
