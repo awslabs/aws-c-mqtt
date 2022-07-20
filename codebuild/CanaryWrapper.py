@@ -66,8 +66,8 @@ if (command_parser_arguments.git_hash_as_namespace is not True and command_parse
     command_parser_arguments.git_hash_as_namespace = False
 if (command_parser_arguments.output_log_filepath == ""):
     command_parser_arguments.output_log_filepath = None
-if (command_parser_arguments.output_to_console is not True and command_parser_arguments.output_to_console is not False):
-    command_parser_arguments.output_to_console = False
+if (command_parser_arguments.output_to_console != True and command_parser_arguments.output_to_console != False):
+    command_parser_arguments.output_to_console = True
 if (command_parser_arguments.cloudwatch_region == ""):
     command_parser_arguments.cloudwatch_region = "us-east-1"
 if (command_parser_arguments.s3_bucket_name == ""):
