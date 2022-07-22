@@ -21,26 +21,6 @@ env:
   COMMIT_SHA: ${{ github.sha }}
 
 jobs:
-  linux-compat:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        image:
-          - manylinux1-x64
-          - manylinux1-x86
-          - manylinux2014-x64
-          - manylinux2014-x86
-          - al2-x64
-          - fedora-34-x64
-          - opensuse-leap
-          - rhel8-x64
-    steps:
-        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-    - name: Build ${{ env.PACKAGE_NAME }}
-      run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }} downstream
-
   linux-compiler-compat:
     runs-on: ubuntu-latest
     strategy:
