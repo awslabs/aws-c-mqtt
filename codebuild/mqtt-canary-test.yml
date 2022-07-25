@@ -33,6 +33,14 @@ phases:
       - echo "CODEBUILD_WEBHOOK_BASE_REF = $CODEBUILD_WEBHOOK_BASE_REF"
       - echo "CODEBUILD_WEBHOOK_HEAD_REF = $CODEBUILD_WEBHOOK_HEAD_REF"
       - echo "CODEBUILD_WEBHOOK_TRIGGER = $CODEBUILD_WEBHOOK_TRIGGER"
+      - |
+         if [ CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
+            echo "branch = mqtt5" 
+         fi
+      - |
+         if [ CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5-ci" ] ; then
+            echo "branch = mqtt5-ci" 
+         fi
 
   build:
     commands:
