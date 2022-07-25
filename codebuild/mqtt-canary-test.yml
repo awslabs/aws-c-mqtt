@@ -34,11 +34,11 @@ phases:
       - echo "CODEBUILD_WEBHOOK_HEAD_REF = $CODEBUILD_WEBHOOK_HEAD_REF"
       - echo "CODEBUILD_WEBHOOK_TRIGGER = $CODEBUILD_WEBHOOK_TRIGGER"
       - |
-         if [ CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
+         if [ $CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
             echo "branch = mqtt5" 
          fi
       - |
-         if [ CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5-ci" ] ; then
+         if [ $CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5-ci" ] ; then
             echo "branch = mqtt5-ci" 
          fi
 
@@ -52,6 +52,10 @@ phases:
       # Build library and test
       - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=$CODEBUILD_BUILD_ID', 'builder.pyz')" 
       - python3 builder.pyz build -p aws-c-mqtt
+      - |
+         if [ CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
+            # Add canary steps below to here
+         fi
       # upload built canary test buld result to s3 bucket 
       - zip -r latestBuild.zip build/install
       - aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
