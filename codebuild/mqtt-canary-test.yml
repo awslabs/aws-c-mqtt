@@ -54,15 +54,14 @@ phases:
       - python3 builder.pyz build -p aws-c-mqtt
       - |
          if [ CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
-            # Add canary steps below to here
+            # upload built canary test build result to s3 bucket
+            zip -r latestBuild.zip build/install
+            aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
+            echo run canarty test through wrapper
+            # start canary
+            python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "-s ${CANARY_DURATION} -t ${CANARY_THREADS} -T ${CANARY_TPS} -C ${CANARY_CLIENT_COUNT} -l ${CANARY_LOG_FILE} -v ${CANARY_LOG_LEVEL} endpoint ${ENDPOINT}" --git_hash ${GIT_HASH} --git_repo_name $PACKAGE_NAME
+            aws s3 cp ./${CANARY_LOG_FILE} ${S3_DST}log/${GIT_HASH}/
          fi
-      # upload built canary test buld result to s3 bucket 
-      - zip -r latestBuild.zip build/install
-      - aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
-      - echo run canary test through wrapper
-      # start canary
-      - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "-s ${CANARY_DURATION} -t ${CANARY_THREADS} -T ${CANARY_TPS} -C ${CANARY_CLIENT_COUNT} -l ${CANARY_LOG_FILE} -v ${CANARY_LOG_LEVEL} endpoint ${ENDPOINT}" --git_hash ${GIT_HASH} --git_repo_name $PACKAGE_NAME
-      - aws s3 cp ./${CANARY_LOG_FILE} ${S3_DST}log/${GIT_HASH}/
 
 
   post_build:
