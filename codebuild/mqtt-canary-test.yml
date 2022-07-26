@@ -28,20 +28,6 @@ phases:
       - python3 -m pip install psutil
       - python3 -m pip install boto3
 
-  pre_build:
-    commands:
-      - echo "CODEBUILD_WEBHOOK_BASE_REF = $CODEBUILD_WEBHOOK_BASE_REF"
-      - echo "CODEBUILD_WEBHOOK_HEAD_REF = $CODEBUILD_WEBHOOK_HEAD_REF"
-      - echo "CODEBUILD_WEBHOOK_TRIGGER = $CODEBUILD_WEBHOOK_TRIGGER"
-      - |
-         if [ $CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
-            echo "branch = mqtt5" 
-         fi
-      - |
-         if [ $CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5-ci" ] ; then
-            echo "branch = mqtt5-ci" 
-         fi
-
   build:
     commands:
       - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$CANARY_TEST_EXE_PATH
@@ -53,7 +39,7 @@ phases:
       - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=$CODEBUILD_BUILD_ID', 'builder.pyz')" 
       - python3 builder.pyz build -p aws-c-mqtt
       - |
-         if [ CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
+         if [ $CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
             # upload built canary test build result to s3 bucket
             zip -r latestBuild.zip build/install
             aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
