@@ -40,7 +40,7 @@ phases:
       - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=$CODEBUILD_BUILD_ID', 'builder.pyz')" 
       - python3 builder.pyz build -p aws-c-mqtt
       - |
-         if [ $CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5-ci" ] ; then
+         if [ $CODEBUILD_WEBHOOK_HEAD_REF = "refs/heads/mqtt5" ] ; then
             # upload built canary test build result to s3 bucket
             zip -r latestBuild.zip build/install
             aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
