@@ -265,26 +265,79 @@ void aws_mqtt5_negotiated_settings_apply_connack(
 
 const char *aws_mqtt5_client_session_behavior_type_to_c_string(
     enum aws_mqtt5_client_session_behavior_type session_behavior) {
-    switch (session_behavior) {
+    switch (aws_mqtt5_client_session_behavior_type_to_non_default(session_behavior)) {
         case AWS_MQTT5_CSBT_CLEAN:
             return "Clean session always";
         case AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS:
             return "Attempt to resume a session after initial connection success";
+        default:
+            return "Unknown session behavior";
+    }
+}
+
+enum aws_mqtt5_client_session_behavior_type aws_mqtt5_client_session_behavior_type_to_non_default(
+    enum aws_mqtt5_client_session_behavior_type session_behavior) {
+    if (session_behavior == AWS_MQTT5_CSBT_DEFAULT) {
+        return AWS_MQTT5_CSBT_CLEAN;
     }
 
-    return "Unknown session behavior";
+    return session_behavior;
 }
 
 const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior) {
-    switch (outbound_aliasing_behavior) {
+    switch (aws_mqtt5_outbound_topic_alias_behavior_type_to_non_default(outbound_aliasing_behavior)) {
         case AWS_MQTT5_COTABT_DUMB:
             return "Dumb outbound topic aliasing behavior";
         case AWS_MQTT5_COTABT_LRU:
             return "LRU caching outbound topic aliasing behavior";
+        default:
+            return "Unknown outbound topic aliasing behavior";
+    }
+}
+
+enum aws_mqtt5_client_outbound_topic_alias_behavior_type aws_mqtt5_outbound_topic_alias_behavior_type_to_non_default(
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior) {
+    if (outbound_aliasing_behavior == AWS_MQTT5_COTABT_DEFAULT) {
+        return AWS_MQTT5_COTABT_LRU;
     }
 
-    return "Unknown outbound topic aliasing behavior";
+    return outbound_aliasing_behavior;
+}
+
+const char *aws_mqtt5_extended_validation_and_flow_control_options_to_c_string(
+    enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_behavior) {
+    switch (extended_validation_behavior) {
+        case AWS_MQTT5_EVAFCO_NONE:
+            return "Dumb outbound topic aliasing behavior";
+        case AWS_MQTT5_EVAFCO_AWS_IOT_CORE_DEFAULTS:
+            return "LRU caching outbound topic aliasing behavior";
+        default:
+            return "Unknown extended validation behavior";
+    }
+}
+
+const char *aws_mqtt5_client_operation_queue_behavior_type_to_c_string(
+    enum aws_mqtt5_client_operation_queue_behavior_type offline_queue_behavior) {
+    switch (aws_mqtt5_client_operation_queue_behavior_type_to_non_default(offline_queue_behavior)) {
+        case AWS_MQTT5_COQBT_FAIL_NON_QOS1_PUBLISH_ON_DISCONNECT:
+            return "Fail all incomplete operations except QoS 1 publishes";
+        case AWS_MQTT5_COQBT_FAIL_QOS0_PUBLISH_ON_DISCONNECT:
+            return "Fail incomplete QoS 0 publishes";
+        case AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT:
+            return "Fail all incomplete operations";
+        default:
+            return "Unknown operation queue behavior type";
+    }
+}
+
+enum aws_mqtt5_client_operation_queue_behavior_type aws_mqtt5_client_operation_queue_behavior_type_to_non_default(
+    enum aws_mqtt5_client_operation_queue_behavior_type offline_queue_behavior) {
+    if (offline_queue_behavior == AWS_MQTT5_COQBT_DEFAULT) {
+        return AWS_MQTT5_COQBT_FAIL_QOS0_PUBLISH_ON_DISCONNECT;
+    }
+
+    return offline_queue_behavior;
 }
 
 const char *aws_mqtt5_client_lifecycle_event_type_to_c_string(

@@ -184,10 +184,12 @@ static const struct aws_mqtt5_user_property s_user_properties[] = {
 };
 
 static void s_aws_mqtt5_publish_completion_fn(
-    const struct aws_mqtt5_packet_puback_view *puback,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *complete_ctx) {
-    (void)puback;
+    (void)packet_type;
+    (void)packet;
     (void)error_code;
     (void)complete_ctx;
 }
@@ -2683,11 +2685,13 @@ static struct aws_mqtt5_operation_subscribe *s_make_completable_subscribe_operat
 }
 
 void s_on_publish_operation_complete(
-    const struct aws_mqtt5_packet_puback_view *puback,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *complete_ctx) {
 
-    (void)puback;
+    (void)packet_type;
+    (void)packet;
 
     struct aws_mqtt5_operation_processing_test_context *test_context = complete_ctx;
 
@@ -2733,6 +2737,10 @@ static int s_mqtt5_operation_processing_disconnect_fail_all_fn(struct aws_alloca
     s_aws_mqtt5_operation_processing_test_context_init(&test_context, allocator);
 
     test_context.dummy_client.current_state = AWS_MCS_CONNECTED;
+
+    struct aws_mqtt5_client_options_storage *config =
+        (struct aws_mqtt5_client_options_storage *)test_context.dummy_client.config;
+    config->offline_queue_behavior = AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT;
 
     struct aws_mqtt5_operation *subscribe1_op = &s_make_completable_subscribe_operation(allocator, &test_context)->base;
     struct aws_mqtt5_operation *subscribe2_op = &s_make_completable_subscribe_operation(allocator, &test_context)->base;

@@ -181,7 +181,8 @@ enum aws_mqtt5_unsuback_reason_code {
  * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901022
  */
 enum aws_mqtt5_packet_type {
-    /** algebraic unions of packet data structs may use this value (0) to indicate no data */
+    /* internal indicator that the associated packet is null */
+    AWS_MQTT5_PT_NONE = -1,
     AWS_MQTT5_PT_RESERVED = 0,
     AWS_MQTT5_PT_CONNECT = 1,
     AWS_MQTT5_PT_CONNACK = 2,

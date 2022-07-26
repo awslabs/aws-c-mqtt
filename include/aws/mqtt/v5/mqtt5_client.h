@@ -27,6 +27,11 @@ struct aws_socket_options;
  */
 enum aws_mqtt5_client_session_behavior_type {
     /**
+     * Maps to AWS_MQTT5_CSBT_CLEAN
+     */
+    AWS_MQTT5_CSBT_DEFAULT,
+
+    /**
      * Always join a new, clean session
      */
     AWS_MQTT5_CSBT_CLEAN,
@@ -51,6 +56,11 @@ enum aws_mqtt5_client_session_behavior_type {
  * IMPORTANT: topic aliases are not currently supported
  */
 enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
+    /**
+     * Maps to AWS_MQTT5_COTABT_LRU at the moment
+     */
+    AWS_MQTT5_COTABT_DEFAULT,
+
     /*
      * Outbound aliasing is the user's responsibility.  Client will cache and auto-use
      * previously-established aliases if they fall within the negotiated limits of the connection.
@@ -99,6 +109,12 @@ enum aws_mqtt5_extended_validation_and_flow_control_options {
  * then any operation that would be failed on disconnect (according to these rules) will be rejected.
  */
 enum aws_mqtt5_client_operation_queue_behavior_type {
+
+    /*
+     * Maps to AWS_MQTT5_COQBT_FAIL_QOS0_PUBLISH_ON_DISCONNECT
+     */
+    AWS_MQTT5_COQBT_DEFAULT,
+
     /*
      * Requeues QoS 1+ publishes on disconnect; unacked publishes go to the front, unprocessed publishes stay
      * in place.  All other operations (QoS 0 publishes, subscribe, unsubscribe) are failed.
@@ -194,7 +210,8 @@ typedef void(aws_mqtt5_client_connection_event_callback_fn)(const struct aws_mqt
  * Signature of callback to invoke on Publish success/failure.
  */
 typedef void(aws_mqtt5_publish_completion_fn)(
-    const struct aws_mqtt5_packet_puback_view *puback,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *complete_ctx);
 

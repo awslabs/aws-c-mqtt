@@ -31,7 +31,7 @@ static void s_enter_state(struct aws_mqtt5_decoder *decoder, enum aws_mqtt5_deco
 }
 
 static bool s_is_decodable_packet_type(struct aws_mqtt5_decoder *decoder, enum aws_mqtt5_packet_type type) {
-    return type < AWS_ARRAY_SIZE(decoder->options.decoder_table->decoders_by_packet_type) &&
+    return (uint32_t)type < AWS_ARRAY_SIZE(decoder->options.decoder_table->decoders_by_packet_type) &&
            decoder->options.decoder_table->decoders_by_packet_type[type] != NULL;
 }
 

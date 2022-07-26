@@ -187,7 +187,8 @@ static void s_on_unsubscribe_complete_fn(
 }
 
 static void s_on_publish_complete_fn(
-    const struct aws_mqtt5_packet_puback_view *puback,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *complete_ctx) {
     (void)complete_ctx;
@@ -206,7 +207,8 @@ static void s_on_publish_complete_fn(
             break;
     }
 
-    if (puback) {
+    if (packet_type == AWS_MQTT5_PT_PUBACK) {
+        const struct aws_mqtt5_packet_puback_view *puback = packet;
         printf("PUBACK received!\n");
         printf("PUBACK id:%d %s\n", puback->packet_id, aws_mqtt5_puback_reason_code_to_c_string(puback->reason_code));
     } else {

@@ -2225,13 +2225,16 @@ static int s_aws_mqtt5_mock_server_handle_publish_delayed_puback(
 }
 
 static void s_receive_maximum_publish_completion_fn(
-    const struct aws_mqtt5_packet_puback_view *puback,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *complete_ctx) {
 
-    (void)puback;
-    (void)error_code;
+    if (packet_type != AWS_MQTT5_PT_PUBACK) {
+        return;
+    }
 
+    const struct aws_mqtt5_packet_puback_view *puback = packet;
     struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
 
     uint64_t now = 0;
@@ -2350,10 +2353,12 @@ static int s_mqtt5_client_flow_control_receive_maximum_fn(struct aws_allocator *
 AWS_TEST_CASE(mqtt5_client_flow_control_receive_maximum, s_mqtt5_client_flow_control_receive_maximum_fn)
 
 static void s_publish_timeout_publish_completion_fn(
-    const struct aws_mqtt5_packet_puback_view *puback,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *complete_ctx) {
-    (void)puback;
+    (void)packet;
+    (void)packet_type;
 
     struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
 
@@ -3159,11 +3164,13 @@ static int s_aws_mqtt5_server_send_puback_and_forward_on_publish(
 }
 
 void s_sub_pub_unsub_publish_complete_fn(
-    const struct aws_mqtt5_packet_puback_view *puback,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *complete_ctx) {
 
-    (void)puback;
+    (void)packet;
+    (void)packet_type;
 
     AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
 
@@ -3786,12 +3793,16 @@ static int s_aws_mqtt5_mock_server_handle_publish_no_puback_on_first_connect(
 }
 
 static void s_receive_stored_session_publish_completion_fn(
-    const struct aws_mqtt5_packet_puback_view *puback,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *complete_ctx) {
 
-    (void)puback;
-    (void)error_code;
+    if (packet_type != AWS_MQTT5_PT_PUBACK) {
+        return;
+    }
+
+    const struct aws_mqtt5_packet_puback_view *puback = packet;
 
     struct aws_mqtt5_client_mock_test_fixture *test_context = complete_ctx;
 
@@ -4669,9 +4680,13 @@ static int s_mqtt5_client_puback_ordering_fn(struct aws_allocator *allocator, vo
 AWS_TEST_CASE(mqtt5_client_puback_ordering, s_mqtt5_client_puback_ordering_fn)
 
 static void s_on_offline_publish_completion(
-    const struct aws_mqtt5_packet_puback_view *puback_view,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
     int error_code,
     void *user_data) {
+    (void)packet_type;
+    (void)packet;
+
     struct aws_mqtt5_sub_pub_unsub_context *full_test_context = user_data;
 
     aws_mutex_lock(&full_test_context->test_fixture->lock);
