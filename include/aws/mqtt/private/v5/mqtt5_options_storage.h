@@ -30,6 +30,7 @@ struct aws_mqtt5_operation_vtable {
     void (*aws_mqtt5_operation_completion_fn)(
         struct aws_mqtt5_operation *operation,
         int error_code,
+        enum aws_mqtt5_packet_type packet_type,
         const void *completion_view);
 
     void (
@@ -187,6 +188,7 @@ AWS_MQTT_API struct aws_mqtt5_operation *aws_mqtt5_operation_release(struct aws_
 AWS_MQTT_API void aws_mqtt5_operation_complete(
     struct aws_mqtt5_operation *operation,
     int error_code,
+    enum aws_mqtt5_packet_type packet_type,
     const void *associated_view);
 
 AWS_MQTT_API void aws_mqtt5_operation_set_packet_id(

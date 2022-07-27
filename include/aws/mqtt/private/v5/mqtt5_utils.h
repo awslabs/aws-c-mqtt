@@ -193,13 +193,60 @@ AWS_MQTT_API const char *aws_mqtt5_client_session_behavior_type_to_c_string(
     enum aws_mqtt5_client_session_behavior_type session_behavior);
 
 /**
+ * Converts a session behavior type value to a final non-default value.
+ *
+ * @param session_behavior type of session behavior
+ * @return session behavior value where default has been mapped to its intended meaning
+ */
+AWS_MQTT_API enum aws_mqtt5_client_session_behavior_type aws_mqtt5_client_session_behavior_type_to_non_default(
+    enum aws_mqtt5_client_session_behavior_type session_behavior);
+
+/**
  * Converts an outbound topic aliasing behavior type value to a readable description.
  *
- * @param session_behavior type of outbound topic aliasing behavior
+ * @param outbound_aliasing_behavior type of outbound topic aliasing behavior
  * @return short string describing the outbound topic aliasing behavior
  */
 AWS_MQTT_API const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior);
+
+/**
+ * Converts an outbound topic aliasing behavior type value to a final non-default value.
+ *
+ * @param outbound_aliasing_behavior type of outbound topic aliasing behavior
+ * @return outbound topic aliasing value where default has been mapped to its intended meaning
+ */
+AWS_MQTT_API enum aws_mqtt5_client_outbound_topic_alias_behavior_type
+    aws_mqtt5_outbound_topic_alias_behavior_type_to_non_default(
+        enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior);
+
+/**
+ * Converts an extended validation and flow control options value to a readable description.
+ *
+ * @param extended_validation_behavior type of extended validation and flow control
+ * @return short string describing the extended validation and flow control behavior
+ */
+AWS_MQTT_API const char *aws_mqtt5_extended_validation_and_flow_control_options_to_c_string(
+    enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_behavior);
+
+/**
+ * Converts an offline queue behavior type value to a readable description.
+ *
+ * @param offline_queue_behavior type of offline queue behavior
+ * @return short string describing the offline queue behavior
+ */
+AWS_MQTT_API const char *aws_mqtt5_client_operation_queue_behavior_type_to_c_string(
+    enum aws_mqtt5_client_operation_queue_behavior_type offline_queue_behavior);
+
+/**
+ * Converts an offline queue behavior type value to a final non-default value.
+ *
+ * @param offline_queue_behavior type of offline queue behavior
+ * @return offline queue behavior value where default has been mapped to its intended meaning
+ */
+AWS_MQTT_API enum aws_mqtt5_client_operation_queue_behavior_type
+    aws_mqtt5_client_operation_queue_behavior_type_to_non_default(
+        enum aws_mqtt5_client_operation_queue_behavior_type offline_queue_behavior);
 
 /**
  * Converts a lifecycle event type value to a readable description.

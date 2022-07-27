@@ -68,7 +68,7 @@ static bool s_aws_mqtt5_operation_is_retainable(struct aws_mqtt5_operation *oper
 static bool s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(
     struct aws_mqtt5_operation *operation,
     enum aws_mqtt5_client_operation_queue_behavior_type queue_behavior) {
-    switch (queue_behavior) {
+    switch (aws_mqtt5_client_operation_queue_behavior_type_to_non_default(queue_behavior)) {
         case AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT:
             return false;
 
@@ -162,12 +162,13 @@ static void s_complete_operation(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation,
     int error_code,
+    enum aws_mqtt5_packet_type packet_type,
     const void *view) {
     if (client != NULL) {
         aws_mqtt5_client_statistics_change_operation_statistic_state(client, operation, AWS_MQTT5_OSS_NONE);
     }
 
-    aws_mqtt5_operation_complete(operation, error_code, view);
+    aws_mqtt5_operation_complete(operation, error_code, packet_type, view);
     aws_mqtt5_operation_release(operation);
 }
 
@@ -182,7 +183,7 @@ static void s_complete_operation_list(
 
         node = aws_linked_list_next(node);
 
-        s_complete_operation(client, operation, error_code, NULL);
+        s_complete_operation(client, operation, error_code, AWS_MQTT5_PT_NONE, NULL);
     }
 
     /* we've released everything, so reset the list to empty */
@@ -252,7 +253,7 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
             aws_linked_list_remove(&operation->node);
             aws_hash_table_remove(&client->operational_state.unacked_operations_table, &packet_id, NULL, NULL);
 
-            s_complete_operation(client, operation, AWS_ERROR_MQTT_TIMEOUT, NULL);
+            s_complete_operation(client, operation, AWS_ERROR_MQTT_TIMEOUT, AWS_MQTT5_PT_NONE, NULL);
         } else {
             break;
         }
@@ -1146,7 +1147,8 @@ static void s_aws_mqtt5_on_socket_write_completion(
 }
 
 static bool s_should_resume_session(const struct aws_mqtt5_client *client) {
-    enum aws_mqtt5_client_session_behavior_type session_behavior = client->config->session_behavior;
+    enum aws_mqtt5_client_session_behavior_type session_behavior =
+        aws_mqtt5_client_session_behavior_type_to_non_default(client->config->session_behavior);
 
     return session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully;
 }
@@ -1695,7 +1697,9 @@ static void s_aws_mqtt5_client_on_connack(
     /* Check if a session is being rejoined and perform associated rejoin connect logic here */
     if (client->negotiated_settings.rejoined_session) {
         /* Disconnect if the server is attempting to connect the client to an unexpected session */
-        if (client->config->session_behavior == AWS_MQTT5_CSBT_CLEAN || client->has_connected_successfully == false) {
+        if (aws_mqtt5_client_session_behavior_type_to_non_default(client->config->session_behavior) ==
+                AWS_MQTT5_CSBT_CLEAN ||
+            client->has_connected_successfully == false) {
             s_aws_mqtt5_client_emit_final_lifecycle_event(
                 client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION, connack_view, NULL);
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
@@ -2260,7 +2264,7 @@ static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, e
 
 error:
 
-    s_complete_operation(NULL, submit_operation_task->operation, completion_error_code, NULL);
+    s_complete_operation(NULL, submit_operation_task->operation, completion_error_code, AWS_MQTT5_PT_NONE, NULL);
 
 done:
 
@@ -2900,7 +2904,7 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
 
                 enum aws_mqtt5_packet_type packet_type = operation->packet_type;
                 int validation_error_code = aws_last_error();
-                s_complete_operation(client, operation, validation_error_code, NULL);
+                s_complete_operation(client, operation, validation_error_code, AWS_MQTT5_PT_NONE, NULL);
 
                 /* A DISCONNECT packet failing dynamic validation should shut down the whole channel */
                 if (packet_type == AWS_MQTT5_PT_DISCONNECT) {
@@ -3053,7 +3057,7 @@ void aws_mqtt5_client_operational_state_handle_ack(
     aws_linked_list_remove(&operation->node);
     aws_hash_table_remove(&client_operational_state->unacked_operations_table, &packet_id, NULL, NULL);
 
-    s_complete_operation(client_operational_state->client, operation, error_code, packet_view);
+    s_complete_operation(client_operational_state->client, operation, error_code, packet_type, packet_view);
 }
 
 bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client) {

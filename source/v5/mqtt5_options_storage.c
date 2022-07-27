@@ -208,10 +208,14 @@ struct aws_mqtt5_operation *aws_mqtt5_operation_release(struct aws_mqtt5_operati
     return NULL;
 }
 
-void aws_mqtt5_operation_complete(struct aws_mqtt5_operation *operation, int error_code, const void *associated_view) {
+void aws_mqtt5_operation_complete(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *associated_view) {
     AWS_FATAL_ASSERT(operation->vtable != NULL);
     if (operation->vtable->aws_mqtt5_operation_completion_fn != NULL) {
-        (*operation->vtable->aws_mqtt5_operation_completion_fn)(operation, error_code, associated_view);
+        (*operation->vtable->aws_mqtt5_operation_completion_fn)(operation, error_code, packet_type, associated_view);
     }
 }
 
@@ -1395,9 +1399,11 @@ static void s_destroy_operation_disconnect(void *object) {
 static void s_aws_mqtt5_disconnect_operation_completion(
     struct aws_mqtt5_operation *operation,
     int error_code,
+    enum aws_mqtt5_packet_type packet_type,
     const void *completion_view) {
 
     (void)completion_view;
+    (void)packet_type;
 
     struct aws_mqtt5_operation_disconnect *disconnect_op = operation->impl;
 
@@ -1905,12 +1911,13 @@ void aws_mqtt5_packet_publish_storage_clean_up(struct aws_mqtt5_packet_publish_s
 static void s_aws_mqtt5_operation_publish_complete(
     struct aws_mqtt5_operation *operation,
     int error_code,
+    enum aws_mqtt5_packet_type packet_type,
     const void *completion_view) {
     struct aws_mqtt5_operation_publish *publish_op = operation->impl;
 
     if (publish_op->completion_options.completion_callback != NULL) {
         (*publish_op->completion_options.completion_callback)(
-            completion_view, error_code, publish_op->completion_options.completion_user_data);
+            packet_type, completion_view, error_code, publish_op->completion_options.completion_user_data);
     }
 }
 
@@ -2376,8 +2383,10 @@ int aws_mqtt5_packet_unsubscribe_storage_init_from_external_storage(
 static void s_aws_mqtt5_operation_unsubscribe_complete(
     struct aws_mqtt5_operation *operation,
     int error_code,
+    enum aws_mqtt5_packet_type packet_type,
     const void *completion_view) {
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
+    (void)packet_type;
 
     if (unsubscribe_op->completion_options.completion_callback != NULL) {
         (*unsubscribe_op->completion_options.completion_callback)(
@@ -2780,7 +2789,10 @@ int aws_mqtt5_packet_subscribe_storage_init_from_external_storage(
 static void s_aws_mqtt5_operation_subscribe_complete(
     struct aws_mqtt5_operation *operation,
     int error_code,
+    enum aws_mqtt5_packet_type packet_type,
     const void *completion_view) {
+    (void)packet_type;
+
     struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
 
     if (subscribe_op->completion_options.completion_callback != NULL) {
@@ -3460,10 +3472,35 @@ void aws_mqtt5_client_options_storage_log(
     AWS_LOGF(
         level,
         AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage session behavior set to %d(%s)",
+        (void *)options_storage,
+        (int)options_storage->session_behavior,
+        aws_mqtt5_client_session_behavior_type_to_c_string(options_storage->session_behavior));
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage outbound topic aliasing behavior set to %d(%s)",
         (void *)options_storage,
         (int)options_storage->outbound_topic_aliasing_behavior,
         aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(options_storage->outbound_topic_aliasing_behavior));
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage extended validation and flow control options set to %d(%s)",
+        (void *)options_storage,
+        (int)options_storage->extended_validation_and_flow_control_options,
+        aws_mqtt5_extended_validation_and_flow_control_options_to_c_string(
+            options_storage->extended_validation_and_flow_control_options));
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage operation queue behavior set to %d(%s)",
+        (void *)options_storage,
+        (int)options_storage->offline_queue_behavior,
+        aws_mqtt5_client_operation_queue_behavior_type_to_c_string(options_storage->offline_queue_behavior));
 
     AWS_LOGF(
         level,
