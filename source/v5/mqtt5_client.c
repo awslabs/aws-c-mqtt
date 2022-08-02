@@ -2233,6 +2233,14 @@ static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, e
 
     int completion_error_code = AWS_ERROR_MQTT5_CLIENT_TERMINATED;
     struct aws_mqtt5_submit_operation_task *submit_operation_task = arg;
+
+    /*
+     * Take a ref to the operation that represents the client taking ownership
+     * If we subsequently reject it (task cancel or offline queue policy), then the operation completion
+     * will undo this ref acquisition.
+     */
+    aws_mqtt5_operation_acquire(submit_operation_task->operation);
+
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto error;
     }
@@ -2250,8 +2258,6 @@ static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, e
             goto error;
         }
     }
-
-    aws_mqtt5_operation_acquire(submit_operation_task->operation);
 
     /* newly-submitted operations must have a 0 packet id */
     aws_mqtt5_operation_set_packet_id(submit_operation_task->operation, 0);
