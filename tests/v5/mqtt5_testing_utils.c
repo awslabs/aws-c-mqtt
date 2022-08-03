@@ -1542,7 +1542,7 @@ static bool s_aws_connect_packets_equal(
     const struct aws_mqtt5_packet_connect_view *lhs,
     const struct aws_mqtt5_packet_connect_view *rhs) {
     AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->keep_alive_interval_seconds, rhs->keep_alive_interval_seconds);
-    // AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->client_id, rhs->client_id);
+    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->client_id, rhs->client_id);
     AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->username, rhs->username);
     AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->password, rhs->password);
     AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->clean_start, rhs->clean_start);
