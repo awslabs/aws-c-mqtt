@@ -80,7 +80,8 @@ struct aws_mqtt5_client_mqtt5_mock_test_fixture_options {
 struct aws_mqtt5_client_mock_test_fixture {
     struct aws_allocator *allocator;
 
-    struct aws_event_loop_group *elg;
+    struct aws_event_loop_group *client_elg;
+    struct aws_event_loop_group *server_elg;
     struct aws_host_resolver *host_resolver;
     struct aws_client_bootstrap *client_bootstrap;
     struct aws_server_bootstrap *server_bootstrap;
