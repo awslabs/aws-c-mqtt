@@ -628,6 +628,15 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             connection->reconnect_timeouts.current_sec *= 2;
         }
 
+        /* Apply updated reconnect_timeout to next_attempt_reset_timer_ns to prevent premature reset to min
+         * of min reconnect on a successful connect after a prolonged period of failed connections */
+        uint64_t now = 0;
+        aws_high_res_clock_get_ticks(&now);
+        connection->reconnect_timeouts.next_attempt_reset_timer_ns =
+            now + 10000000000 +
+            aws_timestamp_convert(
+                connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
         if (s_mqtt_client_connect(
                 connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
             /* If reconnect attempt failed, schedule the next attempt */
@@ -1663,10 +1672,9 @@ int aws_mqtt_client_connection_disconnect(
             (void *)connection);
         connection->on_disconnect = on_disconnect;
         connection->on_disconnect_ud = userdata;
+        connection->reconnect_timeouts.next_attempt_reset_timer_ns = 0;
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-
-    connection->reconnect_timeouts.next_attempt_reset_timer_ns = 0;
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Closing connection", (void *)connection);
 
