@@ -317,6 +317,11 @@ static int s_aws_mqtt5_encode_decode_round_trip_test(
     struct aws_mqtt5_decoder decoder;
     ASSERT_SUCCESS(aws_mqtt5_decoder_init(&decoder, context->allocator, &decoder_options));
 
+    struct aws_mqtt5_inbound_topic_alias_resolver inbound_alias_resolver;
+    ASSERT_SUCCESS(aws_mqtt5_inbound_topic_alias_resolver_init(&inbound_alias_resolver, context->allocator));
+    ASSERT_SUCCESS(aws_mqtt5_inbound_topic_alias_resolver_reset(&inbound_alias_resolver, 65535));
+    aws_mqtt5_decoder_set_inbound_topic_alias_resolver(&decoder, &inbound_alias_resolver);
+
     struct aws_byte_cursor whole_cursor = aws_byte_cursor_from_buf(&whole_dest);
     while (whole_cursor.len > 0) {
         size_t advance = aws_min_size(whole_cursor.len, decode_fragment_size);
@@ -328,6 +333,7 @@ static int s_aws_mqtt5_encode_decode_round_trip_test(
     ASSERT_INT_EQUALS(1, tester.view_count);
 
     aws_byte_buf_clean_up(&whole_dest);
+    aws_mqtt5_inbound_topic_alias_resolver_clean_up(&inbound_alias_resolver);
     aws_mqtt5_encoder_clean_up(&encoder);
     aws_mqtt5_decoder_clean_up(&decoder);
 

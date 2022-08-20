@@ -14,6 +14,7 @@
 #include <aws/io/channel.h>
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
 #include <aws/mqtt/private/v5/mqtt5_encoder.h>
+#include <aws/mqtt/private/v5/mqtt5_topic_alias.h>
 #include <aws/mqtt/private/v5/rate_limiters.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
@@ -372,6 +373,11 @@ struct aws_mqtt5_client {
      * The client's MQTT packet decoder
      */
     struct aws_mqtt5_decoder decoder;
+
+    /*
+     * Cache of inbound topic aliases
+     */
+    struct aws_mqtt5_inbound_topic_alias_resolver inbound_topic_alias_resolver;
 
     /*
      * Temporary state-related data.

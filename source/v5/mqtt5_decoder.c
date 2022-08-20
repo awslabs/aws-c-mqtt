@@ -5,6 +5,7 @@
 
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
 
+#include <aws/mqtt/private/v5/mqtt5_topic_alias.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 
 #define AWS_MQTT5_DECODER_BUFFER_START_SIZE 2048
@@ -499,6 +500,43 @@ static int s_aws_mqtt5_decoder_decode_publish(struct aws_mqtt5_decoder *decoder)
     storage_view->user_property_count = aws_mqtt5_user_property_set_size(&storage.user_properties);
     storage_view->user_properties = storage.user_properties.properties.data;
     storage_view->payload = packet_cursor;
+
+    if (storage_view->topic_alias != NULL) {
+        if (decoder->topic_alias_resolver == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: PUBLISH packet contained topic alias when not allowed",
+                decoder->options.callback_user_data);
+            goto done;
+        }
+
+        uint16_t topic_alias_id = *storage_view->topic_alias;
+        if (topic_alias_id == 0) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: PUBLISH packet contained illegal topic alias",
+                decoder->options.callback_user_data);
+            goto done;
+        }
+
+        if (storage_view->topic.len > 0) {
+            if (aws_mqtt5_inbound_topic_alias_resolver_register_alias(
+                    decoder->topic_alias_resolver, topic_alias_id, storage_view->topic)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT5_CLIENT, "id=%p: unable to register topic alias", decoder->options.callback_user_data);
+                goto done;
+            }
+        } else {
+            if (aws_mqtt5_inbound_topic_alias_resolver_resolve_alias(
+                    decoder->topic_alias_resolver, topic_alias_id, &storage_view->topic)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT5_CLIENT,
+                    "id=%p: PUBLISH packet contained unknown topic alias",
+                    decoder->options.callback_user_data);
+                goto done;
+            }
+        }
+    }
 
     result = AWS_OP_SUCCESS;
 
@@ -1118,4 +1156,10 @@ void aws_mqtt5_decoder_reset(struct aws_mqtt5_decoder *decoder) {
 
 void aws_mqtt5_decoder_clean_up(struct aws_mqtt5_decoder *decoder) {
     aws_byte_buf_clean_up(&decoder->scratch_space);
+}
+
+void aws_mqtt5_decoder_set_inbound_topic_alias_resolver(
+    struct aws_mqtt5_decoder *decoder,
+    struct aws_mqtt5_inbound_topic_alias_resolver *resolver) {
+    decoder->topic_alias_resolver = resolver;
 }

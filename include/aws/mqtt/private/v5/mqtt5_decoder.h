@@ -14,6 +14,7 @@
 
 struct aws_mqtt5_client;
 struct aws_mqtt5_decoder;
+struct aws_mqtt5_inbound_topic_alias_resolver;
 
 /**
  * Overall decoder state.  We read the packet type and the remaining length, and then buffer the
@@ -97,6 +98,8 @@ struct aws_mqtt5_decoder {
      * in more than one fragment) or to an io message buffer that contains the entire packet.
      */
     struct aws_byte_cursor packet_cursor;
+
+    struct aws_mqtt5_inbound_topic_alias_resolver *topic_alias_resolver;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -136,6 +139,16 @@ AWS_MQTT_API void aws_mqtt5_decoder_reset(struct aws_mqtt5_decoder *decoder);
  * @return success/failure - failure implies a need to shut down the connection
  */
 AWS_MQTT_API int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct aws_byte_cursor data);
+
+/**
+ * Sets the optional inbound alias resolver that the decoder should use during the lifetime of a connection
+ *
+ * @param decoder decoder to apply inbound topic alias resolution to
+ * @param resolver inbound topic alias resolver
+ */
+AWS_MQTT_API void aws_mqtt5_decoder_set_inbound_topic_alias_resolver(
+    struct aws_mqtt5_decoder *decoder,
+    struct aws_mqtt5_inbound_topic_alias_resolver *resolver);
 
 /**
  * Default decoding table; tests use an augmented version with decoders for packets that only the server needs to
