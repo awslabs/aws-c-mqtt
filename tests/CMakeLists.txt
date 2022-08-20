@@ -69,6 +69,11 @@ add_test_case(mqtt5_topic_skip_rules_prefix)
 add_test_case(mqtt5_topic_get_segment_count)
 add_test_case(mqtt5_shared_subscription_validation)
 
+add_test_case(mqtt5_inbound_topic_alias_register_failure)
+add_test_case(mqtt5_inbound_topic_alias_resolve_success)
+add_test_case(mqtt5_inbound_topic_alias_resolve_failure)
+add_test_case(mqtt5_inbound_topic_alias_reset)
+
 # mqtt operation/storage/view creation/relationship tests
 add_test_case(mqtt5_publish_operation_new_set_no_optional)
 add_test_case(mqtt5_publish_operation_new_set_all)
