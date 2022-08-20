@@ -305,6 +305,27 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type aws_mqtt5_outbound_topi
     return outbound_aliasing_behavior;
 }
 
+const char *aws_mqtt5_inbound_topic_alias_behavior_type_to_c_string(
+    enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_aliasing_behavior) {
+    switch (aws_mqtt5_inbound_topic_alias_behavior_type_to_non_default(inbound_aliasing_behavior)) {
+        case AWS_MQTT5_CITABT_ENABLED:
+            return "Inbound topic aliasing behavior enabled";
+        case AWS_MQTT5_CITABT_DISABLED:
+            return "Inbound topic aliasing behavior disabled";
+        default:
+            return "Unknown inbound topic aliasing behavior";
+    }
+}
+
+enum aws_mqtt5_client_inbound_topic_alias_behavior_type aws_mqtt5_inbound_topic_alias_behavior_type_to_non_default(
+    enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_aliasing_behavior) {
+    if (inbound_aliasing_behavior == AWS_MQTT5_CITABT_DEFAULT) {
+        return AWS_MQTT5_CITABT_ENABLED;
+    }
+
+    return inbound_aliasing_behavior;
+}
+
 const char *aws_mqtt5_extended_validation_and_flow_control_options_to_c_string(
     enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_behavior) {
     switch (extended_validation_behavior) {

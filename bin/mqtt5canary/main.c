@@ -851,7 +851,6 @@ int main(int argc, char **argv) {
         .tls_options = (use_tls) ? &tls_connection_options : NULL,
         .connect_options = &connect_options,
         .session_behavior = AWS_MQTT5_CSBT_CLEAN,
-        .outbound_topic_aliasing_behavior = AWS_MQTT5_COTABT_LRU,
         .lifecycle_event_handler = s_lifecycle_event_callback,
         .retry_jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
         .min_reconnect_delay_ms = 1000,

@@ -84,6 +84,8 @@ struct aws_mqtt5_negotiated_settings;
 #define AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS 30000
 #define AWS_MQTT5_CLIENT_DEFAULT_CONNACK_TIMEOUT_MS 20000
 #define AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS 60
+#define AWS_MQTT5_CLIENT_DEFAULT_INBOUND_TOPIC_ALIAS_CACHE_SIZE 25
+#define AWS_MQTT5_CLIENT_DEFAULT_OUTBOUND_TOPIC_ALIAS_CACHE_SIZE 25
 
 AWS_EXTERN_C_BEGIN
 
@@ -219,6 +221,25 @@ AWS_MQTT_API const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_strin
 AWS_MQTT_API enum aws_mqtt5_client_outbound_topic_alias_behavior_type
     aws_mqtt5_outbound_topic_alias_behavior_type_to_non_default(
         enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior);
+
+/**
+ * Converts an inbound topic aliasing behavior type value to a readable description.
+ *
+ * @param inbound_aliasing_behavior type of inbound topic aliasing behavior
+ * @return short string describing the inbound topic aliasing behavior
+ */
+AWS_MQTT_API const char *aws_mqtt5_inbound_topic_alias_behavior_type_to_c_string(
+    enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_aliasing_behavior);
+
+/**
+ * Converts an inbound topic aliasing behavior type value to a final non-default value.
+ *
+ * @param inbound_aliasing_behavior type of inbound topic aliasing behavior
+ * @return inbound topic aliasing value where default has been mapped to its intended meaning
+ */
+AWS_MQTT_API enum aws_mqtt5_client_inbound_topic_alias_behavior_type
+    aws_mqtt5_inbound_topic_alias_behavior_type_to_non_default(
+        enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_aliasing_behavior);
 
 /**
  * Converts an extended validation and flow control options value to a readable description.

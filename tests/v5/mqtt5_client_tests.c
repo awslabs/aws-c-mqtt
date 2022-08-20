@@ -112,7 +112,6 @@ static void s_mqtt5_client_test_init_default_options(
     struct aws_mqtt5_client_options local_client_options = {
         .connect_options = connect_options,
         .session_behavior = AWS_MQTT5_CSBT_CLEAN,
-        .outbound_topic_aliasing_behavior = AWS_MQTT5_COTABT_LRU,
         .lifecycle_event_handler = s_lifecycle_event_callback,
         .lifecycle_event_handler_user_data = NULL,
         .max_reconnect_delay_ms = 120000,
