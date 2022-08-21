@@ -5034,3 +5034,419 @@ static int s_mqtt5_client_offline_operation_submission_fail_non_qos1_fn(struct a
 AWS_TEST_CASE(
     mqtt5_client_offline_operation_submission_fail_non_qos1,
     s_mqtt5_client_offline_operation_submission_fail_non_qos1_fn)
+
+#define ALIASED_PUBLISH_SEQUENCE_COUNT 4
+
+struct aws_mqtt5_aliased_publish_sequence_context {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+    struct aws_allocator *allocator;
+
+    struct aws_array_list publishes_received;
+};
+
+static int s_aws_mqtt5_aliased_publish_sequence_context_init(
+    struct aws_mqtt5_aliased_publish_sequence_context *context,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*context);
+
+    context->allocator = allocator;
+    return aws_array_list_init_dynamic(
+        &context->publishes_received, allocator, 10, sizeof(struct aws_mqtt5_packet_publish_storage *));
+}
+
+static void s_aws_mqtt5_aliased_publish_sequence_context_clean_up(
+    struct aws_mqtt5_aliased_publish_sequence_context *context) {
+    for (size_t i = 0; i < aws_array_list_length(&context->publishes_received); ++i) {
+        struct aws_mqtt5_packet_publish_storage *storage = NULL;
+        aws_array_list_get_at(&context->publishes_received, &storage, i);
+
+        aws_mqtt5_packet_publish_storage_clean_up(storage);
+        aws_mem_release(context->allocator, storage);
+    }
+    aws_array_list_clean_up(&context->publishes_received);
+}
+
+void s_aliased_publish_received_fn(const struct aws_mqtt5_packet_publish_view *publish, void *complete_ctx) {
+
+    AWS_FATAL_ASSERT(publish != NULL);
+
+    struct aws_mqtt5_aliased_publish_sequence_context *full_test_context = complete_ctx;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = full_test_context->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
+
+    struct aws_mqtt5_packet_publish_storage *storage =
+        aws_mem_calloc(full_test_context->allocator, 1, sizeof(struct aws_mqtt5_packet_publish_storage));
+    aws_mqtt5_packet_publish_storage_init(storage, full_test_context->allocator, publish);
+
+    aws_array_list_push_back(&full_test_context->publishes_received, &storage);
+
+    aws_mutex_unlock(&test_fixture->lock);
+    aws_condition_variable_notify_all(&test_fixture->signal);
+}
+
+static enum aws_mqtt5_suback_reason_code s_alias_reason_codes[] = {AWS_MQTT5_SARC_GRANTED_QOS_1,
+                                                                   AWS_MQTT5_SARC_GRANTED_QOS_1};
+static uint8_t s_alias_topic1[] = "alias/first/topic";
+static uint8_t s_alias_topic2[] = "alias/second/topic";
+
+static int s_aws_mqtt5_server_send_aliased_publish_sequence(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)user_data;
+
+    struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet;
+
+    struct aws_mqtt5_packet_suback_view suback_view = {
+        .packet_id = subscribe_view->packet_id, .reason_code_count = 1, .reason_codes = s_alias_reason_codes};
+
+    // just to be thorough, send a suback
+    if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view)) {
+        return AWS_OP_ERR;
+    }
+
+    uint16_t alias_id = 1;
+    struct aws_mqtt5_packet_publish_view publish_view = {.packet_id = 1,
+                                                         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+                                                         .topic =
+                                                             {
+                                                                 .ptr = s_alias_topic1,
+                                                                 .len = AWS_ARRAY_SIZE(s_alias_topic1) - 1,
+                                                             },
+                                                         .topic_alias = &alias_id};
+
+    // establish an alias with id 1
+    if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
+        return AWS_OP_ERR;
+    }
+
+    // alias alone
+    AWS_ZERO_STRUCT(publish_view.topic);
+    if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
+        return AWS_OP_ERR;
+    }
+
+    // establish a new alias with id 1
+    publish_view.topic.ptr = s_alias_topic2;
+    publish_view.topic.len = AWS_ARRAY_SIZE(s_alias_topic2) - 1;
+
+    if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
+        return AWS_OP_ERR;
+    }
+
+    // alias alone
+    AWS_ZERO_STRUCT(publish_view.topic);
+    if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static bool s_client_received_aliased_publish_sequence(void *arg) {
+    struct aws_mqtt5_aliased_publish_sequence_context *full_test_context = arg;
+
+    return aws_array_list_length(&full_test_context->publishes_received) == ALIASED_PUBLISH_SEQUENCE_COUNT;
+}
+
+static void s_wait_for_aliased_publish_sequence(struct aws_mqtt5_aliased_publish_sequence_context *full_test_context) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = full_test_context->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
+    aws_condition_variable_wait_pred(
+        &test_fixture->signal, &test_fixture->lock, s_client_received_aliased_publish_sequence, full_test_context);
+    aws_mutex_unlock(&test_fixture->lock);
+}
+
+static int s_verify_aliased_publish_sequence(struct aws_mqtt5_aliased_publish_sequence_context *full_test_context) {
+
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = full_test_context->test_fixture;
+    aws_mutex_lock(&test_fixture->lock);
+
+    for (size_t i = 0; i < aws_array_list_length(&full_test_context->publishes_received); ++i) {
+        struct aws_mqtt5_packet_publish_storage *publish_storage = NULL;
+        aws_array_list_get_at(&full_test_context->publishes_received, &publish_storage, i);
+
+        struct aws_byte_cursor topic_cursor = publish_storage->storage_view.topic;
+
+        if (i < 2) {
+            // the first two publishes should be the first topic
+            ASSERT_BIN_ARRAYS_EQUALS(
+                s_alias_topic1, AWS_ARRAY_SIZE(s_alias_topic1) - 1, topic_cursor.ptr, topic_cursor.len);
+        } else {
+            // the last two publishes should be the second topic
+            ASSERT_BIN_ARRAYS_EQUALS(
+                s_alias_topic2, AWS_ARRAY_SIZE(s_alias_topic2) - 1, topic_cursor.ptr, topic_cursor.len);
+        }
+    }
+
+    aws_mutex_unlock(&test_fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static struct aws_mqtt5_subscription_view s_alias_subscriptions[] = {
+    {
+        .topic_filter =
+            {
+                .ptr = (uint8_t *)s_alias_topic1,
+                .len = AWS_ARRAY_SIZE(s_alias_topic1) - 1,
+            },
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+    },
+    {
+        .topic_filter =
+            {
+                .ptr = (uint8_t *)s_alias_topic2,
+                .len = AWS_ARRAY_SIZE(s_alias_topic2) - 1,
+            },
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+    },
+};
+
+static int s_mqtt5_client_inbound_alias_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] = s_aws_mqtt5_server_send_aliased_publish_sequence;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_aliased_publish_sequence_context full_test_context;
+    ASSERT_SUCCESS(s_aws_mqtt5_aliased_publish_sequence_context_init(&full_test_context, allocator));
+    full_test_context.test_fixture = &test_context;
+
+    struct aws_mqtt5_client_topic_alias_config aliasing_config = {
+        .inbound_alias_cache_size = 10,
+        .inbound_topic_alias_behavior = AWS_MQTT5_CITABT_ENABLED,
+    };
+
+    client_options.topic_aliasing_options = &aliasing_config;
+    client_options.publish_received_handler = s_aliased_publish_received_fn;
+    client_options.publish_received_handler_user_data = &full_test_context;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &full_test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_subscribe_view subscribe = {.subscriptions = s_alias_subscriptions,
+                                                        .subscription_count = AWS_ARRAY_SIZE(s_alias_subscriptions)};
+
+    ASSERT_SUCCESS(aws_mqtt5_client_subscribe(client, &subscribe, NULL));
+
+    s_wait_for_aliased_publish_sequence(&full_test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(s_verify_aliased_publish_sequence(&full_test_context));
+
+    s_aws_mqtt5_aliased_publish_sequence_context_clean_up(&full_test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_inbound_alias_success, s_mqtt5_client_inbound_alias_success_fn)
+
+enum aws_mqtt5_test_inbound_alias_failure_type {
+    AWS_MTIAFT_DISABLED,
+    AWS_MTIAFT_ZERO_ID,
+    AWS_MTIAFT_TOO_LARGE_ID,
+    AWS_MTIAFT_UNBOUND_ID
+};
+
+struct aws_mqtt5_test_inbound_alias_failure_context {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+
+    enum aws_mqtt5_test_inbound_alias_failure_type failure_type;
+};
+
+static int s_aws_mqtt5_server_send_aliased_publish_failure(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+
+    struct aws_mqtt5_test_inbound_alias_failure_context *test_context = user_data;
+
+    struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet;
+
+    struct aws_mqtt5_packet_suback_view suback_view = {
+        .packet_id = subscribe_view->packet_id, .reason_code_count = 1, .reason_codes = s_alias_reason_codes};
+
+    // just to be thorough, send a suback
+    if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view)) {
+        return AWS_OP_ERR;
+    }
+
+    uint16_t alias_id = 0;
+    struct aws_byte_cursor topic_cursor = {
+        .ptr = s_alias_topic1,
+        .len = AWS_ARRAY_SIZE(s_alias_topic1) - 1,
+    };
+
+    switch (test_context->failure_type) {
+        case AWS_MTIAFT_TOO_LARGE_ID:
+            alias_id = 100;
+            break;
+
+        case AWS_MTIAFT_UNBOUND_ID:
+            AWS_ZERO_STRUCT(topic_cursor);
+            alias_id = 1;
+            break;
+
+        default:
+            break;
+    }
+
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .packet_id = 1, .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE, .topic = topic_cursor, .topic_alias = &alias_id};
+
+    // establish an alias with id 1
+    if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static bool s_has_decoding_error_disconnect_event(void *arg) {
+    struct aws_mqtt5_test_inbound_alias_failure_context *test_context = arg;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = test_context->test_fixture;
+
+    size_t record_count = aws_array_list_length(&test_fixture->lifecycle_events);
+    for (size_t i = 0; i < record_count; ++i) {
+        struct aws_mqtt5_lifecycle_event_record *record = NULL;
+        aws_array_list_get_at(&test_fixture->lifecycle_events, &record, i);
+        if (record->event.event_type == AWS_MQTT5_CLET_DISCONNECTION) {
+            if (record->event.error_code == AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static void s_wait_for_decoding_error_disconnect(struct aws_mqtt5_test_inbound_alias_failure_context *test_context) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = test_context->test_fixture;
+
+    aws_mutex_lock(&test_fixture->lock);
+    aws_condition_variable_wait_pred(
+        &test_fixture->signal, &test_fixture->lock, s_has_decoding_error_disconnect_event, test_context);
+    aws_mutex_unlock(&test_fixture->lock);
+}
+
+static int s_do_inbound_alias_failure_test(
+    struct aws_allocator *allocator,
+    enum aws_mqtt5_test_inbound_alias_failure_type test_failure_type) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] = s_aws_mqtt5_server_send_aliased_publish_failure;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_test_inbound_alias_failure_context full_test_context = {.test_fixture = &test_context,
+                                                                             .failure_type = test_failure_type};
+
+    struct aws_mqtt5_client_topic_alias_config aliasing_config = {
+        .inbound_alias_cache_size = 10,
+        .inbound_topic_alias_behavior =
+            (test_failure_type == AWS_MTIAFT_DISABLED) ? AWS_MQTT5_CITABT_DISABLED : AWS_MQTT5_CITABT_ENABLED,
+    };
+
+    client_options.topic_aliasing_options = &aliasing_config;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &full_test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_subscribe_view subscribe = {.subscriptions = s_alias_subscriptions,
+                                                        .subscription_count = AWS_ARRAY_SIZE(s_alias_subscriptions)};
+
+    ASSERT_SUCCESS(aws_mqtt5_client_subscribe(client, &subscribe, NULL));
+
+    s_wait_for_decoding_error_disconnect(&full_test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_inbound_alias_failure_disabled_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_inbound_alias_failure_test(allocator, AWS_MTIAFT_DISABLED));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_inbound_alias_failure_disabled, s_mqtt5_client_inbound_alias_failure_disabled_fn)
+
+static int s_mqtt5_client_inbound_alias_failure_zero_id_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_inbound_alias_failure_test(allocator, AWS_MTIAFT_ZERO_ID));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_inbound_alias_failure_zero_id, s_mqtt5_client_inbound_alias_failure_zero_id_fn)
+
+static int s_mqtt5_client_inbound_alias_failure_too_large_id_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_inbound_alias_failure_test(allocator, AWS_MTIAFT_TOO_LARGE_ID));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_inbound_alias_failure_too_large_id, s_mqtt5_client_inbound_alias_failure_too_large_id_fn)
+
+static int s_mqtt5_client_inbound_alias_failure_unbound_id_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_inbound_alias_failure_test(allocator, AWS_MTIAFT_UNBOUND_ID));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_inbound_alias_failure_unbound_id, s_mqtt5_client_inbound_alias_failure_unbound_id_fn)
