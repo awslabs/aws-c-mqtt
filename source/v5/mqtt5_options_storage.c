@@ -442,12 +442,9 @@ void aws_mqtt5_packet_connect_view_log(
         AWS_BYTE_CURSOR_PRI(connect_view->client_id));
 
     if (connect_view->username != NULL) {
+        /* Intentionally do not log username since it too can contain sensitive information */
         AWS_LOGF(
-            level,
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_connect_view username set to \"" PRInSTR "\"",
-            (void *)connect_view,
-            AWS_BYTE_CURSOR_PRI(*connect_view->username));
+            level, AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_connect_view username set", (void *)connect_view);
     }
 
     if (connect_view->password != NULL) {
