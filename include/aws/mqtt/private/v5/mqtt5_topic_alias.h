@@ -9,7 +9,7 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/common/array_list.h>
-#include <aws/mqtt/mqtt5_client.h>
+#include <aws/mqtt/v5/mqtt5_client.h>
 
 struct aws_mqtt5_outbound_topic_alias_resolver;
 

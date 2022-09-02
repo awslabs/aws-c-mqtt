@@ -6,6 +6,7 @@
 #include <aws/mqtt/private/v5/mqtt5_topic_alias.h>
 
 #include <aws/common/string.h>
+#include <aws/mqtt/private/v5/mqtt5_utils.h>
 
 int aws_mqtt5_inbound_topic_alias_resolver_init(
     struct aws_mqtt5_inbound_topic_alias_resolver *resolver,
@@ -124,9 +125,20 @@ struct aws_mqtt5_outbound_topic_alias_resolver *aws_mqtt5_outbound_topic_alias_r
     struct aws_allocator *allocator,
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_alias_behavior) {
     (void)allocator;
-    (void)outbound_alias_behavior;
 
-    return NULL;
+    switch (aws_mqtt5_outbound_topic_alias_behavior_type_to_non_default(outbound_alias_behavior)) {
+        case AWS_MQTT5_COTABT_DUMB:
+            return NULL;
+
+        case AWS_MQTT5_COTABT_LRU:
+            return NULL;
+
+        case AWS_MQTT5_COTABT_DISABLED:
+            return NULL;
+
+        default:
+            return NULL;
+    }
 }
 
 void aws_mqtt5_outbound_topic_alias_resolver_destroy(struct aws_mqtt5_outbound_topic_alias_resolver *resolver) {
