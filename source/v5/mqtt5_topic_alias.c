@@ -100,3 +100,65 @@ int aws_mqtt5_inbound_topic_alias_resolver_register_alias(
 
     return AWS_OP_SUCCESS;
 }
+
+/****************************************************************************************************************/
+
+struct aws_mqtt5_outbound_topic_alias_manager_vtable {
+    void (*destroy_fn)(struct aws_mqtt5_outbound_topic_alias_manager *);
+    int (*reset_fn)(struct aws_mqtt5_outbound_topic_alias_manager *, uint16_t);
+    int (*on_outbound_publish_fn)(
+        struct aws_mqtt5_outbound_topic_alias_manager *,
+        const struct aws_mqtt5_packet_publish_view *,
+        uint16_t *,
+        struct aws_byte_cursor *);
+};
+
+struct aws_mqtt5_outbound_topic_alias_manager {
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt5_outbound_topic_alias_manager_vtable *vtable;
+    void *impl;
+};
+
+struct aws_mqtt5_outbound_topic_alias_manager *aws_mqtt5_outbound_topic_alias_manager_new(
+    struct aws_allocator *allocator,
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_alias_behavior) {
+    (void)allocator;
+    (void)outbound_alias_behavior;
+
+    return NULL;
+}
+
+void aws_mqtt5_outbound_topic_alias_manager_destroy(struct aws_mqtt5_outbound_topic_alias_manager *manager) {
+    if (manager == NULL) {
+        return;
+    }
+
+    (*manager->vtable->destroy_fn)(manager);
+}
+
+int aws_mqtt5_outbound_topic_alias_manager_reset(
+    struct aws_mqtt5_outbound_topic_alias_manager *manager,
+    uint16_t topic_alias_maximum) {
+
+    if (manager == NULL) {
+        return AWS_OP_SUCCESS;
+    }
+
+    return (*manager->vtable->reset_fn)(manager, topic_alias_maximum);
+}
+
+int aws_mqtt5_outbound_topic_alias_manager_on_outbound_publish(
+    struct aws_mqtt5_outbound_topic_alias_manager *manager,
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    uint16_t *topic_alias_out,
+    struct aws_byte_cursor *topic_out) {
+    if (manager == NULL) {
+        *topic_alias_out = 0;
+        *topic_out = publish_view->topic;
+
+        return AWS_OP_SUCCESS;
+    }
+
+    return (*manager->vtable->on_outbound_publish_fn)(manager, publish_view, topic_alias_out, topic_out);
+}
