@@ -11,7 +11,7 @@
 #include <aws/common/array_list.h>
 #include <aws/mqtt/mqtt5_client.h>
 
-struct aws_mqtt5_outbound_topic_alias_manager;
+struct aws_mqtt5_outbound_topic_alias_resolver;
 
 struct aws_mqtt5_inbound_topic_alias_resolver {
     struct aws_allocator *allocator;
@@ -41,18 +41,18 @@ int aws_mqtt5_inbound_topic_alias_resolver_register_alias(
     uint16_t alias,
     struct aws_byte_cursor topic);
 
-struct aws_mqtt5_outbound_topic_alias_manager *aws_mqtt5_outbound_topic_alias_manager_new(
+struct aws_mqtt5_outbound_topic_alias_resolver *aws_mqtt5_outbound_topic_alias_resolver_new(
     struct aws_allocator *allocator,
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_alias_behavior);
 
-void aws_mqtt5_outbound_topic_alias_manager_destroy(struct aws_mqtt5_outbound_topic_alias_manager *manager);
+void aws_mqtt5_outbound_topic_alias_resolver_destroy(struct aws_mqtt5_outbound_topic_alias_resolver *resolver);
 
-int aws_mqtt5_outbound_topic_alias_manager_reset(
-    struct aws_mqtt5_outbound_topic_alias_manager *manager,
+int aws_mqtt5_outbound_topic_alias_resolver_reset(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
     uint16_t topic_alias_maximum);
 
-int aws_mqtt5_outbound_topic_alias_manager_on_outbound_publish(
-    struct aws_mqtt5_outbound_topic_alias_manager *manager,
+int aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
     const struct aws_mqtt5_packet_publish_view *publish_view,
     uint16_t *topic_alias_out,
     struct aws_byte_cursor *topic_out);
