@@ -495,7 +495,7 @@ static int s_aws_mqtt5_outbound_topic_alias_resolver_lru_resolve_outbound_publis
         return AWS_OP_SUCCESS;
     }
 
-    /* Topic doesn't exist */
+    /* Topic doesn't exist in the cache. */
     uint16_t new_alias_id = 0;
     size_t assignment_count = aws_cache_get_element_count(lru_resolver->lru_cache);
     if (assignment_count == lru_resolver->max_aliases) {
@@ -511,17 +511,23 @@ static int s_aws_mqtt5_outbound_topic_alias_resolver_lru_resolve_outbound_publis
         struct aws_byte_cursor replaced_topic = replaced_assignment->topic_cursor;
 
         /*
-         * This is a little uncomfortable but valid.  The cursor we're passing in will get invalidated and deleted as
-         * part of the removal process but it is only used to find the element to remove.  Once destruction begins it
-         * is no longer accessed.
+         * This is a little uncomfortable but valid.  The cursor we're passing in will get invalidated (and the backing
+         * memory deleted) as part of the removal process but it is only used to find the element to remove.  Once
+         * destruction begins it is no longer accessed.
          */
         aws_cache_remove(lru_resolver->lru_cache, &replaced_topic);
     } else {
+        /*
+         * The cache never shrinks and the first N adds are the N valid topic aliases.  Since the cache isn't full,
+         * we know the next alias that hasn't been used.  This invariant only holds given that we will tear down
+         * the connection (invalidating the cache) on errors from this function (ie, continuing on from a put
+         * error would break the invariant and create duplicated ids).
+         */
         new_alias_id = (uint16_t)(assignment_count + 1);
     }
 
     /*
-     * Add our new assignment.
+     * We have a topic alias to use.  Add our new assignment.
      */
     struct aws_topic_alias_assignment *new_assignment =
         s_aws_topic_alias_assignment_new(resolver->allocator, topic, new_alias_id);
