@@ -296,14 +296,14 @@ static int s_aws_mqtt5_outbound_topic_alias_resolver_user_resolve_outbound_publi
     uint16_t user_alias = *publish_view->topic_alias;
     if (user_alias == 0) {
         /* should have been caught by publish validation */
-        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_OUTBOUND_TOPIC_ALIAS);
     }
 
     struct aws_mqtt5_outbound_topic_alias_resolver_user *user_resolver = resolver->impl;
     uint16_t user_alias_index = user_alias - 1;
     if (user_alias_index >= aws_array_list_length(&user_resolver->valid_aliases)) {
         /* should have been caught by dynamic publish validation */
-        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_OUTBOUND_TOPIC_ALIAS);
     }
 
     bool is_valid_alias = false;
@@ -311,11 +311,11 @@ static int s_aws_mqtt5_outbound_topic_alias_resolver_user_resolve_outbound_publi
         aws_array_list_get_at(&user_resolver->valid_aliases, &is_valid_alias, user_alias_index);
         if (!is_valid_alias) {
             /*
-             * Everything non-trivial we do for this subclass is solely to detect this error.
+             * Everything non-trivial we do for this subclass is solely to detect this particular error.
              *
              * No topic and we've never seen this alias before on this connection.  That's a protocol error.
              */
-            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+            return aws_raise_error(AWS_ERROR_MQTT5_INVALID_OUTBOUND_TOPIC_ALIAS);
         }
     }
 
