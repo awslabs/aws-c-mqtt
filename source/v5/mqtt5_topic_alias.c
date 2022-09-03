@@ -5,6 +5,7 @@
 
 #include <aws/mqtt/private/v5/mqtt5_topic_alias.h>
 
+#include <aws/common/lru_cache.h>
 #include <aws/common/string.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 
@@ -121,20 +122,26 @@ struct aws_mqtt5_outbound_topic_alias_resolver {
     void *impl;
 };
 
+static struct aws_mqtt5_outbound_topic_alias_resolver *s_aws_mqtt5_outbound_topic_alias_resolver_disabled_new(
+    struct aws_allocator *allocator);
+static struct aws_mqtt5_outbound_topic_alias_resolver *s_aws_mqtt5_outbound_topic_alias_resolver_lru_new(
+    struct aws_allocator *allocator);
+static struct aws_mqtt5_outbound_topic_alias_resolver *s_aws_mqtt5_outbound_topic_alias_resolver_user_new(
+    struct aws_allocator *allocator);
+
 struct aws_mqtt5_outbound_topic_alias_resolver *aws_mqtt5_outbound_topic_alias_resolver_new(
     struct aws_allocator *allocator,
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_alias_behavior) {
-    (void)allocator;
 
     switch (aws_mqtt5_outbound_topic_alias_behavior_type_to_non_default(outbound_alias_behavior)) {
-        case AWS_MQTT5_COTABT_DUMB:
-            return NULL;
+        case AWS_MQTT5_COTABT_USER:
+            return s_aws_mqtt5_outbound_topic_alias_resolver_user_new(allocator);
 
         case AWS_MQTT5_COTABT_LRU:
-            return NULL;
+            return s_aws_mqtt5_outbound_topic_alias_resolver_lru_new(allocator);
 
         case AWS_MQTT5_COTABT_DISABLED:
-            return NULL;
+            return s_aws_mqtt5_outbound_topic_alias_resolver_disabled_new(allocator);
 
         default:
             return NULL;
@@ -149,7 +156,7 @@ void aws_mqtt5_outbound_topic_alias_resolver_destroy(struct aws_mqtt5_outbound_t
     (*resolver->vtable->destroy_fn)(resolver);
 }
 
-int aws_mqtt5_outbound_topic_alias_manager_reset(
+int aws_mqtt5_outbound_topic_alias_resolver_reset(
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
     uint16_t topic_alias_maximum) {
 
@@ -160,7 +167,7 @@ int aws_mqtt5_outbound_topic_alias_manager_reset(
     return (*resolver->vtable->reset_fn)(resolver, topic_alias_maximum);
 }
 
-int aws_mqtt5_outbound_topic_alias_manager_on_outbound_publish(
+int aws_mqtt5_outbound_topic_alias_resolver_on_outbound_publish(
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
     const struct aws_mqtt5_packet_publish_view *publish_view,
     uint16_t *topic_alias_out,
@@ -170,4 +177,384 @@ int aws_mqtt5_outbound_topic_alias_manager_on_outbound_publish(
     }
 
     return (*resolver->vtable->resolve_outbound_publish_fn)(resolver, publish_view, topic_alias_out, topic_out);
+}
+
+/*
+ * Disabled resolver
+ */
+
+static void s_aws_mqtt5_outbound_topic_alias_resolver_disabled_destroy(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver) {
+    if (resolver == NULL) {
+        return;
+    }
+
+    aws_mem_release(resolver->allocator, resolver);
+}
+
+static int s_aws_mqtt5_outbound_topic_alias_resolver_disabled_reset(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
+    uint16_t topic_alias_maximum) {
+    (void)resolver;
+    (void)topic_alias_maximum;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_outbound_topic_alias_resolver_disabled_resolve_outbound_publish_fn(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    uint16_t *topic_alias_out,
+    struct aws_byte_cursor *topic_out) {
+    (void)resolver;
+
+    if (publish_view->topic.len == 0) {
+        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+    }
+
+    *topic_alias_out = 0;
+    *topic_out = publish_view->topic;
+
+    return AWS_OP_SUCCESS;
+}
+
+static struct aws_mqtt5_outbound_topic_alias_resolver_vtable s_aws_mqtt5_outbound_topic_alias_resolver_disabled_vtable =
+    {
+        .destroy_fn = s_aws_mqtt5_outbound_topic_alias_resolver_disabled_destroy,
+        .reset_fn = s_aws_mqtt5_outbound_topic_alias_resolver_disabled_reset,
+        .resolve_outbound_publish_fn = s_aws_mqtt5_outbound_topic_alias_resolver_disabled_resolve_outbound_publish_fn,
+};
+
+static struct aws_mqtt5_outbound_topic_alias_resolver *s_aws_mqtt5_outbound_topic_alias_resolver_disabled_new(
+    struct aws_allocator *allocator) {
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_outbound_topic_alias_resolver));
+
+    resolver->allocator = allocator;
+    resolver->vtable = &s_aws_mqtt5_outbound_topic_alias_resolver_disabled_vtable;
+
+    return resolver;
+}
+
+/*
+ * User resolver
+ *
+ * User resolution implies the user is controlling the topic alias assignments, but we still want to validate their
+ * actions.  In particular, we track the currently valid set of aliases (based on previous outbound publishes)
+ * and return an error if someone attempts to use an unassigned alias.
+ *
+ * There isn't a way to recover from this error (there's no way of knowing what topic the user intended).
+ */
+
+struct aws_mqtt5_outbound_topic_alias_resolver_user {
+    struct aws_mqtt5_outbound_topic_alias_resolver base;
+
+    struct aws_array_list valid_aliases;
+};
+
+static void s_aws_mqtt5_outbound_topic_alias_resolver_user_destroy(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver) {
+    if (resolver == NULL) {
+        return;
+    }
+
+    struct aws_mqtt5_outbound_topic_alias_resolver_user *user_resolver = resolver->impl;
+    aws_array_list_clean_up(&user_resolver->valid_aliases);
+
+    aws_mem_release(resolver->allocator, user_resolver);
+}
+
+static int s_aws_mqtt5_outbound_topic_alias_resolver_user_reset(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
+    uint16_t topic_alias_maximum) {
+    struct aws_mqtt5_outbound_topic_alias_resolver_user *user_resolver = resolver->impl;
+    aws_array_list_clean_up(&user_resolver->valid_aliases);
+
+    aws_array_list_init_dynamic(&user_resolver->valid_aliases, resolver->allocator, topic_alias_maximum, sizeof(bool));
+    for (size_t i = 0; i < topic_alias_maximum; ++i) {
+        bool invalid_alias = false;
+        aws_array_list_push_back(&user_resolver->valid_aliases, &invalid_alias);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_outbound_topic_alias_resolver_user_resolve_outbound_publish_fn(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    uint16_t *topic_alias_out,
+    struct aws_byte_cursor *topic_out) {
+
+    if (publish_view->topic_alias == NULL) {
+        /* not using a topic alias, nothing to do */
+        *topic_alias_out = 0;
+        *topic_out = publish_view->topic;
+
+        return AWS_OP_SUCCESS;
+    }
+
+    uint16_t user_alias = *publish_view->topic_alias;
+    if (user_alias == 0) {
+        /* should have been caught by publish validation */
+        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+    }
+
+    struct aws_mqtt5_outbound_topic_alias_resolver_user *user_resolver = resolver->impl;
+    uint16_t user_alias_index = user_alias - 1;
+    if (user_alias_index >= aws_array_list_length(&user_resolver->valid_aliases)) {
+        /* should have been caught by dynamic publish validation */
+        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+    }
+
+    bool is_valid_alias = false;
+    if (publish_view->topic.len == 0) {
+        aws_array_list_get_at(&user_resolver->valid_aliases, &is_valid_alias, user_alias_index);
+        if (!is_valid_alias) {
+            /*
+             * Everything non-trivial we do for this subclass is solely to detect this error.
+             *
+             * No topic and we've never seen this alias before on this connection.  That's a protocol error.
+             */
+            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+        }
+    }
+
+    /* already true by invariant but do it anyway for clarity */
+    is_valid_alias = true;
+
+    /* mark this alias as assigned */
+    aws_array_list_set_at(&user_resolver->valid_aliases, &is_valid_alias, user_alias_index);
+
+    *topic_alias_out = user_alias;
+    *topic_out = publish_view->topic;
+
+    return AWS_OP_SUCCESS;
+}
+
+static struct aws_mqtt5_outbound_topic_alias_resolver_vtable s_aws_mqtt5_outbound_topic_alias_resolver_user_vtable = {
+    .destroy_fn = s_aws_mqtt5_outbound_topic_alias_resolver_user_destroy,
+    .reset_fn = s_aws_mqtt5_outbound_topic_alias_resolver_user_reset,
+    .resolve_outbound_publish_fn = s_aws_mqtt5_outbound_topic_alias_resolver_user_resolve_outbound_publish_fn,
+};
+
+static struct aws_mqtt5_outbound_topic_alias_resolver *s_aws_mqtt5_outbound_topic_alias_resolver_user_new(
+    struct aws_allocator *allocator) {
+    struct aws_mqtt5_outbound_topic_alias_resolver_user *resolver =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_outbound_topic_alias_resolver_user));
+
+    resolver->base.allocator = allocator;
+    resolver->base.vtable = &s_aws_mqtt5_outbound_topic_alias_resolver_user_vtable;
+    resolver->base.impl = resolver;
+
+    aws_array_list_init_dynamic(&resolver->valid_aliases, allocator, 0, sizeof(bool));
+
+    return &resolver->base;
+}
+
+/*
+ * LRU resolver
+ *
+ * This resolver uses an LRU cache to automatically create topic alias assignments for the user.  With a reasonable
+ * cache size, this should perform well for the majority of MQTT workloads.  For workloads it does not perform well
+ * with, the user should control the assignment (or disable entirely).  Even for workloads where the LRU cache fails
+ * to reuse an assignment every single time, the overall cost is 3 extra bytes per publish.  As a rough estimate, this
+ * means that LRU topic aliasing is "worth it" if an existing alias can be used at least once every
+ * (AverageTopicLength / 3) publishes.
+ */
+
+struct aws_mqtt5_outbound_topic_alias_resolver_lru {
+    struct aws_mqtt5_outbound_topic_alias_resolver base;
+
+    struct aws_cache *lru_cache;
+    size_t max_aliases;
+};
+
+static void s_aws_mqtt5_outbound_topic_alias_resolver_lru_destroy(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver) {
+    if (resolver == NULL) {
+        return;
+    }
+
+    struct aws_mqtt5_outbound_topic_alias_resolver_lru *lru_resolver = resolver->impl;
+
+    if (lru_resolver->lru_cache != NULL) {
+        aws_cache_destroy(lru_resolver->lru_cache);
+    }
+
+    aws_mem_release(resolver->allocator, lru_resolver);
+}
+
+struct aws_topic_alias_assignment {
+    struct aws_byte_cursor topic_cursor;
+    struct aws_byte_buf topic;
+    uint16_t alias;
+    struct aws_allocator *allocator;
+};
+
+static void s_aws_topic_alias_assignment_destroy(struct aws_topic_alias_assignment *alias_assignment) {
+    if (alias_assignment == NULL) {
+        return;
+    }
+
+    aws_byte_buf_clean_up(&alias_assignment->topic);
+
+    aws_mem_release(alias_assignment->allocator, alias_assignment);
+}
+
+static struct aws_topic_alias_assignment *s_aws_topic_alias_assignment_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor topic,
+    uint16_t alias) {
+    struct aws_topic_alias_assignment *assignment =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_topic_alias_assignment));
+
+    assignment->allocator = allocator;
+    assignment->alias = alias;
+
+    if (aws_byte_buf_init_copy_from_cursor(&assignment->topic, allocator, topic)) {
+        goto on_error;
+    }
+
+    assignment->topic_cursor = aws_byte_cursor_from_buf(&assignment->topic);
+
+    return assignment;
+
+on_error:
+
+    s_aws_topic_alias_assignment_destroy(assignment);
+
+    return NULL;
+}
+
+static void s_destroy_assignment_value(void *value) {
+    s_aws_topic_alias_assignment_destroy(value);
+}
+
+static bool s_topic_hash_equality_fn(const void *a, const void *b) {
+    const struct aws_byte_cursor *a_cursor = a;
+    const struct aws_byte_cursor *b_cursor = b;
+
+    return aws_byte_cursor_eq(a_cursor, b_cursor);
+}
+
+static int s_aws_mqtt5_outbound_topic_alias_resolver_lru_reset(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
+    uint16_t topic_alias_maximum) {
+    struct aws_mqtt5_outbound_topic_alias_resolver_lru *lru_resolver = resolver->impl;
+
+    if (lru_resolver->lru_cache != NULL) {
+        aws_cache_destroy(lru_resolver->lru_cache);
+        lru_resolver->lru_cache = NULL;
+    }
+
+    if (topic_alias_maximum > 0) {
+        lru_resolver->lru_cache = aws_cache_new_lru(
+            lru_resolver->base.allocator,
+            aws_hash_byte_cursor_ptr,
+            s_topic_hash_equality_fn,
+            NULL,
+            s_destroy_assignment_value,
+            topic_alias_maximum);
+    }
+
+    lru_resolver->max_aliases = topic_alias_maximum;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt5_outbound_topic_alias_resolver_lru_resolve_outbound_publish_fn(
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    uint16_t *topic_alias_out,
+    struct aws_byte_cursor *topic_out) {
+
+    /* No cache => no aliasing done */
+    struct aws_mqtt5_outbound_topic_alias_resolver_lru *lru_resolver = resolver->impl;
+    if (lru_resolver->lru_cache == NULL) {
+        *topic_alias_out = 0;
+        *topic_out = publish_view->topic;
+        return AWS_OP_SUCCESS;
+    }
+
+    /* Look for the topic in the cache */
+    struct aws_byte_cursor topic = publish_view->topic;
+    void *existing_element = NULL;
+    if (aws_cache_find(lru_resolver->lru_cache, &topic, &existing_element)) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_topic_alias_assignment *existing_assignment = existing_element;
+    if (existing_assignment != NULL) {
+        /*
+         * Topic exists, so use the assignment. The LRU cache find implementation has already promoted the element
+         * to MRU.
+         */
+        *topic_alias_out = existing_assignment->alias;
+        AWS_ZERO_STRUCT(*topic_out);
+
+        return AWS_OP_SUCCESS;
+    }
+
+    /* Topic doesn't exist */
+    uint16_t new_alias_id = 0;
+    size_t assignment_count = aws_cache_get_element_count(lru_resolver->lru_cache);
+    if (assignment_count == lru_resolver->max_aliases) {
+        /*
+         * The cache is full.  Get the LRU element to figure out what id we're going to reuse.  There's no way to get
+         * the LRU element without promoting it.  So we get the element, save the discovered alias id, then remove
+         * the element.
+         */
+        void *lru_element = aws_lru_cache_use_lru_element(lru_resolver->lru_cache);
+
+        struct aws_topic_alias_assignment *replaced_assignment = lru_element;
+        new_alias_id = replaced_assignment->alias;
+        struct aws_byte_cursor replaced_topic = replaced_assignment->topic_cursor;
+
+        /*
+         * This is a little uncomfortable but valid.  The cursor we're passing in will get invalidated and deleted as
+         * part of the removal process but it is only used to find the element to remove.  Once destruction begins it
+         * is no longer accessed.
+         */
+        aws_cache_remove(lru_resolver->lru_cache, &replaced_topic);
+    } else {
+        new_alias_id = (uint16_t)(assignment_count + 1);
+    }
+
+    /*
+     * Add our new assignment.
+     */
+    struct aws_topic_alias_assignment *new_assignment =
+        s_aws_topic_alias_assignment_new(resolver->allocator, topic, new_alias_id);
+    if (new_assignment == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    /* the LRU cache put implementation automatically makes the newly added element MRU */
+    if (aws_cache_put(lru_resolver->lru_cache, &new_assignment->topic_cursor, new_assignment)) {
+        s_aws_topic_alias_assignment_destroy(new_assignment);
+        return AWS_OP_ERR;
+    }
+
+    *topic_alias_out = new_assignment->alias;
+    *topic_out = topic; /* this is a new assignment so topic must go out too */
+
+    return AWS_OP_ERR;
+}
+
+static struct aws_mqtt5_outbound_topic_alias_resolver_vtable s_aws_mqtt5_outbound_topic_alias_resolver_lru_vtable = {
+    .destroy_fn = s_aws_mqtt5_outbound_topic_alias_resolver_lru_destroy,
+    .reset_fn = s_aws_mqtt5_outbound_topic_alias_resolver_lru_reset,
+    .resolve_outbound_publish_fn = s_aws_mqtt5_outbound_topic_alias_resolver_lru_resolve_outbound_publish_fn,
+};
+
+static struct aws_mqtt5_outbound_topic_alias_resolver *s_aws_mqtt5_outbound_topic_alias_resolver_lru_new(
+    struct aws_allocator *allocator) {
+    struct aws_mqtt5_outbound_topic_alias_resolver_lru *resolver =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_outbound_topic_alias_resolver_lru));
+
+    resolver->base.allocator = allocator;
+    resolver->base.vtable = &s_aws_mqtt5_outbound_topic_alias_resolver_lru_vtable;
+    resolver->base.impl = resolver;
+
+    return &resolver->base;
 }

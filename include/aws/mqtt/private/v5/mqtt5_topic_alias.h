@@ -11,8 +11,10 @@
 #include <aws/common/array_list.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 
+/* outbound resolvers are polymorphic; implementations are completely internal */
 struct aws_mqtt5_outbound_topic_alias_resolver;
 
+/* there are only two possibilities for inbound resolution: on or off */
 struct aws_mqtt5_inbound_topic_alias_resolver {
     struct aws_allocator *allocator;
 

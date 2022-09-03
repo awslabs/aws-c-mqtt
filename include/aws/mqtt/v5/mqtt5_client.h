@@ -63,7 +63,7 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
      * Outbound aliasing is the user's responsibility.  Client will cache and auto-use
      * previously-established aliases if they fall within the negotiated limits of the connection.
      */
-    AWS_MQTT5_COTABT_DUMB,
+    AWS_MQTT5_COTABT_USER,
 
     /**
      * Client ignores any user-specified topic aliasing and acts on the outbound alias set as an LRU cache.
