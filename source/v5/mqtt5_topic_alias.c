@@ -167,7 +167,7 @@ int aws_mqtt5_outbound_topic_alias_resolver_reset(
     return (*resolver->vtable->reset_fn)(resolver, topic_alias_maximum);
 }
 
-int aws_mqtt5_outbound_topic_alias_resolver_on_outbound_publish(
+int aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
     const struct aws_mqtt5_packet_publish_view *publish_view,
     uint16_t *topic_alias_out,

@@ -320,7 +320,7 @@ const char *aws_mqtt5_inbound_topic_alias_behavior_type_to_c_string(
 enum aws_mqtt5_client_inbound_topic_alias_behavior_type aws_mqtt5_inbound_topic_alias_behavior_type_to_non_default(
     enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_aliasing_behavior) {
     if (inbound_aliasing_behavior == AWS_MQTT5_CITABT_DEFAULT) {
-        return AWS_MQTT5_CITABT_ENABLED;
+        return AWS_MQTT5_CITABT_DISABLED;
     }
 
     return inbound_aliasing_behavior;

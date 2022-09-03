@@ -88,7 +88,7 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
  */
 enum aws_mqtt5_client_inbound_topic_alias_behavior_type {
     /**
-     * Maps to AWS_MQTT5_CITABT_ENABLED
+     * Maps to AWS_MQTT5_CITABT_DISABLED
      */
     AWS_MQTT5_CITABT_DEFAULT,
 
