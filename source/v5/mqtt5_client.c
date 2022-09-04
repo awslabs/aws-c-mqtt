@@ -1191,7 +1191,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         return;
     }
 
-    s_enqueue_operation_back(client, &connect_op->base);
+    s_enqueue_operation_front(client, &connect_op->base);
 
     uint32_t timeout_ms = client->config->connack_timeout_ms;
     if (timeout_ms == 0) {
