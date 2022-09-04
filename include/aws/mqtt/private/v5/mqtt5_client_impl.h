@@ -380,6 +380,11 @@ struct aws_mqtt5_client {
     struct aws_mqtt5_inbound_topic_alias_resolver inbound_topic_alias_resolver;
 
     /*
+     * Cache of inbound topic aliases
+     */
+    struct aws_mqtt5_outbound_topic_alias_resolver *outbound_topic_alias_resolver;
+
+    /*
      * Temporary state-related data.
      *
      * clean_disconnect_error_code - the CLEAN_DISCONNECT state takes time to complete and we want to be able

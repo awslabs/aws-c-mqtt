@@ -1508,13 +1508,11 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
         }
     }
 
-    /* 0-length topic is valid if there's an alias, otherwise we need a valid topic */
+    /* 0-length topic is never valid, even with user-controlled outbound aliasing */
     if (publish_view->topic.len == 0) {
-        if (publish_view->topic_alias == NULL) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - missing topic", (void *)publish_view);
-            return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
-        }
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - missing topic", (void *)publish_view);
+        return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
     } else if (!aws_mqtt_is_valid_topic(&publish_view->topic)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL,
@@ -1637,10 +1635,21 @@ static int s_aws_mqtt5_packet_publish_view_validate_vs_connection_settings(
         }
 
         if (publish_view->topic_alias != NULL) {
+            const struct aws_mqtt5_client_options_storage *client_options = client->config;
+            if (client_options->topic_aliasing_options.outbound_topic_alias_behavior != AWS_MQTT5_COTABT_USER) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT5_GENERAL,
+                    "id=%p: aws_mqtt5_packet_publish_view - topic alias set but outbound topic alias behavior has not "
+                    "been set to user controlled",
+                    (void *)publish_view);
+                return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
+            }
+
             if (*publish_view->topic_alias > settings->topic_alias_maximum_to_server) {
                 AWS_LOGF_ERROR(
                     AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_publish_view - topic alias (%d) exceeds server's topic alias maximum "
+                    "id=%p: aws_mqtt5_packet_publish_view - outbound topic alias (%d) exceeds server's topic alias "
+                    "maximum "
                     "(%d)",
                     (void *)publish_view,
                     (int)(*publish_view->topic_alias),
@@ -3357,7 +3366,7 @@ static void s_log_tls_connection_options(
 
 static void s_log_topic_aliasing_options(
     const struct aws_mqtt5_client_options_storage *options_storage,
-    const struct aws_mqtt5_client_topic_alias_config *topic_aliasing_options,
+    const struct aws_mqtt5_client_topic_alias_options *topic_aliasing_options,
     enum aws_log_level level) {
     AWS_LOGF(
         level,

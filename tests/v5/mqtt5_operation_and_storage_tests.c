@@ -2055,6 +2055,8 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
     aws_mqtt5_encoder_init(&test_context->dummy_client.encoder, allocator, &encoder_options);
 
     aws_mqtt5_inbound_topic_alias_resolver_init(&test_context->dummy_client.inbound_topic_alias_resolver, allocator);
+    test_context->dummy_client.outbound_topic_alias_resolver =
+        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_DISABLED);
 
     test_context->vtable = *aws_mqtt5_client_get_default_vtable();
     test_context->vtable.aws_channel_acquire_message_from_pool_fn = s_aws_channel_acquire_message_from_pool_success_fn;
@@ -2100,6 +2102,7 @@ static void s_aws_mqtt5_operation_processing_test_context_clean_up(
     aws_array_list_clean_up(&test_context->output_io_messages);
     aws_mqtt5_encoder_clean_up(&test_context->verification_encoder);
     aws_mqtt5_inbound_topic_alias_resolver_clean_up(&test_context->dummy_client.inbound_topic_alias_resolver);
+    aws_mqtt5_outbound_topic_alias_resolver_destroy(test_context->dummy_client.outbound_topic_alias_resolver);
 
     aws_mqtt5_encoder_clean_up(&test_context->dummy_client.encoder);
     aws_mqtt5_client_operational_state_clean_up(&test_context->dummy_client.operational_state);
