@@ -153,7 +153,13 @@ static int s_mqtt5_outbound_topic_alias_disabled_resolve_failure_fn(struct aws_a
         aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_DISABLED);
     ASSERT_NOT_NULL(resolver);
 
-    struct aws_mqtt5_packet_publish_view publish_view = {.topic = {.ptr = NULL, .len = 0}};
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .topic =
+            {
+                .ptr = NULL,
+                .len = 0,
+            },
+    };
 
     uint16_t outbound_alias_id = 0;
     struct aws_byte_cursor outbound_topic;
@@ -235,6 +241,19 @@ static int s_mqtt5_outbound_topic_alias_user_resolve_failure_zero_alias_fn(struc
 
     aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
 
+    uint16_t alias = 0;
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .topic = aws_byte_cursor_from_string(s_topic1),
+        .topic_alias = &alias,
+    };
+
+    uint16_t outbound_alias_id = 0;
+    struct aws_byte_cursor outbound_topic;
+    AWS_ZERO_STRUCT(outbound_topic);
+
+    ASSERT_FAILS(aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
+        resolver, &publish_view, &outbound_alias_id, &outbound_topic));
+
     aws_mqtt5_outbound_topic_alias_resolver_destroy(resolver);
 
     return AWS_OP_SUCCESS;
@@ -254,6 +273,19 @@ static int s_mqtt5_outbound_topic_alias_user_resolve_failure_too_big_alias_fn(
     ASSERT_NOT_NULL(resolver);
 
     aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
+
+    uint16_t alias = 6;
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .topic = aws_byte_cursor_from_string(s_topic1),
+        .topic_alias = &alias,
+    };
+
+    uint16_t outbound_alias_id = 0;
+    struct aws_byte_cursor outbound_topic;
+    AWS_ZERO_STRUCT(outbound_topic);
+
+    ASSERT_FAILS(aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
+        resolver, &publish_view, &outbound_alias_id, &outbound_topic));
 
     aws_mqtt5_outbound_topic_alias_resolver_destroy(resolver);
 
@@ -275,6 +307,23 @@ static int s_mqtt5_outbound_topic_alias_user_resolve_failure_unassigned_alias_fn
 
     aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
 
+    uint16_t alias = 2;
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .topic =
+            {
+                .ptr = NULL,
+                .len = 0,
+            },
+        .topic_alias = &alias,
+    };
+
+    uint16_t outbound_alias_id = 0;
+    struct aws_byte_cursor outbound_topic;
+    AWS_ZERO_STRUCT(outbound_topic);
+
+    ASSERT_FAILS(aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
+        resolver, &publish_view, &outbound_alias_id, &outbound_topic));
+
     aws_mqtt5_outbound_topic_alias_resolver_destroy(resolver);
 
     return AWS_OP_SUCCESS;
@@ -290,6 +339,41 @@ static int s_mqtt5_outbound_topic_alias_user_reset_fn(struct aws_allocator *allo
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver =
         aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_USER);
     ASSERT_NOT_NULL(resolver);
+
+    aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
+
+    uint16_t alias = 2;
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .topic = aws_byte_cursor_from_string(s_topic1),
+        .topic_alias = &alias,
+    };
+
+    uint16_t outbound_alias_id = 0;
+    struct aws_byte_cursor outbound_topic;
+    AWS_ZERO_STRUCT(outbound_topic);
+
+    /* First, successfully bind an alias */
+    ASSERT_SUCCESS(aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
+        resolver, &publish_view, &outbound_alias_id, &outbound_topic));
+
+    ASSERT_INT_EQUALS(2, outbound_alias_id);
+    ASSERT_BIN_ARRAYS_EQUALS(s_topic1->bytes, s_topic1->len, outbound_topic.ptr, outbound_topic.len);
+
+    /* Successfully use the alias */
+    AWS_ZERO_STRUCT(publish_view.topic);
+
+    ASSERT_SUCCESS(aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
+        resolver, &publish_view, &outbound_alias_id, &outbound_topic));
+
+    ASSERT_INT_EQUALS(2, outbound_alias_id);
+    ASSERT_INT_EQUALS(0, outbound_topic.len);
+
+    /* Reset */
+    aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
+
+    /* Fail to use the alias */
+    ASSERT_FAILS(aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
+        resolver, &publish_view, &outbound_alias_id, &outbound_topic));
 
     aws_mqtt5_outbound_topic_alias_resolver_destroy(resolver);
 

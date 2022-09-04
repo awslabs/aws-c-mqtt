@@ -151,12 +151,9 @@ static int s_aws_mqtt5_client_test_init_default_connect_storage(
     struct aws_mqtt5_packet_connect_storage *storage,
     struct aws_allocator *allocator) {
 
-    uint16_t topic_alias_maximum = AWS_MQTT5_CLIENT_DEFAULT_INBOUND_TOPIC_ALIAS_CACHE_SIZE;
-
     struct aws_mqtt5_packet_connect_view connect_view = {.keep_alive_interval_seconds = 30,
                                                          .client_id = aws_byte_cursor_from_string(s_client_id),
-                                                         .clean_start = true,
-                                                         .topic_alias_maximum = &topic_alias_maximum};
+                                                         .clean_start = true,};
 
     return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
 }
@@ -1051,13 +1048,11 @@ static int s_aws_mqtt5_client_test_init_ping_test_connect_storage(
     struct aws_mqtt5_packet_connect_storage *storage,
     struct aws_allocator *allocator) {
 
-    uint16_t topic_alias_maximum = AWS_MQTT5_CLIENT_DEFAULT_INBOUND_TOPIC_ALIAS_CACHE_SIZE;
     struct aws_mqtt5_packet_connect_view connect_view = {
         .keep_alive_interval_seconds =
             (uint16_t)aws_timestamp_convert(TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL),
         .client_id = aws_byte_cursor_from_string(s_client_id),
-        .clean_start = true,
-        .topic_alias_maximum = &topic_alias_maximum};
+        .clean_start = true,};
 
     return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
 }
@@ -2825,12 +2820,9 @@ static int s_aws_mqtt5_client_test_init_resume_session_connect_storage(
     struct aws_mqtt5_packet_connect_storage *storage,
     struct aws_allocator *allocator) {
 
-    uint16_t topic_alias_maximum = AWS_MQTT5_CLIENT_DEFAULT_INBOUND_TOPIC_ALIAS_CACHE_SIZE;
-
     struct aws_mqtt5_packet_connect_view connect_view = {.keep_alive_interval_seconds = 30,
                                                          .client_id = aws_byte_cursor_from_string(s_client_id),
-                                                         .clean_start = false,
-                                                         .topic_alias_maximum = &topic_alias_maximum};
+                                                         .clean_start = false,};
 
     return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
 }
