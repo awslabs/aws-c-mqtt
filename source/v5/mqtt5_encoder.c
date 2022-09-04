@@ -779,9 +779,10 @@ static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, 
     /* We do a shallow copy of the stored view in order to temporarily side affect it for topic aliasing */
     struct aws_mqtt5_packet_publish_view local_publish_view = *((const struct aws_mqtt5_packet_publish_view *)view);
 
+    uint16_t outbound_topic_alias = 0;
+    struct aws_byte_cursor outbound_topic;
+
     if (encoder->topic_alias_resolver != NULL) {
-        uint16_t outbound_topic_alias = 0;
-        struct aws_byte_cursor outbound_topic;
         AWS_ZERO_STRUCT(outbound_topic);
         if (aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
                 encoder->topic_alias_resolver, &local_publish_view, &outbound_topic_alias, &outbound_topic)) {
