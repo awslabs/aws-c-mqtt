@@ -4664,9 +4664,13 @@ static void s_on_offline_publish_completion(
     struct aws_mqtt5_sub_pub_unsub_context *full_test_context = user_data;
 
     aws_mutex_lock(&full_test_context->test_fixture->lock);
+
     if (error_code == AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY) {
         ++full_test_context->publish_failures;
+    } else if (error_code == 0) {
+        full_test_context->publish_complete = true;
     }
+
     aws_mutex_unlock(&full_test_context->test_fixture->lock);
     aws_condition_variable_notify_all(&full_test_context->test_fixture->signal);
 }
@@ -4997,6 +5001,57 @@ static int s_mqtt5_client_offline_operation_submission_fail_non_qos1_fn(struct a
 AWS_TEST_CASE(
     mqtt5_client_offline_operation_submission_fail_non_qos1,
     s_mqtt5_client_offline_operation_submission_fail_non_qos1_fn)
+
+static int s_mqtt5_client_offline_operation_submission_then_connect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+    s_mqtt5_client_test_init_default_options(&connect_options, &client_options, &server_function_table);
+
+    server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_server_send_puback_and_forward_on_publish;
+
+    client_options.offline_queue_behavior = AWS_MQTT5_COQBT_FAIL_NON_QOS1_PUBLISH_ON_DISCONNECT;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    struct aws_mqtt5_sub_pub_unsub_context full_test_context = {
+        .test_fixture = &test_context,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &client_options,
+        .server_function_table = &server_function_table,
+        .mock_server_user_data = &full_test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    /* qos1 publish should queue on submission */
+    ASSERT_SUCCESS(s_offline_publish(client, &full_test_context, AWS_MQTT5_QOS_AT_LEAST_ONCE));
+    s_aws_mqtt5_wait_for_offline_queue_size(&full_test_context, 1);
+
+    /* start the client, it should connect and immediately send the publish */
+    aws_mqtt5_client_start(client);
+
+    s_sub_pub_unsub_wait_for_publish_complete(&full_test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_offline_operation_submission_then_connect,
+    s_mqtt5_client_offline_operation_submission_then_connect_fn)
 
 #define ALIASED_PUBLISH_SEQUENCE_COUNT 4
 
