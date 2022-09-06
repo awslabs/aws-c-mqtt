@@ -2690,7 +2690,15 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
     aws_mqtt5_client_flow_control_state_reset(client);
 
     uint16_t inbound_alias_maximum = client->negotiated_settings.topic_alias_maximum_to_client;
-    aws_mqtt5_inbound_topic_alias_resolver_reset(&client->inbound_topic_alias_resolver, inbound_alias_maximum);
+
+    if (aws_mqtt5_inbound_topic_alias_resolver_reset(&client->inbound_topic_alias_resolver, inbound_alias_maximum)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: client unable to reset inbound alias resolver",
+            (void *)client_operational_state->client);
+        goto on_error;
+    }
+
     if (inbound_alias_maximum > 0) {
         aws_mqtt5_decoder_set_inbound_topic_alias_resolver(&client->decoder, &client->inbound_topic_alias_resolver);
     } else {
@@ -2698,8 +2706,21 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
     }
 
     uint16_t outbound_alias_maximum = client->negotiated_settings.topic_alias_maximum_to_server;
-    aws_mqtt5_outbound_topic_alias_resolver_reset(client->outbound_topic_alias_resolver, outbound_alias_maximum);
+    if (aws_mqtt5_outbound_topic_alias_resolver_reset(client->outbound_topic_alias_resolver, outbound_alias_maximum)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: client unable to reset outbound alias resolver",
+            (void *)client_operational_state->client);
+        goto on_error;        
+    }
+
     aws_mqtt5_encoder_set_outbound_topic_alias_resolver(&client->encoder, client->outbound_topic_alias_resolver);
+
+    return;
+
+on_error:
+
+    s_aws_mqtt5_client_shutdown_channel(client, aws_last_error());
 }
 
 static bool s_aws_mqtt5_client_has_pending_operational_work(

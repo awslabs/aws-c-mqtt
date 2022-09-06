@@ -40,8 +40,9 @@ void aws_mqtt5_inbound_topic_alias_resolver_clean_up(struct aws_mqtt5_inbound_to
 int aws_mqtt5_inbound_topic_alias_resolver_reset(
     struct aws_mqtt5_inbound_topic_alias_resolver *resolver,
     uint16_t cache_size) {
-    s_release_aliases(resolver);
-    aws_array_list_clean_up(&resolver->topic_aliases);
+
+    aws_mqtt5_inbound_topic_alias_resolver_clean_up(resolver);
+    AWS_ZERO_STRUCT(resolver->topic_aliases);
 
     if (aws_array_list_init_dynamic(
             &resolver->topic_aliases, resolver->allocator, cache_size, sizeof(struct aws_string *))) {
