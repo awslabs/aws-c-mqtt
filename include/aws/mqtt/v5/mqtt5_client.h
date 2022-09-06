@@ -42,18 +42,16 @@ enum aws_mqtt5_client_session_behavior_type {
     AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS,
 };
 
-/*
- * Outbound aliasing behavior is controlled by this type.
+/**
+ * Outbound topic aliasing behavior is controlled by this type.
  *
  * Topic alias behavior is described in https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901113
  *
- * Incoming topic aliases are handled opaquely by the client.  Alias id will appear without modification
- * in the received publish view, but the client will always inject the correct topic.
+ * If the server allows topic aliasing, this setting controls how topic aliases are used on PUBLISH packets sent
+ * from the client to the server.
  *
- * If topic aliasing is not supported by the server, this setting has no affect and any attempts to directly
+ * If topic aliasing is not supported by the server, this setting has no effect and any attempts to directly
  * manipulate the topic alias id in outbound publishes will be ignored.
- *
- * IMPORTANT: topic aliases are not currently supported
  */
 enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
     /**
@@ -61,16 +59,88 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
      */
     AWS_MQTT5_COTABT_DEFAULT,
 
-    /*
+    /**
      * Outbound aliasing is the user's responsibility.  Client will cache and auto-use
      * previously-established aliases if they fall within the negotiated limits of the connection.
      */
     AWS_MQTT5_COTABT_DUMB,
 
-    /*
+    /**
      * Client ignores any user-specified topic aliasing and acts on the outbound alias set as an LRU cache.
      */
     AWS_MQTT5_COTABT_LRU,
+
+    /**
+     * Completely disable outbound topic aliasing
+     */
+    AWS_MQTT5_COTABT_DISABLED
+};
+
+/**
+ * Inbound topic aliasing behavior is controlled by this type.
+ *
+ * Topic alias behavior is described in https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901113
+ *
+ * This setting controls whether or not the client will send a positive topic alias maximum to the server
+ * in its CONNECT packets.
+ *
+ * If topic aliasing is not supported by the server, this setting has no net effect.
+ */
+enum aws_mqtt5_client_inbound_topic_alias_behavior_type {
+    /**
+     * Maps to AWS_MQTT5_CITABT_ENABLED
+     */
+    AWS_MQTT5_CITABT_DEFAULT,
+
+    /**
+     * Allow the server to send PUBLISH packets to the client that use topic aliasing
+     */
+    AWS_MQTT5_CITABT_ENABLED,
+
+    /**
+     * Forbid the server from sending PUBLISH packets to the client that use topic aliasing
+     */
+    AWS_MQTT5_CITABT_DISABLED
+};
+
+/**
+ * Configuration struct for all client topic aliasing behavior.  If this is left null, then all default options
+ * (as it zeroed) will be used.
+ */
+struct aws_mqtt5_client_topic_alias_config {
+
+    /**
+     * Controls what kind of outbound topic aliasing behavior the client should attempt to use.
+     */
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_alias_behavior;
+
+    /**
+     * If outbound topic aliasing is set to LRU, this controls the maximum size of the cache.  If outbound topic
+     * aliasing is set to LRU and this is zero, a sensible default is used (25).  If outbound topic aliasing is not
+     * set to LRU, then this setting has no effect.
+     *
+     * The final size of the cache is determined by the minimum of this setting and the value of the
+     * topic_alias_maximum property of the received CONNACK.  If the received CONNACK does not have an explicit
+     * positive value for that field, outbound topic aliasing is disabled for the duration of that connection.
+     */
+    uint16_t outbound_alias_cache_max_size;
+
+    /**
+     * Controls what kind of inbound topic aliasing behavior the client should use.
+     *
+     * Even if inbound topic aliasing is enabled, it is up to the server to choose whether or not to use it.
+     */
+    enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_topic_alias_behavior;
+
+    /**
+     * If inbound topic aliasing is enabled, this will control the size of the inbound alias cache.  If inbound
+     * aliases are enabled and this is zero, then a sensible default will be used (25).  If inbound aliases are
+     * disabled, this setting has no effect.
+     *
+     * Behaviorally, this value overrides anything present in the topic_alias_maximum field of
+     * the CONNECT packet options.  We intentionally don't bind that field to managed clients to reduce
+     */
+    uint16_t inbound_alias_cache_size;
 };
 
 /**
@@ -474,11 +544,6 @@ struct aws_mqtt5_client_options {
     enum aws_mqtt5_client_session_behavior_type session_behavior;
 
     /**
-     * Controls how the client uses mqtt5 topic aliasing when processing outbound PUBLISH packets
-     */
-    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
-
-    /**
      * Controls if any additional AWS-specific validation or flow control should be performed by the client.
      */
     enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_and_flow_control_options;
@@ -531,6 +596,11 @@ struct aws_mqtt5_client_options {
      * will be used.
      */
     uint32_t operation_timeout_seconds;
+
+    /**
+     * Controls how the client uses mqtt5 topic aliasing.  If NULL, zero-based defaults will be used.
+     */
+    struct aws_mqtt5_client_topic_alias_config *topic_aliasing_options;
 
     /**
      * Callback for received publish packets

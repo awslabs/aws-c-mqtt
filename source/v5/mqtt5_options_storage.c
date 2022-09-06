@@ -3352,6 +3352,42 @@ static void s_log_tls_connection_options(
         tls_options->timeout_ms);
 }
 
+static void s_log_topic_aliasing_options(
+    const struct aws_mqtt5_client_options_storage *options_storage,
+    const struct aws_mqtt5_client_topic_alias_config *topic_aliasing_options,
+    enum aws_log_level level) {
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage outbound topic aliasing behavior set to %d(%s)",
+        (void *)options_storage,
+        (int)topic_aliasing_options->outbound_topic_alias_behavior,
+        aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
+            topic_aliasing_options->outbound_topic_alias_behavior));
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage maximum outbound topic alias cache size set to %" PRIu16,
+        (void *)options_storage,
+        topic_aliasing_options->outbound_alias_cache_max_size);
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage inbound topic aliasing behavior set to %d(%s)",
+        (void *)options_storage,
+        (int)topic_aliasing_options->inbound_topic_alias_behavior,
+        aws_mqtt5_inbound_topic_alias_behavior_type_to_c_string(topic_aliasing_options->inbound_topic_alias_behavior));
+
+    AWS_LOGF(
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: aws_mqtt5_client_options_storage inbound topic alias cache size set to %" PRIu16,
+        (void *)options_storage,
+        topic_aliasing_options->inbound_alias_cache_size);
+}
+
 void aws_mqtt5_client_options_storage_log(
     const struct aws_mqtt5_client_options_storage *options_storage,
     enum aws_log_level level) {
@@ -3474,13 +3510,7 @@ void aws_mqtt5_client_options_storage_log(
         (int)options_storage->session_behavior,
         aws_mqtt5_client_session_behavior_type_to_c_string(options_storage->session_behavior));
 
-    AWS_LOGF(
-        level,
-        AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage outbound topic aliasing behavior set to %d(%s)",
-        (void *)options_storage,
-        (int)options_storage->outbound_topic_aliasing_behavior,
-        aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(options_storage->outbound_topic_aliasing_behavior));
+    s_log_topic_aliasing_options(options_storage, &options_storage->topic_aliasing_options, level);
 
     AWS_LOGF(
         level,
@@ -3596,6 +3626,16 @@ static void s_apply_zero_valued_defaults_to_client_options_storage(
     if (options_storage->operation_timeout_seconds == 0) {
         options_storage->operation_timeout_seconds = AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS;
     }
+
+    if (options_storage->topic_aliasing_options.inbound_alias_cache_size == 0) {
+        options_storage->topic_aliasing_options.inbound_alias_cache_size =
+            AWS_MQTT5_CLIENT_DEFAULT_INBOUND_TOPIC_ALIAS_CACHE_SIZE;
+    }
+
+    if (options_storage->topic_aliasing_options.outbound_alias_cache_max_size == 0) {
+        options_storage->topic_aliasing_options.outbound_alias_cache_max_size =
+            AWS_MQTT5_CLIENT_DEFAULT_OUTBOUND_TOPIC_ALIAS_CACHE_SIZE;
+    }
 }
 
 struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
@@ -3664,7 +3704,6 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->publish_received_handler_user_data = options->publish_received_handler_user_data;
 
     options_storage->session_behavior = options->session_behavior;
-    options_storage->outbound_topic_aliasing_behavior = options->outbound_topic_aliasing_behavior;
     options_storage->extended_validation_and_flow_control_options =
         options->extended_validation_and_flow_control_options;
     options_storage->offline_queue_behavior = options->offline_queue_behavior;
@@ -3679,6 +3718,10 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->connack_timeout_ms = options->connack_timeout_ms;
 
     options_storage->operation_timeout_seconds = options->operation_timeout_seconds;
+
+    if (options->topic_aliasing_options != NULL) {
+        options_storage->topic_aliasing_options = *options->topic_aliasing_options;
+    }
 
     if (aws_mqtt5_packet_connect_storage_init(&options_storage->connect, allocator, options->connect_options)) {
         goto error;

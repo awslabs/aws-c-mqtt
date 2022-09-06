@@ -154,7 +154,6 @@ struct aws_mqtt5_client_options_storage {
     void *publish_received_handler_user_data;
 
     enum aws_mqtt5_client_session_behavior_type session_behavior;
-    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_topic_aliasing_behavior;
     enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_and_flow_control_options;
     enum aws_mqtt5_client_operation_queue_behavior_type offline_queue_behavior;
 
@@ -167,6 +166,8 @@ struct aws_mqtt5_client_options_storage {
 
     uint32_t ping_timeout_ms;
     uint32_t connack_timeout_ms;
+
+    struct aws_mqtt5_client_topic_alias_config topic_aliasing_options;
 
     struct aws_mqtt5_packet_connect_storage connect;
 
