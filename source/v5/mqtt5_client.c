@@ -2711,7 +2711,7 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
             AWS_LS_MQTT5_CLIENT,
             "id=%p: client unable to reset outbound alias resolver",
             (void *)client_operational_state->client);
-        goto on_error;        
+        goto on_error;
     }
 
     aws_mqtt5_encoder_set_outbound_topic_alias_resolver(&client->encoder, client->outbound_topic_alias_resolver);

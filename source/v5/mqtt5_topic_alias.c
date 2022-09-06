@@ -174,7 +174,7 @@ int aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
     uint16_t *topic_alias_out,
     struct aws_byte_cursor *topic_out) {
     if (resolver == NULL) {
-        AWS_OP_ERR;
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
     return (*resolver->vtable->resolve_outbound_publish_fn)(resolver, publish_view, topic_alias_out, topic_out);

@@ -380,7 +380,7 @@ struct aws_mqtt5_client {
     struct aws_mqtt5_inbound_topic_alias_resolver inbound_topic_alias_resolver;
 
     /*
-     * Cache of inbound topic aliases
+     * Cache of outbound topic aliases
      */
     struct aws_mqtt5_outbound_topic_alias_resolver *outbound_topic_alias_resolver;
 
