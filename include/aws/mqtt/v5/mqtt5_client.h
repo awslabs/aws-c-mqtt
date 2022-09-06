@@ -77,7 +77,7 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
 };
 
 /**
- * In bound topic aliasing behavior is controlled by this type.
+ * Inbound topic aliasing behavior is controlled by this type.
  *
  * Topic alias behavior is described in https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901113
  *
