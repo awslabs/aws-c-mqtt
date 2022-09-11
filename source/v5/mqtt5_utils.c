@@ -330,9 +330,9 @@ const char *aws_mqtt5_extended_validation_and_flow_control_options_to_c_string(
     enum aws_mqtt5_extended_validation_and_flow_control_options extended_validation_behavior) {
     switch (extended_validation_behavior) {
         case AWS_MQTT5_EVAFCO_NONE:
-            return "Dumb outbound topic aliasing behavior";
+            return "No additional flow control or packet validation";
         case AWS_MQTT5_EVAFCO_AWS_IOT_CORE_DEFAULTS:
-            return "LRU caching outbound topic aliasing behavior";
+            return "AWS IoT Core flow control and packet validation";
         default:
             return "Unknown extended validation behavior";
     }

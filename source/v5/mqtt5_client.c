@@ -1732,19 +1732,19 @@ static void s_aws_mqtt5_client_log_received_packet(
             break;
 
         case AWS_MQTT5_PT_PUBLISH:
-            aws_mqtt5_packet_publish_view_log(packet_view, AWS_LL_TRACE);
+            aws_mqtt5_packet_publish_view_log(packet_view, AWS_LL_DEBUG);
             break;
 
         case AWS_MQTT5_PT_PUBACK:
-            aws_mqtt5_packet_puback_view_log(packet_view, AWS_LL_TRACE);
+            aws_mqtt5_packet_puback_view_log(packet_view, AWS_LL_DEBUG);
             break;
 
         case AWS_MQTT5_PT_SUBACK:
-            aws_mqtt5_packet_suback_view_log(packet_view, AWS_LL_TRACE);
+            aws_mqtt5_packet_suback_view_log(packet_view, AWS_LL_DEBUG);
             break;
 
         case AWS_MQTT5_PT_UNSUBACK:
-            aws_mqtt5_packet_unsuback_view_log(packet_view, AWS_LL_TRACE);
+            aws_mqtt5_packet_unsuback_view_log(packet_view, AWS_LL_DEBUG);
             break;
 
         case AWS_MQTT5_PT_PINGRESP:
@@ -2230,6 +2230,15 @@ int aws_mqtt5_client_stop(
                 AWS_LS_MQTT5_CLIENT, "id=%p: failed to create requested DISCONNECT operation", (void *)client);
             return AWS_OP_ERR;
         }
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: Stopping client via DISCONNECT operation (%p)",
+            (void *)client,
+            (void *)disconnect_op);
+        aws_mqtt5_packet_disconnect_view_log(disconnect_op->base.packet_view, AWS_LL_DEBUG);
+    } else {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: Stopping client immediately", (void *)client);
     }
 
     int result = s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_STOPPED, disconnect_op);
@@ -2330,6 +2339,9 @@ int aws_mqtt5_client_publish(
         return AWS_OP_ERR;
     }
 
+    AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: Submitting PUBLISH operation (%p)", (void *)client, (void *)publish_op);
+    aws_mqtt5_packet_publish_view_log(publish_op->base.packet_view, AWS_LL_DEBUG);
+
     if (s_submit_operation(client, &publish_op->base)) {
         goto error;
     }
@@ -2358,6 +2370,10 @@ int aws_mqtt5_client_subscribe(
         return AWS_OP_ERR;
     }
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT, "id=%p: Submitting SUBSCRIBE operation (%p)", (void *)client, (void *)subscribe_op);
+    aws_mqtt5_packet_subscribe_view_log(subscribe_op->base.packet_view, AWS_LL_DEBUG);
+
     if (s_submit_operation(client, &subscribe_op->base)) {
         goto error;
     }
@@ -2385,6 +2401,10 @@ int aws_mqtt5_client_unsubscribe(
     if (unsubscribe_op == NULL) {
         return AWS_OP_ERR;
     }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT, "id=%p: Submitting UNSUBSCRIBE operation (%p)", (void *)client, (void *)unsubscribe_op);
+    aws_mqtt5_packet_unsubscribe_view_log(unsubscribe_op->base.packet_view, AWS_LL_DEBUG);
 
     if (s_submit_operation(client, &unsubscribe_op->base)) {
         goto error;
