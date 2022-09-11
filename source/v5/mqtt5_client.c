@@ -1861,7 +1861,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             break;
 
         case AWS_MQTT5_PT_SUBACK: {
-            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: SUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_suback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(
                 &client->operational_state, packet_id, AWS_MQTT5_PT_SUBACK, packet_view, AWS_ERROR_SUCCESS);
@@ -1869,7 +1868,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         }
 
         case AWS_MQTT5_PT_UNSUBACK: {
-            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: UNSUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_unsuback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(
                 &client->operational_state, packet_id, AWS_MQTT5_PT_UNSUBACK, packet_view, AWS_ERROR_SUCCESS);
@@ -1877,7 +1875,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         }
 
         case AWS_MQTT5_PT_PUBLISH: {
-            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBLISH received", (void *)client);
             const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
 
             client->config->publish_received_handler(publish_view, client->config->publish_received_handler_user_data);
@@ -1902,7 +1899,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         }
 
         case AWS_MQTT5_PT_PUBACK: {
-            AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: PUBACK received", (void *)client);
             uint16_t packet_id = ((const struct aws_mqtt5_packet_puback_view *)packet_view)->packet_id;
             aws_mqtt5_client_operational_state_handle_ack(
                 &client->operational_state, packet_id, AWS_MQTT5_PT_PUBACK, packet_view, AWS_ERROR_SUCCESS);

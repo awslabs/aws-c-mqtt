@@ -2345,7 +2345,7 @@ void aws_mqtt5_packet_unsubscribe_view_log(
             log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_unsubscribe_view topic %zu: \"" PRInSTR "\"",
+            "id=%p: aws_mqtt5_packet_unsubscribe_view topic #%zu: \"" PRInSTR "\"",
             (void *)unsubscribe_view,
             i,
             AWS_BYTE_CURSOR_PRI(*topic_cursor));
@@ -2730,7 +2730,7 @@ void aws_mqtt5_packet_subscribe_view_log(
             log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view subscription %zu: topic filter \"" PRInSTR
+            "id=%p: aws_mqtt5_packet_subscribe_view subscription #%zu, topic filter \"" PRInSTR
             "\", qos %d, no local %d, retain as "
             "published %d, retain handling %d (%s)",
             (void *)subscribe_view,
@@ -3105,7 +3105,7 @@ void aws_mqtt5_packet_suback_view_log(
             log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: topic %zu, reason code %d (%s)",
+            "id=%p: aws_mqtt5_packet_suback_view topic #%zu, reason code %d (%s)",
             (void *)suback_view,
             i,
             (int)reason_code,
@@ -3252,7 +3252,7 @@ void aws_mqtt5_packet_unsuback_view_log(
             log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_unsuback_view topic %zu, reason code %d (%s)",
+            "id=%p: aws_mqtt5_packet_unsuback_view topic #%zu, reason code %d (%s)",
             (void *)unsuback_view,
             i,
             (int)reason_code,
