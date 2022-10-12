@@ -904,6 +904,7 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
             .user_data = client,
             .on_connection_setup = s_on_websocket_setup,
             .on_connection_shutdown = s_on_websocket_shutdown,
+            .requested_event_loop = client->loop,
         };
 
         if (client->config->http_proxy_config != NULL) {
