@@ -1079,6 +1079,7 @@ static void s_destroy(struct aws_channel_handler *handler) {
 
     aws_mqtt5_decoder_clean_up(&server_connection->decoder);
     aws_mqtt5_encoder_clean_up(&server_connection->encoder);
+    aws_mqtt5_inbound_topic_alias_resolver_clean_up(&server_connection->inbound_alias_resolver);
 
     aws_mem_release(server_connection->allocator, server_connection);
 }
@@ -1169,6 +1170,12 @@ static void s_on_incoming_channel_setup_fn(
         };
 
         aws_mqtt5_decoder_init(&server_connection->decoder, server_connection->allocator, &decoder_options);
+        aws_mqtt5_inbound_topic_alias_resolver_init(
+            &server_connection->inbound_alias_resolver, server_connection->allocator);
+        aws_mqtt5_inbound_topic_alias_resolver_reset(
+            &server_connection->inbound_alias_resolver, test_fixture->maximum_inbound_topic_aliases);
+        aws_mqtt5_decoder_set_inbound_topic_alias_resolver(
+            &server_connection->decoder, &server_connection->inbound_alias_resolver);
 
         aws_mutex_lock(&test_fixture->lock);
         test_fixture->server_channel = channel;

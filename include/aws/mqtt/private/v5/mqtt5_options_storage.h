@@ -167,7 +167,7 @@ struct aws_mqtt5_client_options_storage {
     uint32_t ping_timeout_ms;
     uint32_t connack_timeout_ms;
 
-    struct aws_mqtt5_client_topic_alias_config topic_aliasing_options;
+    struct aws_mqtt5_client_topic_alias_options topic_aliasing_options;
 
     struct aws_mqtt5_packet_connect_storage connect;
 

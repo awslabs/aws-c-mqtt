@@ -51,6 +51,7 @@ struct aws_mqtt5_server_mock_connection_context {
 
     struct aws_mqtt5_decoder_function_table decoding_table;
     struct aws_mqtt5_decoder decoder;
+    struct aws_mqtt5_inbound_topic_alias_resolver inbound_alias_resolver;
 
     struct aws_mqtt5_client_mock_test_fixture *test_fixture;
 
@@ -98,6 +99,8 @@ struct aws_mqtt5_client_mock_test_fixture {
 
     aws_mqtt5_client_connection_event_callback_fn *original_lifecycle_event_handler;
     void *original_lifecycle_event_handler_user_data;
+
+    size_t maximum_inbound_topic_aliases;
 
     struct aws_mutex lock;
     struct aws_condition_variable signal;
