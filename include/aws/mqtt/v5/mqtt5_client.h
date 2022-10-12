@@ -60,18 +60,23 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
     AWS_MQTT5_COTABT_DEFAULT,
 
     /**
-     * Outbound aliasing is the user's responsibility.  Client will cache and auto-use
+     * Outbound aliasing is the user's responsibility.  Client will cache and use
      * previously-established aliases if they fall within the negotiated limits of the connection.
+     *
+     * The user must still always submit a full topic in their publishes because disconnections disrupt
+     * topic alias mappings unpredictably.  The client will properly use the alias when the current connection
+     * has seen the alias binding already.
      */
-    AWS_MQTT5_COTABT_DUMB,
+    AWS_MQTT5_COTABT_USER,
 
     /**
-     * Client ignores any user-specified topic aliasing and acts on the outbound alias set as an LRU cache.
+     * Client fails any user-specified topic aliasing and acts on the outbound alias set as an LRU cache.
      */
     AWS_MQTT5_COTABT_LRU,
 
     /**
-     * Completely disable outbound topic aliasing
+     * Completely disable outbound topic aliasing.  Attempting to set a topic alias on a PUBLISH results in
+     * an error.
      */
     AWS_MQTT5_COTABT_DISABLED
 };
@@ -88,7 +93,7 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
  */
 enum aws_mqtt5_client_inbound_topic_alias_behavior_type {
     /**
-     * Maps to AWS_MQTT5_CITABT_ENABLED
+     * Maps to AWS_MQTT5_CITABT_DISABLED
      */
     AWS_MQTT5_CITABT_DEFAULT,
 
@@ -107,7 +112,7 @@ enum aws_mqtt5_client_inbound_topic_alias_behavior_type {
  * Configuration struct for all client topic aliasing behavior.  If this is left null, then all default options
  * (as it zeroed) will be used.
  */
-struct aws_mqtt5_client_topic_alias_config {
+struct aws_mqtt5_client_topic_alias_options {
 
     /**
      * Controls what kind of outbound topic aliasing behavior the client should attempt to use.
@@ -600,7 +605,7 @@ struct aws_mqtt5_client_options {
     /**
      * Controls how the client uses mqtt5 topic aliasing.  If NULL, zero-based defaults will be used.
      */
-    struct aws_mqtt5_client_topic_alias_config *topic_aliasing_options;
+    struct aws_mqtt5_client_topic_alias_options *topic_aliasing_options;
 
     /**
      * Callback for received publish packets

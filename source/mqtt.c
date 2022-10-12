@@ -210,9 +210,12 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_OPERATION_PROCESSING_FAILURE,
                 "Error while processing mqtt5 operational state"),
-AWS_DEFINE_ERROR_INFO_MQTT(
-    AWS_ERROR_MQTT5_INVALID_INBOUND_TOPIC_ALIAS,
-    "Incoming publish contained an invalid (too large or unknown) topic alias"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_INVALID_INBOUND_TOPIC_ALIAS,
+                "Incoming publish contained an invalid (too large or unknown) topic alias"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_INVALID_OUTBOUND_TOPIC_ALIAS,
+                "Outgoing publish contained an invalid (too large or unknown) topic alias"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

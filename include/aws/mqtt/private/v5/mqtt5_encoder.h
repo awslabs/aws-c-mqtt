@@ -15,6 +15,7 @@
 
 struct aws_mqtt5_client;
 struct aws_mqtt5_encoder;
+struct aws_mqtt5_outbound_topic_alias_resolver;
 
 /**
  * We encode packets by looking at all of the packet's values/properties and building a sequence of encoding steps.
@@ -95,6 +96,8 @@ struct aws_mqtt5_encoder {
 
     struct aws_array_list encoding_steps;
     size_t current_encoding_step_index;
+
+    struct aws_mqtt5_outbound_topic_alias_resolver *topic_alias_resolver;
 };
 
 /**
@@ -192,6 +195,16 @@ AWS_MQTT_API int aws_mqtt5_encoder_append_packet_encoding(
 AWS_MQTT_API enum aws_mqtt5_encoding_result aws_mqtt5_encoder_encode_to_buffer(
     struct aws_mqtt5_encoder *encoder,
     struct aws_byte_buf *buffer);
+
+/**
+ * Sets the outbound alias resolver that the encoder should use during the lifetime of a connection
+ *
+ * @param encoder encoder to apply outbound topic alias resolution to
+ * @param resolver outbound topic alias resolver
+ */
+AWS_MQTT_API void aws_mqtt5_encoder_set_outbound_topic_alias_resolver(
+    struct aws_mqtt5_encoder *encoder,
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver);
 
 /**
  * Default encoder table.  Tests copy it and augment with additional functions in order to do round-trip encode-decode

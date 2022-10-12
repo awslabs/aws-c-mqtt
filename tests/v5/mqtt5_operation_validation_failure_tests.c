@@ -1156,7 +1156,13 @@ static struct aws_mqtt5_packet_publish_view s_exceeds_topic_alias_maximum_publis
     .topic_alias = &s_topic_alias,
 };
 
+static struct aws_mqtt5_client_options_storage s_dummy_client_options;
+
 static void s_topic_alias_init_settings_success_fn(struct aws_mqtt5_client *dummy_client) {
+    AWS_ZERO_STRUCT(s_dummy_client_options);
+    s_dummy_client_options.topic_aliasing_options.outbound_topic_alias_behavior = AWS_MQTT5_COTABT_USER;
+
+    dummy_client->config = &s_dummy_client_options;
     dummy_client->negotiated_settings.maximum_packet_size_to_server = 100;
     dummy_client->negotiated_settings.topic_alias_maximum_to_server = 10;
 }

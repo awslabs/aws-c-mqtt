@@ -74,6 +74,24 @@ add_test_case(mqtt5_inbound_topic_alias_register_failure)
 add_test_case(mqtt5_inbound_topic_alias_resolve_success)
 add_test_case(mqtt5_inbound_topic_alias_resolve_failure)
 add_test_case(mqtt5_inbound_topic_alias_reset)
+add_test_case(mqtt5_outbound_topic_alias_disabled_resolve_success)
+add_test_case(mqtt5_outbound_topic_alias_disabled_resolve_failure)
+add_test_case(mqtt5_outbound_topic_alias_user_resolve_failure_zero_alias)
+add_test_case(mqtt5_outbound_topic_alias_user_resolve_failure_too_big_alias)
+add_test_case(mqtt5_outbound_topic_alias_user_resolve_success)
+add_test_case(mqtt5_outbound_topic_alias_user_reset)
+add_test_case(mqtt5_outbound_topic_alias_lru_zero_size)
+
+# lru topic sequence tests
+# cache size of 2
+# a, b, c, refer to distinct topics
+# the 'r' suffice refers to expected alias reuse
+add_test_case(mqtt5_outbound_topic_alias_lru_a_ar)
+add_test_case(mqtt5_outbound_topic_alias_lru_b_a_br)
+add_test_case(mqtt5_outbound_topic_alias_lru_a_b_ar_br)
+add_test_case(mqtt5_outbound_topic_alias_lru_a_b_c_br_cr_br_cr_a)
+add_test_case(mqtt5_outbound_topic_alias_lru_a_b_c_a_cr_b)
+add_test_case(mqtt5_outbound_topic_alias_lru_a_b_reset_a_b)
 
 # mqtt operation/storage/view creation/relationship tests
 add_test_case(mqtt5_publish_operation_new_set_no_optional)
@@ -274,6 +292,13 @@ add_test_case(mqtt5_client_inbound_alias_failure_disabled)
 add_test_case(mqtt5_client_inbound_alias_failure_zero_id)
 add_test_case(mqtt5_client_inbound_alias_failure_too_large_id)
 add_test_case(mqtt5_client_inbound_alias_failure_unbound_id)
+add_test_case(mqtt5_client_outbound_alias_disabled_failure_alias_set)
+add_test_case(mqtt5_client_outbound_alias_user_failure_empty_topic)
+add_test_case(mqtt5_client_outbound_alias_lru_failure_alias_set)
+
+# a, b, c, r imply notation as the outbound resolver unit tests above
+add_test_case(mqtt5_client_outbound_alias_user_success_a_b_ar_br)
+add_test_case(mqtt5_client_outbound_alias_lru_success_a_b_c_br_cr_a)
 
 add_test_case(rate_limiter_token_bucket_init_invalid)
 add_test_case(rate_limiter_token_bucket_regeneration_integral)

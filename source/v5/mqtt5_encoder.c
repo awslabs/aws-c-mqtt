@@ -6,6 +6,7 @@
 #include <aws/mqtt/private/v5/mqtt5_encoder.h>
 
 #include <aws/io/stream.h>
+#include <aws/mqtt/private/v5/mqtt5_topic_alias.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
@@ -775,7 +776,41 @@ static int s_compute_publish_variable_length_fields(
 
 static int s_aws_mqtt5_encoder_begin_publish(struct aws_mqtt5_encoder *encoder, const void *view) {
 
-    const struct aws_mqtt5_packet_publish_view *publish_view = view;
+    /* We do a shallow copy of the stored view in order to temporarily side affect it for topic aliasing */
+    struct aws_mqtt5_packet_publish_view local_publish_view = *((const struct aws_mqtt5_packet_publish_view *)view);
+
+    uint16_t outbound_topic_alias = 0;
+    struct aws_byte_cursor outbound_topic;
+
+    if (encoder->topic_alias_resolver != NULL) {
+        AWS_ZERO_STRUCT(outbound_topic);
+        if (aws_mqtt5_outbound_topic_alias_resolver_resolve_outbound_publish(
+                encoder->topic_alias_resolver, &local_publish_view, &outbound_topic_alias, &outbound_topic)) {
+            int error_code = aws_last_error();
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "(%p) mqtt5 client encoder - failed to perform outbound topic alias resolution on PUBLISH packet with "
+                "error "
+                "%d(%s)",
+                (void *)encoder->config.client,
+                error_code,
+                aws_error_debug_str(error_code));
+            return AWS_OP_ERR;
+        }
+
+        local_publish_view.topic = outbound_topic;
+        if (outbound_topic_alias != 0) {
+            local_publish_view.topic_alias = &outbound_topic_alias;
+        }
+    }
+
+    /*
+     * We're going to encode the local mutated view copy, not the stored view.  This lets the original packet stay
+     * unchanged for the entire time it is owned by the client.  Otherwise, events that disrupt the alias cache
+     * (like disconnections) would make correct aliasing impossible (because we'd have mutated and potentially lost
+     * topic information).
+     */
+    const struct aws_mqtt5_packet_publish_view *publish_view = &local_publish_view;
 
     size_t total_remaining_length = 0;
     size_t publish_properties_length = 0;
@@ -1238,4 +1273,11 @@ int aws_mqtt5_packet_view_get_encoded_size(
     }
 
     return s_compute_packet_size(total_remaining_length, packet_size);
+}
+
+void aws_mqtt5_encoder_set_outbound_topic_alias_resolver(
+    struct aws_mqtt5_encoder *encoder,
+    struct aws_mqtt5_outbound_topic_alias_resolver *resolver) {
+
+    encoder->topic_alias_resolver = resolver;
 }
