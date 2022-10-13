@@ -93,19 +93,31 @@ int aws_mqtt5_user_property_set_add_stored_property(
 }
 
 static void s_aws_mqtt5_user_property_set_log(
+    struct aws_logger *log_handle,
     const struct aws_mqtt5_user_property *properties,
     size_t property_count,
     void *log_context,
     enum aws_log_level level,
     const char *log_prefix) {
 
-    AWS_LOGF(
-        level, AWS_LS_MQTT5_GENERAL, "id=%p: %s with %zu user properties:", log_context, log_prefix, property_count);
+    if (property_count == 0) {
+        return;
+    }
+
+    AWS_LOGUF(
+        log_handle,
+        level,
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: %s with %zu user properties:",
+        log_context,
+        log_prefix,
+        property_count);
 
     for (size_t i = 0; i < property_count; ++i) {
         const struct aws_mqtt5_user_property *property = &properties[i];
 
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: %s user property %zu with name \"" PRInSTR "\", value \"" PRInSTR "\"",
@@ -265,7 +277,7 @@ int aws_mqtt5_operation_validate_vs_connection_settings(
             int error_code = aws_last_error();
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
-                "id=%p: error %d(%s) computing %s packet size",
+                "id=%p: error %d (%s) computing %s packet size",
                 (void *)client,
                 error_code,
                 aws_error_debug_str(error_code),
@@ -420,21 +432,21 @@ int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect
 void aws_mqtt5_packet_connect_view_log(
     const struct aws_mqtt5_packet_connect_view *connect_view,
     enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
 
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_connect_view keep alive interval set to %" PRIu16,
         (void *)connect_view,
         connect_view->keep_alive_interval_seconds);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_connect_view client id set to \"" PRInSTR "\"",
@@ -443,16 +455,25 @@ void aws_mqtt5_packet_connect_view_log(
 
     if (connect_view->username != NULL) {
         /* Intentionally do not log username since it too can contain sensitive information */
-        AWS_LOGF(
-            level, AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_connect_view username set", (void *)connect_view);
+        AWS_LOGUF(
+            log_handle,
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_connect_view username set",
+            (void *)connect_view);
     }
 
     if (connect_view->password != NULL) {
-        AWS_LOGF(
-            level, AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_connect_view password set", (void *)connect_view);
+        AWS_LOGUF(
+            log_handle,
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_connect_view password set",
+            (void *)connect_view);
     }
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_connect_view clean start set to %d",
@@ -460,7 +481,8 @@ void aws_mqtt5_packet_connect_view_log(
         (int)(connect_view->clean_start ? 1 : 0));
 
     if (connect_view->session_expiry_interval_seconds != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view session expiry interval set to %" PRIu32,
@@ -469,7 +491,8 @@ void aws_mqtt5_packet_connect_view_log(
     }
 
     if (connect_view->request_response_information != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view request response information set to %d",
@@ -478,7 +501,8 @@ void aws_mqtt5_packet_connect_view_log(
     }
 
     if (connect_view->request_problem_information) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view request problem information set to %d",
@@ -487,7 +511,8 @@ void aws_mqtt5_packet_connect_view_log(
     }
 
     if (connect_view->receive_maximum != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view receive maximum set to %" PRIu16,
@@ -496,7 +521,8 @@ void aws_mqtt5_packet_connect_view_log(
     }
 
     if (connect_view->topic_alias_maximum != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view topic alias maximum set to %" PRIu16,
@@ -505,7 +531,8 @@ void aws_mqtt5_packet_connect_view_log(
     }
 
     if (connect_view->maximum_packet_size_bytes != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view maximum packet size set to %" PRIu32,
@@ -513,7 +540,8 @@ void aws_mqtt5_packet_connect_view_log(
             *connect_view->maximum_packet_size_bytes);
     }
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_connect_view set will to (%p)",
@@ -525,7 +553,8 @@ void aws_mqtt5_packet_connect_view_log(
     }
 
     if (connect_view->will_delay_interval_seconds != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view will delay interval set to %" PRIu32,
@@ -534,6 +563,7 @@ void aws_mqtt5_packet_connect_view_log(
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         connect_view->user_properties,
         connect_view->user_property_count,
         (void *)connect_view,
@@ -541,7 +571,8 @@ void aws_mqtt5_packet_connect_view_log(
         "aws_mqtt5_packet_connect_view");
 
     if (connect_view->authentication_method != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view authentication method set",
@@ -549,7 +580,8 @@ void aws_mqtt5_packet_connect_view_log(
     }
 
     if (connect_view->password != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view authentication data set",
@@ -986,22 +1018,22 @@ void aws_mqtt5_packet_connack_storage_clean_up(struct aws_mqtt5_packet_connack_s
 void aws_mqtt5_packet_connack_view_log(
     const struct aws_mqtt5_packet_connack_view *connack_view,
     enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
 
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_packet_connack_view reason code set to %d(%s)",
+        "id=%p: aws_mqtt5_packet_connack_view reason code set to %d (%s)",
         (void *)connack_view,
         (int)connack_view->reason_code,
         aws_mqtt5_connect_reason_code_to_c_string(connack_view->reason_code));
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_connack_view session present set to %d",
@@ -1009,7 +1041,8 @@ void aws_mqtt5_packet_connack_view_log(
         (int)connack_view->session_present);
 
     if (connack_view->session_expiry_interval != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view session expiry interval set to %" PRIu32,
@@ -1018,7 +1051,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->receive_maximum != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view receive maximum set to %" PRIu16,
@@ -1027,7 +1061,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->maximum_qos != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view maximum qos set to %d",
@@ -1036,7 +1071,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->retain_available != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view retain available set to %d",
@@ -1045,7 +1081,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->maximum_packet_size != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view maximum packet size set to %" PRIu32,
@@ -1054,7 +1091,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->assigned_client_identifier != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view assigned client identifier set to \"" PRInSTR "\"",
@@ -1063,7 +1101,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->topic_alias_maximum != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view topic alias maximum set to %" PRIu16,
@@ -1072,7 +1111,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->reason_string != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view reason string set to \"" PRInSTR "\"",
@@ -1081,7 +1121,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->wildcard_subscriptions_available != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view wildcard subscriptions available set to %d",
@@ -1090,7 +1131,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->subscription_identifiers_available != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view subscription identifiers available set to %d",
@@ -1099,7 +1141,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->shared_subscriptions_available != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view shared subscriptions available set to %d",
@@ -1108,7 +1151,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->server_keep_alive != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view server keep alive set to %" PRIu16,
@@ -1117,7 +1161,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->response_information != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view response information set to \"" PRInSTR "\"",
@@ -1126,7 +1171,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->server_reference != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view server reference set to \"" PRInSTR "\"",
@@ -1135,7 +1181,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->authentication_method != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view authentication method set",
@@ -1143,7 +1190,8 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     if (connack_view->authentication_data != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connack_view authentication data set",
@@ -1151,6 +1199,7 @@ void aws_mqtt5_packet_connack_view_log(
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         connack_view->user_properties,
         connack_view->user_property_count,
         (void *)connack_view,
@@ -1241,23 +1290,23 @@ static int s_aws_mqtt5_packet_disconnect_view_validate_vs_connection_settings(
 void aws_mqtt5_packet_disconnect_view_log(
     const struct aws_mqtt5_packet_disconnect_view *disconnect_view,
     enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
 
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_packet_disconnect_view reason code set to %d(%s)",
+        "id=%p: aws_mqtt5_packet_disconnect_view reason code set to %d (%s)",
         (void *)disconnect_view,
         (int)disconnect_view->reason_code,
         aws_mqtt5_disconnect_reason_code_to_c_string(disconnect_view->reason_code, NULL));
 
     if (disconnect_view->session_expiry_interval_seconds != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_disconnect_view session expiry interval set to %" PRIu32,
@@ -1266,7 +1315,8 @@ void aws_mqtt5_packet_disconnect_view_log(
     }
 
     if (disconnect_view->reason_string != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_disconnect_view reason string set to \"" PRInSTR "\"",
@@ -1275,7 +1325,8 @@ void aws_mqtt5_packet_disconnect_view_log(
     }
 
     if (disconnect_view->server_reference != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_disconnect_view server reference set to \"" PRInSTR "\"",
@@ -1284,6 +1335,7 @@ void aws_mqtt5_packet_disconnect_view_log(
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         disconnect_view->user_properties,
         disconnect_view->user_property_count,
         (void *)disconnect_view,
@@ -1670,56 +1722,66 @@ static int s_aws_mqtt5_packet_publish_view_validate_vs_connection_settings(
 void aws_mqtt5_packet_publish_view_log(
     const struct aws_mqtt5_packet_publish_view *publish_view,
     enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
 
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_packet_publish_view packet id set to %d",
+        "id=%p: aws_mqtt5_packet_publish_view packet id set to %d",
         (void *)publish_view,
         (int)publish_view->packet_id);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_publish_view payload set containing %zu bytes",
         (void *)publish_view,
         publish_view->payload.len);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_publish_view qos set to %d",
         (void *)publish_view,
         (int)publish_view->qos);
 
-    AWS_LOGF_DEBUG(
+    AWS_LOGUF(
+        log_handle,
+        level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_publish_view retain set to %d",
         (void *)publish_view,
         (int)publish_view->retain);
 
-    AWS_LOGF_DEBUG(
+    AWS_LOGUF(
+        log_handle,
+        level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_packet_publish_view topic set to \"" PRInSTR "\"",
         (void *)publish_view,
         AWS_BYTE_CURSOR_PRI(publish_view->topic));
 
     if (publish_view->payload_format != NULL) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_publish_view payload format indicator set to %d(%s)",
+            "id=%p: aws_mqtt5_packet_publish_view payload format indicator set to %d (%s)",
             (void *)publish_view,
             (int)*publish_view->payload_format,
             aws_mqtt5_payload_format_indicator_to_c_string(*publish_view->payload_format));
     }
 
     if (publish_view->message_expiry_interval_seconds != NULL) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_publish_view message expiry interval set to %" PRIu32,
             (void *)publish_view,
@@ -1727,7 +1789,9 @@ void aws_mqtt5_packet_publish_view_log(
     }
 
     if (publish_view->topic_alias != NULL) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_publish_view topic alias set to %" PRIu16,
             (void *)publish_view,
@@ -1735,7 +1799,9 @@ void aws_mqtt5_packet_publish_view_log(
     }
 
     if (publish_view->response_topic != NULL) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_publish_view response topic set to \"" PRInSTR "\"",
             (void *)publish_view,
@@ -1743,12 +1809,18 @@ void aws_mqtt5_packet_publish_view_log(
     }
 
     if (publish_view->correlation_data != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - set correlation data", (void *)publish_view);
+        AWS_LOGUF(
+            log_handle,
+            level,
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: aws_mqtt5_packet_publish_view - set correlation data",
+            (void *)publish_view);
     }
 
     if (publish_view->content_type != NULL) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_publish_view content type set to \"" PRInSTR "\"",
             (void *)publish_view,
@@ -1756,7 +1828,9 @@ void aws_mqtt5_packet_publish_view_log(
     }
 
     for (size_t i = 0; i < publish_view->subscription_identifier_count; ++i) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_publish_view subscription identifier %d: %" PRIu32,
             (void *)publish_view,
@@ -1765,6 +1839,7 @@ void aws_mqtt5_packet_publish_view_log(
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         publish_view->user_properties,
         publish_view->user_property_count,
         (void *)publish_view,
@@ -2097,22 +2172,22 @@ void aws_mqtt5_packet_puback_storage_clean_up(struct aws_mqtt5_packet_puback_sto
 void aws_mqtt5_packet_puback_view_log(
     const struct aws_mqtt5_packet_puback_view *puback_view,
     enum aws_log_level level) {
-    struct aws_logger *packet_logger = aws_logger_get();
-    if (packet_logger == NULL || packet_logger->vtable->get_log_level(packet_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
 
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_packet_puback_view packet id set to %d",
+        "id=%p: aws_mqtt5_packet_puback_view packet id set to %d",
         (void *)puback_view,
         (int)puback_view->packet_id);
 
     enum aws_mqtt5_puback_reason_code reason_code = puback_view->reason_code;
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: puback %d reason code: %s",
@@ -2121,7 +2196,8 @@ void aws_mqtt5_packet_puback_view_log(
         aws_mqtt5_puback_reason_code_to_c_string(reason_code));
 
     if (puback_view->reason_string != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_puback_view reason string set to \"" PRInSTR "\"",
@@ -2130,6 +2206,7 @@ void aws_mqtt5_packet_puback_view_log(
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         puback_view->user_properties,
         puback_view->user_property_count,
         (void *)puback_view,
@@ -2255,26 +2332,27 @@ AWS_MQTT_API int aws_mqtt5_packet_unsubscribe_view_validate_vs_iot_core(
 void aws_mqtt5_packet_unsubscribe_view_log(
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
     enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
-
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
 
     size_t topic_count = unsubscribe_view->topic_filter_count;
     for (size_t i = 0; i < topic_count; ++i) {
         const struct aws_byte_cursor *topic_cursor = &unsubscribe_view->topic_filters[i];
 
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_unsubscribe_view topic %zu: \"" PRInSTR "\"",
+            "id=%p: aws_mqtt5_packet_unsubscribe_view topic #%zu: \"" PRInSTR "\"",
             (void *)unsubscribe_view,
             i,
             AWS_BYTE_CURSOR_PRI(*topic_cursor));
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         unsubscribe_view->user_properties,
         unsubscribe_view->user_property_count,
         (void *)unsubscribe_view,
@@ -2639,22 +2717,22 @@ AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate_vs_iot_core(
 void aws_mqtt5_packet_subscribe_view_log(
     const struct aws_mqtt5_packet_subscribe_view *subscribe_view,
     enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
-
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
 
     size_t subscription_count = subscribe_view->subscription_count;
     for (size_t i = 0; i < subscription_count; ++i) {
         const struct aws_mqtt5_subscription_view *view = &subscribe_view->subscriptions[i];
 
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view subscription %zu: topic filter \"" PRInSTR
+            "id=%p: aws_mqtt5_packet_subscribe_view subscription #%zu, topic filter \"" PRInSTR
             "\", qos %d, no local %d, retain as "
-            "published %d, retain handling %d(%s)",
+            "published %d, retain handling %d (%s)",
             (void *)subscribe_view,
             i,
             AWS_BYTE_CURSOR_PRI(view->topic_filter),
@@ -2666,7 +2744,9 @@ void aws_mqtt5_packet_subscribe_view_log(
     }
 
     if (subscribe_view->subscription_identifier != NULL) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGUF(
+            log_handle,
+            level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_subscribe_view subscription identifier set to %" PRIu32,
             (void *)subscribe_view,
@@ -2674,6 +2754,7 @@ void aws_mqtt5_packet_subscribe_view_log(
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         subscribe_view->user_properties,
         subscribe_view->user_property_count,
         (void *)subscribe_view,
@@ -3005,26 +3086,26 @@ void aws_mqtt5_packet_suback_storage_clean_up(struct aws_mqtt5_packet_suback_sto
 void aws_mqtt5_packet_suback_view_log(
     const struct aws_mqtt5_packet_suback_view *suback_view,
     enum aws_log_level level) {
-    struct aws_logger *packet_logger = aws_logger_get();
-    if (packet_logger == NULL || packet_logger->vtable->get_log_level(packet_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
 
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_packet_suback_view packet id set to %d",
+        "id=%p: aws_mqtt5_packet_suback_view packet id set to %d",
         (void *)suback_view,
         (int)suback_view->packet_id);
 
     for (size_t i = 0; i < suback_view->reason_code_count; ++i) {
         enum aws_mqtt5_suback_reason_code reason_code = suback_view->reason_codes[i];
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: topic %zu reason code:%d %s",
+            "id=%p: aws_mqtt5_packet_suback_view topic #%zu, reason code %d (%s)",
             (void *)suback_view,
             i,
             (int)reason_code,
@@ -3032,6 +3113,7 @@ void aws_mqtt5_packet_suback_view_log(
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         suback_view->user_properties,
         suback_view->user_property_count,
         (void *)suback_view,
@@ -3151,26 +3233,26 @@ void aws_mqtt5_packet_unsuback_storage_clean_up(struct aws_mqtt5_packet_unsuback
 void aws_mqtt5_packet_unsuback_view_log(
     const struct aws_mqtt5_packet_unsuback_view *unsuback_view,
     enum aws_log_level level) {
-    struct aws_logger *packet_logger = aws_logger_get();
-    if (packet_logger == NULL || packet_logger->vtable->get_log_level(packet_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
 
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "(%p) aws_mqtt5_packet_unsuback_view packet id set to %d",
+        "id=%p: aws_mqtt5_packet_unsuback_view packet id set to %d",
         (void *)unsuback_view,
         (int)unsuback_view->packet_id);
 
     for (size_t i = 0; i < unsuback_view->reason_code_count; ++i) {
         enum aws_mqtt5_unsuback_reason_code reason_code = unsuback_view->reason_codes[i];
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_unsuback_view topic %zu reason code:%d %s",
+            "id=%p: aws_mqtt5_packet_unsuback_view topic #%zu, reason code %d (%s)",
             (void *)unsuback_view,
             i,
             (int)reason_code,
@@ -3178,6 +3260,7 @@ void aws_mqtt5_packet_unsuback_view_log(
     }
 
     s_aws_mqtt5_user_property_set_log(
+        log_handle,
         unsuback_view->user_properties,
         unsuback_view->user_property_count,
         (void *)unsuback_view,
@@ -3301,18 +3384,22 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
 }
 
 static void s_log_tls_connection_options(
+    struct aws_logger *log_handle,
     const struct aws_mqtt5_client_options_storage *options_storage,
     const struct aws_tls_connection_options *tls_options,
     enum aws_log_level level,
     const char *log_text) {
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage %s tls options set:",
         (void *)options_storage,
         log_text);
+
     if (tls_options->advertise_alpn_message && tls_options->alpn_list) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage %s tls options alpn protocol list set to \"%s\"",
@@ -3320,7 +3407,8 @@ static void s_log_tls_connection_options(
             log_text,
             aws_string_c_str(tls_options->alpn_list));
     } else {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage %s tls options alpn not used",
@@ -3329,7 +3417,8 @@ static void s_log_tls_connection_options(
     }
 
     if (tls_options->server_name) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage %s tls options SNI value set to \"%s\"",
@@ -3337,7 +3426,8 @@ static void s_log_tls_connection_options(
             log_text,
             aws_string_c_str(tls_options->server_name));
     } else {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage %s tls options SNI not used",
@@ -3345,14 +3435,17 @@ static void s_log_tls_connection_options(
             log_text);
     }
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage %s tls options tls context set to (%p)",
         (void *)options_storage,
         log_text,
         (void *)(tls_options->ctx));
-    AWS_LOGF(
+
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage %s tls options handshake timeout set to %" PRIu32,
@@ -3362,34 +3455,40 @@ static void s_log_tls_connection_options(
 }
 
 static void s_log_topic_aliasing_options(
+    struct aws_logger *log_handle,
     const struct aws_mqtt5_client_options_storage *options_storage,
     const struct aws_mqtt5_client_topic_alias_options *topic_aliasing_options,
     enum aws_log_level level) {
-    AWS_LOGF(
+
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage outbound topic aliasing behavior set to %d(%s)",
+        "id=%p: aws_mqtt5_client_options_storage outbound topic aliasing behavior set to %d (%s)",
         (void *)options_storage,
         (int)topic_aliasing_options->outbound_topic_alias_behavior,
         aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
             topic_aliasing_options->outbound_topic_alias_behavior));
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage maximum outbound topic alias cache size set to %" PRIu16,
         (void *)options_storage,
         topic_aliasing_options->outbound_alias_cache_max_size);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage inbound topic aliasing behavior set to %d(%s)",
+        "id=%p: aws_mqtt5_client_options_storage inbound topic aliasing behavior set to %d (%s)",
         (void *)options_storage,
         (int)topic_aliasing_options->inbound_topic_alias_behavior,
         aws_mqtt5_inbound_topic_alias_behavior_type_to_c_string(topic_aliasing_options->inbound_topic_alias_behavior));
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage inbound topic alias cache size set to %" PRIu16,
@@ -3400,34 +3499,37 @@ static void s_log_topic_aliasing_options(
 void aws_mqtt5_client_options_storage_log(
     const struct aws_mqtt5_client_options_storage *options_storage,
     enum aws_log_level level) {
-    struct aws_logger *temp_logger = aws_logger_get();
-    if (temp_logger == NULL || temp_logger->vtable->get_log_level(temp_logger, AWS_LS_MQTT5_GENERAL) < level) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT5_GENERAL, level);
+    if (log_handle == NULL) {
         return;
     }
 
-    /* TODO: constantly checking the log level at this point is kind of dumb but there's no better API atm */
-
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage host name set to %s",
         (void *)options_storage,
         aws_string_c_str(options_storage->host_name));
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage port set to %" PRIu16,
         (void *)options_storage,
         options_storage->port);
-    AWS_LOGF(
+
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage client bootstrap set to (%p)",
         (void *)options_storage,
         (void *)options_storage->bootstrap);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage socket options set to: type = %d, domain = %d, connect_timeout_ms = "
@@ -3436,8 +3538,10 @@ void aws_mqtt5_client_options_storage_log(
         (int)options_storage->socket_options.type,
         (int)options_storage->socket_options.domain,
         options_storage->socket_options.connect_timeout_ms);
+
     if (options_storage->socket_options.keepalive) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage socket keepalive options set to: keep_alive_interval_sec = "
@@ -3450,25 +3554,27 @@ void aws_mqtt5_client_options_storage_log(
     }
 
     if (options_storage->tls_options_ptr != NULL) {
-        s_log_tls_connection_options(options_storage, options_storage->tls_options_ptr, level, "");
+        s_log_tls_connection_options(log_handle, options_storage, options_storage->tls_options_ptr, level, "");
     }
 
     if (options_storage->http_proxy_config != NULL) {
-
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage using http proxy:",
             (void *)options_storage);
 
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage http proxy host name set to " PRInSTR,
             (void *)options_storage,
             AWS_BYTE_CURSOR_PRI(options_storage->http_proxy_options.host));
 
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage http proxy port set to %" PRIu16,
@@ -3476,12 +3582,14 @@ void aws_mqtt5_client_options_storage_log(
             options_storage->http_proxy_options.port);
 
         if (options_storage->http_proxy_options.tls_options != NULL) {
-            s_log_tls_connection_options(options_storage, options_storage->tls_options_ptr, level, "http proxy");
+            s_log_tls_connection_options(
+                log_handle, options_storage, options_storage->tls_options_ptr, level, "http proxy");
         }
 
         /* ToDo: add (and use) an API to proxy strategy that returns a debug string (Basic, Adaptive, etc...) */
         if (options_storage->http_proxy_options.proxy_strategy != NULL) {
-            AWS_LOGF(
+            AWS_LOGUF(
+                log_handle,
                 level,
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_client_options_storage http proxy strategy set to (%p)",
@@ -3491,61 +3599,69 @@ void aws_mqtt5_client_options_storage_log(
     }
 
     if (options_storage->websocket_handshake_transform != NULL) {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage enabling websockets",
             (void *)options_storage);
 
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_client_options_storage websocket handshake transform user data set to (%p)",
             (void *)options_storage,
             options_storage->websocket_handshake_transform_user_data);
     } else {
-        AWS_LOGF(
+        AWS_LOGUF(
+            log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
             "id=%p: mqtt5_client_options_storage disabling websockets",
             (void *)options_storage);
     }
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage session behavior set to %d(%s)",
+        "id=%p: aws_mqtt5_client_options_storage session behavior set to %d (%s)",
         (void *)options_storage,
         (int)options_storage->session_behavior,
         aws_mqtt5_client_session_behavior_type_to_c_string(options_storage->session_behavior));
 
-    s_log_topic_aliasing_options(options_storage, &options_storage->topic_aliasing_options, level);
+    s_log_topic_aliasing_options(log_handle, options_storage, &options_storage->topic_aliasing_options, level);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage extended validation and flow control options set to %d(%s)",
+        "id=%p: aws_mqtt5_client_options_storage extended validation and flow control options set to %d (%s)",
         (void *)options_storage,
         (int)options_storage->extended_validation_and_flow_control_options,
         aws_mqtt5_extended_validation_and_flow_control_options_to_c_string(
             options_storage->extended_validation_and_flow_control_options));
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage operation queue behavior set to %d(%s)",
+        "id=%p: aws_mqtt5_client_options_storage operation queue behavior set to %d (%s)",
         (void *)options_storage,
         (int)options_storage->offline_queue_behavior,
         aws_mqtt5_client_operation_queue_behavior_type_to_c_string(options_storage->offline_queue_behavior));
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage reconnect jitter mode set to %d",
         (void *)options_storage,
         (int)options_storage->retry_jitter_mode);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: mqtt5_client_options_storage reconnect delay min set to %" PRIu64 " ms, max set to %" PRIu64 " ms",
@@ -3553,7 +3669,8 @@ void aws_mqtt5_client_options_storage_log(
         options_storage->min_reconnect_delay_ms,
         options_storage->max_reconnect_delay_ms);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage minimum necessary connection time in order to reset the reconnect "
@@ -3563,21 +3680,24 @@ void aws_mqtt5_client_options_storage_log(
         (void *)options_storage,
         options_storage->min_connected_time_to_reset_reconnect_delay_ms);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage ping timeout interval set to %" PRIu32 " ms",
         (void *)options_storage,
         options_storage->ping_timeout_ms);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage connack timeout interval set to %" PRIu32 " ms",
         (void *)options_storage,
         options_storage->connack_timeout_ms);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage connect options:",
@@ -3585,7 +3705,8 @@ void aws_mqtt5_client_options_storage_log(
 
     aws_mqtt5_packet_connect_view_log(&options_storage->connect.storage_view, level);
 
-    AWS_LOGF(
+    AWS_LOGUF(
+        log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
         "id=%p: aws_mqtt5_client_options_storage lifecycle event handler user data set to (%p)",
