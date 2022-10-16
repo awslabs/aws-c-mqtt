@@ -103,7 +103,7 @@ s3_monitor = S3_Monitor(
     s3_file_name_in_zip=canary_s3_bucket_application_path_zip,
     canary_local_application_path=canary_local_application_path)
 
-if (s3_monitor.had_interal_error == True):
+if (s3_monitor.had_internal_error == True):
     print ("INFO - Stopping application due to error caused by credentials")
     print ("Please fix your credentials and then restart this application again")
     exit(0)
@@ -113,6 +113,7 @@ data_snapshot = DataSnapshot(
     git_hash=canary_local_git_hash_stub,
     git_repo_name=canary_local_git_repo_stub,
     git_hash_as_namespace=False,
+    datetime_string=None,
     git_fixed_namespace_text=canary_local_git_fixed_namespace,
     output_log_filepath="output.txt",
     output_to_console=True,
@@ -162,7 +163,7 @@ snapshot_monitor = SnapshotMonitor(
     wrapper_metrics_wait_time=canary_metrics_wait_time)
 
 # Make sure nothing failed
-if (snapshot_monitor.had_interal_error == True):
+if (snapshot_monitor.had_internal_error == True):
     print ("INFO - Stopping application due to error caused by credentials")
     print ("Please fix your credentials and then restart this application again")
     exit(0)
@@ -174,7 +175,7 @@ application_monitor = ApplicationMonitor(
     wrapper_application_restart_on_finish=True)
 
 # Make sure nothing failed
-if (application_monitor.error_has_occured == True):
+if (application_monitor.error_has_occurred == True):
     print ("INFO - Stopping application due to error caused by credentials")
     print ("Please fix your credentials and then restart this application again")
     exit(0)
@@ -187,7 +188,7 @@ def execution_loop():
         s3_monitor.monitor_loop_function(time_passed=canary_application_loop_wait_time)
 
         # Is there an error?
-        if (s3_monitor.had_interal_error == True):
+        if (s3_monitor.had_internal_error == True):
             break
 
         # Is there a new file?
@@ -210,8 +211,8 @@ def execution_loop():
             # Do not allow it to cut anymore tickets until it gets a new build
             snapshot_monitor.can_cut_ticket = False
 
-        # If an error has occured or otherwise this thead needs to stop, then break the loop
-        if (application_monitor.error_has_occured == True or snapshot_monitor.had_interal_error == True):
+        # If an error has occurred or otherwise this thread needs to stop, then break the loop
+        if (application_monitor.error_has_occurred == True or snapshot_monitor.had_internal_error == True):
             break
 
         time.sleep(canary_application_loop_wait_time)
@@ -236,7 +237,7 @@ def application_thread():
     application_monitor.stop_monitoring()
 
     # Track whether this counts as an error (and therefore we should cleanup accordingly) or not
-    wrapper_error_occured = False
+    wrapper_error_occurred = False
 
     send_finished_email = True
     finished_email_body = "MQTT5 24/7 Canary Wrapper has stopped."
@@ -244,7 +245,7 @@ def application_thread():
 
     # Find out why we stopped
     # S3 Monitor
-    if (s3_monitor.had_interal_error == True):
+    if (s3_monitor.had_internal_error == True):
         if (s3_monitor.error_due_to_credentials == False):
             print ("ERROR - S3 monitor stopped due to internal error!")
             cut_ticket_using_cloudwatch(
@@ -263,16 +264,16 @@ def application_thread():
                 ticket_severity=4)
             finished_email_body += "Failure due to S3 monitor stopping due to an internal error."
             finished_email_body += " Reason given for error: " + s3_monitor.internal_error_reason
-            wrapper_error_occured = True
+            wrapper_error_occurred = True
     # Snapshot Monitor
-    elif (snapshot_monitor.had_interal_error == True):
+    elif (snapshot_monitor.had_internal_error == True):
         if (snapshot_monitor.has_cut_ticket == True):
             # We do not need to cut a ticket here - it's cut by the snapshot monitor!
             print ("ERROR - Snapshot monitor stopped due to metric in alarm!")
             finished_email_body += "Failure due to required metrics being in alarm! A new ticket should have been cut!"
             finished_email_body += "\nMetrics in Alarm: " + str(snapshot_monitor.cloudwatch_current_alarms_triggered)
             finished_email_body += "\nNOTE - this shouldn't occur in the 24/7 Canary! If it does, then the wrapper needs adjusting."
-            wrapper_error_occured = True
+            wrapper_error_occurred = True
         else:
             print ("ERROR - Snapshot monitor stopped due to internal error!")
             cut_ticket_using_cloudwatch(
@@ -289,15 +290,15 @@ def application_thread():
                 ticket_item="IoT SDK for CPP",
                 ticket_group="AWS IoT Device SDK",
                 ticket_severity=4)
-            wrapper_error_occured = True
+            wrapper_error_occurred = True
             finished_email_body += "Failure due to Snapshot monitor stopping due to an internal error."
             finished_email_body += " Reason given for error: " + snapshot_monitor.internal_error_reason
     # Application Monitor
-    elif (application_monitor.error_has_occured == True):
+    elif (application_monitor.error_has_occurred == True):
         if (application_monitor.error_due_to_credentials == True):
             print ("INFO - Stopping application due to error caused by credentials")
             print ("Please fix your credentials and then restart this application again")
-            wrapper_error_occured = True
+            wrapper_error_occurred = True
             send_finished_email = False
         else:
             # Is the error something in the canary failed?
@@ -316,7 +317,7 @@ def application_thread():
                     ticket_item="IoT SDK for CPP",
                     ticket_group="AWS IoT Device SDK",
                     ticket_severity=3)
-                wrapper_error_occured = True
+                wrapper_error_occurred = True
                 finished_email_body += "Failure due to MQTT5 application exiting with a non-zero exit code!"
                 finished_email_body += " This means something in the Canary application itself failed"
             else:
@@ -334,7 +335,7 @@ def application_thread():
                     ticket_item="IoT SDK for CPP",
                     ticket_group="AWS IoT Device SDK",
                     ticket_severity=3)
-                wrapper_error_occured = True
+                wrapper_error_occurred = True
                 finished_email_body += "Failure due to MQTT5 application stopping and not automatically restarting!"
                 finished_email_body += " This shouldn't occur and means something is wrong with the Canary wrapper!"
     # Other
@@ -354,12 +355,12 @@ def application_thread():
             ticket_item="IoT SDK for CPP",
             ticket_group="AWS IoT Device SDK",
             ticket_severity=3)
-        wrapper_error_occured = True
+        wrapper_error_occurred = True
         finished_email_body += "Failure due to unknown reason! This shouldn't happen and means something has gone wrong!"
 
     # Clean everything up and stop
-    snapshot_monitor.cleanup_monitor(error_occured=wrapper_error_occured)
-    application_monitor.cleanup_monitor(error_occured=wrapper_error_occured)
+    snapshot_monitor.cleanup_monitor(error_occurred=wrapper_error_occurred)
+    application_monitor.cleanup_monitor(error_occurred=wrapper_error_occurred)
     print ("24/7 Canary finished!")
 
     finished_email_body += "\n\nYou can find the log file for this run at the following S3 location: "
@@ -367,12 +368,12 @@ def application_thread():
     finished_email_body += command_parser_arguments.s3_bucket_name
     finished_email_body += "?region=" + canary_region_stub
     finished_email_body += "&prefix=" + canary_local_git_repo_stub + "/"
-    if (wrapper_error_occured == True):
+    if (wrapper_error_occurred == True):
         finished_email_body += "Failed_Logs/"
     finished_email_body += canary_local_git_hash_stub + ".log"
     # Send the finish email
     if (send_finished_email == True):
-        if (wrapper_error_occured == True):
+        if (wrapper_error_occurred == True):
             snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Had an error")
         else:
             snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Finished")

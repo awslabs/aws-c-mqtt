@@ -19,7 +19,7 @@ def get_metric_total_cpu_usage(psutil_process : psutil.Process):
             return None
         return psutil_process.cpu_percent(0.0)
     except Exception as e:
-        print ("ERROR - exception occured gathering metrics!")
+        print ("ERROR - exception occurred gathering metrics!")
         print ("Exception: " + str(e), flush=True)
         return None
 
@@ -31,7 +31,7 @@ def get_metric_total_memory_usage_value(psutil_process : psutil.Process):
             return None
         return psutil_process.memory_info().rss
     except Exception as e:
-        print ("ERROR - exception occured gathering metrics!")
+        print ("ERROR - exception occurred gathering metrics!")
         print ("Exception: " + str(e), flush=True)
         return None
 
@@ -43,7 +43,7 @@ def get_metric_total_memory_usage_percent(psutil_process : psutil.Process):
             return None
         return psutil_process.memory_percent()
     except Exception as e:
-        print ("ERROR - exception occured gathering metrics!")
+        print ("ERROR - exception occurred gathering metrics!")
         print ("Exception: " + str(e), flush=True)
         return None
 
