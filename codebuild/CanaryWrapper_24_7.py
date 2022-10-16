@@ -1,6 +1,6 @@
 # Python wrapper script for collecting Canary metrics, setting up alarms, reporting metrics to Cloudwatch,
 # checking the alarms to ensure everything is correct at the end of the run, and checking for new
-# builds in S3, downloading them, and launching them if they exist (24/7 opperation)
+# builds in S3, downloading them, and launching them if they exist (24/7 operation)
 #
 # Will only stop running if the Canary application itself has an issue - in which case it Canary application will
 # need to be fixed and then the wrapper script restarted
@@ -123,7 +123,8 @@ data_snapshot = DataSnapshot(
     cloudwatch_teardown_dashboard_on_complete=False,
     s3_bucket_name=canary_s3_bucket_name,
     s3_bucket_upload_on_complete=True,
-    lambda_name=command_parser_arguments.lambda_name)
+    lambda_name=command_parser_arguments.lambda_name,
+    metric_frequency=canary_metrics_wait_time)
 
 # Make sure nothing failed
 if (data_snapshot.abort_due_to_internal_error == True):

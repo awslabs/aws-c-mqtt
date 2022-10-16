@@ -95,7 +95,7 @@ print("Datetime string is: " + datetime_string, flush=True)
 # Make the snapshot class
 data_snapshot = DataSnapshot(
     git_hash=command_parser_arguments.git_hash,
-    git_repo_name=command_parser_arguments.git_repo_name + datetime_string,
+    git_repo_name=command_parser_arguments.git_repo_name,
     datetime_string=datetime_string,
     git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
     git_fixed_namespace_text="mqtt5_canary",
@@ -107,7 +107,8 @@ data_snapshot = DataSnapshot(
     cloudwatch_teardown_dashboard_on_complete=True,
     s3_bucket_name=command_parser_arguments.s3_bucket_name,
     s3_bucket_upload_on_complete=True,
-    lambda_name=command_parser_arguments.lambda_name)
+    lambda_name=command_parser_arguments.lambda_name,
+    metric_frequency=command_parser_arguments.snapshot_wait_time)
 
 # Make sure nothing failed
 if (data_snapshot.abort_due_to_internal_error == True):
@@ -153,7 +154,9 @@ if (snapshot_monitor.had_internal_error == True):
 application_monitor = ApplicationMonitor(
     wrapper_application_path=command_parser_arguments.canary_executable,
     wrapper_application_arguments=command_parser_arguments.canary_arguments,
-    wrapper_application_restart_on_finish=False)
+    wrapper_application_restart_on_finish=False,
+    data_snapshot=data_snapshot # pass the data_snapshot for printing to the log
+)
 
 # Make sure nothing failed
 if (application_monitor.error_has_occurred == True):
@@ -303,7 +306,6 @@ def application_thread():
     if (wrapper_error_occurred == True):
         finished_email_body += "Failed_Logs/"
     finished_email_body += command_parser_arguments.git_hash + ".log"
-
     if (command_parser_arguments.codebuild_log_path != ""):
         print ("\n Codebuild log path: " + command_parser_arguments.codebuild_log_path + "\n")
 

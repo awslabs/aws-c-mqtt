@@ -10,6 +10,7 @@ import os
 import json
 import subprocess
 import zipfile
+import datetime
 
 # ================================================================================
 
@@ -110,7 +111,8 @@ class DataSnapshot():
                  cloudwatch_teardown_dashboard_on_complete=True,
                  s3_bucket_name="canary-wrapper-bucket",
                  s3_bucket_upload_on_complete=True,
-                 lambda_name="CanarySendEmailLambda"):
+                 lambda_name="CanarySendEmailLambda",
+                 metric_frequency=None):
 
         # Setting initial values
         # ==================
@@ -120,7 +122,7 @@ class DataSnapshot():
 
         # Needed so we can initialize Cloudwatch alarms, etc, outside of the init function
         # but before we start sending data.
-        # This boolean tracks whether we have done the post-initization prior to sending the first report.
+        # This boolean tracks whether we have done the post-initialization prior to sending the first report.
         self.perform_final_initialization = True
 
         # Watched by the thread creating the snapshot. Will cause the thread(s) to abort and return an error.
@@ -155,6 +157,7 @@ class DataSnapshot():
         self.lambda_name = lambda_name
 
         self.datetime_string = datetime_string
+        self.metric_frequency = metric_frequency
         # ==================
 
         # Check for valid credentials
@@ -368,8 +371,11 @@ class DataSnapshot():
         tmp = None
         for metric in self.metrics:
             tmp = self._check_cloudwatch_alarm_state_metric(metric)
-            if (tmp[0] != True):
-                return_result_list.append(tmp)
+            if (tmp[1] != None):
+                # Do not cut a ticket for the "Alive_Alarm" that we use to check if the Canary is running
+                if ("Alive_Alarm" in tmp[1] == False):
+                    if (tmp[0] != True):
+                        return_result_list.append(tmp)
 
         return return_result_list
 
@@ -562,7 +568,10 @@ class DataSnapshot():
 
     # Prints the metrics to the console
     def export_metrics_console(self):
-        self.print_message("Metric report: " + str(self.metric_report_number))
+        datetime_now = datetime.datetime.now()
+        datetime_string = datetime_now.strftime("%d-%m-%Y/%H-%M-%S")
+
+        self.print_message("Metric report: " + str(self.metric_report_number) + " (" + datetime_string + ")")
         for metric in self.metrics:
             self.print_message("    " + metric.metric_name +
                                " - value: " + str(metric.metric_value))
@@ -641,6 +650,8 @@ class DataSnapshot():
                 else:
                     self.print_message("\t Commit hash: Unknown")
 
+        if (self.metric_frequency != None):
+            self.print_message("\nMetric Snapshot Frequency: " + str(self.metric_frequency) + " seconds")
         self.print_message("\nMetrics:")
         for metric in self.metrics:
             self.print_message("* " + metric.metric_name)
@@ -841,7 +852,7 @@ class SnapshotMonitor():
 # ================================================================================
 
 class ApplicationMonitor():
-    def __init__(self, wrapper_application_path, wrapper_application_arguments, wrapper_application_restart_on_finish=True) -> None:
+    def __init__(self, wrapper_application_path, wrapper_application_arguments, wrapper_application_restart_on_finish=True, data_snapshot=None) -> None:
         self.application_process = None
         self.application_process_psutil = None
         self.error_has_occurred = False
@@ -851,43 +862,44 @@ class ApplicationMonitor():
         self.wrapper_application_path = wrapper_application_path
         self.wrapper_application_arguments = wrapper_application_arguments
         self.wrapper_application_restart_on_finish = wrapper_application_restart_on_finish
+        self.data_snapshot=data_snapshot
 
     def start_monitoring(self):
-        print ("Starting to monitor application...", flush=True)
+        self.print_message("Starting to monitor application...")
 
         if (self.application_process == None):
             try:
                 canary_command = self.wrapper_application_path + " " + self.wrapper_application_arguments
-                self.application_process = subprocess.Popen(canary_command, shell=True)
+                self.application_process = subprocess.Popen(canary_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8")
                 self.application_process_psutil = psutil.Process(self.application_process.pid)
-                print ("Application started...", flush=True)
+                self.print_message ("Application started...")
             except Exception as e:
-                print ("ERROR - Could not launch Canary/Application due to exception!")
-                print ("Exception: " + str(e), flush=True)
+                self.print_message ("ERROR - Could not launch Canary/Application due to exception!")
+                self.print_message ("Exception: " + str(e))
                 self.error_has_occurred = True
                 self.error_reason = "Could not launch Canary/Application due to exception"
                 self.error_code = 1
                 return
         else:
-            print ("ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!", flush=True)
+            self.print_message("ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!")
 
     def restart_monitoring(self):
-        print ("Restarting monitor application...", flush=True)
+        self.print_message ("Restarting monitor application...")
 
         if (self.application_process != None):
             try:
                 self.stop_monitoring()
                 self.start_monitoring()
-                print ("Restarted monitor application!", flush=True)
+                self.print_message("Restarted monitor application!")
             except Exception as e:
-                print ("ERROR - Could not restart Canary/Application due to exception!")
-                print ("Exception: " + str(e), flush=True)
+                self.print_message("ERROR - Could not restart Canary/Application due to exception!")
+                self.print_message("Exception: " + str(e))
                 self.error_has_occurred = True
                 self.error_reason = "Could not restart Canary/Application due to exception"
                 self.error_code = 1
                 return
         else:
-            print ("ERROR - Application process restart called but process is/was not running!", flush=True)
+            self.print_message("ERROR - Application process restart called but process is/was not running!")
             self.error_has_occurred = True
             self.error_reason = "Could not restart Canary/Application due to application process not being started initially"
             self.error_code = 1
@@ -895,14 +907,20 @@ class ApplicationMonitor():
 
 
     def stop_monitoring(self):
-        print ("Stopping monitor application...", flush=True)
+        self.print_message ("Stopping monitor application...")
         if (not self.application_process == None):
             self.application_process.terminate()
             self.application_process.wait()
+            self.print_message ("Stopped monitor application!")
+
+            if self.application_process.stdout != None:
+                self.print_message("\nApplication STDOUT:\n")
+                self.print_message("=========================================\n")
+                self.print_message(self.application_process.stdout.read())
+                self.print_message("\n=========================================\n")
             self.application_process = None
-            print ("Stopped monitor application!", flush=True)
         else:
-            print ("ERROR - cannot stop monitor application because no process is found!", flush=True)
+            self.print_message ("ERROR - cannot stop monitor application because no process is found!")
 
 
     def monitor_loop_function(self, time_passed=30):
@@ -912,8 +930,8 @@ class ApplicationMonitor():
             try:
                 application_process_return_code = self.application_process.poll()
             except Exception as e:
-                print ("ERROR - exception occurred while trying to poll application status!")
-                print ("Exception: " + str(e), flush=True)
+                self.print_message("ERROR - exception occurred while trying to poll application status!")
+                self.print_message("Exception: " + str(e))
                 self.error_has_occurred = True
                 self.error_reason = "Exception when polling application status"
                 self.error_code = 1
@@ -922,11 +940,11 @@ class ApplicationMonitor():
             # If it is not none, then the application finished
             if (application_process_return_code != None):
 
-                print ("Monitor application has stopped! Processing result...", flush=True)
+                self.print_message("Monitor application has stopped! Processing result...")
 
                 if (application_process_return_code != 0):
-                    print ("ERROR - Something Crashed in Canary/Application!")
-                    print ("Error code: " + str(application_process_return_code), flush=True)
+                    self.print_message("ERROR - Something Crashed in Canary/Application!")
+                    self.print_message("Error code: " + str(application_process_return_code))
 
                     self.error_has_occurred = True
                     self.error_reason = "Canary application crashed!"
@@ -934,16 +952,22 @@ class ApplicationMonitor():
                 else:
                     # Should we restart?
                     if (self.wrapper_application_restart_on_finish == True):
-                        print ("NOTE - Canary finished running and is restarting...", flush=True)
+                        self.print_message("NOTE - Canary finished running and is restarting...")
                         self.restart_monitoring()
                     else:
-                        print ("Monitor application has stopped and monitor is not supposed to restart... Finishing...", flush=True)
+                        self.print_message("Monitor application has stopped and monitor is not supposed to restart... Finishing...")
                         self.error_has_occurred = True
                         self.error_reason = "Canary Application Finished"
                         self.error_code = 0
 
     def cleanup_monitor(self, error_occurred=False):
         pass
+
+    def print_message(self, message):
+        if (self.data_snapshot != None):
+            self.data_snapshot.print_message(message)
+        else:
+            print(message, flush=True)
 
 # ================================================================================
 
@@ -1116,8 +1140,6 @@ def cut_ticket_using_cloudwatch(
     git_hash_as_namespace=False,
     git_fixed_namespace_text="mqtt5_canary",
     cloudwatch_region="us-east-1"):
-
-    return
 
     git_metric_namespace = ""
     if (git_hash_as_namespace == False):
