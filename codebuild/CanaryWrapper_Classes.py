@@ -10,6 +10,7 @@ import os
 import json
 import subprocess
 import zipfile
+import datetime
 
 # ================================================================================
 
@@ -101,6 +102,7 @@ class DataSnapshot():
                  git_repo_name=None,
                  git_hash_as_namespace=False,
                  git_fixed_namespace_text="mqtt5_canary",
+                 datetime_string=None,
                  output_log_filepath=None,
                  output_to_console=True,
                  cloudwatch_region="us-east-1",
@@ -109,7 +111,8 @@ class DataSnapshot():
                  cloudwatch_teardown_dashboard_on_complete=True,
                  s3_bucket_name="canary-wrapper-bucket",
                  s3_bucket_upload_on_complete=True,
-                 lambda_name="CanarySendEmailLambda"):
+                 lambda_name="CanarySendEmailLambda",
+                 metric_frequency=None):
 
         # Setting initial values
         # ==================
@@ -119,7 +122,7 @@ class DataSnapshot():
 
         # Needed so we can initialize Cloudwatch alarms, etc, outside of the init function
         # but before we start sending data.
-        # This boolean tracks whether we have done the post-initization prior to sending the first report.
+        # This boolean tracks whether we have done the post-initialization prior to sending the first report.
         self.perform_final_initialization = True
 
         # Watched by the thread creating the snapshot. Will cause the thread(s) to abort and return an error.
@@ -152,6 +155,9 @@ class DataSnapshot():
 
         self.lambda_client = None
         self.lambda_name = lambda_name
+
+        self.datetime_string = datetime_string
+        self.metric_frequency = metric_frequency
         # ==================
 
         # Check for valid credentials
@@ -181,7 +187,10 @@ class DataSnapshot():
         if (self.git_hash_as_namespace == False):
             self.git_metric_namespace = self.git_fixed_namespace_text
         else:
-            git_namespace_prepend_text = self.git_repo_name + "-" + self.git_hash
+            if (self.datetime_string == None):
+                git_namespace_prepend_text = self.git_repo_name + "-" + self.git_hash
+            else:
+                git_namespace_prepend_text = self.git_repo_name + "/" + self.datetime_string + "-" + self.git_hash
             self.git_metric_namespace = git_namespace_prepend_text
         # ==================
 
@@ -239,9 +248,9 @@ class DataSnapshot():
 
     # Cleans the class - closing any files, removing alarms, and sending data to S3.
     # Should be called at the end when you are totally finished shadowing metrics
-    def cleanup(self, error_occured=False):
+    def cleanup(self, error_occurred=False):
         if (self.s3_bucket_upload_on_complete == True):
-            self.export_result_to_s3_bucket(copy_output_log=True, log_is_error=error_occured)
+            self.export_result_to_s3_bucket(copy_output_log=True, log_is_error=error_occurred)
 
         self._cleanup_cloudwatch_alarms()
         if (self.cloudwatch_make_dashboard == True):
@@ -260,7 +269,7 @@ class DataSnapshot():
         if self.output_to_console == True:
             print(message, flush=True)
 
-    # Utilty function - adds the metric alarms to Cloudwatch. We do run this right before the first
+    # Utility function - adds the metric alarms to Cloudwatch. We do run this right before the first
     # collection of metrics so we can register metrics before we initialize Cloudwatch
     def _init_cloudwatch_pre_first_run(self):
         for metric in self.metrics:
@@ -323,7 +332,7 @@ class DataSnapshot():
                 "ERROR - could not register alarm for metric due to exception: " + metric.metric_name)
             self.print_message("Exception: " + str(e))
 
-    # Utilty function - removes all the Cloudwatch alarms for the metrics
+    # Utility function - removes all the Cloudwatch alarms for the metrics
     def _cleanup_cloudwatch_alarms(self):
         if (self.cloudwatch_teardown_alarms_on_complete == True):
             try:
@@ -362,8 +371,11 @@ class DataSnapshot():
         tmp = None
         for metric in self.metrics:
             tmp = self._check_cloudwatch_alarm_state_metric(metric)
-            if (tmp[0] != True):
-                return_result_list.append(tmp)
+            if (tmp[1] != None):
+                # Do not cut a ticket for the "Alive_Alarm" that we use to check if the Canary is running
+                if ("Alive_Alarm" in tmp[1] == False):
+                    if (tmp[0] != True):
+                        return_result_list.append(tmp)
 
         return return_result_list
 
@@ -426,9 +438,15 @@ class DataSnapshot():
         # Upload to S3
         try:
             if (log_is_error == False):
-                self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/" + self.git_hash + ".log")
+                if (self.datetime_string == None):
+                    self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/" + self.git_hash + ".log")
+                else:
+                    self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/" + self.datetime_string + "/" + self.git_hash + ".log")
             else:
-                self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/Failed_Logs/" + self.git_hash + ".log")
+                if (self.datetime_string == None):
+                    self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/Failed_Logs/" + self.git_hash + ".log")
+                else:
+                    self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/Failed_Logs/" + self.datetime_string + "/" + self.git_hash + ".log")
             self.print_message("Uploaded to S3!")
         except Exception as e:
             self.print_message(
@@ -550,7 +568,10 @@ class DataSnapshot():
 
     # Prints the metrics to the console
     def export_metrics_console(self):
-        self.print_message("Metric report: " + str(self.metric_report_number))
+        datetime_now = datetime.datetime.now()
+        datetime_string = datetime_now.strftime("%d-%m-%Y/%H-%M-%S")
+
+        self.print_message("Metric report: " + str(self.metric_report_number) + " (" + datetime_string + ")")
         for metric in self.metrics:
             self.print_message("    " + metric.metric_name +
                                " - value: " + str(metric.metric_value))
@@ -629,6 +650,8 @@ class DataSnapshot():
                 else:
                     self.print_message("\t Commit hash: Unknown")
 
+        if (self.metric_frequency != None):
+            self.print_message("\nMetric Snapshot Frequency: " + str(self.metric_frequency) + " seconds")
         self.print_message("\nMetrics:")
         for metric in self.metrics:
             self.print_message("* " + metric.metric_name)
@@ -648,7 +671,7 @@ class SnapshotMonitor():
     def __init__(self, wrapper_data_snapshot, wrapper_metrics_wait_time) -> None:
 
         self.data_snapshot = wrapper_data_snapshot
-        self.had_interal_error = False
+        self.had_internal_error = False
         self.error_due_to_credentials = False
         self.internal_error_reason = ""
         self.error_due_to_alarm = False
@@ -662,7 +685,7 @@ class SnapshotMonitor():
 
         # Check for errors
         if (self.data_snapshot.abort_due_to_internal_error == True):
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.internal_error_reason = "Could not initialize DataSnapshot. Likely credentials are not setup!"
             if (self.data_snapshot.abort_due_to_internal_error_due_to_credentials == True):
                 self.error_due_to_credentials = True
@@ -688,7 +711,7 @@ class SnapshotMonitor():
         except Exception as e:
             print ("ERROR - could not register metric in data snapshot due to exception!")
             print ("Exception: " + str(e), flush=True)
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.internal_error_reason = "Could not register metric in data snapshot due to exception"
             return
 
@@ -763,35 +786,35 @@ class SnapshotMonitor():
     def monitor_loop_function(self, psutil_process : psutil.Process, time_passed=30):
         # Check for internal errors
         if (self.data_snapshot.abort_due_to_internal_error == True):
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.internal_error_reason = "Data Snapshot internal error: " + self.data_snapshot.abort_due_to_internal_error_reason
             return
 
         try:
             # Poll the metric alarms
-            if (self.had_interal_error == False):
+            if (self.had_internal_error == False):
                 # Get a report of all the alarms that might have been set to an alarm state
                 triggered_alarms = self.data_snapshot.get_cloudwatch_alarm_results()
                 self.check_alarms_for_new_alarms(triggered_alarms)
         except Exception as e:
-            self.data_snapshot.print_message("ERROR - exception occured checking metric alarms!")
+            self.data_snapshot.print_message("ERROR - exception occurred checking metric alarms!")
             self.data_snapshot.print_message("(Likely session credentials expired)")
-            self.had_interal_error = True
-            self.internal_error_reason = "Exception occured checking metric alarms! Likely session credentials expired"
+            self.had_internal_error = True
+            self.internal_error_reason = "Exception occurred checking metric alarms! Likely session credentials expired"
             return
 
         if (self.metric_post_timer <= 0):
-            if (self.had_interal_error == False):
+            if (self.had_internal_error == False):
                 try:
                     self.data_snapshot.post_metrics(psutil_process)
                 except Exception as e:
-                    self.data_snapshot.print_message("ERROR - exception occured posting metrics!")
+                    self.data_snapshot.print_message("ERROR - exception occurred posting metrics!")
                     self.data_snapshot.print_message("(Likely session credentials expired)")
 
                     print (e, flush=True)
 
-                    self.had_interal_error = True
-                    self.internal_error_reason = "Exception occured posting metrics! Likely session credentials expired"
+                    self.had_internal_error = True
+                    self.internal_error_reason = "Exception occurred posting metrics! Likely session credentials expired"
                     return
 
             # reset the timer
@@ -823,74 +846,81 @@ class SnapshotMonitor():
         pass
 
 
-    def cleanup_monitor(self, error_occured=False):
-        self.data_snapshot.cleanup(error_occured=error_occured)
+    def cleanup_monitor(self, error_occurred=False):
+        self.data_snapshot.cleanup(error_occurred=error_occurred)
 
 # ================================================================================
 
 class ApplicationMonitor():
-    def __init__(self, wrapper_application_path, wrapper_application_arguments, wrapper_application_restart_on_finish=True) -> None:
+    def __init__(self, wrapper_application_path, wrapper_application_arguments, wrapper_application_restart_on_finish=True, data_snapshot=None) -> None:
         self.application_process = None
         self.application_process_psutil = None
-        self.error_has_occured = False
+        self.error_has_occurred = False
         self.error_due_to_credentials = False
         self.error_reason = ""
         self.error_code = 0
         self.wrapper_application_path = wrapper_application_path
         self.wrapper_application_arguments = wrapper_application_arguments
         self.wrapper_application_restart_on_finish = wrapper_application_restart_on_finish
+        self.data_snapshot=data_snapshot
 
     def start_monitoring(self):
-        print ("Starting to monitor application...", flush=True)
+        self.print_message("Starting to monitor application...")
 
         if (self.application_process == None):
             try:
                 canary_command = self.wrapper_application_path + " " + self.wrapper_application_arguments
-                self.application_process = subprocess.Popen(canary_command, shell=True)
+                self.application_process = subprocess.Popen(canary_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8")
                 self.application_process_psutil = psutil.Process(self.application_process.pid)
-                print ("Application started...", flush=True)
+                self.print_message ("Application started...")
             except Exception as e:
-                print ("ERROR - Could not launch Canary/Application due to exception!")
-                print ("Exception: " + str(e), flush=True)
-                self.error_has_occured = True
+                self.print_message ("ERROR - Could not launch Canary/Application due to exception!")
+                self.print_message ("Exception: " + str(e))
+                self.error_has_occurred = True
                 self.error_reason = "Could not launch Canary/Application due to exception"
                 self.error_code = 1
                 return
         else:
-            print ("ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!", flush=True)
+            self.print_message("ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!")
 
     def restart_monitoring(self):
-        print ("Restarting monitor application...", flush=True)
+        self.print_message ("Restarting monitor application...")
 
         if (self.application_process != None):
             try:
                 self.stop_monitoring()
                 self.start_monitoring()
-                print ("Restarted monitor application!", flush=True)
+                self.print_message("Restarted monitor application!")
             except Exception as e:
-                print ("ERROR - Could not restart Canary/Application due to exception!")
-                print ("Exception: " + str(e), flush=True)
-                self.error_has_occured = True
+                self.print_message("ERROR - Could not restart Canary/Application due to exception!")
+                self.print_message("Exception: " + str(e))
+                self.error_has_occurred = True
                 self.error_reason = "Could not restart Canary/Application due to exception"
                 self.error_code = 1
                 return
         else:
-            print ("ERROR - Application process restart called but process is/was not running!", flush=True)
-            self.error_has_occured = True
+            self.print_message("ERROR - Application process restart called but process is/was not running!")
+            self.error_has_occurred = True
             self.error_reason = "Could not restart Canary/Application due to application process not being started initially"
             self.error_code = 1
             return
 
 
     def stop_monitoring(self):
-        print ("Stopping monitor application...", flush=True)
+        self.print_message ("Stopping monitor application...")
         if (not self.application_process == None):
             self.application_process.terminate()
             self.application_process.wait()
+            self.print_message ("Stopped monitor application!")
+
+            if self.application_process.stdout != None:
+                self.print_message("\nApplication STDOUT:\n")
+                self.print_message("=========================================\n")
+                self.print_message(self.application_process.stdout.read())
+                self.print_message("\n=========================================\n")
             self.application_process = None
-            print ("Stopped monitor application!", flush=True)
         else:
-            print ("ERROR - cannot stop monitor application because no process is found!", flush=True)
+            self.print_message ("ERROR - cannot stop monitor application because no process is found!")
 
 
     def monitor_loop_function(self, time_passed=30):
@@ -900,9 +930,9 @@ class ApplicationMonitor():
             try:
                 application_process_return_code = self.application_process.poll()
             except Exception as e:
-                print ("ERROR - exception occured while trying to poll application status!")
-                print ("Exception: " + str(e), flush=True)
-                self.error_has_occured = True
+                self.print_message("ERROR - exception occurred while trying to poll application status!")
+                self.print_message("Exception: " + str(e))
+                self.error_has_occurred = True
                 self.error_reason = "Exception when polling application status"
                 self.error_code = 1
                 return
@@ -910,28 +940,34 @@ class ApplicationMonitor():
             # If it is not none, then the application finished
             if (application_process_return_code != None):
 
-                print ("Monitor application has stopped! Processing result...", flush=True)
+                self.print_message("Monitor application has stopped! Processing result...")
 
                 if (application_process_return_code != 0):
-                    print ("ERROR - Something Crashed in Canary/Application!")
-                    print ("Error code: " + str(application_process_return_code), flush=True)
+                    self.print_message("ERROR - Something Crashed in Canary/Application!")
+                    self.print_message("Error code: " + str(application_process_return_code))
 
-                    self.error_has_occured = True
+                    self.error_has_occurred = True
                     self.error_reason = "Canary application crashed!"
                     self.error_code = application_process_return_code
                 else:
                     # Should we restart?
                     if (self.wrapper_application_restart_on_finish == True):
-                        print ("NOTE - Canary finished running and is restarting...", flush=True)
+                        self.print_message("NOTE - Canary finished running and is restarting...")
                         self.restart_monitoring()
                     else:
-                        print ("Monitor application has stopped and monitor is not supposed to restart... Finishing...", flush=True)
-                        self.error_has_occured = True
+                        self.print_message("Monitor application has stopped and monitor is not supposed to restart... Finishing...")
+                        self.error_has_occurred = True
                         self.error_reason = "Canary Application Finished"
                         self.error_code = 0
 
-    def cleanup_monitor(self, error_occured=False):
+    def cleanup_monitor(self, error_occurred=False):
         pass
+
+    def print_message(self, message):
+        if (self.data_snapshot != None):
+            self.data_snapshot.print_message(message)
+        else:
+            print(message, flush=True)
 
 # ================================================================================
 
@@ -955,7 +991,7 @@ class S3_Monitor():
 
         self.s3_file_needs_replacing = False
 
-        self.had_interal_error = False
+        self.had_internal_error = False
         self.error_due_to_credentials = False
         self.internal_error_reason = ""
 
@@ -966,7 +1002,7 @@ class S3_Monitor():
             tmp_sts_client.get_caller_identity()
         except Exception as e:
             print ("ERROR - (S3 Check) AWS credentials are NOT valid!", flush=True)
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.error_due_to_credentials = True
             self.internal_error_reason = "AWS credentials are NOT valid!"
             return
@@ -976,7 +1012,7 @@ class S3_Monitor():
             self.s3_client = boto3.client("s3")
         except Exception as e:
             print ("ERROR - (S3 Check) Could not make S3 client", flush=True)
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.internal_error_reason = "Could not make S3 client for S3 Monitor"
             return
 
@@ -1005,7 +1041,7 @@ class S3_Monitor():
         except Exception as e:
             print ("ERROR - Could not check for new version of file in S3 due to exception!")
             print ("Exception: " + str(e), flush=True)
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.internal_error_reason = "Could not check for S3 file due to exception in S3 client"
 
 
@@ -1016,7 +1052,7 @@ class S3_Monitor():
                 os.makedirs("tmp")
         except Exception as e:
             print ("ERROR - could not make tmp directory to place S3 file into!", flush=True)
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.internal_error_reason = "Could not make TMP folder for S3 file download"
             return
 
@@ -1028,7 +1064,7 @@ class S3_Monitor():
             s3_resource.meta.client.download_file(self.s3_bucket_name, self.s3_file_name, new_file_path)
         except Exception as e:
             print ("ERROR - could not download latest S3 file into TMP folder!", flush=True)
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.internal_error_reason = "Could not download latest S3 file into TMP folder"
             return
 
@@ -1052,7 +1088,7 @@ class S3_Monitor():
         except Exception as e:
             print ("ERROR - could not move file into local application path due to exception!")
             print ("Exception: " + str(e), flush=True)
-            self.had_interal_error = True
+            self.had_internal_error = True
             self.internal_error_reason = "Could not move file into local application path"
             return
 

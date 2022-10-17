@@ -46,6 +46,8 @@ command_parser.add_argument("--dependencies", type=str, default="",
         Current expected format is '(name or path);(hash);(next name or path);(hash);(etc...)'.")
 command_parser.add_argument("--lambda_name", type=str, default="iot-send-email-lambda",
     help="(OPTIONAL, default='CanarySendEmailLambda') The name of the Lambda used to send emails")
+command_parser.add_argument("--codebuild_log_path", type=str, default="",
+    help="The CODEBUILD_LOG_PATH environment variable. Leave blank to ignore")
 command_parser_arguments = command_parser.parse_args()
 
 if (command_parser_arguments.output_log_filepath == "None"):
@@ -87,13 +89,14 @@ if (command_parser_arguments.ticket_group == ""):
 # ================================================================================
 
 datetime_now = datetime.datetime.now()
-datetime_string = "(" + datetime_now.strftime("%d-%m-%Y/%H-%M-%S") + ")"
+datetime_string = datetime_now.strftime("%d-%m-%Y/%H-%M-%S")
 print("Datetime string is: " + datetime_string, flush=True)
 
 # Make the snapshot class
 data_snapshot = DataSnapshot(
     git_hash=command_parser_arguments.git_hash,
-    git_repo_name=command_parser_arguments.git_repo_name + datetime_string, # Add the datetime string to the metric repo name
+    git_repo_name=command_parser_arguments.git_repo_name,
+    datetime_string=datetime_string,
     git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
     git_fixed_namespace_text="mqtt5_canary",
     output_log_filepath="output.txt",
@@ -104,7 +107,8 @@ data_snapshot = DataSnapshot(
     cloudwatch_teardown_dashboard_on_complete=True,
     s3_bucket_name=command_parser_arguments.s3_bucket_name,
     s3_bucket_upload_on_complete=True,
-    lambda_name=command_parser_arguments.lambda_name)
+    lambda_name=command_parser_arguments.lambda_name,
+    metric_frequency=command_parser_arguments.snapshot_wait_time)
 
 # Make sure nothing failed
 if (data_snapshot.abort_due_to_internal_error == True):
@@ -141,7 +145,7 @@ snapshot_monitor = SnapshotMonitor(
     wrapper_metrics_wait_time=command_parser_arguments.snapshot_wait_time)
 
 # Make sure nothing failed
-if (snapshot_monitor.had_interal_error == True):
+if (snapshot_monitor.had_internal_error == True):
     print ("INFO - Stopping application due to error caused by credentials")
     print ("Please fix your credentials and then restart this application again", flush=True)
     exit(0)
@@ -150,10 +154,12 @@ if (snapshot_monitor.had_interal_error == True):
 application_monitor = ApplicationMonitor(
     wrapper_application_path=command_parser_arguments.canary_executable,
     wrapper_application_arguments=command_parser_arguments.canary_arguments,
-    wrapper_application_restart_on_finish=False)
+    wrapper_application_restart_on_finish=False,
+    data_snapshot=data_snapshot # pass the data_snapshot for printing to the log
+)
 
 # Make sure nothing failed
-if (application_monitor.error_has_occured == True):
+if (application_monitor.error_has_occurred == True):
     print ("INFO - Stopping application due to error caused by credentials")
     print ("Please fix your credentials and then restart this application again", flush=True)
     exit(0)
@@ -172,11 +178,11 @@ def execution_loop():
         # Did a metric go into alarm?
         if (snapshot_monitor.has_cut_ticket == True):
             # Set that we had an 'internal error' so we go down the right code path
-            snapshot_monitor.had_interal_error = True
+            snapshot_monitor.had_internal_error = True
             break
 
-        # If an error has occured or otherwise this thead needs to stop, then break the loop
-        if (application_monitor.error_has_occured == True or snapshot_monitor.had_interal_error == True):
+        # If an error has occurred or otherwise this thread needs to stop, then break the loop
+        if (application_monitor.error_has_occurred == True or snapshot_monitor.had_internal_error == True):
             break
 
         time.sleep(execution_sleep_time)
@@ -205,20 +211,20 @@ def application_thread():
     application_monitor.stop_monitoring()
 
     # Track whether this counts as an error (and therefore we should cleanup accordingly) or not
-    wrapper_error_occured = False
+    wrapper_error_occurred = False
     # Finished Email
     send_finished_email = True
     finished_email_body = "MQTT5 Short Running Canary Wrapper has stopped."
     finished_email_body += "\n\n"
 
     # Find out why we stopped
-    if (snapshot_monitor.had_interal_error == True):
+    if (snapshot_monitor.had_internal_error == True):
         if (snapshot_monitor.has_cut_ticket == True):
             # We do not need to cut a ticket here - it's cut by the snapshot monitor!
             print ("ERROR - Snapshot monitor stopped due to metric in alarm!", flush=True)
             finished_email_body += "Failure due to required metrics being in alarm! A new ticket should have been cut!"
             finished_email_body += "\nMetrics in Alarm: " + str(snapshot_monitor.cloudwatch_current_alarms_triggered)
-            wrapper_error_occured = True
+            wrapper_error_occurred = True
         else:
             print ("ERROR - Snapshot monitor stopped due to internal error!", flush=True)
             cut_ticket_using_cloudwatch(
@@ -235,15 +241,15 @@ def application_thread():
                 ticket_group=command_parser_arguments.ticket_group,
                 ticket_type=command_parser_arguments.ticket_type,
                 ticket_severity=4)
-            wrapper_error_occured = True
+            wrapper_error_occurred = True
             finished_email_body += "Failure due to Snapshot monitor stopping due to an internal error."
             finished_email_body += " Reason given for error: " + snapshot_monitor.internal_error_reason
 
-    elif (application_monitor.error_has_occured == True):
+    elif (application_monitor.error_has_occurred == True):
         if (application_monitor.error_due_to_credentials == True):
             print ("INFO - Stopping application due to error caused by credentials")
             print ("Please fix your credentials and then restart this application again", flush=True)
-            wrapper_error_occured = True
+            wrapper_error_occurred = True
             send_finished_email = False
         else:
             # Is the error something in the canary failed?
@@ -262,12 +268,12 @@ def application_thread():
                     ticket_group=command_parser_arguments.ticket_group,
                     ticket_type=command_parser_arguments.ticket_type,
                     ticket_severity=4)
-                wrapper_error_occured = True
+                wrapper_error_occurred = True
                 finished_email_body += "Failure due to MQTT5 application exiting with a non-zero exit code! This means something in the Canary application itself failed"
             else:
-                print ("INFO - Stopping application. No error has occured, application has stopped normally", flush=True)
+                print ("INFO - Stopping application. No error has occurred, application has stopped normally", flush=True)
                 finished_email_body += "Short Running Canary finished successfully and run without errors!"
-                wrapper_error_occured = False
+                wrapper_error_occurred = False
     else:
         print ("ERROR - Short Running Canary stopped due to unknown reason!", flush=True)
         cut_ticket_using_cloudwatch(
@@ -284,25 +290,28 @@ def application_thread():
             ticket_group=command_parser_arguments.ticket_group,
             ticket_type=command_parser_arguments.ticket_type,
             ticket_severity=4)
-        wrapper_error_occured = True
+        wrapper_error_occurred = True
         finished_email_body += "Failure due to unknown reason! This shouldn't happen and means something has gone wrong!"
 
     # Clean everything up and stop
-    snapshot_monitor.cleanup_monitor(error_occured=wrapper_error_occured)
-    application_monitor.cleanup_monitor(error_occured=wrapper_error_occured)
+    snapshot_monitor.cleanup_monitor(error_occurred=wrapper_error_occurred)
+    application_monitor.cleanup_monitor(error_occurred=wrapper_error_occurred)
     print ("Short Running Canary finished!", flush=True)
 
     finished_email_body += "\n\nYou can find the log file for this run at the following S3 location: "
     finished_email_body += "https://s3.console.aws.amazon.com/s3/object/"
     finished_email_body += command_parser_arguments.s3_bucket_name
     finished_email_body += "?region=" + command_parser_arguments.cloudwatch_region
-    finished_email_body += "&prefix=" + command_parser_arguments.git_repo_name + "/"
-    if (wrapper_error_occured == True):
+    finished_email_body += "&prefix=" + command_parser_arguments.git_repo_name + "/" + datetime_string + "/"
+    if (wrapper_error_occurred == True):
         finished_email_body += "Failed_Logs/"
     finished_email_body += command_parser_arguments.git_hash + ".log"
+    if (command_parser_arguments.codebuild_log_path != ""):
+        print ("\n Codebuild log path: " + command_parser_arguments.codebuild_log_path + "\n")
+
     # Send the finish email
     if (send_finished_email == True):
-        if (wrapper_error_occured == True):
+        if (wrapper_error_occurred == True):
             snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Had an error")
         else:
             snapshot_monitor.send_email(email_body=finished_email_body, email_subject_text_append="Finished")
