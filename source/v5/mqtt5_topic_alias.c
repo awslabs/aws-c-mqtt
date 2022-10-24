@@ -23,6 +23,10 @@ int aws_mqtt5_inbound_topic_alias_resolver_init(
 }
 
 static void s_release_aliases(struct aws_mqtt5_inbound_topic_alias_resolver *resolver) {
+    if (!aws_array_list_is_valid(&resolver->topic_aliases)) {
+        return;
+    }
+
     size_t cache_size = aws_array_list_length(&resolver->topic_aliases);
     for (size_t i = 0; i < cache_size; ++i) {
         struct aws_string *topic = NULL;
