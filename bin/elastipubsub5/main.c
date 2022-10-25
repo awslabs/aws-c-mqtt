@@ -694,7 +694,7 @@ int main(int argc, char **argv) {
     };
 
     struct aws_mqtt5_client *client = aws_mqtt5_client_new(allocator, &client_options);
-    // aws_mqtt5_client_start(client);
+    aws_mqtt5_client_start(client);
 
     bool done = false;
     while (!done) {
