@@ -694,7 +694,7 @@ int main(int argc, char **argv) {
     };
 
     struct aws_mqtt5_client *client = aws_mqtt5_client_new(allocator, &client_options);
-    //aws_mqtt5_client_start(client);
+    // aws_mqtt5_client_start(client);
 
     bool done = false;
     while (!done) {
@@ -702,7 +702,7 @@ int main(int argc, char **argv) {
 
 #ifdef WIN32
         char input_buffer[4096];
-        char* line = gets_s(input_buffer, AWS_ARRAY_SIZE(input_buffer));
+        char *line = gets_s(input_buffer, AWS_ARRAY_SIZE(input_buffer));
         done = s_handle_input(client, allocator, line);
 #else
         char *line = NULL;

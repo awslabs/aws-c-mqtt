@@ -3235,11 +3235,11 @@ AWS_TEST_CASE(
 
 AWS_STATIC_STRING_FROM_LITERAL(s_host_name, "derp.com");
 
-static void s_dummy_lifecycle_handler(const struct aws_mqtt5_client_lifecycle_event* event) {
+static void s_dummy_lifecycle_handler(const struct aws_mqtt5_client_lifecycle_event *event) {
     (void)event;
 }
 
-static void s_dummy_publish_received_(const struct aws_mqtt5_packet_publish_view* publish, void* user_data) {
+static void s_dummy_publish_received_(const struct aws_mqtt5_packet_publish_view *publish, void *user_data) {
     (void)publish;
     (void)user_data;
 }

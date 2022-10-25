@@ -178,10 +178,10 @@ static void s_parse_options(
                 ctx->use_websockets = true;
                 break;
             case 't':
-                tester_options->elg_max_threads = (uint16_t) atoi(aws_cli_optarg);
+                tester_options->elg_max_threads = (uint16_t)atoi(aws_cli_optarg);
                 break;
             case 'C':
-                tester_options->client_count = (uint16_t) atoi(aws_cli_optarg);
+                tester_options->client_count = (uint16_t)atoi(aws_cli_optarg);
                 if (tester_options->client_count > AWS_MQTT5_CANARY_CLIENT_MAX) {
                     tester_options->client_count = AWS_MQTT5_CANARY_CLIENT_MAX;
                 }
