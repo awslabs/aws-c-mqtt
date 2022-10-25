@@ -1743,6 +1743,7 @@ static int s_aws_mqtt5_first_byte_check(
 }
 
 static int mqtt5_first_byte_reserved_header_check_subscribe_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     aws_mqtt5_packet_id_t packet_id = 47;
     uint32_t subscription_identifier = 1;
@@ -1764,6 +1765,7 @@ static int mqtt5_first_byte_reserved_header_check_subscribe_fn(struct aws_alloca
 AWS_TEST_CASE(mqtt5_first_byte_reserved_header_check_subscribe, mqtt5_first_byte_reserved_header_check_subscribe_fn)
 
 static int mqtt5_first_byte_reserved_header_check_unsubscribe_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     aws_mqtt5_packet_id_t packet_id = 47;
 
@@ -1783,6 +1785,7 @@ static int mqtt5_first_byte_reserved_header_check_unsubscribe_fn(struct aws_allo
 AWS_TEST_CASE(mqtt5_first_byte_reserved_header_check_unsubscribe, mqtt5_first_byte_reserved_header_check_unsubscribe_fn)
 
 static int mqtt5_first_byte_reserved_header_check_disconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     uint32_t session_expiry_interval_seconds = 333;
     struct aws_byte_cursor reason_string_cursor = aws_byte_cursor_from_c_str(s_reason_string);
