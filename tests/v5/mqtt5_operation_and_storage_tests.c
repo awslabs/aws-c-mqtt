@@ -3235,8 +3235,6 @@ AWS_TEST_CASE(
 
 AWS_STATIC_STRING_FROM_LITERAL(s_host_name, "derp.com");
 
-<<<<<<< HEAD
-=======
 static void s_dummy_lifecycle_handler(const struct aws_mqtt5_client_lifecycle_event *event) {
     (void)event;
 }
@@ -3246,7 +3244,6 @@ static void s_dummy_publish_received_(const struct aws_mqtt5_packet_publish_view
     (void)user_data;
 }
 
->>>>>>> 606101f09af58659e792a88c0cae4a5febf53c76
 static int s_mqtt5_client_options_defaults_set_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
