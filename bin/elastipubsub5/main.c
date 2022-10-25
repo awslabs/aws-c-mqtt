@@ -694,18 +694,24 @@ int main(int argc, char **argv) {
     };
 
     struct aws_mqtt5_client *client = aws_mqtt5_client_new(allocator, &client_options);
-    aws_mqtt5_client_start(client);
+    //aws_mqtt5_client_start(client);
 
     bool done = false;
     while (!done) {
         printf("Enter command:\n");
 
+#ifdef WIN32
+        char input_buffer[4096];
+        char* line = gets_s(input_buffer, AWS_ARRAY_SIZE(input_buffer));
+        done = s_handle_input(client, allocator, line);
+#else
         char *line = NULL;
         size_t len = 0;
         int ret = getline(&line, &len, stdin);
         printf("  get stdin: %d\n\n", ret);
         done = s_handle_input(client, allocator, line);
         free(line);
+#endif
     }
 
     aws_mqtt5_client_release(client);

@@ -3817,6 +3817,8 @@ static void s_wait_for_n_unacked_publishes(struct aws_mqtt5_client_test_wait_for
 }
 
 static int mqtt5_client_no_session_after_client_stop_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options test_options;
@@ -3900,6 +3902,8 @@ static int mqtt5_client_no_session_after_client_stop_fn(struct aws_allocator *al
 AWS_TEST_CASE(mqtt5_client_no_session_after_client_stop, mqtt5_client_no_session_after_client_stop_fn);
 
 static int mqtt5_client_restore_session_on_ping_timeout_reconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options test_options;
@@ -3999,6 +4003,8 @@ AWS_TEST_CASE(
 
 /* If the server returns a Clean Session, client must discard any existing Session and start a new Session */
 static int mqtt5_client_discard_session_on_server_clean_start_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options test_options;
@@ -4755,6 +4761,8 @@ static void s_on_offline_subscribe_completion(
     const struct aws_mqtt5_packet_suback_view *suback_view,
     int error_code,
     void *user_data) {
+    (void)suback_view;
+
     struct aws_mqtt5_sub_pub_unsub_context *full_test_context = user_data;
 
     aws_mutex_lock(&full_test_context->test_fixture->lock);
@@ -4815,6 +4823,8 @@ static void s_on_offline_unsubscribe_completion(
     const struct aws_mqtt5_packet_unsuback_view *unsuback_view,
     int error_code,
     void *user_data) {
+    (void)unsuback_view;
+
     struct aws_mqtt5_sub_pub_unsub_context *full_test_context = user_data;
 
     aws_mutex_lock(&full_test_context->test_fixture->lock);
@@ -5472,6 +5482,8 @@ void s_outbound_alias_failure_publish_complete_fn(
     int error_code,
     void *complete_ctx) {
 
+    (void)packet_type;
+    (void)packet;
     AWS_FATAL_ASSERT(error_code != AWS_ERROR_SUCCESS);
 
     struct aws_mqtt5_sub_pub_unsub_context *test_context = complete_ctx;

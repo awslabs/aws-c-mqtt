@@ -25,6 +25,8 @@
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
+#include <inttypes.h>
+
 #ifdef _MSC_VER
 #    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */
 #    pragma warning(disable : 4204) /* Declared initializers */
@@ -176,10 +178,10 @@ static void s_parse_options(
                 ctx->use_websockets = true;
                 break;
             case 't':
-                tester_options->elg_max_threads = atoi(aws_cli_optarg);
+                tester_options->elg_max_threads = (uint16_t) atoi(aws_cli_optarg);
                 break;
             case 'C':
-                tester_options->client_count = atoi(aws_cli_optarg);
+                tester_options->client_count = (uint16_t) atoi(aws_cli_optarg);
                 if (tester_options->client_count > AWS_MQTT5_CANARY_CLIENT_MAX) {
                     tester_options->client_count = AWS_MQTT5_CANARY_CLIENT_MAX;
                 }
@@ -868,7 +870,7 @@ int main(int argc, char **argv) {
     uint64_t start_time = 0;
     aws_high_res_clock_get_ticks(&start_time);
     char shared_topic_array[AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE] = "";
-    snprintf(shared_topic_array, sizeof shared_topic_array, "%lu_shared_topic", start_time);
+    snprintf(shared_topic_array, sizeof shared_topic_array, "%" PRIu64 "_shared_topic", start_time);
     struct aws_byte_cursor shared_topic = aws_byte_cursor_from_c_str(shared_topic_array);
 
     for (size_t i = 0; i < tester_options.client_count; ++i) {
