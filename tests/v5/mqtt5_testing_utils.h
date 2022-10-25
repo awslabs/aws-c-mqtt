@@ -100,7 +100,7 @@ struct aws_mqtt5_client_mock_test_fixture {
     aws_mqtt5_client_connection_event_callback_fn *original_lifecycle_event_handler;
     void *original_lifecycle_event_handler_user_data;
 
-    size_t maximum_inbound_topic_aliases;
+    uint16_t maximum_inbound_topic_aliases;
 
     struct aws_mutex lock;
     struct aws_condition_variable signal;

@@ -1299,6 +1299,7 @@ static void s_aws_mqtt5_test_fixture_statistics_changed_callback(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation,
     void *vtable_user_data) {
+    (void)operation;
 
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = vtable_user_data;
 
