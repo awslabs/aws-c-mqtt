@@ -50,7 +50,6 @@ phases:
       - aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
       # ==========
 
-
   post_build:
     commands:
       - echo Build completed on `date`
