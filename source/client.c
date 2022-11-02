@@ -516,13 +516,17 @@ static void s_mqtt_client_init(
     now += connection->ping_timeout_ns;
     aws_channel_schedule_task_future(channel, connack_task, now);
 
+    struct aws_byte_cursor client_id_cursor = aws_byte_cursor_from_buf(&connection->client_id);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: MQTT Connection initializing CONNECT packet for client-id '" PRInSTR "'",
+        (void *)connection,
+        AWS_BYTE_CURSOR_PRI(client_id_cursor));
+
     /* Send the connect packet */
     struct aws_mqtt_packet_connect connect;
     aws_mqtt_packet_connect_init(
-        &connect,
-        aws_byte_cursor_from_buf(&connection->client_id),
-        connection->clean_session,
-        connection->keep_alive_time_secs);
+        &connect, client_id_cursor, connection->clean_session, connection->keep_alive_time_secs);
 
     if (connection->will.topic.buffer) {
         /* Add will if present */
