@@ -516,13 +516,17 @@ static void s_mqtt_client_init(
     now += connection->ping_timeout_ns;
     aws_channel_schedule_task_future(channel, connack_task, now);
 
+    struct aws_byte_cursor client_id_cursor = aws_byte_cursor_from_buf(&connection->client_id);
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: MQTT Connection initializing CONNECT packet for client-id '" PRInSTR "'",
+        (void *)connection,
+        AWS_BYTE_CURSOR_PRI(client_id_cursor));
+
     /* Send the connect packet */
     struct aws_mqtt_packet_connect connect;
     aws_mqtt_packet_connect_init(
-        &connect,
-        aws_byte_cursor_from_buf(&connection->client_id),
-        connection->clean_session,
-        connection->keep_alive_time_secs);
+        &connect, client_id_cursor, connection->clean_session, connection->keep_alive_time_secs);
 
     if (connection->will.topic.buffer) {
         /* Add will if present */
@@ -601,6 +605,8 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
     if (status == AWS_TASK_STATUS_RUN_READY && connection) {
         /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
 
+        mqtt_connection_lock_synced_data(connection);
+
         aws_high_res_clock_get_ticks(&connection->reconnect_timeouts.next_attempt_ms);
         connection->reconnect_timeouts.next_attempt_ms += aws_timestamp_convert(
             connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
@@ -626,6 +632,8 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             now + 10000000000 +
             aws_timestamp_convert(
                 connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+        mqtt_connection_unlock_synced_data(connection);
 
         if (s_mqtt_client_connect(
                 connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
