@@ -140,6 +140,7 @@ struct aws_mqtt_client_connection {
     struct aws_tls_connection_options tls_options;
     struct aws_socket_options socket_options;
     struct aws_http_proxy_config *http_proxy_config;
+    struct aws_event_loop *loop;
 
     /* Connect parameters */
     struct aws_byte_buf client_id;
