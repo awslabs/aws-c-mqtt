@@ -605,6 +605,8 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
     if (status == AWS_TASK_STATUS_RUN_READY && connection) {
         /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
 
+        mqtt_connection_lock_synced_data(connection);
+
         aws_high_res_clock_get_ticks(&connection->reconnect_timeouts.next_attempt_ms);
         connection->reconnect_timeouts.next_attempt_ms += aws_timestamp_convert(
             connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
@@ -630,6 +632,8 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             now + 10000000000 +
             aws_timestamp_convert(
                 connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+        mqtt_connection_unlock_synced_data(connection);
 
         if (s_mqtt_client_connect(
                 connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
