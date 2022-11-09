@@ -65,15 +65,15 @@ class DataSnapshot_Dashboard_Widget():
         try:
             self.metric_list.append(new_metric_name)
         except Exception as e:
-            print ("ERROR - could not add metric to dashboard widget due to exception!")
-            print ("Exception: " + str(e))
+            print ("[DataSnapshot_Dashboard] ERROR - could not add metric to dashboard widget due to exception!")
+            print ("[DataSnapshot_Dashboard] Exception: " + str(e))
 
     def remove_metric_from_widget(self, existing_metric_name):
         try:
             self.metric_list.remove(existing_metric_name)
         except Exception as e:
-            print ("ERROR - could not remove metric from dashboard widget due to exception!")
-            print ("Exception: " + str(e))
+            print ("[DataSnapshot_Dashboard] ERROR - could not remove metric from dashboard widget due to exception!")
+            print ("[DataSnapshot_Dashboard] Exception: " + str(e))
 
     def get_widget_dictionary(self):
         metric_list_json = []
@@ -118,7 +118,9 @@ class DataSnapshot():
         # ==================
         self.first_metric_call = True
         self.metrics = []
+        self.metrics_numbers = []
         self.metric_report_number = 0
+        self.metric_report_non_zero_count = 4
 
         # Needed so we can initialize Cloudwatch alarms, etc, outside of the init function
         # but before we start sending data.
@@ -166,7 +168,7 @@ class DataSnapshot():
             tmp_sts_client = boto3.client('sts')
             tmp_sts_client.get_caller_identity()
         except Exception as e:
-            print ("ERROR - AWS credentials are NOT valid!")
+            print ("[DataSnapshot] ERROR - AWS credentials are NOT valid!")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "AWS credentials are NOT valid!"
             self.abort_due_to_internal_error_due_to_credentials = True
@@ -176,7 +178,7 @@ class DataSnapshot():
         # Git related stuff
         # ==================
         if (git_hash == None or git_repo_name == None):
-            print("ERROR - a Git hash and repository name are REQUIRED for the canary wrapper to run!")
+            print("[DataSnapshot] ERROR - a Git hash and repository name are REQUIRED for the canary wrapper to run!")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "No Git hash and repository passed!"
             return
@@ -200,8 +202,8 @@ class DataSnapshot():
             self.cloudwatch_client = boto3.client('cloudwatch', self.cloudwatch_region)
             self.cloudwatch_dashboard_name = self.git_metric_namespace
         except Exception as e:
-            self.print_message("ERROR - could not make Cloudwatch client due to exception!")
-            self.print_message("Exception: " + str(e))
+            self.print_message("[DataSnapshot] ERROR - could not make Cloudwatch client due to exception!")
+            self.print_message("[DataSnapshot] Exception: " + str(e))
             self.cloudwatch_client = None
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "Could not make Cloudwatch client!"
@@ -213,8 +215,8 @@ class DataSnapshot():
         try:
             self.s3_client = boto3.client("s3")
         except Exception as e:
-            self.print_message("ERROR - could not make S3 client due to exception!")
-            self.print_message("Exception: " + str(e))
+            self.print_message("[DataSnapshot] ERROR - could not make S3 client due to exception!")
+            self.print_message("[DataSnapshot] Exception: " + str(e))
             self.s3_client = None
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "Could not make S3 client!"
@@ -226,8 +228,8 @@ class DataSnapshot():
         try:
             self.lambda_client = boto3.client("lambda", self.cloudwatch_region)
         except Exception as e:
-            self.print_message("ERROR - could not make Lambda client due to exception!")
-            self.print_message("Exception: " + str(e))
+            self.print_message("[DataSnapshot] ERROR - could not make Lambda client due to exception!")
+            self.print_message("[DataSnapshot] Exception: " + str(e))
             self.lambda_client = None
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "Could not make Lambda client!"
@@ -244,7 +246,7 @@ class DataSnapshot():
             self.output_file = None
         # ==================
 
-        self.print_message("Data snapshot created!")
+        self.print_message("[DataSnapshot] Data snapshot created!")
 
     # Cleans the class - closing any files, removing alarms, and sending data to S3.
     # Should be called at the end when you are totally finished shadowing metrics
@@ -256,7 +258,7 @@ class DataSnapshot():
         if (self.cloudwatch_make_dashboard == True):
             self._cleanup_cloudwatch_dashboard()
 
-        self.print_message("Data snapshot cleaned!")
+        self.print_message("[DataSnapshot] Data snapshot cleaned!")
 
         if (self.output_file is not None):
             self.output_file.close()
@@ -298,19 +300,18 @@ class DataSnapshot():
             self.cloudwatch_client.put_dashboard(
                 DashboardName=self.cloudwatch_dashboard_name,
                 DashboardBody= new_dashboard_body_json)
-            self.print_message("Added Cloudwatch dashboard successfully")
+            self.print_message("[DataSnapshot] Added Cloudwatch dashboard successfully")
         except Exception as e:
-            self.print_message("ERROR - Couldwatch client could not make dashboard due to exception!")
-            self.print_message("Exception: " + str(e))
+            self.print_message("[DataSnapshot] ERROR - Cloudwatch client could not make dashboard due to exception!")
+            self.print_message("[DataSnapshot] Exception: " + str(e))
             self.abort_due_to_internal_error = True
-            self.abort_due_to_internal_error_reason = "Couldwatch client could not make dashboard due to exception"
+            self.abort_due_to_internal_error_reason = "Cloudwatch client could not make dashboard due to exception"
             return
 
     # Utility function - The function that adds each individual metric alarm.
     def _add_cloudwatch_metric_alarm(self, metric):
         if self.cloudwatch_client is None:
-            self.print_message(
-                "ERROR - Cloudwatch client not setup. Cannot register alarm")
+            self.print_message("[DataSnapshot] ERROR - Cloudwatch client not setup. Cannot register alarm")
             return
 
         try:
@@ -328,9 +329,8 @@ class DataSnapshot():
                 ComparisonOperator="GreaterThanOrEqualToThreshold",
             )
         except Exception as e:
-            self.print_message(
-                "ERROR - could not register alarm for metric due to exception: " + metric.metric_name)
-            self.print_message("Exception: " + str(e))
+            self.print_message("[DataSnapshot] ERROR - could not register alarm for metric due to exception: " + metric.metric_name)
+            self.print_message("[DataSnapshot] Exception: " + str(e))
 
     # Utility function - removes all the Cloudwatch alarms for the metrics
     def _cleanup_cloudwatch_alarms(self):
@@ -340,19 +340,18 @@ class DataSnapshot():
                     if (not metric.metric_alarm_threshold is None):
                         self.cloudwatch_client.delete_alarms(AlarmNames=[metric.metric_alarm_name])
             except Exception as e:
-                self.print_message(
-                    "ERROR - could not delete alarms due to exception!")
-                self.print_message("Exception: " + str(e))
+                self.print_message("[DataSnapshot] ERROR - could not delete alarms due to exception!")
+                self.print_message("[DataSnapshot] Exception: " + str(e))
 
     # Utility function - removes all Cloudwatch dashboards created
     def _cleanup_cloudwatch_dashboard(self):
         if (self.cloudwatch_teardown_dashboard_on_complete == True):
             try:
                 self.cloudwatch_client.delete_dashboards(DashboardNames=[self.cloudwatch_dashboard_name])
-                self.print_message("Cloudwatch Dashboards deleted successfully!")
+                self.print_message("[DataSnapshot] Cloudwatch Dashboards deleted successfully!")
             except Exception as e:
-                self.print_message("ERROR - dashboard cleaning function failed due to exception!")
-                self.print_message("Exception: " + str(e))
+                self.print_message("[DataSnapshot] ERROR - dashboard cleaning function failed due to exception!")
+                self.print_message("[DataSnapshot] Exception: " + str(e))
                 self.abort_due_to_internal_error = True
                 self.abort_due_to_internal_error_reason = "Cloudwatch dashboard cleaning function failed due to exception"
                 return
@@ -402,8 +401,7 @@ class DataSnapshot():
     # If copy_output_log is true, then the output log will be copied into this file, which may be useful for debugging.
     def export_result_to_s3_bucket(self, copy_output_log=False, log_is_error=False):
         if (self.s3_client is None):
-            self.print_message(
-                "ERROR - No S3 client initialized! Cannot send log to S3")
+            self.print_message("[DataSnapshot] ERROR - No S3 client initialized! Cannot send log to S3")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "S3 client not initialized and therefore cannot send log to S3"
             return
@@ -421,8 +419,7 @@ class DataSnapshot():
             self.output_file = open(self.output_to_file_filepath, "r")
 
             s3_file.write("\n\nOUTPUT LOG\n")
-            s3_file.write(
-                "==========================================================================================\n")
+            s3_file.write("==========================================================================================\n")
             output_file_lines = self.output_file.readlines()
             for line in output_file_lines:
                 s3_file.write(line)
@@ -447,11 +444,10 @@ class DataSnapshot():
                     self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/Failed_Logs/" + self.git_hash + ".log")
                 else:
                     self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/Failed_Logs/" + self.datetime_string + "/" + self.git_hash + ".log")
-            self.print_message("Uploaded to S3!")
+            self.print_message("[DataSnapshot] Uploaded to S3!")
         except Exception as e:
-            self.print_message(
-                "ERROR - could not upload to S3 due to exception!")
-            self.print_message("Exception: " + str(e))
+            self.print_message("[DataSnapshot] ERROR - could not upload to S3 due to exception!")
+            self.print_message("[DataSnapshot] Exception: " + str(e))
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "S3 client had exception and therefore could not upload log!"
             os.remove(self.git_hash + ".log")
@@ -476,8 +472,8 @@ class DataSnapshot():
                 Payload=payload_string
             )
         except Exception as e:
-            self.print_message("ERROR - could not send email via Lambda due to exception!")
-            self.print_message("Exception: " + str(e))
+            self.print_message("[DataSnapshot] ERROR - could not send email via Lambda due to exception!")
+            self.print_message("[DataSnapshot] Exception: " + str(e))
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "Lambda email function had an exception!"
             return
@@ -515,6 +511,8 @@ class DataSnapshot():
             reports_to_skip=new_metric_reports_to_skip
         )
         self.metrics.append(new_metric)
+        # append an empty list so we can track it's metrics over time
+        self.metrics_numbers.append([])
 
     def register_dashboard_widget(self, new_widget_name, metrics_to_add=[], new_widget_period=60):
 
@@ -541,7 +539,7 @@ class DataSnapshot():
         if widget is None:
             widget = self._find_cloudwatch_widget(name=widget_name)
             if widget is None:
-                print ("ERROR - could not find widget with name: " + widget_name, flush=True)
+                print ("[DataSnapshot] ERROR - could not find widget with name: " + widget_name, flush=True)
                 return
 
         # Adjust metric name so it has the git hash, repo, etc
@@ -554,7 +552,7 @@ class DataSnapshot():
         if widget is None:
             widget = self._find_cloudwatch_widget(name=widget_name)
             if widget is None:
-                print ("ERROR - could not find widget with name: " + widget_name, flush=True)
+                print ("[DataSnapshot] ERROR - could not find widget with name: " + widget_name, flush=True)
                 return
         widget.remove_metric_from_widget(existing_metric_name=metric_name)
         return
@@ -571,23 +569,23 @@ class DataSnapshot():
         datetime_now = datetime.datetime.now()
         datetime_string = datetime_now.strftime("%d-%m-%Y/%H-%M-%S")
 
-        self.print_message("Metric report: " + str(self.metric_report_number) + " (" + datetime_string + ")")
+        self.print_message("\n[DataSnapshot] Metric report: " + str(self.metric_report_number) + " (" + datetime_string + ")")
         for metric in self.metrics:
             self.print_message("    " + metric.metric_name +
                                " - value: " + str(metric.metric_value))
+        self.print_message("")
 
     # Sends all registered metrics to Cloudwatch.
     # Does NOT need to called on loop. Call post_metrics on loop to send all the metrics as expected.
     # This is just the Cloudwatch part of that loop.
     def export_metrics_cloudwatch(self):
         if (self.cloudwatch_client == None):
-            self.print_message(
-                "Error - cannot export Cloudwatch metrics! Cloudwatch was not initiallized.")
+            self.print_message("[DataSnapshot] Error - cannot export Cloudwatch metrics! Cloudwatch was not initiallized.")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "Could not export Cloudwatch metrics due to no Cloudwatch client initialized!"
             return
 
-        self.print_message("Preparing to send to Cloudwatch...")
+        self.print_message("[DataSnapshot] Preparing to send to Cloudwatch...")
         metrics_data = []
         metric_data_tmp = None
         for metric in self.metrics:
@@ -596,18 +594,17 @@ class DataSnapshot():
                 metrics_data.append(metric_data_tmp)
 
         if (len(metrics_data) == 0):
-            self.print_message("INFO - no metric data to send. Skipping...")
+            self.print_message("[DataSnapshot] INFO - no metric data to send. Skipping...")
             return
 
         try:
             self.cloudwatch_client.put_metric_data(
                 Namespace=self.git_metric_namespace,
                 MetricData=metrics_data)
-            self.print_message("Metrics sent to Cloudwatch.")
+            self.print_message("[DataSnapshot] Metrics sent to Cloudwatch.")
         except Exception as e:
-            self.print_message(
-                "Error - something when wrong posting cloudwatch metrics!")
-            self.print_message("Exception: " + str(e))
+            self.print_message("[DataSnapshot] Error - something when wrong posting cloudwatch metrics!")
+            self.print_message("[DataSnapshot] Exception: " + str(e))
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "Could not export Cloudwatch metrics due to exception in Cloudwatch client!"
             return
@@ -620,8 +617,27 @@ class DataSnapshot():
             self._init_cloudwatch_pre_first_run()
 
         # Update the metric values internally
-        for metric in self.metrics:
-            metric.get_metric_value(psutil_process)
+        for i in range(0, len(self.metrics)):
+            metric_value = self.metrics[i].get_metric_value(psutil_process)
+            self.metrics_numbers[i].insert(0, metric_value)
+
+            # Only keep the last metric_report_non_zero_count results
+            if (len(self.metrics_numbers[i]) > self.metric_report_non_zero_count):
+                amount_to_delete = len(self.metrics_numbers[i]) - self.metric_report_non_zero_count
+                del self.metrics_numbers[i][-amount_to_delete:]
+            # If we have metric_report_non_zero_count amount of metrics, make sure there is at least one
+            # non-zero. If it is all zero, then print a log so we can easily find it
+            if (len(self.metrics_numbers[i]) == self.metric_report_non_zero_count):
+                non_zero_found = False
+                for j in range(0, len(self.metrics_numbers[i])):
+                    if (self.metrics_numbers[i][j] != 0.0 and self.metrics_numbers[i][j] != None):
+                        non_zero_found = True
+                        break
+                if (non_zero_found == False):
+                    self.print_message("\n[DataSnapshot] METRIC ZERO ERROR!")
+                    self.print_message(f"[DataSnapshot] Metric index {i} has been zero for last {self.metric_report_non_zero_count} reports!")
+                    self.print_message("\n")
+
         self.metric_report_number += 1
 
         self.export_metrics_console()
@@ -709,8 +725,8 @@ class SnapshotMonitor():
                 new_metric_reports_to_skip=new_metric_reports_to_skip,
                 new_metric_alarm_severity=new_metric_alarm_severity)
         except Exception as e:
-            print ("ERROR - could not register metric in data snapshot due to exception!")
-            print ("Exception: " + str(e), flush=True)
+            self.print_message("[SnaptshotMonitor] ERROR - could not register metric in data snapshot due to exception!")
+            self.print_message("[SnaptshotMonitor] Exception: " + str(e))
             self.had_internal_error = True
             self.internal_error_reason = "Could not register metric in data snapshot due to exception"
             return
@@ -797,8 +813,8 @@ class SnapshotMonitor():
                 triggered_alarms = self.data_snapshot.get_cloudwatch_alarm_results()
                 self.check_alarms_for_new_alarms(triggered_alarms)
         except Exception as e:
-            self.data_snapshot.print_message("ERROR - exception occurred checking metric alarms!")
-            self.data_snapshot.print_message("(Likely session credentials expired)")
+            self.print_message("[SnaptshotMonitor] ERROR - exception occurred checking metric alarms!")
+            self.print_message("[SnaptshotMonitor] (Likely session credentials expired)")
             self.had_internal_error = True
             self.internal_error_reason = "Exception occurred checking metric alarms! Likely session credentials expired"
             return
@@ -808,8 +824,8 @@ class SnapshotMonitor():
                 try:
                     self.data_snapshot.post_metrics(psutil_process)
                 except Exception as e:
-                    self.data_snapshot.print_message("ERROR - exception occurred posting metrics!")
-                    self.data_snapshot.print_message("(Likely session credentials expired)")
+                    self.print_message("[SnaptshotMonitor] ERROR - exception occurred posting metrics!")
+                    self.print_message("[SnaptshotMonitor] (Likely session credentials expired)")
 
                     print (e, flush=True)
 
@@ -849,6 +865,12 @@ class SnapshotMonitor():
     def cleanup_monitor(self, error_occurred=False):
         self.data_snapshot.cleanup(error_occurred=error_occurred)
 
+    def print_message(self, message):
+        if (self.data_snapshot != None):
+            self.data_snapshot.print_message(message)
+        else:
+            print(message, flush=True)
+
 # ================================================================================
 
 class ApplicationMonitor():
@@ -865,41 +887,41 @@ class ApplicationMonitor():
         self.data_snapshot=data_snapshot
 
     def start_monitoring(self):
-        self.print_message("Starting to monitor application...")
+        self.print_message("[ApplicationMonitor] Starting to monitor application...")
 
         if (self.application_process == None):
             try:
                 canary_command = self.wrapper_application_path + " " + self.wrapper_application_arguments
                 self.application_process = subprocess.Popen(canary_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8")
                 self.application_process_psutil = psutil.Process(self.application_process.pid)
-                self.print_message ("Application started...")
+                self.print_message ("[ApplicationMonitor] Application started...")
             except Exception as e:
-                self.print_message ("ERROR - Could not launch Canary/Application due to exception!")
-                self.print_message ("Exception: " + str(e))
+                self.print_message ("[ApplicationMonitor] ERROR - Could not launch Canary/Application due to exception!")
+                self.print_message ("[ApplicationMonitor] Exception: " + str(e))
                 self.error_has_occurred = True
                 self.error_reason = "Could not launch Canary/Application due to exception"
                 self.error_code = 1
                 return
         else:
-            self.print_message("ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!")
+            self.print_message("[ApplicationMonitor] ERROR - Monitor already has an application process! Cannot monitor two applications with one monitor class!")
 
     def restart_monitoring(self):
-        self.print_message ("Restarting monitor application...")
+        self.print_message ("[ApplicationMonitor] Restarting monitor application...")
 
         if (self.application_process != None):
             try:
                 self.stop_monitoring()
                 self.start_monitoring()
-                self.print_message("Restarted monitor application!")
+                self.print_message("[ApplicationMonitor] Restarted monitor application!")
             except Exception as e:
-                self.print_message("ERROR - Could not restart Canary/Application due to exception!")
-                self.print_message("Exception: " + str(e))
+                self.print_message("[ApplicationMonitor] ERROR - Could not restart Canary/Application due to exception!")
+                self.print_message("[ApplicationMonitor] Exception: " + str(e))
                 self.error_has_occurred = True
                 self.error_reason = "Could not restart Canary/Application due to exception"
                 self.error_code = 1
                 return
         else:
-            self.print_message("ERROR - Application process restart called but process is/was not running!")
+            self.print_message("[ApplicationMonitor] ERROR - Application process restart called but process is/was not running!")
             self.error_has_occurred = True
             self.error_reason = "Could not restart Canary/Application due to application process not being started initially"
             self.error_code = 1
@@ -907,20 +929,22 @@ class ApplicationMonitor():
 
 
     def stop_monitoring(self):
-        self.print_message ("Stopping monitor application...")
+        self.print_message ("[ApplicationMonitor] Stopping monitor application...")
         if (not self.application_process == None):
             self.application_process.terminate()
             self.application_process.wait()
-            self.print_message ("Stopped monitor application!")
+            self.print_message ("[ApplicationMonitor] Stopped monitor application!")
 
             if self.application_process.stdout != None:
                 self.print_message("\nApplication STDOUT:\n")
                 self.print_message("=========================================\n")
-                self.print_message(self.application_process.stdout.read())
+                for line in self.application_process.stdout:
+                    self.print_message(line)
+                self.application_process.stdout.close()
                 self.print_message("\n=========================================\n")
             self.application_process = None
         else:
-            self.print_message ("ERROR - cannot stop monitor application because no process is found!")
+            self.print_message ("[ApplicationMonitor] ERROR - cannot stop monitor application because no process is found!")
 
 
     def monitor_loop_function(self, time_passed=30):
@@ -930,8 +954,8 @@ class ApplicationMonitor():
             try:
                 application_process_return_code = self.application_process.poll()
             except Exception as e:
-                self.print_message("ERROR - exception occurred while trying to poll application status!")
-                self.print_message("Exception: " + str(e))
+                self.print_message("[ApplicationMonitor] ERROR - exception occurred while trying to poll application status!")
+                self.print_message("[ApplicationMonitor] Exception: " + str(e))
                 self.error_has_occurred = True
                 self.error_reason = "Exception when polling application status"
                 self.error_code = 1
@@ -940,11 +964,11 @@ class ApplicationMonitor():
             # If it is not none, then the application finished
             if (application_process_return_code != None):
 
-                self.print_message("Monitor application has stopped! Processing result...")
+                self.print_message("[ApplicationMonitor] Monitor application has stopped! Processing result...")
 
                 if (application_process_return_code != 0):
-                    self.print_message("ERROR - Something Crashed in Canary/Application!")
-                    self.print_message("Error code: " + str(application_process_return_code))
+                    self.print_message("[ApplicationMonitor] ERROR - Something Crashed in Canary/Application!")
+                    self.print_message("[ApplicationMonitor] Error code: " + str(application_process_return_code))
 
                     self.error_has_occurred = True
                     self.error_reason = "Canary application crashed!"
@@ -952,13 +976,15 @@ class ApplicationMonitor():
                 else:
                     # Should we restart?
                     if (self.wrapper_application_restart_on_finish == True):
-                        self.print_message("NOTE - Canary finished running and is restarting...")
+                        self.print_message("[ApplicationMonitor] NOTE - Canary finished running and is restarting...")
                         self.restart_monitoring()
                     else:
-                        self.print_message("Monitor application has stopped and monitor is not supposed to restart... Finishing...")
+                        self.print_message("[ApplicationMonitor] Monitor application has stopped and monitor is not supposed to restart... Finishing...")
                         self.error_has_occurred = True
                         self.error_reason = "Canary Application Finished"
                         self.error_code = 0
+            else:
+                self.print_message("[ApplicationMonitor] Monitor application is still running...")
 
     def cleanup_monitor(self, error_occurred=False):
         pass
@@ -971,15 +997,16 @@ class ApplicationMonitor():
 
 # ================================================================================
 
-class S3_Monitor():
+class S3Monitor():
 
-    def __init__(self, s3_bucket_name, s3_file_name, s3_file_name_in_zip, canary_local_application_path) -> None:
+    def __init__(self, s3_bucket_name, s3_file_name, s3_file_name_in_zip, canary_local_application_path, data_snapshot) -> None:
         self.s3_client = None
         self.s3_current_object_version_id = None
         self.s3_current_object_last_modified = None
         self.s3_bucket_name = s3_bucket_name
         self.s3_file_name = s3_file_name
         self.s3_file_name_only_path, self.s3_file_name_only_extension = os.path.splitext(s3_file_name)
+        self.data_snapshot = data_snapshot
 
         self.canary_local_application_path = canary_local_application_path
 
@@ -1001,7 +1028,7 @@ class S3_Monitor():
             tmp_sts_client = boto3.client('sts')
             tmp_sts_client.get_caller_identity()
         except Exception as e:
-            print ("ERROR - (S3 Check) AWS credentials are NOT valid!", flush=True)
+            self.print_message("[S3Monitor] ERROR - (S3 Check) AWS credentials are NOT valid!")
             self.had_internal_error = True
             self.error_due_to_credentials = True
             self.internal_error_reason = "AWS credentials are NOT valid!"
@@ -1011,7 +1038,7 @@ class S3_Monitor():
         try:
             self.s3_client = boto3.client("s3")
         except Exception as e:
-            print ("ERROR - (S3 Check) Could not make S3 client", flush=True)
+            self.print_message("[S3Monitor] ERROR - (S3 Check) Could not make S3 client")
             self.had_internal_error = True
             self.internal_error_reason = "Could not make S3 client for S3 Monitor"
             return
@@ -1028,8 +1055,8 @@ class S3_Monitor():
                         if (version["VersionId"] != self.s3_current_object_version_id or
                             version["LastModified"] != self.s3_current_object_last_modified):
 
-                            print ("S3 monitor - Found new version of Canary/Application in S3!")
-                            print ("Changing running Canary/Application to new one...", flush=True)
+                            self.print_message("[S3Monitor] Found new version of Canary/Application in S3!")
+                            self.print_message("[S3Monitor] Changing running Canary/Application to new one...")
 
                             # Will be checked by thread to trigger replacing the file
                             self.s3_file_needs_replacing = True
@@ -1039,19 +1066,19 @@ class S3_Monitor():
                             return
 
         except Exception as e:
-            print ("ERROR - Could not check for new version of file in S3 due to exception!")
-            print ("Exception: " + str(e), flush=True)
+            self.print_message("[S3Monitor] ERROR - Could not check for new version of file in S3 due to exception!")
+            self.print_message("[S3Monitor] Exception: " + str(e))
             self.had_internal_error = True
             self.internal_error_reason = "Could not check for S3 file due to exception in S3 client"
 
 
     def replace_current_file_for_new_file(self):
         try:
-            print ("Making directory...", flush=True)
+            self.print_message("[S3Monitor] Making directory...")
             if not os.path.exists("tmp"):
                 os.makedirs("tmp")
         except Exception as e:
-            print ("ERROR - could not make tmp directory to place S3 file into!", flush=True)
+            self.print_message ("[S3Monitor] ERROR - could not make tmp directory to place S3 file into!")
             self.had_internal_error = True
             self.internal_error_reason = "Could not make TMP folder for S3 file download"
             return
@@ -1059,17 +1086,18 @@ class S3_Monitor():
         # Download the file
         new_file_path = "tmp/new_file" + self.s3_file_name_only_extension
         try:
-            print ("Downloading file...", flush=True)
+            self.print_message("[S3Monitor] Downloading file...")
             s3_resource = boto3.resource("s3")
             s3_resource.meta.client.download_file(self.s3_bucket_name, self.s3_file_name, new_file_path)
         except Exception as e:
-            print ("ERROR - could not download latest S3 file into TMP folder!", flush=True)
+            self.print_message("[S3Monitor] ERROR - could not download latest S3 file into TMP folder!")
             self.had_internal_error = True
             self.internal_error_reason = "Could not download latest S3 file into TMP folder"
             return
 
         # Is it a zip file?
         if (self.s3_file_name_in_zip != None):
+            self.print_message("[S3Monitor] New file is zip file. Unzipping...")
             # Unzip it!
             with zipfile.ZipFile(new_file_path, 'r') as zip_file:
                 zip_file.extractall("tmp/new_file_zip")
@@ -1080,19 +1108,19 @@ class S3_Monitor():
             if os.path.exists(self.canary_local_application_path) == True:
                 os.remove(self.canary_local_application_path)
 
-            print ("Moving file...", flush=True)
+            self.print_message("[S3Monitor] Moving file...")
             os.replace(new_file_path, self.canary_local_application_path)
-            print ("Getting execution rights...", flush=True)
+            self.print_message("[S3Monitor] Getting execution rights...")
             os.system("chmod u+x " + self.canary_local_application_path)
 
         except Exception as e:
-            print ("ERROR - could not move file into local application path due to exception!")
-            print ("Exception: " + str(e), flush=True)
+            self.print_message("[S3Monitor] ERROR - could not move file into local application path due to exception!")
+            self.print_message("[S3Monitor] Exception: " + str(e))
             self.had_internal_error = True
             self.internal_error_reason = "Could not move file into local application path"
             return
 
-        print ("New file downloaded and moved into correct location!")
+        self.print_message("[S3Monitor] New file downloaded and moved into correct location!")
         self.s3_file_needs_replacing = False
 
 
@@ -1117,6 +1145,12 @@ class S3_Monitor():
 
     def monitor_loop_function(self, time_passed=30):
         self.check_for_file_change()
+
+    def print_message(self, message):
+        if (self.data_snapshot != None):
+            self.data_snapshot.print_message(message)
+        else:
+            print(message, flush=True)
 
 # ================================================================================
 

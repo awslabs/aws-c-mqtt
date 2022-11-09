@@ -15,10 +15,6 @@ from CanaryWrapper_MetricFunctions import *
 
 # TODO - Using subprocess may not work on Windows for starting/stopping the application thread.
 #        Canary will likely be running on Linux, so it's probably okay, but need to confirm/check at some point....
-
-# NOTE - There is a bug where you sometimes will have to try launching it a few times to clear exceptions if you
-#        stopped execution using CTRL-C instead of pressing enter. TODO - figure out what causes this and fix it.
-
 # ================================================================================
 # Code for command line argument parsing
 
@@ -30,7 +26,7 @@ command_parser.add_argument("--canary_arguments", type=str, default="",
 command_parser.add_argument("--s3_bucket_name", type=str, default="canary-wrapper-folder",
     help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
 command_parser.add_argument("--s3_bucket_application", type=str, required=True,
-    help="(OPTIONAL, default=canary-wrapper-folder) The name of the S3 bucket where success logs will be stored")
+    help="(OPTIONAL, default=canary-wrapper-folder) The S3 URL to monitor for changes MINUS the bucket name")
 command_parser.add_argument("--s3_bucket_application_in_zip", type=str, required=False, default="",
     help="(OPTIONAL, default="") The file path in the zip folder where the application is stored. Will be ignored if set to empty string")
 command_parser.add_argument("--lambda_name", type=str, default="iot-send-email-lambda",
@@ -91,22 +87,10 @@ canary_metrics_wait_time = 600 # 10 minutes
 canary_application_loop_wait_time = 300 # 5 minutes
 
 # For testing - set both to 30 seconds
-#canary_metrics_wait_time = 30
-#canary_application_loop_wait_time = 30
+# canary_metrics_wait_time = 30
+# canary_application_loop_wait_time = 30
 
 # ================================================================================
-
-# Make the S3 class
-s3_monitor = S3_Monitor(
-    s3_bucket_name=canary_s3_bucket_name,
-    s3_file_name=canary_s3_bucket_application_path,
-    s3_file_name_in_zip=canary_s3_bucket_application_path_zip,
-    canary_local_application_path=canary_local_application_path)
-
-if (s3_monitor.had_internal_error == True):
-    print ("INFO - Stopping application due to error caused by credentials")
-    print ("Please fix your credentials and then restart this application again")
-    exit(0)
 
 # Make the snapshot class
 data_snapshot = DataSnapshot(
@@ -158,6 +142,19 @@ data_snapshot.register_dashboard_widget("Process Memory Usage - Percentage", ["t
 # Print diagnosis information
 data_snapshot.output_diagnosis_information("24/7 Canary cannot show dependencies!")
 
+# Make the S3 class
+s3_monitor = S3Monitor(
+    s3_bucket_name=canary_s3_bucket_name,
+    s3_file_name=canary_s3_bucket_application_path,
+    s3_file_name_in_zip=canary_s3_bucket_application_path_zip,
+    canary_local_application_path=canary_local_application_path,
+    data_snapshot=data_snapshot)
+
+if (s3_monitor.had_internal_error == True):
+    print ("INFO - Stopping application due to error caused by credentials")
+    print ("Please fix your credentials and then restart this application again")
+    exit(0)
+
 # Make the snapshot (metrics) monitor
 snapshot_monitor = SnapshotMonitor(
     wrapper_data_snapshot=data_snapshot,
@@ -173,7 +170,8 @@ if (snapshot_monitor.had_internal_error == True):
 application_monitor = ApplicationMonitor(
     wrapper_application_path=canary_local_application_path,
     wrapper_application_arguments=canary_local_application_arguments,
-    wrapper_application_restart_on_finish=True)
+    wrapper_application_restart_on_finish=True,
+    data_snapshot=data_snapshot)
 
 # Make sure nothing failed
 if (application_monitor.error_has_occurred == True):
@@ -190,14 +188,18 @@ def execution_loop():
 
         # Is there an error?
         if (s3_monitor.had_internal_error == True):
+            print ("[Debug] S3 monitor had an internal error!")
             break
 
         # Is there a new file?
         if (s3_monitor.s3_file_needs_replacing == True):
             # Stop the application
+            print ("[Debug] Stopping application monitor...")
             application_monitor.stop_monitoring()
+            print ("[Debug] Getting S3 file...")
             s3_monitor.replace_current_file_for_new_file()
             # Start the application
+            print ("[Debug] Starting application monitor...")
             application_monitor.start_monitoring()
             # Allow the snapshot monitor to cut a ticket
             snapshot_monitor.can_cut_ticket = True
@@ -214,6 +216,10 @@ def execution_loop():
 
         # If an error has occurred or otherwise this thread needs to stop, then break the loop
         if (application_monitor.error_has_occurred == True or snapshot_monitor.had_internal_error == True):
+            if (application_monitor.error_has_occurred == True):
+                print ("[Debug] Application monitor error occurred!")
+            else:
+                print ("[Debug] Snapshot monitor internal error ocurred!")
             break
 
         time.sleep(canary_application_loop_wait_time)
