@@ -5,7 +5,7 @@
         { "name": "aws-c-io" },
     ],
     "downstream": [
-        { "name": "aws-c-iot" },
+        { "name": "aws-c-iot" }
     ],
     "cmake_args": [
     ]
