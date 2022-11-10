@@ -48,6 +48,9 @@ phases:
       # upload built canary test build result to s3 bucket
       - zip -r latestBuild.zip build/install
       - aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
+      # upload latest source to S3 bucket
+      - zip -r latestSnapshot.zip .
+      - aws s3 cp ./latestSnapshot.zip ${S3_DST}source/latest
       # ==========
 
   post_build:

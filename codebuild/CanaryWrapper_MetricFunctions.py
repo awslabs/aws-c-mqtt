@@ -14,10 +14,10 @@ def get_metric_total_cpu_usage(psutil_process : psutil.Process):
             return None
         # We always need to skip the first CPU poll on a new process
         if (cache_cpu_psutil_process != psutil_process):
-            psutil_process.cpu_percent(0.0)
+            psutil_process.cpu_percent(interval=None)
             cache_cpu_psutil_process = psutil_process
             return None
-        return psutil_process.cpu_percent(0.0)
+        return psutil_process.cpu_percent(interval=None)
     except Exception as e:
         print ("ERROR - exception occurred gathering metrics!")
         print ("Exception: " + str(e), flush=True)
