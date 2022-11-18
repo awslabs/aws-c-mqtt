@@ -130,7 +130,7 @@ static void s_mqtt5_client_test_init_default_options(struct mqtt5_client_test_op
         .min_reconnect_delay_ms = 1000,
         .ping_timeout_ms = 10000,
         .publish_received_handler = s_publish_received_callback,
-        .operation_timeout_seconds = 0,
+        .ack_timeout_seconds = 0,
         .topic_aliasing_options = &test_options->topic_aliasing_options,
     };
 
@@ -2424,7 +2424,7 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
         s_aws_mqtt5_mock_server_handle_timeout_publish;
 
     /* fast publish timeout */
-    test_options.client_options.operation_timeout_seconds = 5;
+    test_options.client_options.ack_timeout_seconds = 5;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 

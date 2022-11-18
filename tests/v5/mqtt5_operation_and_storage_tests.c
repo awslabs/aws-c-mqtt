@@ -2043,7 +2043,7 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
         &test_context->dummy_client.operational_state, allocator, &test_context->dummy_client);
 
     struct aws_mqtt5_client_options_storage test_storage = {
-        .operation_timeout_seconds = 0,
+        .ack_timeout_seconds = 0,
     };
 
     test_context->dummy_client.config = &test_storage;
@@ -3287,8 +3287,7 @@ static int s_mqtt5_client_options_defaults_set_fn(struct aws_allocator *allocato
         client_options_storage->min_connected_time_to_reset_reconnect_delay_ms);
     ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS, client_options_storage->ping_timeout_ms);
     ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_CONNACK_TIMEOUT_MS, client_options_storage->connack_timeout_ms);
-    ASSERT_INT_EQUALS(
-        AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS, client_options_storage->operation_timeout_seconds);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS, client_options_storage->ack_timeout_seconds);
 
     aws_mqtt5_client_options_storage_destroy(client_options_storage);
     aws_client_bootstrap_release(bootstrap);
