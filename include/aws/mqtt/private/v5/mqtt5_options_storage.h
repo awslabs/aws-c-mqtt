@@ -62,7 +62,7 @@ enum aws_mqtt5_operation_statistic_state_flags {
 struct aws_mqtt5_operation {
     const struct aws_mqtt5_operation_vtable *vtable;
     struct aws_ref_count ref_count;
-    uint64_t timeout_timepoint_ns;
+    uint64_t ack_timeout_timepoint_ns;
     struct aws_linked_list_node node;
 
     enum aws_mqtt5_packet_type packet_type;
@@ -162,7 +162,7 @@ struct aws_mqtt5_client_options_storage {
     uint64_t max_reconnect_delay_ms;
     uint64_t min_connected_time_to_reset_reconnect_delay_ms;
 
-    uint64_t operation_timeout_seconds;
+    uint64_t ack_timeout_seconds;
 
     uint32_t ping_timeout_ms;
     uint32_t connack_timeout_ms;
