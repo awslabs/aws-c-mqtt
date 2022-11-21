@@ -600,7 +600,7 @@ struct aws_mqtt5_client_options {
      * failing the packet, notifying the client of failure, and removing it.  If this is zero, a default of 60 seconds
      * will be used.
      */
-    uint32_t operation_timeout_seconds;
+    uint32_t ack_timeout_seconds;
 
     /**
      * Controls how the client uses mqtt5 topic aliasing.  If NULL, zero-based defaults will be used.

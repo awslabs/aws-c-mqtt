@@ -3753,8 +3753,8 @@ static void s_apply_zero_valued_defaults_to_client_options_storage(
         options_storage->connack_timeout_ms = AWS_MQTT5_CLIENT_DEFAULT_CONNACK_TIMEOUT_MS;
     }
 
-    if (options_storage->operation_timeout_seconds == 0) {
-        options_storage->operation_timeout_seconds = AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS;
+    if (options_storage->ack_timeout_seconds == 0) {
+        options_storage->ack_timeout_seconds = AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS;
     }
 
     if (options_storage->topic_aliasing_options.inbound_alias_cache_size == 0) {
@@ -3847,7 +3847,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->ping_timeout_ms = options->ping_timeout_ms;
     options_storage->connack_timeout_ms = options->connack_timeout_ms;
 
-    options_storage->operation_timeout_seconds = options->operation_timeout_seconds;
+    options_storage->ack_timeout_seconds = options->ack_timeout_seconds;
 
     if (options->topic_aliasing_options != NULL) {
         options_storage->topic_aliasing_options = *options->topic_aliasing_options;
