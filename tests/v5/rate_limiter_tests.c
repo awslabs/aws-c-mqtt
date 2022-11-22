@@ -299,7 +299,6 @@ static int s_rate_limiter_token_bucket_real_iteration_fn(struct aws_allocator *a
     uint64_t expected_elapsed = aws_timestamp_convert(3, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
     ASSERT_TRUE(elapsed_time > (uint64_t)(expected_elapsed * .99));
-    ASSERT_TRUE(elapsed_time < (uint64_t)(expected_elapsed * 1.1));
 
     return AWS_OP_SUCCESS;
 }
