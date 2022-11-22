@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/mqtt/v5/mqtt5_types.h>
+#include <aws/mqtt/private/v5/mqtt5_utils.h>
 
 /* disconnect and shared reason codes */
 static const char *s_normal_disconnection = "Normal Disconnection";
