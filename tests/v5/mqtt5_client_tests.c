@@ -5112,8 +5112,10 @@ void s_aliased_publish_received_fn(const struct aws_mqtt5_packet_publish_view *p
     aws_condition_variable_notify_all(&test_fixture->signal);
 }
 
-static enum aws_mqtt5_suback_reason_code s_alias_reason_codes[] = {AWS_MQTT5_SARC_GRANTED_QOS_1,
-                                                                   AWS_MQTT5_SARC_GRANTED_QOS_1};
+static enum aws_mqtt5_suback_reason_code s_alias_reason_codes[] = {
+    AWS_MQTT5_SARC_GRANTED_QOS_1,
+    AWS_MQTT5_SARC_GRANTED_QOS_1,
+};
 static uint8_t s_alias_topic1[] = "alias/first/topic";
 static uint8_t s_alias_topic2[] = "alias/second/topic";
 
@@ -5134,14 +5136,16 @@ static int s_aws_mqtt5_server_send_aliased_publish_sequence(
     }
 
     uint16_t alias_id = 1;
-    struct aws_mqtt5_packet_publish_view publish_view = {.packet_id = 1,
-                                                         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
-                                                         .topic =
-                                                             {
-                                                                 .ptr = s_alias_topic1,
-                                                                 .len = AWS_ARRAY_SIZE(s_alias_topic1) - 1,
-                                                             },
-                                                         .topic_alias = &alias_id};
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .packet_id = 1,
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .topic =
+            {
+                .ptr = s_alias_topic1,
+                .len = AWS_ARRAY_SIZE(s_alias_topic1) - 1,
+            },
+        .topic_alias = &alias_id,
+    };
 
     // establish an alias with id 1
     if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
@@ -5271,8 +5275,10 @@ static int s_mqtt5_client_inbound_alias_success_fn(struct aws_allocator *allocat
 
     s_wait_for_connected_lifecycle_event(&test_context);
 
-    struct aws_mqtt5_packet_subscribe_view subscribe = {.subscriptions = s_alias_subscriptions,
-                                                        .subscription_count = AWS_ARRAY_SIZE(s_alias_subscriptions)};
+    struct aws_mqtt5_packet_subscribe_view subscribe = {
+        .subscriptions = s_alias_subscriptions,
+        .subscription_count = AWS_ARRAY_SIZE(s_alias_subscriptions),
+    };
 
     ASSERT_SUCCESS(aws_mqtt5_client_subscribe(client, &subscribe, NULL));
 
@@ -5395,8 +5401,10 @@ static int s_do_inbound_alias_failure_test(
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
-    struct aws_mqtt5_test_inbound_alias_failure_context full_test_context = {.test_fixture = &test_context,
-                                                                             .failure_type = test_failure_type};
+    struct aws_mqtt5_test_inbound_alias_failure_context full_test_context = {
+        .test_fixture = &test_context,
+        .failure_type = test_failure_type,
+    };
 
     struct aws_mqtt5_client_topic_alias_options aliasing_config = {
         .inbound_alias_cache_size = 10,
@@ -5419,8 +5427,10 @@ static int s_do_inbound_alias_failure_test(
 
     s_wait_for_connected_lifecycle_event(&test_context);
 
-    struct aws_mqtt5_packet_subscribe_view subscribe = {.subscriptions = s_alias_subscriptions,
-                                                        .subscription_count = AWS_ARRAY_SIZE(s_alias_subscriptions)};
+    struct aws_mqtt5_packet_subscribe_view subscribe = {
+        .subscriptions = s_alias_subscriptions,
+        .subscription_count = AWS_ARRAY_SIZE(s_alias_subscriptions),
+    };
 
     ASSERT_SUCCESS(aws_mqtt5_client_subscribe(client, &subscribe, NULL));
 
