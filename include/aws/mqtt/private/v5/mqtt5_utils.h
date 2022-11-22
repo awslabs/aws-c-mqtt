@@ -327,7 +327,7 @@ AWS_MQTT_API struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(st
  * @param topic_cursor topic or topic filter
  * @return number of topic segments in the topic or topic filter
  */
-AWS_MQTT_API size_t aws_mqtt5_topic_get_segment_count(const struct aws_byte_cursor topic_cursor);
+AWS_MQTT_API size_t aws_mqtt5_topic_get_segment_count(struct aws_byte_cursor topic_cursor);
 
 /**
  * Checks a topic filter for validity against AWS IoT Core rules

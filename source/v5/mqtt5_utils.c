@@ -407,7 +407,7 @@ uint64_t aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to) {
 
 static uint8_t s_aws_iot_core_rules_prefix[] = "$aws/rules/";
 
-struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(const struct aws_byte_cursor topic_cursor) {
+struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(struct aws_byte_cursor topic_cursor) {
     size_t prefix_length = AWS_ARRAY_SIZE(s_aws_iot_core_rules_prefix) - 1; /* skip 0-terminator */
 
     struct aws_byte_cursor rules_prefix = {
