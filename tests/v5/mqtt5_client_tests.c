@@ -2456,7 +2456,7 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
 
     struct aws_mqtt5_client_test_wait_for_n_context wait_context = {
         .test_fixture = &test_context,
-        .required_event_count = aws_mqtt5_client_random_in_range(3, 20),
+        .required_event_count = (size_t)aws_mqtt5_client_random_in_range(3, 20),
     };
 
     /* Send semi-random number of publishes that will not be acked */
