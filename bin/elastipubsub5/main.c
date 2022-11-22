@@ -33,6 +33,12 @@
 #    pragma warning(disable : 4221) /* Local var in declared initializer */
 #endif
 
+#ifdef WIN32
+    // Windows does not need specific imports
+#else
+#   include <stdio.h>
+#endif
+
 struct app_ctx {
     struct aws_allocator *allocator;
     struct aws_mutex lock;
