@@ -160,7 +160,7 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
             case 'h':
                 s_usage(0);
                 break;
-            case 'E': {
+            case 0x02: {
                 struct aws_byte_cursor uri_cursor = aws_byte_cursor_from_c_str(aws_cli_positional_arg);
                 if (aws_uri_init_parse(&ctx->uri, ctx->allocator, &uri_cursor)) {
                     fprintf(

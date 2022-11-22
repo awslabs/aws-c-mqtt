@@ -153,6 +153,69 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_QUEUE_FULL,
                 "MQTT request queue is full."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION,
+                "Invalid mqtt5 client options value."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION,
+                "Invalid mqtt5 connect packet options value."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION,
+                "Invalid mqtt5 disconnect packet options value."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION,
+                "Invalid mqtt5 publish packet options value."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION,
+                "Invalid mqtt5 subscribe packet options value."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION,
+                "Invalid mqtt5 unsubscribe packet options value."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION,
+                "Invalid mqtt5 user property value."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_PACKET_VALIDATION,
+                "General mqtt5 packet validation error"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_ENCODE_FAILURE,
+                "Error occurred while encoding an outgoing mqtt5 packet"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR,
+                "Mqtt5 decoder received an invalid packet that broke mqtt5 protocol rules"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+                "Remote endpoint rejected the CONNECT attempt by returning an unsuccessful CONNACK"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_CONNACK_TIMEOUT,
+                "Remote endpoint did not respond to a CONNECT request before timeout exceeded"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_PING_RESPONSE_TIMEOUT,
+                "Remote endpoint did not respond to a PINGREQ before timeout exceeded"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_USER_REQUESTED_STOP,
+                "Mqtt5 client connection interrupted by user request."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+                "Mqtt5 client connection interrupted by server DISCONNECT."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_CLIENT_TERMINATED,
+                "Mqtt5 client terminated by user request."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY,
+                "Mqtt5 operation failed due to a disconnection event in conjunction with the client's offline queue retention policy."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_ENCODE_SIZE_UNSUPPORTED_PACKET_TYPE,
+                "Unsupported packet type for encode size calculation"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_OPERATION_PROCESSING_FAILURE,
+                "Error while processing mqtt5 operational state"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_INVALID_INBOUND_TOPIC_ALIAS,
+                "Incoming publish contained an invalid (too large or unknown) topic alias"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_INVALID_OUTBOUND_TOPIC_ALIAS,
+                "Outgoing publish contained an invalid (too large or unknown) topic alias"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
@@ -167,6 +230,9 @@ static struct aws_error_info_list s_error_list = {
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_GENERAL, "mqtt", "Misc MQTT logging"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_CLIENT, "mqtt-client", "MQTT client and connections"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT_TOPIC_TREE, "mqtt-topic-tree", "MQTT subscription tree"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_GENERAL, "mqtt5-general", "Misc MQTT5 logging"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CLIENT, "mqtt5-client", "MQTT5 client and connections"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CANARY, "mqtt5-canary", "MQTT5 canary logging"),
         };
 /* clang-format on */
 
