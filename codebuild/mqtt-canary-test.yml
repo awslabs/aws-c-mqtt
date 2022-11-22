@@ -2,7 +2,7 @@ version: 0.2
 env:
   shell: bash
   variables:
-    CANARY_DURATION: 25200
+    CANARY_DURATION: 7200
     CANARY_THREADS: 3
     CANARY_TPS: 50
     CANARY_CLIENT_COUNT: 10
@@ -11,7 +11,7 @@ env:
     BUILDER_VERSION: v0.9.15
     BUILDER_SOURCE: releases
     BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
-    PACKAGE_NAME: 'aws-c-mqtt-staging'
+    PACKAGE_NAME: 'aws-c-mqtt'
     CANARY_TEST_EXE_PATH: build/install/bin/mqtt5canary
     CANARY_SERVER_ARN: Mqtt5MosquittoSever
     CANARY_BUILD_S3_DST: mqtt5-canary/s3
