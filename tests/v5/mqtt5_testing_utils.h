@@ -121,8 +121,6 @@ struct aws_mqtt5_client_mock_test_fixture {
     uint32_t server_current_inflight_publishes;
 };
 
-AWS_EXTERN_C_BEGIN
-
 int aws_mqtt5_test_verify_user_properties_raw(
     size_t property_count,
     const struct aws_mqtt5_user_property *properties,
@@ -146,7 +144,5 @@ bool aws_mqtt5_client_test_are_packets_equal(
     void *rhs_packet_storage);
 
 size_t aws_mqtt5_linked_list_length(struct aws_linked_list *list);
-
-AWS_EXTERN_C_END
 
 #endif /* MQTT_MQTT5_TESTING_UTILS_H */
