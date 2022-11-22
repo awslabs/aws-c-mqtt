@@ -34,9 +34,9 @@
 #endif
 
 #ifdef WIN32
-    // Windows does not need specific imports
+// Windows does not need specific imports
 #else
-#   include <stdio.h>
+#    include <stdio.h>
 #endif
 
 struct app_ctx {

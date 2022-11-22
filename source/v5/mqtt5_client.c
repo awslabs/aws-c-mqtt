@@ -19,6 +19,11 @@
 
 #include <inttypes.h>
 
+#ifdef _MSC_VER
+#    pragma warning(push)
+#    pragma warning(disable : 4232) /* function pointer to dll symbol */
+#endif
+
 #define AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH 4096
 #define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
 
