@@ -49,7 +49,7 @@ phases:
       - zip -r latestBuild.zip build/install
       - aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
       # upload latest source to S3 bucket
-      - find * -type f ! -perm -g+r -exec zip test.zip {} +
+      - find * -type f ! -perm +r -exec zip latestSnapshot.zip {} +
       - aws s3 cp ./latestSnapshot.zip ${S3_DST}source/latest
       # ==========
 
