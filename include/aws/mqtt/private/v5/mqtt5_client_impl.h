@@ -302,6 +302,35 @@ struct aws_mqtt5_client_flow_control_state {
     struct aws_rate_limiter_token_bucket publish_throttle;
 };
 
+/**
+ * Contains some simple statistics about the current state of the client's queue of operations
+ */
+struct aws_mqtt5_client_operation_statistics_impl {
+    /*
+     * total number of operations submitted to the client that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    struct aws_atomic_var incomplete_operation_count_atomic;
+
+    /*
+     * total packet size of operations submitted to the client that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    struct aws_atomic_var incomplete_operation_size_atomic;
+
+    /*
+     * total number of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    struct aws_atomic_var unacked_operation_count_atomic;
+
+    /*
+     * total packet size of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    struct aws_atomic_var unacked_operation_size_atomic;
+};
+
 struct aws_mqtt5_client {
 
     struct aws_allocator *allocator;
@@ -389,7 +418,7 @@ struct aws_mqtt5_client {
      *
      * clean_disconnect_error_code - the CLEAN_DISCONNECT state takes time to complete and we want to be able
      * to pass an error code from a prior event to the channel shutdown.  This holds the "override" error code
-     * that we'd like to shutdown the channel with while CLEAN_DISCONNECT is processed.
+     * that we'd like to shut down the channel with while CLEAN_DISCONNECT is processed.
      *
      * handshake exists on websocket-configured clients between the transform completion timepoint and the
      * websocket setup callback.
@@ -402,16 +431,8 @@ struct aws_mqtt5_client {
      */
     struct aws_mqtt5_client_operational_state operational_state;
 
-    /*
-     * TODO: topic alias mappings, from-server and to-server have independent mappings
-     *
-     * From-server requires a single table
-     * To-server requires both a table and a list (for LRU)
-     */
-
     /* Statistics tracking operational state */
-    struct aws_mutex operation_statistics_lock;
-    struct aws_mqtt5_client_operation_statistics operation_statistics;
+    struct aws_mqtt5_client_operation_statistics_impl operation_statistics_impl;
 
     /*
      * Wraps all state related to outbound flow control.
