@@ -2602,9 +2602,6 @@ static int s_mqtt5_client_flow_control_iot_core_throughput_fn(struct aws_allocat
 
     uint64_t test_time2 = end_time2 - start_time2;
 
-    /* We expect the unthrottled test to complete quickly */
-    ASSERT_TRUE(test_time1 < AWS_TIMESTAMP_NANOS);
-
     /*
      * We expect the throttled version to take around 5 seconds, since we're sending 21 almost-max size (127k) packets
      * against a limit of 512KB/s.  Since the packets are submitted immediately on CONNACK, the rate limiter
