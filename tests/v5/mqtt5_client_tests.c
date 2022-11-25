@@ -2582,35 +2582,22 @@ static int s_mqtt5_client_flow_control_iot_core_throughput_fn(struct aws_allocat
 
     aws_mqtt_library_init(allocator);
 
-    uint64_t start_time1 = 0;
-    aws_high_res_clock_get_ticks(&start_time1);
-
-    ASSERT_SUCCESS(s_do_iot_core_throughput_test(allocator, false));
-
-    uint64_t end_time1 = 0;
-    aws_high_res_clock_get_ticks(&end_time1);
-
-    uint64_t test_time1 = end_time1 - start_time1;
-
-    uint64_t start_time2 = 0;
-    aws_high_res_clock_get_ticks(&start_time2);
+    uint64_t start_time = 0;
+    aws_high_res_clock_get_ticks(&start_time);
 
     ASSERT_SUCCESS(s_do_iot_core_throughput_test(allocator, true));
 
-    uint64_t end_time2 = 0;
-    aws_high_res_clock_get_ticks(&end_time2);
+    uint64_t end_time = 0;
+    aws_high_res_clock_get_ticks(&end_time);
 
-    uint64_t test_time2 = end_time2 - start_time2;
-
-    /* We expect the unthrottled test to complete quickly */
-    ASSERT_TRUE(test_time1 < AWS_TIMESTAMP_NANOS);
+    uint64_t test_time = end_time - start_time;
 
     /*
      * We expect the throttled version to take around 5 seconds, since we're sending 21 almost-max size (127k) packets
      * against a limit of 512KB/s.  Since the packets are submitted immediately on CONNACK, the rate limiter
      * token bucket is starting at zero and so will give us immediate throttling.
      */
-    ASSERT_TRUE(test_time2 > 5 * (uint64_t)AWS_TIMESTAMP_NANOS);
+    ASSERT_TRUE(test_time > 5 * (uint64_t)AWS_TIMESTAMP_NANOS);
 
     aws_mqtt_library_clean_up();
 
