@@ -70,6 +70,13 @@ static bool s_aws_mqtt5_operation_is_retainable(struct aws_mqtt5_operation *oper
     }
 }
 
+static void s_init_statistics(struct aws_mqtt5_client_operation_statistics_impl *stats) {
+    aws_atomic_store_int(&stats->incomplete_operation_count_atomic, 0);
+    aws_atomic_store_int(&stats->incomplete_operation_size_atomic, 0);
+    aws_atomic_store_int(&stats->unacked_operation_count_atomic, 0);
+    aws_atomic_store_int(&stats->unacked_operation_size_atomic, 0);
+}
+
 static bool s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(
     struct aws_mqtt5_operation *operation,
     enum aws_mqtt5_client_operation_queue_behavior_type queue_behavior) {
@@ -290,8 +297,6 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 
     aws_mqtt5_inbound_topic_alias_resolver_clean_up(&client->inbound_topic_alias_resolver);
     aws_mqtt5_outbound_topic_alias_resolver_destroy(client->outbound_topic_alias_resolver);
-
-    aws_mutex_clean_up(&client->operation_statistics_lock);
 
     aws_mem_release(client->allocator, client);
 
@@ -2071,7 +2076,7 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
 
     aws_mqtt5_client_options_storage_log(client->config, AWS_LL_DEBUG);
 
-    aws_mutex_init(&client->operation_statistics_lock);
+    s_init_statistics(&client->operation_statistics_impl);
 
     return client;
 
@@ -3262,34 +3267,27 @@ void aws_mqtt5_client_statistics_change_operation_statistic_state(
         return;
     }
 
-    aws_mutex_lock(&client->operation_statistics_lock);
-    struct aws_mqtt5_client_operation_statistics *stats = &client->operation_statistics;
+    struct aws_mqtt5_client_operation_statistics_impl *stats = &client->operation_statistics_impl;
 
     if ((old_state_flags & AWS_MQTT5_OSS_INCOMPLETE) != (new_state_flags & AWS_MQTT5_OSS_INCOMPLETE)) {
         if ((new_state_flags & AWS_MQTT5_OSS_INCOMPLETE) != 0) {
-            ++stats->incomplete_operation_count;
-            stats->incomplete_operation_size += packet_size;
+            aws_atomic_fetch_add(&stats->incomplete_operation_count_atomic, 1);
+            aws_atomic_fetch_add(&stats->incomplete_operation_size_atomic, (size_t)packet_size);
         } else {
-            AWS_FATAL_ASSERT(stats->incomplete_operation_count > 0 && stats->incomplete_operation_size >= packet_size);
-
-            --stats->incomplete_operation_count;
-            stats->incomplete_operation_size -= packet_size;
+            aws_atomic_fetch_sub(&stats->incomplete_operation_count_atomic, 1);
+            aws_atomic_fetch_sub(&stats->incomplete_operation_size_atomic, (size_t)packet_size);
         }
     }
 
     if ((old_state_flags & AWS_MQTT5_OSS_UNACKED) != (new_state_flags & AWS_MQTT5_OSS_UNACKED)) {
         if ((new_state_flags & AWS_MQTT5_OSS_UNACKED) != 0) {
-            ++stats->unacked_operation_count;
-            stats->unacked_operation_size += packet_size;
+            aws_atomic_fetch_add(&stats->unacked_operation_count_atomic, 1);
+            aws_atomic_fetch_add(&stats->unacked_operation_size_atomic, (size_t)packet_size);
         } else {
-            AWS_FATAL_ASSERT(stats->unacked_operation_count > 0 && stats->unacked_operation_size >= packet_size);
-
-            --stats->unacked_operation_count;
-            stats->unacked_operation_size -= packet_size;
+            aws_atomic_fetch_sub(&stats->unacked_operation_count_atomic, 1);
+            aws_atomic_fetch_sub(&stats->unacked_operation_size_atomic, (size_t)packet_size);
         }
     }
-
-    aws_mutex_unlock(&client->operation_statistics_lock);
 
     operation->statistic_state_flags = new_state_flags;
 
@@ -3300,7 +3298,12 @@ void aws_mqtt5_client_statistics_change_operation_statistic_state(
 }
 
 void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt5_client_operation_statistics *stats) {
-    aws_mutex_lock(&client->operation_statistics_lock);
-    *stats = client->operation_statistics;
-    aws_mutex_unlock(&client->operation_statistics_lock);
+    stats->incomplete_operation_count =
+        (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.incomplete_operation_count_atomic);
+    stats->incomplete_operation_size =
+        (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.incomplete_operation_size_atomic);
+    stats->unacked_operation_count =
+        (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.unacked_operation_count_atomic);
+    stats->unacked_operation_size =
+        (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.unacked_operation_size_atomic);
 }

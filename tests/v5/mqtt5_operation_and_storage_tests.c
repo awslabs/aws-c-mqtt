@@ -2076,8 +2076,6 @@ static void s_aws_mqtt5_operation_processing_test_context_init(
     /* this keeps operation processing tests from crashing when dereferencing config options */
     test_context->dummy_client.config = &test_context->dummy_client_options;
 
-    aws_mutex_init(&test_context->dummy_client.operation_statistics_lock);
-
     aws_array_list_init_dynamic(&test_context->output_io_messages, allocator, 0, sizeof(struct aws_io_message *));
 
     struct aws_mqtt5_encoder_options verification_encoder_options = {
@@ -2106,8 +2104,6 @@ static void s_aws_mqtt5_operation_processing_test_context_clean_up(
 
     aws_mqtt5_encoder_clean_up(&test_context->dummy_client.encoder);
     aws_mqtt5_client_operational_state_clean_up(&test_context->dummy_client.operational_state);
-
-    aws_mutex_clean_up(&test_context->dummy_client.operation_statistics_lock);
 
     aws_array_list_clean_up(&test_context->completed_operation_error_codes);
 }
