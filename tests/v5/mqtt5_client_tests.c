@@ -1105,6 +1105,19 @@ static int s_mqtt5_client_ping_sequence_fn(struct aws_allocator *allocator, void
     s_wait_for_connected_lifecycle_event(&test_context);
     s_wait_for_n_pingreqs(&ping_context);
 
+    /*
+     * There's a really unpleasant race condition where we can stop the client so fast (based on the mock
+     * server receiving PINGREQs that the mock server's socket gets closed underneath it as it is trying to
+     * write the PINGRESP back to the client, which in turn triggers channel shutdown where no further data
+     * is read from the socket, so we never see the DISCONNECT that the client actually sent.
+     *
+     * We're not able to wait on the PINGRESP because we have no insight into when it's received.  So for now,
+     * we'll insert an artificial sleep before stopping the client.  We should try and come up with a more
+     * elegant solution.
+     */
+
+    aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+
     struct aws_mqtt5_packet_disconnect_view disconnect_view = {
         .reason_code = AWS_MQTT5_DRC_NORMAL_DISCONNECTION,
     };
