@@ -949,7 +949,7 @@ class ApplicationMonitor():
         else:
             self.print_message ("[ApplicationMonitor] ERROR - cannot stop monitor application because no process is found!")
 
-    def print_stdout():
+    def print_stdout(self):
         # Print the STDOUT file
         if (os.path.isfile(self.stdout_file_path)):
             self.print_message("Just finished Application STDOUT: ")
