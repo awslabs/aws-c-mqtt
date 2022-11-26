@@ -123,7 +123,8 @@ data_snapshot.register_metric(
     new_metric_unit="Percent",
     new_metric_alarm_threshold=70,
     new_metric_reports_to_skip=1,
-    new_metric_alarm_severity=5)
+    new_metric_alarm_severity=5,
+    is_percent=True)
 data_snapshot.register_metric(
     new_metric_name="total_memory_usage_value",
     new_metric_function=get_metric_total_memory_usage_value,
@@ -134,7 +135,8 @@ data_snapshot.register_metric(
     new_metric_unit="Percent",
     new_metric_alarm_threshold=70,
     new_metric_reports_to_skip=0,
-    new_metric_alarm_severity=5)
+    new_metric_alarm_severity=5,
+    is_percent=True)
 
 # Print diagnosis information
 data_snapshot.output_diagnosis_information(command_parser_arguments.dependencies)
@@ -217,51 +219,25 @@ def application_thread():
     finished_email_body = "MQTT5 Short Running Canary Wrapper has stopped."
     finished_email_body += "\n\n"
 
-    # Find out why we stopped
-    if (snapshot_monitor.had_internal_error == True):
-        if (snapshot_monitor.has_cut_ticket == True):
-            # We do not need to cut a ticket here - it's cut by the snapshot monitor!
-            print ("ERROR - Snapshot monitor stopped due to metric in alarm!", flush=True)
-            finished_email_body += "Failure due to required metrics being in alarm! A new ticket should have been cut!"
-            finished_email_body += "\nMetrics in Alarm: " + str(snapshot_monitor.cloudwatch_current_alarms_triggered)
-            wrapper_error_occurred = True
-        else:
-            print ("ERROR - Snapshot monitor stopped due to internal error!", flush=True)
-            cut_ticket_using_cloudwatch(
-                git_repo_name=command_parser_arguments.git_repo_name,
-                git_hash=command_parser_arguments.git_hash,
-                git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
-                git_fixed_namespace_text="mqtt5_canary",
-                cloudwatch_region="us-east-1",
-                ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + snapshot_monitor.internal_error_reason,
-                ticket_reason="Snapshot monitor stopped due to internal error",
-                ticket_allow_duplicates=True,
-                ticket_category=command_parser_arguments.ticket_category,
-                ticket_item=command_parser_arguments.ticket_item,
-                ticket_group=command_parser_arguments.ticket_group,
-                ticket_type=command_parser_arguments.ticket_type,
-                ticket_severity=4)
-            wrapper_error_occurred = True
-            finished_email_body += "Failure due to Snapshot monitor stopping due to an internal error."
-            finished_email_body += " Reason given for error: " + snapshot_monitor.internal_error_reason
-
-    elif (application_monitor.error_has_occurred == True):
-        if (application_monitor.error_due_to_credentials == True):
-            print ("INFO - Stopping application due to error caused by credentials")
-            print ("Please fix your credentials and then restart this application again", flush=True)
-            wrapper_error_occurred = True
-            send_finished_email = False
-        else:
-            # Is the error something in the canary failed?
-            if (application_monitor.error_code != 0):
+    try:
+        # Find out why we stopped
+        if (snapshot_monitor.had_internal_error == True):
+            if (snapshot_monitor.has_cut_ticket == True):
+                # We do not need to cut a ticket here - it's cut by the snapshot monitor!
+                print ("ERROR - Snapshot monitor stopped due to metric in alarm!", flush=True)
+                finished_email_body += "Failure due to required metrics being in alarm! A new ticket should have been cut!"
+                finished_email_body += "\nMetrics in Alarm: " + str(snapshot_monitor.cloudwatch_current_alarms_triggered)
+                wrapper_error_occurred = True
+            else:
+                print ("ERROR - Snapshot monitor stopped due to internal error!", flush=True)
                 cut_ticket_using_cloudwatch(
                     git_repo_name=command_parser_arguments.git_repo_name,
                     git_hash=command_parser_arguments.git_hash,
                     git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
                     git_fixed_namespace_text="mqtt5_canary",
                     cloudwatch_region="us-east-1",
-                    ticket_description="The Short Running Canary exited with a non-zero exit code! This likely means something in the canary failed.",
-                    ticket_reason="The Short Running Canary exited with a non-zero exit code",
+                    ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + snapshot_monitor.internal_error_reason,
+                    ticket_reason="Snapshot monitor stopped due to internal error",
                     ticket_allow_duplicates=True,
                     ticket_category=command_parser_arguments.ticket_category,
                     ticket_item=command_parser_arguments.ticket_item,
@@ -269,29 +245,60 @@ def application_thread():
                     ticket_type=command_parser_arguments.ticket_type,
                     ticket_severity=4)
                 wrapper_error_occurred = True
-                finished_email_body += "Failure due to MQTT5 application exiting with a non-zero exit code! This means something in the Canary application itself failed"
+                finished_email_body += "Failure due to Snapshot monitor stopping due to an internal error."
+                finished_email_body += " Reason given for error: " + snapshot_monitor.internal_error_reason
+
+        elif (application_monitor.error_has_occurred == True):
+            if (application_monitor.error_due_to_credentials == True):
+                print ("INFO - Stopping application due to error caused by credentials")
+                print ("Please fix your credentials and then restart this application again", flush=True)
+                wrapper_error_occurred = True
+                send_finished_email = False
             else:
-                print ("INFO - Stopping application. No error has occurred, application has stopped normally", flush=True)
-                finished_email_body += "Short Running Canary finished successfully and run without errors!"
-                wrapper_error_occurred = False
-    else:
-        print ("ERROR - Short Running Canary stopped due to unknown reason!", flush=True)
-        cut_ticket_using_cloudwatch(
-            git_repo_name=command_parser_arguments.git_repo_name,
-            git_hash=command_parser_arguments.git_hash,
-            git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
-            git_fixed_namespace_text="mqtt5_canary",
-            cloudwatch_region="us-east-1",
-            ticket_description="The Short Running Canary stopped for an unknown reason!",
-            ticket_reason="The Short Running Canary stopped for unknown reason",
-            ticket_allow_duplicates=True,
-            ticket_category=command_parser_arguments.ticket_category,
-            ticket_item=command_parser_arguments.ticket_item,
-            ticket_group=command_parser_arguments.ticket_group,
-            ticket_type=command_parser_arguments.ticket_type,
-            ticket_severity=4)
-        wrapper_error_occurred = True
-        finished_email_body += "Failure due to unknown reason! This shouldn't happen and means something has gone wrong!"
+                # Is the error something in the canary failed?
+                if (application_monitor.error_code != 0):
+                    cut_ticket_using_cloudwatch(
+                        git_repo_name=command_parser_arguments.git_repo_name,
+                        git_hash=command_parser_arguments.git_hash,
+                        git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
+                        git_fixed_namespace_text="mqtt5_canary",
+                        cloudwatch_region="us-east-1",
+                        ticket_description="The Short Running Canary exited with a non-zero exit code! This likely means something in the canary failed.",
+                        ticket_reason="The Short Running Canary exited with a non-zero exit code",
+                        ticket_allow_duplicates=True,
+                        ticket_category=command_parser_arguments.ticket_category,
+                        ticket_item=command_parser_arguments.ticket_item,
+                        ticket_group=command_parser_arguments.ticket_group,
+                        ticket_type=command_parser_arguments.ticket_type,
+                        ticket_severity=4)
+                    wrapper_error_occurred = True
+                    finished_email_body += "Failure due to MQTT5 application exiting with a non-zero exit code! This means something in the Canary application itself failed"
+                else:
+                    print ("INFO - Stopping application. No error has occurred, application has stopped normally", flush=True)
+                    application_monitor.print_stdout()
+                    finished_email_body += "Short Running Canary finished successfully and run without errors!"
+                    wrapper_error_occurred = False
+        else:
+            print ("ERROR - Short Running Canary stopped due to unknown reason!", flush=True)
+            cut_ticket_using_cloudwatch(
+                git_repo_name=command_parser_arguments.git_repo_name,
+                git_hash=command_parser_arguments.git_hash,
+                git_hash_as_namespace=command_parser_arguments.git_hash_as_namespace,
+                git_fixed_namespace_text="mqtt5_canary",
+                cloudwatch_region="us-east-1",
+                ticket_description="The Short Running Canary stopped for an unknown reason!",
+                ticket_reason="The Short Running Canary stopped for unknown reason",
+                ticket_allow_duplicates=True,
+                ticket_category=command_parser_arguments.ticket_category,
+                ticket_item=command_parser_arguments.ticket_item,
+                ticket_group=command_parser_arguments.ticket_group,
+                ticket_type=command_parser_arguments.ticket_type,
+                ticket_severity=4)
+            wrapper_error_occurred = True
+            finished_email_body += "Failure due to unknown reason! This shouldn't happen and means something has gone wrong!"
+    except Exception as e:
+        print ("ERROR: Could not (possibly) cut ticket due to exception!")
+        print ("Exception: " + str(e), flush=True)
 
     # Clean everything up and stop
     snapshot_monitor.cleanup_monitor(error_occurred=wrapper_error_occurred)

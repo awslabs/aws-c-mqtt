@@ -284,6 +284,7 @@ static int s_read_connack_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Read CONNACK property decode failure", packet_cursor);
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -426,6 +427,7 @@ static int s_read_publish_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Read PUBLISH property decode failure", packet_cursor);
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -589,6 +591,7 @@ static int s_read_puback_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Read PUBACK property decode failure", packet_cursor);
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -697,6 +700,7 @@ static int s_read_suback_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Read SUBACK property decode failure", packet_cursor);
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -795,6 +799,7 @@ static int s_read_unsuback_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Read UNSUBACK property decode failure", packet_cursor);
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -924,6 +929,7 @@ static int s_read_disconnect_property(
 done:
 
     if (result == AWS_OP_ERR) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Read DISCONNECT property decode failure", packet_cursor);
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -1024,6 +1030,7 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
     enum aws_mqtt5_packet_type packet_type = (enum aws_mqtt5_packet_type)(decoder->packet_first_byte >> 4);
     aws_mqtt5_decoding_fn *decoder_fn = decoder->options.decoder_table->decoders_by_packet_type[packet_type];
     if (decoder_fn == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Decoder decode packet function missing!", decoder);
         return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 

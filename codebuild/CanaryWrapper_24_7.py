@@ -123,7 +123,8 @@ data_snapshot.register_metric(
     new_metric_unit="Percent",
     new_metric_alarm_threshold=70,
     new_metric_reports_to_skip=1,
-    new_metric_alarm_severity=5)
+    new_metric_alarm_severity=5,
+    is_percent=True)
 data_snapshot.register_metric(
     new_metric_name="total_memory_usage_value",
     new_metric_function=get_metric_total_memory_usage_value,
@@ -134,7 +135,8 @@ data_snapshot.register_metric(
     new_metric_unit="Percent",
     new_metric_alarm_threshold=70,
     new_metric_reports_to_skip=0,
-    new_metric_alarm_severity=5)
+    new_metric_alarm_severity=5,
+    is_percent=True)
 
 data_snapshot.register_dashboard_widget("Process CPU Usage - Percentage", ["total_cpu_usage"], 60)
 data_snapshot.register_dashboard_widget("Process Memory Usage - Percentage", ["total_memory_usage_percent"], 60)
@@ -250,120 +252,124 @@ def application_thread():
     finished_email_body = "MQTT5 24/7 Canary Wrapper has stopped."
     finished_email_body += "\n\n"
 
-    # Find out why we stopped
-    # S3 Monitor
-    if (s3_monitor.had_internal_error == True):
-        if (s3_monitor.error_due_to_credentials == False):
-            print ("ERROR - S3 monitor stopped due to internal error!")
-            cut_ticket_using_cloudwatch(
-                git_repo_name=canary_local_git_repo_stub,
-                git_hash=canary_local_git_hash_stub,
-                git_hash_as_namespace=False,
-                git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                cloudwatch_region=canary_region_stub,
-                ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + s3_monitor.internal_error_reason,
-                ticket_reason="S3 monitor stopped due to internal error",
-                ticket_allow_duplicates=True,
-                ticket_category="AWS",
-                ticket_type="SDKs and Tools",
-                ticket_item="IoT SDK for CPP",
-                ticket_group="AWS IoT Device SDK",
-                ticket_severity=4)
-            finished_email_body += "Failure due to S3 monitor stopping due to an internal error."
-            finished_email_body += " Reason given for error: " + s3_monitor.internal_error_reason
-            wrapper_error_occurred = True
-    # Snapshot Monitor
-    elif (snapshot_monitor.had_internal_error == True):
-        if (snapshot_monitor.has_cut_ticket == True):
-            # We do not need to cut a ticket here - it's cut by the snapshot monitor!
-            print ("ERROR - Snapshot monitor stopped due to metric in alarm!")
-            finished_email_body += "Failure due to required metrics being in alarm! A new ticket should have been cut!"
-            finished_email_body += "\nMetrics in Alarm: " + str(snapshot_monitor.cloudwatch_current_alarms_triggered)
-            finished_email_body += "\nNOTE - this shouldn't occur in the 24/7 Canary! If it does, then the wrapper needs adjusting."
-            wrapper_error_occurred = True
-        else:
-            print ("ERROR - Snapshot monitor stopped due to internal error!")
-            cut_ticket_using_cloudwatch(
-                git_repo_name=canary_local_git_repo_stub,
-                git_hash=canary_local_git_hash_stub,
-                git_hash_as_namespace=False,
-                git_fixed_namespace_text=canary_local_git_fixed_namespace,
-                cloudwatch_region=canary_region_stub,
-                ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + snapshot_monitor.internal_error_reason,
-                ticket_reason="Snapshot monitor stopped due to internal error",
-                ticket_allow_duplicates=True,
-                ticket_category="AWS",
-                ticket_type="SDKs and Tools",
-                ticket_item="IoT SDK for CPP",
-                ticket_group="AWS IoT Device SDK",
-                ticket_severity=4)
-            wrapper_error_occurred = True
-            finished_email_body += "Failure due to Snapshot monitor stopping due to an internal error."
-            finished_email_body += " Reason given for error: " + snapshot_monitor.internal_error_reason
-    # Application Monitor
-    elif (application_monitor.error_has_occurred == True):
-        if (application_monitor.error_due_to_credentials == True):
-            print ("INFO - Stopping application due to error caused by credentials")
-            print ("Please fix your credentials and then restart this application again")
-            wrapper_error_occurred = True
-            send_finished_email = False
-        else:
-            # Is the error something in the canary failed?
-            if (application_monitor.error_code != 0):
+    try:
+        # Find out why we stopped
+        # S3 Monitor
+        if (s3_monitor.had_internal_error == True):
+            if (s3_monitor.error_due_to_credentials == False):
+                print ("ERROR - S3 monitor stopped due to internal error!")
                 cut_ticket_using_cloudwatch(
                     git_repo_name=canary_local_git_repo_stub,
                     git_hash=canary_local_git_hash_stub,
                     git_hash_as_namespace=False,
                     git_fixed_namespace_text=canary_local_git_fixed_namespace,
                     cloudwatch_region=canary_region_stub,
-                    ticket_description="The 24/7 Canary exited with a non-zero exit code! This likely means something in the canary failed.",
-                    ticket_reason="The 24/7 Canary exited with a non-zero exit code",
+                    ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + s3_monitor.internal_error_reason,
+                    ticket_reason="S3 monitor stopped due to internal error",
                     ticket_allow_duplicates=True,
                     ticket_category="AWS",
                     ticket_type="SDKs and Tools",
                     ticket_item="IoT SDK for CPP",
                     ticket_group="AWS IoT Device SDK",
-                    ticket_severity=3)
+                    ticket_severity=4)
+                finished_email_body += "Failure due to S3 monitor stopping due to an internal error."
+                finished_email_body += " Reason given for error: " + s3_monitor.internal_error_reason
                 wrapper_error_occurred = True
-                finished_email_body += "Failure due to MQTT5 application exiting with a non-zero exit code!"
-                finished_email_body += " This means something in the Canary application itself failed"
+        # Snapshot Monitor
+        elif (snapshot_monitor.had_internal_error == True):
+            if (snapshot_monitor.has_cut_ticket == True):
+                # We do not need to cut a ticket here - it's cut by the snapshot monitor!
+                print ("ERROR - Snapshot monitor stopped due to metric in alarm!")
+                finished_email_body += "Failure due to required metrics being in alarm! A new ticket should have been cut!"
+                finished_email_body += "\nMetrics in Alarm: " + str(snapshot_monitor.cloudwatch_current_alarms_triggered)
+                finished_email_body += "\nNOTE - this shouldn't occur in the 24/7 Canary! If it does, then the wrapper needs adjusting."
+                wrapper_error_occurred = True
             else:
+                print ("ERROR - Snapshot monitor stopped due to internal error!")
                 cut_ticket_using_cloudwatch(
                     git_repo_name=canary_local_git_repo_stub,
                     git_hash=canary_local_git_hash_stub,
                     git_hash_as_namespace=False,
                     git_fixed_namespace_text=canary_local_git_fixed_namespace,
                     cloudwatch_region=canary_region_stub,
-                    ticket_description="The 24/7 Canary exited with a zero exit code but did not restart!",
-                    ticket_reason="The 24/7 Canary exited with a zero exit code but did not restart",
+                    ticket_description="Snapshot monitor stopped due to internal error! Reason info: " + snapshot_monitor.internal_error_reason,
+                    ticket_reason="Snapshot monitor stopped due to internal error",
                     ticket_allow_duplicates=True,
                     ticket_category="AWS",
                     ticket_type="SDKs and Tools",
                     ticket_item="IoT SDK for CPP",
                     ticket_group="AWS IoT Device SDK",
-                    ticket_severity=3)
+                    ticket_severity=4)
                 wrapper_error_occurred = True
-                finished_email_body += "Failure due to MQTT5 application stopping and not automatically restarting!"
-                finished_email_body += " This shouldn't occur and means something is wrong with the Canary wrapper!"
-    # Other
-    else:
-        print ("ERROR - 24/7 Canary stopped due to unknown reason!")
-        cut_ticket_using_cloudwatch(
-            git_repo_name=canary_local_git_repo_stub,
-            git_hash=canary_local_git_hash_stub,
-            git_hash_as_namespace=False,
-            git_fixed_namespace_text=canary_local_git_fixed_namespace,
-            cloudwatch_region=canary_region_stub,
-            ticket_description="The 24/7 Canary stopped for an unknown reason!",
-            ticket_reason="The 24/7 Canary stopped for unknown reason",
-            ticket_allow_duplicates=True,
-            ticket_category="AWS",
-            ticket_type="SDKs and Tools",
-            ticket_item="IoT SDK for CPP",
-            ticket_group="AWS IoT Device SDK",
-            ticket_severity=3)
-        wrapper_error_occurred = True
-        finished_email_body += "Failure due to unknown reason! This shouldn't happen and means something has gone wrong!"
+                finished_email_body += "Failure due to Snapshot monitor stopping due to an internal error."
+                finished_email_body += " Reason given for error: " + snapshot_monitor.internal_error_reason
+        # Application Monitor
+        elif (application_monitor.error_has_occurred == True):
+            if (application_monitor.error_due_to_credentials == True):
+                print ("INFO - Stopping application due to error caused by credentials")
+                print ("Please fix your credentials and then restart this application again")
+                wrapper_error_occurred = True
+                send_finished_email = False
+            else:
+                # Is the error something in the canary failed?
+                if (application_monitor.error_code != 0):
+                    cut_ticket_using_cloudwatch(
+                        git_repo_name=canary_local_git_repo_stub,
+                        git_hash=canary_local_git_hash_stub,
+                        git_hash_as_namespace=False,
+                        git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                        cloudwatch_region=canary_region_stub,
+                        ticket_description="The 24/7 Canary exited with a non-zero exit code! This likely means something in the canary failed.",
+                        ticket_reason="The 24/7 Canary exited with a non-zero exit code",
+                        ticket_allow_duplicates=True,
+                        ticket_category="AWS",
+                        ticket_type="SDKs and Tools",
+                        ticket_item="IoT SDK for CPP",
+                        ticket_group="AWS IoT Device SDK",
+                        ticket_severity=3)
+                    wrapper_error_occurred = True
+                    finished_email_body += "Failure due to MQTT5 application exiting with a non-zero exit code!"
+                    finished_email_body += " This means something in the Canary application itself failed"
+                else:
+                    cut_ticket_using_cloudwatch(
+                        git_repo_name=canary_local_git_repo_stub,
+                        git_hash=canary_local_git_hash_stub,
+                        git_hash_as_namespace=False,
+                        git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                        cloudwatch_region=canary_region_stub,
+                        ticket_description="The 24/7 Canary exited with a zero exit code but did not restart!",
+                        ticket_reason="The 24/7 Canary exited with a zero exit code but did not restart",
+                        ticket_allow_duplicates=True,
+                        ticket_category="AWS",
+                        ticket_type="SDKs and Tools",
+                        ticket_item="IoT SDK for CPP",
+                        ticket_group="AWS IoT Device SDK",
+                        ticket_severity=3)
+                    wrapper_error_occurred = True
+                    finished_email_body += "Failure due to MQTT5 application stopping and not automatically restarting!"
+                    finished_email_body += " This shouldn't occur and means something is wrong with the Canary wrapper!"
+        # Other
+        else:
+            print ("ERROR - 24/7 Canary stopped due to unknown reason!")
+            cut_ticket_using_cloudwatch(
+                git_repo_name=canary_local_git_repo_stub,
+                git_hash=canary_local_git_hash_stub,
+                git_hash_as_namespace=False,
+                git_fixed_namespace_text=canary_local_git_fixed_namespace,
+                cloudwatch_region=canary_region_stub,
+                ticket_description="The 24/7 Canary stopped for an unknown reason!",
+                ticket_reason="The 24/7 Canary stopped for unknown reason",
+                ticket_allow_duplicates=True,
+                ticket_category="AWS",
+                ticket_type="SDKs and Tools",
+                ticket_item="IoT SDK for CPP",
+                ticket_group="AWS IoT Device SDK",
+                ticket_severity=3)
+            wrapper_error_occurred = True
+            finished_email_body += "Failure due to unknown reason! This shouldn't happen and means something has gone wrong!"
+    except Exception as e:
+        print ("ERROR: Could not (possibly) cut ticket due to exception!")
+        print ("Exception: " + str(e), flush=True)
 
     # Clean everything up and stop
     snapshot_monitor.cleanup_monitor(error_occurred=wrapper_error_occurred)
