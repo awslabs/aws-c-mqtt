@@ -632,6 +632,11 @@ AWS_MQTT_API void aws_mqtt5_client_statistics_change_operation_statistic_state(
  */
 AWS_MQTT_API const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_client_state state);
 
+/*
+ * Temporary, private API to turn on total incoming packet logging at the byte level.
+ */
+AWS_MQTT_API void aws_mqtt5_client_enable_full_packet_logging(struct aws_mqtt5_client *client);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT5_CLIENT_IMPL_H */

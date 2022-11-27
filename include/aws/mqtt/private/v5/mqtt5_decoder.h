@@ -8,6 +8,7 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/common/atomics.h>
 #include <aws/common/byte_buf.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
@@ -100,6 +101,8 @@ struct aws_mqtt5_decoder {
     struct aws_byte_cursor packet_cursor;
 
     struct aws_mqtt5_inbound_topic_alias_resolver *topic_alias_resolver;
+
+    struct aws_atomic_var is_full_packet_logging_enabled;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -155,6 +158,11 @@ AWS_MQTT_API void aws_mqtt5_decoder_set_inbound_topic_alias_resolver(
  * decode.
  */
 AWS_MQTT_API extern const struct aws_mqtt5_decoder_function_table *g_aws_mqtt5_default_decoder_table;
+
+/*
+ * Temporary, private API to turn on total incoming packet logging at the byte level.
+ */
+AWS_MQTT_API void aws_mqtt5_decoder_enable_full_packet_logging(struct aws_mqtt5_decoder *decoder);
 
 AWS_EXTERN_C_END
 
