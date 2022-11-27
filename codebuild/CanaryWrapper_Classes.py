@@ -18,7 +18,7 @@ import datetime
 class DataSnapshot_Metric():
     def __init__(self, metric_name, metric_function, metric_dimensions=[],
                 metric_unit="None", metric_alarm_threshold=None, metric_alarm_severity=6,
-                git_hash="", git_repo_name="", reports_to_skip=0):
+                git_hash="", git_repo_name="", reports_to_skip=0, is_percent=False):
         self.metric_name = metric_name
         self.metric_function = metric_function
         self.metric_dimensions = metric_dimensions
@@ -29,6 +29,7 @@ class DataSnapshot_Metric():
         self.metric_value = None
         self.reports_to_skip = reports_to_skip
         self.metric_alarm_severity = metric_alarm_severity
+        self.is_percent = is_percent
 
     # Gets the latest metric value from the metric_function callback
     def get_metric_value(self, psutil_process : psutil.Process):
@@ -486,8 +487,9 @@ class DataSnapshot():
     # * (OPTIONAL) new_reports_to_skip is the number of reports this metric will return nothing, but will get it's value.
     #     * Useful for CPU calculations that require deltas
     # * (OPTIONAL) new_metric_alarm_severity is the severity of the ticket if this alarm is triggered. A severity of 6+ means no ticket.
+    # * (OPTIONAL) is_percent whether or not to display the metric as a percent when printing it (default=false)
     def register_metric(self, new_metric_name, new_metric_function, new_metric_unit="None",
-                        new_metric_alarm_threshold=None, new_metric_reports_to_skip=0, new_metric_alarm_severity=6):
+                        new_metric_alarm_threshold=None, new_metric_reports_to_skip=0, new_metric_alarm_severity=6, is_percent=False):
 
         new_metric_dimensions = []
 
@@ -508,7 +510,8 @@ class DataSnapshot():
             metric_alarm_severity=new_metric_alarm_severity,
             git_hash=self.git_hash,
             git_repo_name=self.git_repo_name,
-            reports_to_skip=new_metric_reports_to_skip
+            reports_to_skip=new_metric_reports_to_skip,
+            is_percent=is_percent
         )
         self.metrics.append(new_metric)
         # append an empty list so we can track it's metrics over time
@@ -567,12 +570,16 @@ class DataSnapshot():
     # Prints the metrics to the console
     def export_metrics_console(self):
         datetime_now = datetime.datetime.now()
-        datetime_string = datetime_now.strftime("%d-%m-%Y/%H-%M-%S")
+        datetime_string = datetime_now.strftime("%d-%m-%Y/%H:%M:%S")
 
         self.print_message("\n[DataSnapshot] Metric report: " + str(self.metric_report_number) + " (" + datetime_string + ")")
         for metric in self.metrics:
-            self.print_message("    " + metric.metric_name +
-                               " - value: " + str(metric.metric_value))
+            if (metric.is_percent == True):
+                self.print_message("    " + metric.metric_name +
+                                " - value: " + str(metric.metric_value) + "%")
+            else:
+                self.print_message("    " + metric.metric_name +
+                                " - value: " + str(metric.metric_value))
         self.print_message("")
 
     # Sends all registered metrics to Cloudwatch.
@@ -886,13 +893,15 @@ class ApplicationMonitor():
         self.wrapper_application_restart_on_finish = wrapper_application_restart_on_finish
         self.data_snapshot=data_snapshot
 
+        self.stdout_file_path = "Canary_Stdout_File.txt"
+
     def start_monitoring(self):
         self.print_message("[ApplicationMonitor] Starting to monitor application...")
 
         if (self.application_process == None):
             try:
                 canary_command = self.wrapper_application_path + " " + self.wrapper_application_arguments
-                self.application_process = subprocess.Popen(canary_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8")
+                self.application_process = subprocess.Popen(canary_command + " | tee " + self.stdout_file_path, shell=True)
                 self.application_process_psutil = psutil.Process(self.application_process.pid)
                 self.print_message ("[ApplicationMonitor] Application started...")
             except Exception as e:
@@ -912,7 +921,8 @@ class ApplicationMonitor():
             try:
                 self.stop_monitoring()
                 self.start_monitoring()
-                self.print_message("[ApplicationMonitor] Restarted monitor application!")
+                self.print_message("\n[ApplicationMonitor] Restarted monitor application!")
+                self.print_message("================================================================================")
             except Exception as e:
                 self.print_message("[ApplicationMonitor] ERROR - Could not restart Canary/Application due to exception!")
                 self.print_message("[ApplicationMonitor] Exception: " + str(e))
@@ -934,18 +944,18 @@ class ApplicationMonitor():
             self.application_process.terminate()
             self.application_process.wait()
             self.print_message ("[ApplicationMonitor] Stopped monitor application!")
-
-            if self.application_process.stdout != None:
-                self.print_message("\nApplication STDOUT:\n")
-                self.print_message("=========================================\n")
-                for line in self.application_process.stdout:
-                    self.print_message(line)
-                self.application_process.stdout.close()
-                self.print_message("\n=========================================\n")
             self.application_process = None
+            self.print_stdout()
         else:
             self.print_message ("[ApplicationMonitor] ERROR - cannot stop monitor application because no process is found!")
 
+    def print_stdout(self):
+        # Print the STDOUT file
+        if (os.path.isfile(self.stdout_file_path)):
+            self.print_message("Just finished Application STDOUT: ")
+            with open(self.stdout_file_path, "r") as stdout_file:
+                self.print_message(stdout_file.read())
+            os.remove(self.stdout_file_path)
 
     def monitor_loop_function(self, time_passed=30):
         if (self.application_process != None):
@@ -1182,8 +1192,13 @@ def cut_ticket_using_cloudwatch(
         git_namespace_prepend_text = git_repo_name + "-" + git_hash
         git_metric_namespace = git_namespace_prepend_text
 
-    cloudwatch_client = boto3.client('cloudwatch', cloudwatch_region)
-    ticket_alarm_name = git_repo_name + "-" + git_hash + "-AUTO-TICKET"
+    try:
+        cloudwatch_client = boto3.client('cloudwatch', cloudwatch_region)
+        ticket_alarm_name = git_repo_name + "-" + git_hash + "-AUTO-TICKET"
+    except Exception as e:
+        print ("ERROR - could not create Cloudwatch client to make ticket metric alarm due to exception!")
+        print ("Exception: " + str(e), flush=True)
+        return
 
     new_metric_dimensions = []
     if (git_hash_as_namespace == False):
@@ -1203,23 +1218,28 @@ def cut_ticket_using_cloudwatch(
 
     ticket_alarm_description = f"AUTO CUT CANARY WRAPPER TICKET\n\nREASON: {ticket_reason}\n\nDESCRIPTION: {ticket_description}\n\n"
 
-    # Regsiter a metric alarm so it can auto-cut a ticket for us
-    cloudwatch_client.put_metric_alarm(
-        AlarmName=ticket_alarm_name,
-        AlarmDescription=ticket_alarm_description,
-        MetricName=ticket_alarm_name,
-        Namespace=git_metric_namespace,
-        Statistic="Maximum",
-        Dimensions=new_metric_dimensions,
-        Period=60,  # How long (in seconds) is an evaluation period?
-        EvaluationPeriods=1,  # How many periods does it need to be invalid for?
-        DatapointsToAlarm=1,  # How many data points need to be invalid?
-        Threshold=1,
-        ComparisonOperator="GreaterThanOrEqualToThreshold",
-        # The data above does not really matter - it just needs to be valid input data.
-        # This is the part that tells Cloudwatch to cut the ticket
-        AlarmActions=[ticket_arn]
-    )
+    # Register a metric alarm so it can auto-cut a ticket for us
+    try:
+        cloudwatch_client.put_metric_alarm(
+            AlarmName=ticket_alarm_name,
+            AlarmDescription=ticket_alarm_description,
+            MetricName=ticket_alarm_name,
+            Namespace=git_metric_namespace,
+            Statistic="Maximum",
+            Dimensions=new_metric_dimensions,
+            Period=60,  # How long (in seconds) is an evaluation period?
+            EvaluationPeriods=1,  # How many periods does it need to be invalid for?
+            DatapointsToAlarm=1,  # How many data points need to be invalid?
+            Threshold=1,
+            ComparisonOperator="GreaterThanOrEqualToThreshold",
+            # The data above does not really matter - it just needs to be valid input data.
+            # This is the part that tells Cloudwatch to cut the ticket
+            AlarmActions=[ticket_arn]
+        )
+    except Exception as e:
+        print ("ERROR - could not create ticket metric alarm due to exception!")
+        print ("Exception: " + str(e), flush=True)
+        return
 
     # Trigger the alarm so it cuts the ticket
     try:

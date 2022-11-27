@@ -284,6 +284,7 @@ static int s_read_connack_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Read CONNACK property decode failure");
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -426,6 +427,7 @@ static int s_read_publish_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Read PUBLISH property decode failure");
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -589,6 +591,7 @@ static int s_read_puback_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Read PUBACK property decode failure");
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -697,6 +700,7 @@ static int s_read_suback_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Read SUBACK property decode failure");
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -795,6 +799,7 @@ static int s_read_unsuback_property(
 done:
 
     if (result != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Read UNSUBACK property decode failure");
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -924,6 +929,7 @@ static int s_read_disconnect_property(
 done:
 
     if (result == AWS_OP_ERR) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Read DISCONNECT property decode failure");
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -1024,6 +1030,7 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
     enum aws_mqtt5_packet_type packet_type = (enum aws_mqtt5_packet_type)(decoder->packet_first_byte >> 4);
     aws_mqtt5_decoding_fn *decoder_fn = decoder->options.decoder_table->decoders_by_packet_type[packet_type];
     if (decoder_fn == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Decoder decode packet function missing");
         return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
