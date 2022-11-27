@@ -1060,10 +1060,6 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
 #define FULL_PACKET_LOGGING_BYTES_PER_LINE 20
 
 static void s_log_packet_cursor(struct aws_mqtt5_decoder *decoder) {
-    /*
-     * It's fine that this breaks across multiple log lines since concurrent clients aren't a concern with
-     * what we're trying to capture
-     */
 
     struct aws_mqtt5_client *client = decoder->options.callback_user_data;
     if (decoder->packet_cursor.len == 0) {
