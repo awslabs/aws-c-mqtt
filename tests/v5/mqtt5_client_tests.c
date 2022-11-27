@@ -4716,6 +4716,8 @@ static int s_aws_mqtt5_mock_server_reflect_publish(
 static void s_aws_mqtt5_listeners_test_publish_received_default_handler(
     const struct aws_mqtt5_packet_publish_view *publish_view,
     void *user_data) {
+    (void)publish_view;
+
     struct aws_mqtt5_listeners_test_context *context = user_data;
 
     aws_mutex_lock(&context->lock);
