@@ -1075,8 +1075,8 @@ static void s_log_packet_cursor(struct aws_mqtt5_decoder *decoder) {
     size_t line_buffer_index = 0;
 
     size_t i = 0;
-    size_t byte_count = decoder->packet_cursor.len;
-    for (i = 0; i < byte_count; ++i) {
+    size_t packet_len = decoder->packet_cursor.len;
+    for (i = 0; i < packet_len; ++i) {
         uint8_t packet_byte = *(decoder->packet_cursor.ptr + i);
         if (i % FULL_PACKET_LOGGING_BYTES_PER_LINE) {
             line_buffer_index += (size_t)snprintf(
