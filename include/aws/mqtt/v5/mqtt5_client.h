@@ -320,6 +320,13 @@ typedef void(aws_mqtt5_unsubscribe_completion_fn)(
 typedef void(aws_mqtt5_publish_received_fn)(const struct aws_mqtt5_packet_publish_view *publish, void *user_data);
 
 /**
+ * Signature of a listener publish received callback that returns an indicator whether or not the publish
+ * was handled by the listener.
+ */
+typedef bool(
+    aws_mqtt5_listener_publish_received_fn)(const struct aws_mqtt5_packet_publish_view *publish, void *user_data);
+
+/**
  * Signature of callback to invoke when a DISCONNECT is fully written to the socket (or fails to be)
  */
 typedef void(aws_mqtt5_disconnect_completion_fn)(int error_code, void *complete_ctx);

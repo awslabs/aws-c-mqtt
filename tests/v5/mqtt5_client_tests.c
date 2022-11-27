@@ -13,6 +13,7 @@
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
+#include <aws/mqtt/v5/mqtt5_listener.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -4658,6 +4659,240 @@ static int s_mqtt5_client_puback_ordering_fn(struct aws_allocator *allocator, vo
 }
 
 AWS_TEST_CASE(mqtt5_client_puback_ordering, s_mqtt5_client_puback_ordering_fn)
+
+enum aws_mqtt5_listener_test_publish_received_callback_type {
+    AWS_MQTT5_LTPRCT_DEFAULT,
+    AWS_MQTT5_LTPRCT_LISTENER,
+};
+
+struct aws_mqtt5_listeners_test_context {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture;
+    struct aws_array_list publish_received_callback_types;
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+};
+
+static void s_aws_mqtt5_listeners_test_context_init(
+    struct aws_mqtt5_listeners_test_context *listener_test_context,
+    struct aws_allocator *allocator) {
+    AWS_ZERO_STRUCT(*listener_test_context);
+
+    aws_array_list_init_dynamic(
+        &listener_test_context->publish_received_callback_types,
+        allocator,
+        0,
+        sizeof(enum aws_mqtt5_listener_test_publish_received_callback_type));
+    aws_mutex_init(&listener_test_context->lock);
+    aws_condition_variable_init(&listener_test_context->signal);
+}
+
+static void s_aws_mqtt5_listeners_test_context_clean_up(
+    struct aws_mqtt5_listeners_test_context *listener_test_context) {
+    aws_condition_variable_clean_up(&listener_test_context->signal);
+    aws_mutex_clean_up(&listener_test_context->lock);
+    aws_array_list_clean_up(&listener_test_context->publish_received_callback_types);
+}
+
+static int s_aws_mqtt5_mock_server_reflect_publish(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)user_data;
+
+    struct aws_mqtt5_packet_publish_view *publish_view = packet;
+    struct aws_mqtt5_packet_publish_view reflected_view = *publish_view;
+
+    if (reflected_view.qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
+        reflected_view.packet_id = 1;
+    }
+
+    if (s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &reflected_view)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt5_listeners_test_publish_received_default_handler(
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    void *user_data) {
+    struct aws_mqtt5_listeners_test_context *context = user_data;
+
+    aws_mutex_lock(&context->lock);
+    enum aws_mqtt5_listener_test_publish_received_callback_type callback_type = AWS_MQTT5_LTPRCT_DEFAULT;
+    aws_array_list_push_back(&context->publish_received_callback_types, &callback_type);
+    aws_mutex_unlock(&context->lock);
+    aws_condition_variable_notify_all(&context->signal);
+}
+
+static bool s_aws_mqtt5_listeners_test_publish_received_listener_handler(
+    const struct aws_mqtt5_packet_publish_view *publish_view,
+    void *user_data) {
+    struct aws_mqtt5_listeners_test_context *context = user_data;
+
+    aws_mutex_lock(&context->lock);
+    enum aws_mqtt5_listener_test_publish_received_callback_type callback_type = AWS_MQTT5_LTPRCT_LISTENER;
+    aws_array_list_push_back(&context->publish_received_callback_types, &callback_type);
+    aws_mutex_unlock(&context->lock);
+    aws_condition_variable_notify_all(&context->signal);
+
+    return publish_view->qos == AWS_MQTT5_QOS_AT_LEAST_ONCE;
+}
+
+struct aws_mqtt5_listeners_test_wait_context {
+    size_t callback_count;
+    struct aws_mqtt5_listeners_test_context *test_fixture;
+};
+
+static bool s_aws_mqtt5_listeners_test_wait_on_callback_count(void *context) {
+    struct aws_mqtt5_listeners_test_wait_context *wait_context = context;
+    return wait_context->callback_count ==
+           aws_array_list_length(&wait_context->test_fixture->publish_received_callback_types);
+}
+
+static int s_aws_mqtt5_listeners_test_wait_on_and_verify_callbacks(
+    struct aws_mqtt5_listeners_test_context *context,
+    size_t callback_count,
+    enum aws_mqtt5_listener_test_publish_received_callback_type *callback_types) {
+    struct aws_mqtt5_listeners_test_wait_context wait_context = {
+        .callback_count = callback_count,
+        .test_fixture = context,
+    };
+
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(
+        &context->signal, &context->lock, s_aws_mqtt5_listeners_test_wait_on_callback_count, &wait_context);
+    for (size_t i = 0; i < callback_count; ++i) {
+        enum aws_mqtt5_listener_test_publish_received_callback_type callback_type;
+        aws_array_list_get_at(&context->publish_received_callback_types, &callback_type, i);
+
+        ASSERT_INT_EQUALS(callback_types[i], callback_type);
+    }
+    aws_mutex_unlock(&context->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_listeners_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    s_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = s_aws_mqtt5_mock_server_reflect_publish;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    struct aws_mqtt5_listeners_test_context full_test_context = {
+        .test_fixture = &test_context,
+    };
+    s_aws_mqtt5_listeners_test_context_init(&full_test_context, allocator);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+        .mock_server_user_data = &full_test_context,
+    };
+
+    test_fixture_options.client_options->publish_received_handler =
+        s_aws_mqtt5_listeners_test_publish_received_default_handler;
+    test_fixture_options.client_options->publish_received_handler_user_data = &full_test_context;
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_publish_view qos0_publish_view = {
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .topic =
+            {
+                .ptr = s_sub_pub_unsub_publish_topic,
+                .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_topic) - 1,
+            },
+    };
+
+    struct aws_mqtt5_packet_publish_view qos1_publish_view = {
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .topic =
+            {
+                .ptr = s_sub_pub_unsub_publish_topic,
+                .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_topic) - 1,
+            },
+    };
+
+    // send a qos 0 publish, wait for it to reflect, verify it's the default handler
+    aws_mqtt5_client_publish(client, &qos0_publish_view, NULL);
+
+    enum aws_mqtt5_listener_test_publish_received_callback_type first_callback_type_array[] = {
+        AWS_MQTT5_LTPRCT_DEFAULT,
+    };
+    ASSERT_SUCCESS(s_aws_mqtt5_listeners_test_wait_on_and_verify_callbacks(
+        &full_test_context, AWS_ARRAY_SIZE(first_callback_type_array), first_callback_type_array));
+
+    // attach a listener at the beginning of the handler chain
+    struct aws_mqtt5_listener_config listener_config = {
+        .client = client,
+        .listener_callbacks = {
+            .listener_publish_received_handler_user_data = &full_test_context,
+            .listener_publish_received_handler = s_aws_mqtt5_listeners_test_publish_received_listener_handler,
+        }};
+    struct aws_mqtt5_listener *listener = aws_mqtt5_listener_new(allocator, &listener_config);
+
+    // send a qos 0 publish, wait for it to reflect, verify both handlers were invoked in the proper order
+    aws_mqtt5_client_publish(client, &qos0_publish_view, NULL);
+
+    enum aws_mqtt5_listener_test_publish_received_callback_type second_callback_type_array[] = {
+        AWS_MQTT5_LTPRCT_DEFAULT,
+        AWS_MQTT5_LTPRCT_LISTENER,
+        AWS_MQTT5_LTPRCT_DEFAULT,
+    };
+    ASSERT_SUCCESS(s_aws_mqtt5_listeners_test_wait_on_and_verify_callbacks(
+        &full_test_context, AWS_ARRAY_SIZE(second_callback_type_array), second_callback_type_array));
+
+    // send a qos1 publish (which is short-circuited by the listener), verify just the listener was notified
+    aws_mqtt5_client_publish(client, &qos1_publish_view, NULL);
+
+    enum aws_mqtt5_listener_test_publish_received_callback_type third_callback_type_array[] = {
+        AWS_MQTT5_LTPRCT_DEFAULT,
+        AWS_MQTT5_LTPRCT_LISTENER,
+        AWS_MQTT5_LTPRCT_DEFAULT,
+        AWS_MQTT5_LTPRCT_LISTENER,
+    };
+    ASSERT_SUCCESS(s_aws_mqtt5_listeners_test_wait_on_and_verify_callbacks(
+        &full_test_context, AWS_ARRAY_SIZE(third_callback_type_array), third_callback_type_array));
+
+    // remove the listener
+    aws_mqtt5_listener_release(listener);
+
+    // send a qos1 publish, wait for it to reflect, verify it's the default handler
+    aws_mqtt5_client_publish(client, &qos1_publish_view, NULL);
+
+    enum aws_mqtt5_listener_test_publish_received_callback_type fourth_callback_type_array[] = {
+        AWS_MQTT5_LTPRCT_DEFAULT,
+        AWS_MQTT5_LTPRCT_LISTENER,
+        AWS_MQTT5_LTPRCT_DEFAULT,
+        AWS_MQTT5_LTPRCT_LISTENER,
+        AWS_MQTT5_LTPRCT_DEFAULT,
+    };
+    ASSERT_SUCCESS(s_aws_mqtt5_listeners_test_wait_on_and_verify_callbacks(
+        &full_test_context, AWS_ARRAY_SIZE(fourth_callback_type_array), fourth_callback_type_array));
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    s_aws_mqtt5_listeners_test_context_clean_up(&full_test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_listeners, s_mqtt5_client_listeners_fn)
 
 static void s_on_offline_publish_completion(
     enum aws_mqtt5_packet_type packet_type,
