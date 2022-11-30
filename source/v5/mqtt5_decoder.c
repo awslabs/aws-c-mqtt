@@ -1228,7 +1228,7 @@ int aws_mqtt5_decoder_init(
         return AWS_OP_ERR;
     }
 
-    aws_atomic_init_int(&decoder->is_full_packet_logging_enabled, 1);
+    aws_atomic_init_int(&decoder->is_full_packet_logging_enabled, 0);
 
     return AWS_OP_SUCCESS;
 }
