@@ -612,8 +612,7 @@ class DataSnapshot():
         except Exception as e:
             self.print_message("[DataSnapshot] Error - something when wrong posting cloudwatch metrics!")
             self.print_message("[DataSnapshot] Exception: " + str(e))
-            self.abort_due_to_internal_error = True
-            self.abort_due_to_internal_error_reason = "Could not export Cloudwatch metrics due to exception in Cloudwatch client!"
+            self.print_message("[DataSnapshot] Not going to crash - just going to try again later")
             return
 
     # Call this at a set interval to post the metrics to Cloudwatch, etc.
@@ -833,11 +832,7 @@ class SnapshotMonitor():
                 except Exception as e:
                     self.print_message("[SnaptshotMonitor] ERROR - exception occurred posting metrics!")
                     self.print_message("[SnaptshotMonitor] (Likely session credentials expired)")
-
-                    print (e, flush=True)
-
-                    self.had_internal_error = True
-                    self.internal_error_reason = "Exception occurred posting metrics! Likely session credentials expired"
+                    self.print_message("[SnaptshotMonitor] Not going to crash - just going to try again later")
                     return
 
             # reset the timer
@@ -1078,8 +1073,7 @@ class S3Monitor():
         except Exception as e:
             self.print_message("[S3Monitor] ERROR - Could not check for new version of file in S3 due to exception!")
             self.print_message("[S3Monitor] Exception: " + str(e))
-            self.had_internal_error = True
-            self.internal_error_reason = "Could not check for S3 file due to exception in S3 client"
+            self.print_message("[S3Monitor] Going to try again later - will not crash Canary")
 
 
     def replace_current_file_for_new_file(self):
