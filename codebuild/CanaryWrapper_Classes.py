@@ -268,7 +268,19 @@ class DataSnapshot():
     # Utility function for printing messages
     def print_message(self, message):
         if self.output_to_file == True:
-            self.output_file.write(message + "\n")
+            try:
+                if (self.output_file is None):
+                    self.output_file = open(self.output_to_file_filepath, "w")
+                self.output_file.write(message + "\n")
+
+            except Exception as ex:
+                print (f"[DataSnapshot] Exception trying to print to file: {ex}")
+                if (self.output_file is not None):
+                    self.output_file.close()
+                    self.output_file = None
+                self.abort_due_to_internal_error = True
+                self.abort_due_to_internal_error_reason = "Could not print data to output file!"
+
         if self.output_to_console == True:
             print(message, flush=True)
 
@@ -306,7 +318,7 @@ class DataSnapshot():
             self.print_message("[DataSnapshot] ERROR - Cloudwatch client could not make dashboard due to exception!")
             self.print_message("[DataSnapshot] Exception: " + str(e))
             self.abort_due_to_internal_error = True
-            self.abort_due_to_internal_error_reason = "Cloudwatch client could not make dashboard due to exception"
+            self.abort_due_to_internal_error_reason = f"Cloudwatch client could not make dashboard due to exception {e}"
             return
 
     # Utility function - The function that adds each individual metric alarm.
@@ -332,6 +344,8 @@ class DataSnapshot():
         except Exception as e:
             self.print_message("[DataSnapshot] ERROR - could not register alarm for metric due to exception: " + metric.metric_name)
             self.print_message("[DataSnapshot] Exception: " + str(e))
+            self.abort_due_to_internal_error = True
+            self.abort_due_to_internal_error_reason = f"Cloudwatch client could not make alarm due to exception: {e}"
 
     # Utility function - removes all the Cloudwatch alarms for the metrics
     def _cleanup_cloudwatch_alarms(self):
@@ -341,8 +355,7 @@ class DataSnapshot():
                     if (not metric.metric_alarm_threshold is None):
                         self.cloudwatch_client.delete_alarms(AlarmNames=[metric.metric_alarm_name])
             except Exception as e:
-                self.print_message("[DataSnapshot] ERROR - could not delete alarms due to exception!")
-                self.print_message("[DataSnapshot] Exception: " + str(e))
+                self.print_message(f"[DataSnapshot] ERROR - could not delete alarms due to exception: {e}")
 
     # Utility function - removes all Cloudwatch dashboards created
     def _cleanup_cloudwatch_dashboard(self):
@@ -351,8 +364,7 @@ class DataSnapshot():
                 self.cloudwatch_client.delete_dashboards(DashboardNames=[self.cloudwatch_dashboard_name])
                 self.print_message("[DataSnapshot] Cloudwatch Dashboards deleted successfully!")
             except Exception as e:
-                self.print_message("[DataSnapshot] ERROR - dashboard cleaning function failed due to exception!")
-                self.print_message("[DataSnapshot] Exception: " + str(e))
+                self.print_message(f"[DataSnapshot] ERROR - dashboard cleaning function failed due to exception: {e}")
                 self.abort_due_to_internal_error = True
                 self.abort_due_to_internal_error_reason = "Cloudwatch dashboard cleaning function failed due to exception"
                 return
@@ -382,20 +394,24 @@ class DataSnapshot():
     # Utility function - checks each individual alarm and returns a tuple with the following format:
     # [Boolean (False if the alarm is in the ALARM state, otherwise it is true), String (name of the alarm), Int (severity of alarm)]
     def _check_cloudwatch_alarm_state_metric(self, metric):
-        alarms_response = self.cloudwatch_client.describe_alarms_for_metric(
-            MetricName=metric.metric_name,
-            Namespace=self.git_metric_namespace,
-            Dimensions=metric.metric_dimensions)
+        try:
+            alarms_response = self.cloudwatch_client.describe_alarms_for_metric(
+                MetricName=metric.metric_name,
+                Namespace=self.git_metric_namespace,
+                Dimensions=metric.metric_dimensions)
 
-        return_result = [True, None, metric.metric_alarm_severity]
+            return_result = [True, None, metric.metric_alarm_severity]
 
-        for metric_alarm_dict in alarms_response["MetricAlarms"]:
-            if metric_alarm_dict["StateValue"] == "ALARM":
-                return_result[0] = False
-                return_result[1] = metric_alarm_dict["AlarmName"]
-                break
+            for metric_alarm_dict in alarms_response["MetricAlarms"]:
+                if metric_alarm_dict["StateValue"] == "ALARM":
+                    return_result[0] = False
+                    return_result[1] = metric_alarm_dict["AlarmName"]
+                    break
 
-        return return_result
+            return return_result
+        except Exception as e:
+            self.print_message(f"[DataSnapshot] ERROR - checking cloudwatch alarm failed due to exception: {e}")
+            return None
 
     # Exports a file with the same name as the commit Git hash to an S3 bucket in a folder with the Git repo name.
     # By default, this file will only contain the Git hash.
@@ -461,7 +477,6 @@ class DataSnapshot():
     # * (REQUIRED) message is the message you want to send in the body of the email
     # * (REQUIRED) subject is the subject that the email will be sent with
     def lambda_send_email(self, message, subject):
-
         payload = {"Message":message, "Subject":subject}
         payload_string = json.dumps(payload)
 
@@ -887,7 +902,7 @@ class ApplicationMonitor():
         self.wrapper_application_arguments = wrapper_application_arguments
         self.wrapper_application_restart_on_finish = wrapper_application_restart_on_finish
         self.data_snapshot=data_snapshot
-
+        self.still_running_wait_number = 0
         self.stdout_file_path = "Canary_Stdout_File.txt"
 
     def start_monitoring(self):
@@ -919,8 +934,7 @@ class ApplicationMonitor():
                 self.print_message("\n[ApplicationMonitor] Restarted monitor application!")
                 self.print_message("================================================================================")
             except Exception as e:
-                self.print_message("[ApplicationMonitor] ERROR - Could not restart Canary/Application due to exception!")
-                self.print_message("[ApplicationMonitor] Exception: " + str(e))
+                self.print_message(f"[ApplicationMonitor] ERROR - Could not restart Canary/Application due to exception: {e}")
                 self.error_has_occurred = True
                 self.error_reason = "Could not restart Canary/Application due to exception"
                 self.error_code = 1
@@ -948,9 +962,12 @@ class ApplicationMonitor():
         # Print the STDOUT file
         if (os.path.isfile(self.stdout_file_path)):
             self.print_message("Just finished Application STDOUT: ")
-            with open(self.stdout_file_path, "r") as stdout_file:
-                self.print_message(stdout_file.read())
-            os.remove(self.stdout_file_path)
+            try:
+                with open(self.stdout_file_path, "r") as stdout_file:
+                    self.print_message(stdout_file.read())
+                os.remove(self.stdout_file_path)
+            except Exception as e:
+                self.print_message(f"[ApplicationMonitor] ERROR - Could not print Canary/Application stdout to exception: {e}")
 
     def monitor_loop_function(self, time_passed=30):
         if (self.application_process != None):
@@ -968,7 +985,6 @@ class ApplicationMonitor():
 
             # If it is not none, then the application finished
             if (application_process_return_code != None):
-
                 self.print_message("[ApplicationMonitor] Monitor application has stopped! Processing result...")
 
                 if (application_process_return_code != 0):
@@ -989,7 +1005,11 @@ class ApplicationMonitor():
                         self.error_reason = "Canary Application Finished"
                         self.error_code = 0
             else:
-                self.print_message("[ApplicationMonitor] Monitor application is still running...")
+                # Only print that we are still running the monitor application every 4 times to reduce log spam.
+                self.still_running_wait_number =+ 1
+                if self.still_running_wait_number >= 4:
+                    self.print_message("[ApplicationMonitor] Monitor application is still running...")
+                    self.still_running_wait_number = 0
 
     def cleanup_monitor(self, error_occurred=False):
         pass
