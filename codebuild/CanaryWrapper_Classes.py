@@ -315,8 +315,7 @@ class DataSnapshot():
                 DashboardBody= new_dashboard_body_json)
             self.print_message("[DataSnapshot] Added Cloudwatch dashboard successfully")
         except Exception as e:
-            self.print_message("[DataSnapshot] ERROR - Cloudwatch client could not make dashboard due to exception!")
-            self.print_message("[DataSnapshot] Exception: " + str(e))
+            self.print_message(f"[DataSnapshot] ERROR - Cloudwatch client could not make dashboard due to exception: {e}")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = f"Cloudwatch client could not make dashboard due to exception {e}"
             return
@@ -342,8 +341,7 @@ class DataSnapshot():
                 ComparisonOperator="GreaterThanOrEqualToThreshold",
             )
         except Exception as e:
-            self.print_message("[DataSnapshot] ERROR - could not register alarm for metric due to exception: " + metric.metric_name)
-            self.print_message("[DataSnapshot] Exception: " + str(e))
+            self.print_message(f"[DataSnapshot] ERROR - could not register alarm for metric {metric.metric_name} due to exception: {e}")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = f"Cloudwatch client could not make alarm due to exception: {e}"
 
@@ -463,8 +461,7 @@ class DataSnapshot():
                     self.s3_client.upload_file(self.git_hash + ".log", self.s3_bucket_name, self.git_repo_name + "/Failed_Logs/" + self.datetime_string + "/" + self.git_hash + ".log")
             self.print_message("[DataSnapshot] Uploaded to S3!")
         except Exception as e:
-            self.print_message("[DataSnapshot] ERROR - could not upload to S3 due to exception!")
-            self.print_message("[DataSnapshot] Exception: " + str(e))
+            self.print_message(f"[DataSnapshot] ERROR - could not upload to S3 due to exception: {e}")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "S3 client had exception and therefore could not upload log!"
             os.remove(self.git_hash + ".log")
@@ -488,8 +485,7 @@ class DataSnapshot():
                 Payload=payload_string
             )
         except Exception as e:
-            self.print_message("[DataSnapshot] ERROR - could not send email via Lambda due to exception!")
-            self.print_message("[DataSnapshot] Exception: " + str(e))
+            self.print_message(f"[DataSnapshot] ERROR - could not send email via Lambda due to exception: {e}")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "Lambda email function had an exception!"
             return
@@ -602,7 +598,7 @@ class DataSnapshot():
     # This is just the Cloudwatch part of that loop.
     def export_metrics_cloudwatch(self):
         if (self.cloudwatch_client == None):
-            self.print_message("[DataSnapshot] Error - cannot export Cloudwatch metrics! Cloudwatch was not initiallized.")
+            self.print_message("[DataSnapshot] Error - cannot export Cloudwatch metrics! Cloudwatch was not initialized.")
             self.abort_due_to_internal_error = True
             self.abort_due_to_internal_error_reason = "Could not export Cloudwatch metrics due to no Cloudwatch client initialized!"
             return
@@ -625,8 +621,7 @@ class DataSnapshot():
                 MetricData=metrics_data)
             self.print_message("[DataSnapshot] Metrics sent to Cloudwatch.")
         except Exception as e:
-            self.print_message("[DataSnapshot] Error - something when wrong posting cloudwatch metrics!")
-            self.print_message("[DataSnapshot] Exception: " + str(e))
+            self.print_message(f"[DataSnapshot] Error - something when wrong posting cloudwatch metrics. Exception: {e}")
             self.print_message("[DataSnapshot] Not going to crash - just going to try again later")
             return
 
@@ -746,8 +741,7 @@ class SnapshotMonitor():
                 new_metric_reports_to_skip=new_metric_reports_to_skip,
                 new_metric_alarm_severity=new_metric_alarm_severity)
         except Exception as e:
-            self.print_message("[SnaptshotMonitor] ERROR - could not register metric in data snapshot due to exception!")
-            self.print_message("[SnaptshotMonitor] Exception: " + str(e))
+            self.print_message(f"[SnaptshotMonitor] ERROR - could not register metric in data snapshot due to exception: {e}")
             self.had_internal_error = True
             self.internal_error_reason = "Could not register metric in data snapshot due to exception"
             return
@@ -1091,8 +1085,7 @@ class S3Monitor():
                             return
 
         except Exception as e:
-            self.print_message("[S3Monitor] ERROR - Could not check for new version of file in S3 due to exception!")
-            self.print_message("[S3Monitor] Exception: " + str(e))
+            self.print_message(f"[S3Monitor] ERROR - Could not check for new version of file in S3 due to exception: {e}")
             self.print_message("[S3Monitor] Going to try again later - will not crash Canary")
 
 
@@ -1210,8 +1203,7 @@ def cut_ticket_using_cloudwatch(
         cloudwatch_client = boto3.client('cloudwatch', cloudwatch_region)
         ticket_alarm_name = git_repo_name + "-" + git_hash + "-AUTO-TICKET"
     except Exception as e:
-        print ("ERROR - could not create Cloudwatch client to make ticket metric alarm due to exception!")
-        print ("Exception: " + str(e), flush=True)
+        print (f"ERROR - could not create Cloudwatch client to make ticket metric alarm due to exception: {e}", flush=True)
         return
 
     new_metric_dimensions = []
@@ -1251,8 +1243,7 @@ def cut_ticket_using_cloudwatch(
             AlarmActions=[ticket_arn]
         )
     except Exception as e:
-        print ("ERROR - could not create ticket metric alarm due to exception!")
-        print ("Exception: " + str(e), flush=True)
+        print (f"ERROR - could not create ticket metric alarm due to exception: {e}", flush=True)
         return
 
     # Trigger the alarm so it cuts the ticket
@@ -1262,8 +1253,7 @@ def cut_ticket_using_cloudwatch(
             StateValue="ALARM",
             StateReason="AUTO TICKET CUT")
     except Exception as e:
-        print ("ERROR - could not cut ticket due to exception!")
-        print ("Exception: " + str(e), flush=True)
+        print (f"ERROR - could not cut ticket due to exception: {e}", flush=True)
         return
 
     print("Waiting for ticket metric to trigger...", flush=True)
