@@ -381,7 +381,16 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    aws_mqtt5_packet_connack_storage_clean_up(&storage);
+    // Only clean the packet if it was successful OR this is the second decode (for error prints)
+    if (result == AWS_OP_SUCCESS) {
+        aws_mqtt5_packet_connack_storage_clean_up(&storage);
+    } else {
+        if (s_is_full_packet_logging_enabled(decoder) == true) {
+            if (decoder->print_full_packet_logging == true) {
+                aws_mqtt5_packet_connack_storage_clean_up(&storage);
+            }
+        }
+    }
 
     return result;
 }
@@ -578,7 +587,16 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    aws_mqtt5_packet_publish_storage_clean_up(&storage);
+    // Only clean the packet if it was successful OR this is the second decode (for error prints)
+    if (result == AWS_OP_SUCCESS) {
+        aws_mqtt5_packet_publish_storage_clean_up(&storage);
+    } else {
+        if (s_is_full_packet_logging_enabled(decoder) == true) {
+            if (decoder->print_full_packet_logging == true) {
+                aws_mqtt5_packet_publish_storage_clean_up(&storage);
+            }
+        }
+    }
 
     return result;
 }
@@ -687,7 +705,16 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    aws_mqtt5_packet_puback_storage_clean_up(&storage);
+    // Only clean the packet if it was successful OR this is the second decode (for error prints)
+    if (result == AWS_OP_SUCCESS) {
+        aws_mqtt5_packet_puback_storage_clean_up(&storage);
+    } else {
+        if (s_is_full_packet_logging_enabled(decoder) == true) {
+            if (decoder->print_full_packet_logging == true) {
+                aws_mqtt5_packet_puback_storage_clean_up(&storage);
+            }
+        }
+    }
 
     return result;
 }
@@ -786,7 +813,16 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    aws_mqtt5_packet_suback_storage_clean_up(&storage);
+    // Only clean the packet if it was successful OR this is the second decode (for error prints)
+    if (result == AWS_OP_SUCCESS) {
+        aws_mqtt5_packet_suback_storage_clean_up(&storage);
+    } else {
+        if (s_is_full_packet_logging_enabled(decoder) == true) {
+            if (decoder->print_full_packet_logging == true) {
+                aws_mqtt5_packet_suback_storage_clean_up(&storage);
+            }
+        }
+    }
 
     return result;
 }
@@ -903,7 +939,16 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    aws_mqtt5_packet_unsuback_storage_clean_up(&storage);
+    // Only clean the packet if it was successful OR this is the second decode (for error prints)
+    if (result == AWS_OP_SUCCESS) {
+        aws_mqtt5_packet_unsuback_storage_clean_up(&storage);
+    } else {
+        if (s_is_full_packet_logging_enabled(decoder) == true) {
+            if (decoder->print_full_packet_logging == true) {
+                aws_mqtt5_packet_unsuback_storage_clean_up(&storage);
+            }
+        }
+    }
 
     return result;
 }
@@ -1021,7 +1066,16 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    aws_mqtt5_packet_disconnect_storage_clean_up(&storage);
+    // Only clean the packet if it was successful OR this is the second decode (for error prints)
+    if (result == AWS_OP_SUCCESS) {
+        aws_mqtt5_packet_disconnect_storage_clean_up(&storage);
+    } else {
+        if (s_is_full_packet_logging_enabled(decoder) == true) {
+            if (decoder->print_full_packet_logging == true) {
+                aws_mqtt5_packet_disconnect_storage_clean_up(&storage);
+            }
+        }
+    }
 
     return result;
 }
