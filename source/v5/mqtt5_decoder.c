@@ -1145,7 +1145,7 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
 
     if (s_aws_mqtt5_decoder_decode_packet(decoder)) {
         if (s_is_full_packet_logging_enabled(decoder)) {
-            s_log_packet_cursor(decoder, copy_cursor);
+            s_log_packet_cursor(decoder, &copy_cursor);
         }
         return AWS_MQTT5_DRT_ERROR;
     }
