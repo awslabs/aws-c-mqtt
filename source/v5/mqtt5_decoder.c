@@ -56,7 +56,7 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     aws_byte_buf_append_byte_dynamic(&decoder->scratch_space, byte);
 
     if (s_is_full_packet_logging_enabled(decoder)) {
-        if (decoder->is_full_packet_logging_enabled == true) {
+        if (decoder->print_full_packet_logging == true) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
                 "id=%p: Decoder FPL first byte: %2X",
@@ -136,7 +136,7 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_vli_on_data(
         aws_byte_buf_append_dynamic(&decoder->scratch_space, &byte_cursor);
 
         if (s_is_full_packet_logging_enabled(decoder)) {
-            if (decoder->is_full_packet_logging_enabled == true) {
+            if (decoder->print_full_packet_logging == true) {
                 AWS_LOGF_ERROR(
                     AWS_LS_MQTT5_CLIENT,
                     "id=%p: Decoder FPL remaining length VLI byte: %2X",
@@ -1060,7 +1060,7 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
 
     int result = (*decoder_fn)(decoder);
     if (result != AWS_OP_SUCCESS) {
-        if (s_is_full_packet_logging_enabled() == true) {
+        if (s_is_full_packet_logging_enabled(decoder) == true) {
             AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Decoder had an error. Printing data about packet below:");
             decoder->print_full_packet_logging = true;
             // Decode it again, but with logging - this should return the error again but with the data we want/need
