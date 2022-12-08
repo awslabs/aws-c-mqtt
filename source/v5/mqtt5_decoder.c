@@ -1059,10 +1059,10 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
 
 #define FULL_PACKET_LOGGING_BYTES_PER_LINE 20
 
-static void s_log_packet_cursor(struct aws_mqtt5_decoder *decoder) {
+static void s_log_packet_cursor(struct aws_mqtt5_decoder *decoder, struct aws_byte_cursor *packet_cursor) {
 
     struct aws_mqtt5_client *client = decoder->options.callback_user_data;
-    if (decoder->packet_cursor.len == 0) {
+    if (packet_cursor->len == 0) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Decoder FPL packet cursor empty", (void *)client);
         return;
     }
@@ -1071,9 +1071,9 @@ static void s_log_packet_cursor(struct aws_mqtt5_decoder *decoder) {
     size_t line_buffer_index = 0;
 
     size_t i = 0;
-    size_t packet_len = decoder->packet_cursor.len;
+    size_t packet_len = packet_cursor->len;
     for (i = 0; i < packet_len; ++i) {
-        uint8_t packet_byte = *(decoder->packet_cursor.ptr + i);
+        uint8_t packet_byte = *(packet_cursor->ptr + i);
         if (i % FULL_PACKET_LOGGING_BYTES_PER_LINE) {
             line_buffer_index += (size_t)snprintf(
                 line_buffer + line_buffer_index,
@@ -1138,9 +1138,14 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
         decoder->packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
     }
 
+    struct aws_bute_cursor copy_cursor;
+    if (s_is_full_packet_logging_enabled(decoder)) {
+        copy_cursor = aws_byte_cursor_from_array(decoder->packet_cursor.ptr, decoder->packet_cursor.len);
+    }
+
     if (s_aws_mqtt5_decoder_decode_packet(decoder)) {
         if (s_is_full_packet_logging_enabled(decoder)) {
-            s_log_packet_cursor(decoder);
+            s_log_packet_cursor(decoder, copy_cursor);
         }
         return AWS_MQTT5_DRT_ERROR;
     }
