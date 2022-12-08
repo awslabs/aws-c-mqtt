@@ -1138,7 +1138,7 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
         decoder->packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
     }
 
-    struct aws_bute_cursor copy_cursor;
+    struct aws_byte_cursor copy_cursor;
     if (s_is_full_packet_logging_enabled(decoder)) {
         copy_cursor = aws_byte_cursor_from_array(decoder->packet_cursor.ptr, decoder->packet_cursor.len);
     }
