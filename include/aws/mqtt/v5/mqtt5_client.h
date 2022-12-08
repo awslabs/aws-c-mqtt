@@ -63,7 +63,7 @@ enum aws_mqtt5_client_session_behavior_type {
  */
 enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
     /**
-     * Maps to AWS_MQTT5_COTABT_LRU at the moment
+     * Maps to AWS_MQTT5_COTABT_DISABLED
      */
     AWS_MQTT5_COTABT_DEFAULT,
 
