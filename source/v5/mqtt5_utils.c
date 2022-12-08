@@ -291,6 +291,9 @@ const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
             return "User-controlled outbound topic aliasing behavior";
         case AWS_MQTT5_COTABT_LRU:
             return "LRU caching outbound topic aliasing behavior";
+        case AWS_MQTT5_COTABT_DISABLED:
+            return "Outbound topic aliasing disabled";
+
         default:
             return "Unknown outbound topic aliasing behavior";
     }
