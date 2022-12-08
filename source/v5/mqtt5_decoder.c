@@ -56,13 +56,11 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     aws_byte_buf_append_byte_dynamic(&decoder->scratch_space, byte);
 
     if (s_is_full_packet_logging_enabled(decoder)) {
-        if (decoder->print_full_packet_logging == true) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_CLIENT,
-                "id=%p: Decoder FPL first byte: %2X",
-                decoder->options.callback_user_data,
-                (unsigned int)byte);
-        }
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: Decoder FPL first byte: %2X",
+            decoder->options.callback_user_data,
+            (unsigned int)byte);
     }
 
     enum aws_mqtt5_packet_type packet_type = (byte >> 4);
@@ -136,13 +134,11 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_vli_on_data(
         aws_byte_buf_append_dynamic(&decoder->scratch_space, &byte_cursor);
 
         if (s_is_full_packet_logging_enabled(decoder)) {
-            if (decoder->print_full_packet_logging == true) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_CLIENT,
-                    "id=%p: Decoder FPL remaining length VLI byte: %2X",
-                    decoder->options.callback_user_data,
-                    (unsigned int)(*byte_cursor.ptr));
-            }
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: Decoder FPL remaining length VLI byte: %2X",
+                decoder->options.callback_user_data,
+                (unsigned int)(*byte_cursor.ptr));
         }
 
         /* now try and decode a vli integer based on the range implied by the offset into the buffer */
@@ -381,16 +377,7 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    // Only clean the packet if it was successful OR this is the second decode (for error prints)
-    if (result == AWS_OP_SUCCESS) {
-        aws_mqtt5_packet_connack_storage_clean_up(&storage);
-    } else {
-        if (s_is_full_packet_logging_enabled(decoder) == true) {
-            if (decoder->print_full_packet_logging == true) {
-                aws_mqtt5_packet_connack_storage_clean_up(&storage);
-            }
-        }
-    }
+    aws_mqtt5_packet_connack_storage_clean_up(&storage);
 
     return result;
 }
@@ -587,16 +574,7 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    // Only clean the packet if it was successful OR this is the second decode (for error prints)
-    if (result == AWS_OP_SUCCESS) {
-        aws_mqtt5_packet_publish_storage_clean_up(&storage);
-    } else {
-        if (s_is_full_packet_logging_enabled(decoder) == true) {
-            if (decoder->print_full_packet_logging == true) {
-                aws_mqtt5_packet_publish_storage_clean_up(&storage);
-            }
-        }
-    }
+    aws_mqtt5_packet_publish_storage_clean_up(&storage);
 
     return result;
 }
@@ -705,16 +683,7 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    // Only clean the packet if it was successful OR this is the second decode (for error prints)
-    if (result == AWS_OP_SUCCESS) {
-        aws_mqtt5_packet_puback_storage_clean_up(&storage);
-    } else {
-        if (s_is_full_packet_logging_enabled(decoder) == true) {
-            if (decoder->print_full_packet_logging == true) {
-                aws_mqtt5_packet_puback_storage_clean_up(&storage);
-            }
-        }
-    }
+    aws_mqtt5_packet_puback_storage_clean_up(&storage);
 
     return result;
 }
@@ -813,16 +782,7 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    // Only clean the packet if it was successful OR this is the second decode (for error prints)
-    if (result == AWS_OP_SUCCESS) {
-        aws_mqtt5_packet_suback_storage_clean_up(&storage);
-    } else {
-        if (s_is_full_packet_logging_enabled(decoder) == true) {
-            if (decoder->print_full_packet_logging == true) {
-                aws_mqtt5_packet_suback_storage_clean_up(&storage);
-            }
-        }
-    }
+    aws_mqtt5_packet_suback_storage_clean_up(&storage);
 
     return result;
 }
@@ -939,16 +899,7 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    // Only clean the packet if it was successful OR this is the second decode (for error prints)
-    if (result == AWS_OP_SUCCESS) {
-        aws_mqtt5_packet_unsuback_storage_clean_up(&storage);
-    } else {
-        if (s_is_full_packet_logging_enabled(decoder) == true) {
-            if (decoder->print_full_packet_logging == true) {
-                aws_mqtt5_packet_unsuback_storage_clean_up(&storage);
-            }
-        }
-    }
+    aws_mqtt5_packet_unsuback_storage_clean_up(&storage);
 
     return result;
 }
@@ -1066,16 +1017,7 @@ done:
         aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    // Only clean the packet if it was successful OR this is the second decode (for error prints)
-    if (result == AWS_OP_SUCCESS) {
-        aws_mqtt5_packet_disconnect_storage_clean_up(&storage);
-    } else {
-        if (s_is_full_packet_logging_enabled(decoder) == true) {
-            if (decoder->print_full_packet_logging == true) {
-                aws_mqtt5_packet_disconnect_storage_clean_up(&storage);
-            }
-        }
-    }
+    aws_mqtt5_packet_disconnect_storage_clean_up(&storage);
 
     return result;
 }
@@ -1112,17 +1054,7 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
         return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    int result = (*decoder_fn)(decoder);
-    if (result != AWS_OP_SUCCESS) {
-        if (s_is_full_packet_logging_enabled(decoder) == true) {
-            AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Decoder had an error. Printing data about packet below:");
-            decoder->print_full_packet_logging = true;
-            // Decode it again, but with logging - this should return the error again but with the data we want/need
-            (*decoder_fn)(decoder);
-            decoder->print_full_packet_logging = false;
-        }
-    }
-    return result;
+    return (*decoder_fn)(decoder);
 }
 
 #define FULL_PACKET_LOGGING_BYTES_PER_LINE 20
@@ -1207,9 +1139,7 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
     }
 
     if (s_is_full_packet_logging_enabled(decoder)) {
-        if (decoder->print_full_packet_logging == true) {
-            s_log_packet_cursor(decoder);
-        }
+        s_log_packet_cursor(decoder);
     }
 
     if (s_aws_mqtt5_decoder_decode_packet(decoder)) {
@@ -1299,7 +1229,6 @@ int aws_mqtt5_decoder_init(
     }
 
     aws_atomic_init_int(&decoder->is_full_packet_logging_enabled, 0);
-    decoder->print_full_packet_logging = false;
 
     return AWS_OP_SUCCESS;
 }
