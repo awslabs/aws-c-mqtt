@@ -56,11 +56,13 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     aws_byte_buf_append_byte_dynamic(&decoder->scratch_space, byte);
 
     if (s_is_full_packet_logging_enabled(decoder)) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_CLIENT,
-            "id=%p: Decoder FPL first byte: %2X",
-            decoder->options.callback_user_data,
-            (unsigned int)byte);
+        if (decoder->is_full_packet_logging_enabled == true) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: Decoder FPL first byte: %2X",
+                decoder->options.callback_user_data,
+                (unsigned int)byte);
+        }
     }
 
     enum aws_mqtt5_packet_type packet_type = (byte >> 4);
@@ -134,11 +136,13 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_vli_on_data(
         aws_byte_buf_append_dynamic(&decoder->scratch_space, &byte_cursor);
 
         if (s_is_full_packet_logging_enabled(decoder)) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT5_CLIENT,
-                "id=%p: Decoder FPL remaining length VLI byte: %2X",
-                decoder->options.callback_user_data,
-                (unsigned int)(*byte_cursor.ptr));
+            if (decoder->is_full_packet_logging_enabled == true) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT5_CLIENT,
+                    "id=%p: Decoder FPL remaining length VLI byte: %2X",
+                    decoder->options.callback_user_data,
+                    (unsigned int)(*byte_cursor.ptr));
+            }
         }
 
         /* now try and decode a vli integer based on the range implied by the offset into the buffer */
@@ -1054,7 +1058,17 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
         return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
-    return (*decoder_fn)(decoder);
+    int result = (*decoder_fn)(decoder);
+    if (result != AWS_OP_SUCCESS) {
+        if (s_is_full_packet_logging_enabled() == true) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Decoder had an error. Printing data about packet below:");
+            decoder->print_full_packet_logging = true;
+            // Decode it again, but with logging - this should return the error again but with the data we want/need
+            (*decoder_fn)(decoder);
+            decoder->print_full_packet_logging = false;
+        }
+    }
+    return result;
 }
 
 #define FULL_PACKET_LOGGING_BYTES_PER_LINE 20
@@ -1063,7 +1077,7 @@ static void s_log_packet_cursor(struct aws_mqtt5_decoder *decoder) {
 
     struct aws_mqtt5_client *client = decoder->options.callback_user_data;
     if (decoder->packet_cursor.len == 0) {
-        AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: Decoder FPL packet cursor empty", (void *)client);
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Decoder FPL packet cursor empty", (void *)client);
         return;
     }
 
@@ -1090,7 +1104,7 @@ static void s_log_packet_cursor(struct aws_mqtt5_decoder *decoder) {
 
         if ((i + 1) % FULL_PACKET_LOGGING_BYTES_PER_LINE == 0) {
             int byte_count = (int)((i / FULL_PACKET_LOGGING_BYTES_PER_LINE) * FULL_PACKET_LOGGING_BYTES_PER_LINE);
-            AWS_LOGF_DEBUG(
+            AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
                 "id=%p: Decoder FPL packet cursor %12d: %s",
                 (void *)client,
@@ -1102,7 +1116,7 @@ static void s_log_packet_cursor(struct aws_mqtt5_decoder *decoder) {
 
     if (line_buffer_index > 0) {
         int byte_count = (int)((i / FULL_PACKET_LOGGING_BYTES_PER_LINE) * FULL_PACKET_LOGGING_BYTES_PER_LINE);
-        AWS_LOGF_DEBUG(
+        AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT, "id=%p: Decoder FPL packet cursor %12d: %s", (void *)client, byte_count, line_buffer);
     }
 }
@@ -1139,7 +1153,9 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
     }
 
     if (s_is_full_packet_logging_enabled(decoder)) {
-        s_log_packet_cursor(decoder);
+        if (decoder->print_full_packet_logging == true) {
+            s_log_packet_cursor(decoder);
+        }
     }
 
     if (s_aws_mqtt5_decoder_decode_packet(decoder)) {
@@ -1229,6 +1245,7 @@ int aws_mqtt5_decoder_init(
     }
 
     aws_atomic_init_int(&decoder->is_full_packet_logging_enabled, 0);
+    decoder->print_full_packet_logging = false;
 
     return AWS_OP_SUCCESS;
 }

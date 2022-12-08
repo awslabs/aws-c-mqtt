@@ -103,6 +103,7 @@ struct aws_mqtt5_decoder {
     struct aws_mqtt5_inbound_topic_alias_resolver *topic_alias_resolver;
 
     struct aws_atomic_var is_full_packet_logging_enabled;
+    bool print_full_packet_logging;
 };
 
 AWS_EXTERN_C_BEGIN
