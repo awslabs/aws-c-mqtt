@@ -1050,7 +1050,7 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
     enum aws_mqtt5_packet_type packet_type = (enum aws_mqtt5_packet_type)(decoder->packet_first_byte >> 4);
     aws_mqtt5_decoding_fn *decoder_fn = decoder->options.decoder_table->decoders_by_packet_type[packet_type];
     if (decoder_fn == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Decoder decode packet function missing");
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Decoder decode packet function missing for enum: %d", packet_type);
         return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -1162,14 +1162,23 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
         switch (decoder->state) {
             case AWS_MQTT5_DS_READ_PACKET_TYPE:
                 result = s_aws_mqtt5_decoder_read_packet_type_on_data(decoder, &data);
+                if (s_is_full_packet_logging_enabled(decoder)) {
+                    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading packet type");
+                }
                 break;
 
             case AWS_MQTT5_DS_READ_REMAINING_LENGTH:
                 result = s_aws_mqtt5_decoder_read_remaining_length_on_data(decoder, &data);
+                if (s_is_full_packet_logging_enabled(decoder)) {
+                    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading packet remaining length");
+                }
                 break;
 
             case AWS_MQTT5_DS_READ_PACKET:
                 result = s_aws_mqtt5_decoder_read_packet_on_data(decoder, &data);
+                if (s_is_full_packet_logging_enabled(decoder)) {
+                    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading data");
+                }
                 break;
 
             default:
