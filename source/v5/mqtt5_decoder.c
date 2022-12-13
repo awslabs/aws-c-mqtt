@@ -1163,21 +1163,27 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
             case AWS_MQTT5_DS_READ_PACKET_TYPE:
                 result = s_aws_mqtt5_decoder_read_packet_type_on_data(decoder, &data);
                 if (s_is_full_packet_logging_enabled(decoder)) {
-                    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading packet type");
+                    if (result != AWS_MQTT5_DRT_SUCCESS) {
+                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading packet type");
+                    }
                 }
                 break;
 
             case AWS_MQTT5_DS_READ_REMAINING_LENGTH:
                 result = s_aws_mqtt5_decoder_read_remaining_length_on_data(decoder, &data);
                 if (s_is_full_packet_logging_enabled(decoder)) {
-                    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading packet remaining length");
+                    if (result != AWS_MQTT5_DRT_SUCCESS) {
+                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading packet remaining length");
+                    }
                 }
                 break;
 
             case AWS_MQTT5_DS_READ_PACKET:
                 result = s_aws_mqtt5_decoder_read_packet_on_data(decoder, &data);
                 if (s_is_full_packet_logging_enabled(decoder)) {
-                    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading data");
+                    if (result != AWS_MQTT5_DRT_SUCCESS) {
+                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading data");
+                    }
                 }
                 break;
 
