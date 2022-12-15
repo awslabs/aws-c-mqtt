@@ -1164,7 +1164,8 @@ static bool s_should_resume_session(const struct aws_mqtt5_client *client) {
     enum aws_mqtt5_client_session_behavior_type session_behavior =
         aws_mqtt5_client_session_behavior_type_to_non_default(client->config->session_behavior);
 
-    return session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully;
+    return (session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully) ||
+           (session_behavior == AWS_MQTT5_CSBT_REJOIN_ALWAYS);
 }
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {
@@ -1716,13 +1717,20 @@ static void s_aws_mqtt5_client_on_connack(
     /* Check if a session is being rejoined and perform associated rejoin connect logic here */
     if (client->negotiated_settings.rejoined_session) {
         /* Disconnect if the server is attempting to connect the client to an unexpected session */
-        if (aws_mqtt5_client_session_behavior_type_to_non_default(client->config->session_behavior) ==
-                AWS_MQTT5_CSBT_CLEAN ||
-            client->has_connected_successfully == false) {
+        if (!s_should_resume_session(client)) {
             s_aws_mqtt5_client_emit_final_lifecycle_event(
                 client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION, connack_view, NULL);
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
             return;
+        } else if (!client->has_connected_successfully) {
+            /*
+             * We were configured with REJOIN_ALWAYS and this is the first connection.  This is technically not safe
+             * and so let's log a warning for future diagnostics should it cause the user problems.
+             */
+            AWS_LOGF_WARN(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: initial connection rejoined existing session.  This may cause packet id collisions.",
+                (void *)client);
         }
     }
 
