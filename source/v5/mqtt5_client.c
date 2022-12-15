@@ -1722,6 +1722,15 @@ static void s_aws_mqtt5_client_on_connack(
                 client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION, connack_view, NULL);
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
             return;
+        } else if (!client->has_connected_successfully) {
+            /*
+             * We were configured with REJOIN_ALWAYS and this is the first connection.  This is technically not safe
+             * and so let's log a warning for future diagnostics should it cause the user problems.
+             */
+            AWS_LOGF_WARN(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: initial connection rejoined existing session.  This may cause packet id collisions.",
+                (void *)client);
         }
     }
 
