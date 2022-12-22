@@ -836,32 +836,22 @@ static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_c
     }
 }
 
-static void s_on_websocket_setup(
-    struct aws_websocket *websocket,
-    int error_code,
-    int handshake_response_status,
-    const struct aws_http_header *handshake_response_header_array,
-    size_t num_handshake_response_headers,
-    void *user_data) {
-
-    (void)handshake_response_status;
-    (void)handshake_response_header_array;
-    (void)num_handshake_response_headers;
+static void s_on_websocket_setup(const struct aws_websocket_on_connection_setup_data *setup, void *user_data) {
 
     struct aws_mqtt5_client *client = user_data;
     client->handshake = aws_http_message_release(client->handshake);
 
     /* Setup callback contract is: if error_code is non-zero then websocket is NULL. */
-    AWS_FATAL_ASSERT((error_code != 0) == (websocket == NULL));
+    AWS_FATAL_ASSERT((setup->error_code != 0) == (setup->websocket == NULL));
 
     struct aws_channel *channel = NULL;
 
-    if (websocket) {
-        channel = aws_websocket_get_channel(websocket);
+    if (setup->websocket) {
+        channel = aws_websocket_get_channel(setup->websocket);
         AWS_ASSERT(channel);
 
         /* Websocket must be "converted" before the MQTT handler can be installed next to it. */
-        if (aws_websocket_convert_to_midchannel_handler(websocket)) {
+        if (aws_websocket_convert_to_midchannel_handler(setup->websocket)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
                 "id=%p: Failed converting websocket, error %d (%s)",
@@ -875,7 +865,7 @@ static void s_on_websocket_setup(
     }
 
     /* Call into the channel-setup callback, the rest of the logic is the same. */
-    s_mqtt5_client_setup(client->config->bootstrap, error_code, channel, client);
+    s_mqtt5_client_setup(client->config->bootstrap, setup->error_code, channel, client);
 }
 
 struct aws_mqtt5_websocket_transform_complete_task {
@@ -936,9 +926,9 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
         }
     }
 
-error:
-
-    s_on_websocket_setup(NULL, error_code, -1, NULL, 0, client);
+error:;
+    struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = error_code};
+    s_on_websocket_setup(&websocket_setup, client);
 
 done:
 
