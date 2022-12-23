@@ -680,7 +680,8 @@ void s_websocket_channel_async_failure_task_fn(struct aws_task *task, void *arg,
     struct websocket_channel_failure_wrapper *wrapper = arg;
     struct aws_websocket_client_connection_options *options = &wrapper->websocket_options;
 
-    (*wrapper->websocket_options.on_connection_setup)(NULL, AWS_ERROR_INVALID_STATE, 0, NULL, 0, options->user_data);
+    struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = AWS_ERROR_INVALID_STATE};
+    (*wrapper->websocket_options.on_connection_setup)(&websocket_setup, options->user_data);
 }
 
 static int s_mqtt5_client_test_asynchronous_websocket_failure_fn(
