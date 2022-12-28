@@ -549,7 +549,7 @@ static void s_mqtt_client_init(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Adding username " PRInSTR " to connection",
             (void *)connection,
-            AWS_BYTE_CURSOR_PRI(username_cur))
+            AWS_BYTE_CURSOR_PRI(username_cur));
 
         struct aws_byte_cursor password_cur = {
             .ptr = NULL,
