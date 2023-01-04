@@ -749,30 +749,6 @@ done:
     aws_mem_release(shutdown_task->allocator, shutdown_task);
 }
 
-#ifdef NEVER
-
-static struct aws_mqtt_change_desired_state_task *s_aws_mqtt_change_desired_state_task_new(
-    struct aws_allocator *allocator,
-    struct aws_mqtt5_client *client,
-    enum aws_mqtt5_client_state desired_state,
-    struct aws_mqtt5_operation_disconnect *disconnect_operation) {
-
-    struct aws_mqtt_change_desired_state_task *change_state_task =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_change_desired_state_task));
-    if (change_state_task == NULL) {
-        return NULL;
-    }
-
-    aws_task_init(&change_state_task->task, s_change_state_task_fn, (void *)change_state_task, "ChangeStateTask");
-    change_state_task->allocator = client->allocator;
-    change_state_task->client = (desired_state == AWS_MCS_TERMINATED) ? client : aws_mqtt5_client_acquire(client);
-    change_state_task->desired_state = desired_state;
-    change_state_task->disconnect_operation = aws_mqtt5_operation_disconnect_acquire(disconnect_operation);
-
-    return change_state_task;
-}
-#endif
-
 static void s_mqtt5_client_shutdown_final(int error_code, struct aws_mqtt5_client *client) {
 
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
