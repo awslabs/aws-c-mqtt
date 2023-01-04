@@ -725,20 +725,33 @@ static void s_aws_mqtt5_client_shutdown_channel_clean(
     aws_mqtt5_operation_disconnect_release(disconnect_op);
 }
 
-static void s_mqtt5_client_shutdown(
-    struct aws_client_bootstrap *bootstrap,
-    int error_code,
-    struct aws_channel *channel,
-    void *user_data) {
+struct aws_mqtt5_shutdown_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    int error_code;
+    struct aws_mqtt5_client *client;
+};
 
-    (void)bootstrap;
-    (void)channel;
+static void s_mqtt5_client_shutdown_final(int error_code, struct aws_mqtt5_client *client);
 
-    struct aws_mqtt5_client *client = user_data;
+static void s_shutdown_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
 
-    if (error_code == AWS_ERROR_SUCCESS) {
-        error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
+    struct aws_mqtt5_shutdown_task *shutdown_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
     }
+
+    s_mqtt5_client_shutdown_final(shutdown_task->error_code, shutdown_task->client);
+
+done:
+
+    aws_mem_release(shutdown_task->allocator, shutdown_task);
+}
+
+static void s_mqtt5_client_shutdown_final(int error_code, struct aws_mqtt5_client *client) {
+
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     s_aws_mqtt5_client_emit_final_lifecycle_event(client, error_code, NULL, NULL);
 
@@ -764,6 +777,36 @@ static void s_mqtt5_client_shutdown(
     }
 }
 
+static void s_mqtt5_client_shutdown(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)channel;
+
+    struct aws_mqtt5_client *client = user_data;
+
+    if (error_code == AWS_ERROR_SUCCESS) {
+        error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
+    }
+
+    if (aws_event_loop_thread_is_callers_thread(client->loop)) {
+        s_mqtt5_client_shutdown_final(error_code, client);
+        return;
+    }
+
+    struct aws_mqtt5_shutdown_task *shutdown_task =
+        aws_mem_calloc(client->allocator, 1, sizeof(struct aws_mqtt5_shutdown_task));
+
+    aws_task_init(&shutdown_task->task, s_shutdown_task_fn, (void *)shutdown_task, "ShutdownTask");
+    shutdown_task->allocator = client->allocator;
+    shutdown_task->client = client;
+    shutdown_task->error_code = error_code;
+    aws_event_loop_schedule_task_now(client->loop, &shutdown_task->task);
+}
+
 static void s_mqtt5_client_setup(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
@@ -776,13 +819,14 @@ static void s_mqtt5_client_setup(
     AWS_FATAL_ASSERT((error_code != 0) == (channel == NULL));
     struct aws_mqtt5_client *client = user_data;
 
-    AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
-
     if (error_code != AWS_OP_SUCCESS) {
         /* client shutdown already handles this case, so just call that. */
         s_mqtt5_client_shutdown(bootstrap, error_code, channel, user_data);
         return;
     }
+
+    AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     if (client->desired_state != AWS_MCS_CONNECTED) {
         aws_raise_error(AWS_ERROR_MQTT5_USER_REQUESTED_STOP);
