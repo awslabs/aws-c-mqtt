@@ -778,9 +778,13 @@ static void s_mqtt5_client_setup(
 
     AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
 
+    /* Acquire the client to keep it alive for the duration of this function */
+    aws_mqtt5_client_acquire(client);
+
     if (error_code != AWS_OP_SUCCESS) {
         /* client shutdown already handles this case, so just call that. */
         s_mqtt5_client_shutdown(bootstrap, error_code, channel, user_data);
+        aws_mqtt5_client_release(client);
         return;
     }
 
@@ -815,6 +819,7 @@ static void s_mqtt5_client_setup(
     }
 
     s_change_current_state(client, AWS_MCS_MQTT_CONNECT);
+    aws_mqtt5_client_release(client);
 
     return;
 
@@ -822,6 +827,7 @@ error:
 
     s_change_current_state(client, AWS_MCS_CHANNEL_SHUTDOWN);
     (*client->vtable->channel_shutdown_fn)(channel, aws_last_error());
+    aws_mqtt5_client_release(client);
 }
 
 static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {
