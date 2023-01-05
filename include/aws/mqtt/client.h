@@ -98,6 +98,12 @@ typedef void(aws_mqtt_suback_fn)(
     int error_code,
     void *userdata);
 
+/* This doesn't replace anything, it's just for test verification of statistic changes */
+typedef void (*aws_mqtt_operation_statistics_fn)(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    void *userdata);
+
 /**
  * Called when a publish message is received.
  *
@@ -219,6 +225,47 @@ struct aws_mqtt_connection_options {
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *user_data;
     bool clean_session;
+};
+
+/**
+ * Contains some simple statistics about the current state of the connection's queue of operations
+ */
+struct aws_mqtt_connection_operation_statistics {
+    /*
+     * total number of operations submitted to the connection that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    uint64_t incomplete_operation_count;
+
+    /*
+     * total packet size of operations submitted to the connection that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    uint64_t incomplete_operation_size;
+
+    /*
+     * total number of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    uint64_t unacked_operation_count;
+
+    /*
+     * total packet size of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    uint64_t unacked_operation_size;
+};
+
+/* Flags that indicate the way in which way an operation is currently affecting the statistics of the connection */
+enum aws_mqtt_operation_statistic_state_flags {
+    /* The operation is not affecting the connection's statistics at all */
+    AWS_MQTT_OSS_NONE = 0,
+
+    /* The operation is affecting the connection's "incomplete operation" statistics */
+    AWS_MQTT_OSS_INCOMPLETE = 1 << 0,
+
+    /* The operation is affecting the connection's "unacked operation" statistics */
+    AWS_MQTT_OSS_UNACKED = 1 << 1,
 };
 
 AWS_EXTERN_C_BEGIN
@@ -570,6 +617,16 @@ uint16_t aws_mqtt_client_connection_publish(
     const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata);
+
+/**
+ * Queries the connection's internal statistics for incomplete operations.
+ * @param connection connection to get statistics for
+ * @param stats set of incomplete operation statistics
+ */
+AWS_MQTT_API
+void aws_mqtt_client_connection_get_stats(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_connection_operation_statistics *stats);
 
 AWS_EXTERN_C_END
 

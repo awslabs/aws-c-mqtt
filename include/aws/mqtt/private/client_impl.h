@@ -60,6 +60,35 @@ enum aws_mqtt_client_request_state {
 };
 
 /**
+ * Contains some simple statistics about the current state of the connection's queue of operations
+ */
+struct aws_mqtt_connection_operation_statistics_impl {
+    /*
+     * total number of operations submitted to the connection that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    struct aws_atomic_var incomplete_operation_count_atomic;
+
+    /*
+     * total packet size of operations submitted to the connection that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    struct aws_atomic_var incomplete_operation_size_atomic;
+
+    /*
+     * total number of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    struct aws_atomic_var unacked_operation_count_atomic;
+
+    /*
+     * total packet size of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    struct aws_atomic_var unacked_operation_size_atomic;
+};
+
+/**
  * Called after the timeout if a matching ack packet hasn't arrived, with is_first_attempt set as false.
  * Or called when the request packet attempt to send firstly, with is_first_attempt set as true.
  * Return AWS_MQTT_CLIENT_REQUEST_ONGOING to check on the task later.
@@ -76,6 +105,11 @@ struct aws_mqtt_request {
     struct aws_mqtt_client_connection *connection;
 
     struct aws_channel_task outgoing_task;
+
+    /* How this operation is currently affecting the statistics of the connection */
+    enum aws_mqtt_operation_statistic_state_flags statistic_state_flags;
+    /* Needed so we know how to decode this packet to determine it's size and how to handle it */
+    enum aws_mqtt_packet_type packet_type;
 
     uint16_t packet_id;
     bool retryable;
@@ -175,6 +209,8 @@ struct aws_mqtt_client_connection {
     void *on_any_publish_ud;
     aws_mqtt_client_on_disconnect_fn *on_disconnect;
     void *on_disconnect_ud;
+    aws_mqtt_operation_statistics_fn *on_operation_statistics;
+    void *on_operation_statistics_ud;
 
     /* Connection tasks. */
     struct aws_mqtt_reconnect_task *reconnect_task;
@@ -236,6 +272,12 @@ struct aws_mqtt_client_connection {
          * Helps us find the next free ID faster.
          */
         uint16_t packet_id;
+
+        /**
+         * Statistics tracking operational state
+         */
+        struct aws_mqtt_connection_operation_statistics_impl operation_statistics_impl;
+
     } synced_data;
 
     struct {
@@ -278,6 +320,20 @@ AWS_MQTT_API uint16_t mqtt_create_request(
     void *on_complete_ud,
     bool noRetry);
 
+/**
+ * The same as mqtt_create_request, but it takes an additional argument, a packet type, to store the type of the
+ * packet for processing based on packet type. Should be used over mqtt_create_request whenever possible. Packets
+ * created via mqtt_create_request will not be used when processing packets based on type (like operation statistics)
+ */
+AWS_MQTT_API uint16_t mqtt_create_request_with_type(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_send_request_fn *send_request,
+    void *send_request_ud,
+    aws_mqtt_op_complete_fn *on_complete,
+    void *on_complete_ud,
+    bool noRetry,
+    enum aws_mqtt_packet_type packet_type);
+
 /* Call when an ack packet comes back from the server. */
 AWS_MQTT_API void mqtt_request_complete(
     struct aws_mqtt_client_connection *connection,
@@ -301,5 +357,17 @@ AWS_MQTT_API void aws_create_reconnect_task(struct aws_mqtt_client_connection *c
  *              otherwise AWS_OP_ERR and aws_last_error() is set.
  */
 int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
+
+/**
+ * Changes the operation statistics for the passed-in aws_mqtt_request. Used for tracking
+ * whether operations have been completed or not.
+ * @param connection The connection whose operations are being tracked
+ * @param request The request to change the state of
+ * @param new_state_flags The new state to use
+ */
+void aws_mqtt_connection_statistics_change_operation_statistic_state(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_request *request,
+    enum aws_mqtt_operation_statistic_state_flags new_state_flags);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */
