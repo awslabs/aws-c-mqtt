@@ -32,6 +32,9 @@
 #    pragma warning(disable : 4204)
 #endif
 
+/* The size of a PINGREQ packet is always 2 bytes */
+static const uint64_t s_pingreq_packet_size = 2;
+
 /* 3 seconds */
 static const uint64_t s_default_ping_timeout_ns = 3000000000;
 
@@ -1887,6 +1890,14 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting multi-topic subscribe", (void *)connection);
 
+    /* Calculate the size of the subscribe packet */
+    uint64_t subscribe_packet_size = 0;
+    /* The fixed header is 2 bytes */
+    subscribe_packet_size += 2;
+    /* Packet ID is always 2 bytes */
+    subscribe_packet_size += 2;
+    /* NOTE: The size of the topic filter(s) are calculated in the loop below */
+
     for (size_t i = 0; i < num_topics; ++i) {
 
         struct aws_mqtt_topic_subscription *request = NULL;
@@ -1925,16 +1936,20 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
 
         /* Push into the list */
         aws_array_list_push_back(&task_arg->topics, &task_topic);
+
+        /* Subscribe topic filter is: always 3 bytes (1 for QoS, 2 for Length MSB/LSB) + the size of the topic filter */
+        subscribe_packet_size += 3;
+        subscribe_packet_size += task_topic->request.topic.len;
     }
 
-    uint16_t packet_id = mqtt_create_request_with_type(
+    uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
         &s_subscribe_send,
         task_arg,
         &s_subscribe_complete,
         task_arg,
-        false,
-        /* noRetry */ AWS_MQTT_PACKET_SUBSCRIBE);
+        false, /* noRetry */
+        subscribe_packet_size);
 
     if (packet_id == 0) {
         AWS_LOGF_ERROR(
@@ -2068,14 +2083,24 @@ uint16_t aws_mqtt_client_connection_subscribe(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    uint16_t packet_id = mqtt_create_request_with_type(
+    /* Calculate the size of the (single) subscribe packet */
+    uint64_t subscribe_packet_size = 0;
+    /* The fixed header is 2 bytes */
+    subscribe_packet_size += 2;
+    /* Subscribe topic filter is: always 3 bytes (1 for QoS, 2 for Length MSB/LSB) + the size of the topic filter */
+    subscribe_packet_size += 3;
+    subscribe_packet_size += topic_filter->len;
+    /* The packet ID is always 2 bytes */
+    subscribe_packet_size += 2;
+
+    uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
         &s_subscribe_send,
         task_arg,
         &s_subscribe_single_complete,
         task_arg,
-        false,
-        /* noRetry */ AWS_MQTT_PACKET_SUBSCRIBE);
+        false, /* noRetry */
+        subscribe_packet_size);
 
     if (packet_id == 0) {
         AWS_LOGF_ERROR(
@@ -2232,14 +2257,25 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    uint16_t packet_id = mqtt_create_request_with_type(
+    /* Calculate the size of the (local) subscribe packet */
+    uint64_t subscribe_packet_size = 0;
+    /* The fixed header is 2 bytes */
+    subscribe_packet_size += 2;
+    /* Local subscribe topic filter is: always 3 bytes (1 for QoS, 2 for Length MSB/LSB) + the size of the topic filter
+     */
+    subscribe_packet_size += 3;
+    subscribe_packet_size += topic_filter->len;
+    /* The packet ID is always 2 bytes */
+    subscribe_packet_size += 2;
+
+    uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
         s_subscribe_local_send,
         task_arg,
         &s_subscribe_local_complete,
         task_arg,
         false, /* noRetry */
-        AWS_MQTT_PACKET_SUBSCRIBE);
+        subscribe_packet_size);
 
     if (packet_id == 0) {
         AWS_LOGF_ERROR(
@@ -2450,14 +2486,23 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     task_arg->on_suback.multi = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
-    uint16_t packet_id = mqtt_create_request_with_type(
+    /* Calculate the size of the packet */
+    uint64_t resubscribe_packet_size = 0;
+    /* The fixed header is 2 bytes */
+    resubscribe_packet_size += 2;
+    /* TODO - add the size of the topics here! This is a little complicated compared
+       to the other operations because we are resubscribing... Will need to think on how to elegantly do this... */
+    /* The packet ID is always 2 bytes */
+    resubscribe_packet_size += 2;
+
+    uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
         &s_resubscribe_send,
         task_arg,
         &s_resubscribe_complete,
         task_arg,
-        false,
-        /* noRetry */ AWS_MQTT_PACKET_SUBSCRIBE);
+        false, /* noRetry */
+        resubscribe_packet_size);
 
     if (packet_id == 0) {
         AWS_LOGF_ERROR(
@@ -2652,14 +2697,23 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
 
-    uint16_t packet_id = mqtt_create_request_with_type(
+    /* Calculate the size of the unsubscribe packet */
+    uint64_t unsubscribe_packet_size = 0;
+    /* The fixed header is 2 bytes */
+    unsubscribe_packet_size += 2;
+    /* Topic filter */
+    unsubscribe_packet_size += 2 + task_arg->filter.len;
+    /* The packet ID is always 2 bytes */
+    unsubscribe_packet_size += 2;
+
+    uint16_t packet_id = mqtt_create_request(
         connection,
         &s_unsubscribe_send,
         task_arg,
         s_unsubscribe_complete,
         task_arg,
-        false,
-        /* noRetry */ AWS_MQTT_PACKET_UNSUBSCRIBE);
+        false, /* noRetry */
+        unsubscribe_packet_size);
     if (packet_id == 0) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT,
@@ -2915,9 +2969,20 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->on_complete = on_complete;
     arg->userdata = userdata;
 
+    /* Calculate the size of the publish packet */
+    uint64_t publish_packet_size = 0;
+    /* The fixed header is 2 bytes */
+    publish_packet_size += 2;
+    /* Topic name */
+    publish_packet_size += 2 + arg->topic.len;
+    /* The Payload */
+    publish_packet_size += arg->payload.len;
+    /* The packet ID is always 2 bytes */
+    publish_packet_size += 2;
+
     bool retry = qos == AWS_MQTT_QOS_AT_MOST_ONCE;
-    uint16_t packet_id = mqtt_create_request_with_type(
-        connection, &s_publish_send, arg, &s_publish_complete, arg, retry, AWS_MQTT_PACKET_PUBLISH);
+    uint16_t packet_id =
+        mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg, retry, publish_packet_size);
 
     if (packet_id == 0) {
         /* bummer, we failed to make a new request */
@@ -3025,8 +3090,9 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    uint16_t packet_id = mqtt_create_request_with_type(
-        connection, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ AWS_MQTT_PACKET_PINGREQ);
+    /* NOTE: The pingreq packet is always the same size, so we can use hardcoded value for it */
+    uint16_t packet_id = mqtt_create_request(
+        connection, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ s_pingreq_packet_size);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
 
@@ -3036,136 +3102,6 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 /*******************************************************************************
  * Operation Statistics
  ******************************************************************************/
-
-static int s_calculate_packet_size_from_request_packet_publish(
-    struct aws_mqtt_request *request,
-    uint64_t *destination) {
-    // Since this function is called multiple steps down with verification error checking, we'll skip it here!
-
-    if (request->send_request_ud == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    struct publish_task_arg *arg = request->send_request_ud;
-    if (arg == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    /* TODO - Calculate these numbers better! Right now this is VERY basic. Need to actually calculate the size */
-
-    /* Reset the size to zero. */
-    *destination = 0;
-
-    /* Topic */
-    *destination += 2 + arg->topic_string->len;
-
-    /* Payload */
-    *destination += arg->payload_buf.len;
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_calculate_packet_size_from_request_packet_subscribe(
-    struct aws_mqtt_request *request,
-    uint64_t *destination) {
-
-    if (request->send_request_ud == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    struct subscribe_task_arg *arg = request->send_request_ud;
-    if (arg == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    // NOTE: Something is wrong here!
-
-    /* TODO - Calculate these numbers better! Right now this is VERY basic. Need to actually calculate the size */
-
-    /* Reset the size to zero. */
-    *destination = 0;
-
-    /* Topics */
-    struct aws_array_list topics_list = arg->topics;
-    struct subscribe_task_topic *single_topic = NULL;
-    for (size_t i = 0; i < aws_array_list_length(&topics_list) - 1; i++) {
-        int result = aws_array_list_get_at(&topics_list, single_topic, i);
-        if (result != AWS_OP_SUCCESS) {
-            return AWS_OP_ERR;
-        }
-
-        if (aws_string_is_valid(single_topic->filter)) {
-            *destination += 2 + single_topic->filter->len;
-
-            fprintf(stderr, "\n Sub filter is: %s \n", aws_string_c_str(single_topic->filter));
-            // fprintf(stderr, "\n TEST \n");
-        }
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_calculate_packet_size_from_request_packet_unsubscribe(
-    struct aws_mqtt_request *request,
-    uint64_t *destination) {
-    if (request->send_request_ud == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    struct unsubscribe_task_arg *arg = request->send_request_ud;
-    if (arg == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    /* TODO - Calculate these numbers better! Right now this is VERY basic. Need to actually calculate the size */
-
-    /* Reset the size to zero. */
-    *destination = 0;
-
-    /* Topic filter */
-    *destination += 2 + arg->filter_string->len;
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_calculate_packet_size_from_request(struct aws_mqtt_request *request, uint64_t *destination) {
-
-    if (!request) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT, "Invalid MQTT311 request cannot have packet size calculated. Returning 0...");
-        return AWS_OP_ERR;
-    }
-
-    // TODO - cache the first calculation of the packet size and then check and reuse that if it exists?
-
-    bool success = false;
-    int calculate_result = AWS_OP_ERR;
-    enum aws_mqtt_packet_type packet_type = request->packet_type;
-
-    // Based on that packet type, calculate the size
-    switch (packet_type) {
-        case AWS_MQTT_PACKET_PUBLISH:
-            calculate_result = s_calculate_packet_size_from_request_packet_publish(request, destination);
-            break;
-        case AWS_MQTT_PACKET_SUBSCRIBE:
-            calculate_result = s_calculate_packet_size_from_request_packet_subscribe(request, destination);
-            break;
-        case AWS_MQTT_PACKET_UNSUBSCRIBE:
-            calculate_result = s_calculate_packet_size_from_request_packet_unsubscribe(request, destination);
-            break;
-        default:
-            break;
-    }
-
-    if (success == false) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "Attempt to calculate size of currently supported packet type %d! Returning 0...",
-            packet_type);
-    }
-
-    return calculate_result;
-}
 
 void aws_mqtt_connection_statistics_change_operation_statistic_state(
     struct aws_mqtt_client_connection *connection,
@@ -3184,30 +3120,11 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
         return;
     }
 
-    enum aws_mqtt_packet_type packet_type = request->packet_type;
-    if (packet_type != AWS_MQTT_PACKET_PUBLISH && packet_type != AWS_MQTT_PACKET_SUBSCRIBE &&
-        packet_type != AWS_MQTT_PACKET_UNSUBSCRIBE) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Skipped calculating packet type for packet type value of %d",
-            (void *)connection,
-            packet_type);
-        return;
-    }
-
-    uint64_t packet_size = 0;
-    int packet_size_result = s_calculate_packet_size_from_request(request, &packet_size);
-    if (packet_size_result != AWS_OP_SUCCESS) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Error ocurred getting packet size from MQTT311 request");
-        return;
-    }
-
+    uint64_t packet_size = request->packet_size;
     enum aws_mqtt_operation_statistic_state_flags old_state_flags = request->statistic_state_flags;
     if (new_state_flags == old_state_flags) {
         return;
     }
-
-    bool TMP_did_add = false;
 
     /* NOTE: It is ASSUMED that we are in a locked state with the synced data. We do not NOT check this here nor enforce
      * it at this time. */
@@ -3219,7 +3136,6 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
             if ((new_state_flags & AWS_MQTT_OSS_INCOMPLETE) != 0) {
                 aws_atomic_fetch_add(&stats->incomplete_operation_count_atomic, 1);
                 aws_atomic_fetch_add(&stats->incomplete_operation_size_atomic, (size_t)packet_size);
-                TMP_did_add = true;
             } else {
                 aws_atomic_fetch_sub(&stats->incomplete_operation_count_atomic, 1);
                 aws_atomic_fetch_sub(&stats->incomplete_operation_size_atomic, (size_t)packet_size);
@@ -3230,23 +3146,26 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
             if ((new_state_flags & AWS_MQTT_OSS_UNACKED) != 0) {
                 aws_atomic_fetch_add(&stats->unacked_operation_count_atomic, 1);
                 aws_atomic_fetch_add(&stats->unacked_operation_size_atomic, (size_t)packet_size);
-                TMP_did_add = true;
             } else {
                 aws_atomic_fetch_sub(&stats->unacked_operation_count_atomic, 1);
                 aws_atomic_fetch_sub(&stats->unacked_operation_size_atomic, (size_t)packet_size);
             }
         }
-
         request->statistic_state_flags = new_state_flags;
+
+        fprintf(
+            stderr,
+            "\n Incomplete operation count %zu - Incomplete operation size: %zu \n",
+            aws_atomic_load_int(&stats->incomplete_operation_count_atomic),
+            aws_atomic_load_int(&stats->incomplete_operation_size_atomic));
+        fprintf(
+            stderr,
+            "\n Unacked operation count %zu - Unacked operation size: %zu \n",
+            aws_atomic_load_int(&stats->unacked_operation_count_atomic),
+            aws_atomic_load_int(&stats->unacked_operation_size_atomic));
     }
 
-    if (TMP_did_add) {
-        fprintf(stderr, "\n TMP: Packet type is %d - Added packet size is %llu \n", packet_type, packet_size);
-    } else {
-        fprintf(stderr, "\n TMP: Packet type is %d - Removed packet size is %llu \n", packet_type, packet_size);
-    }
-
-    // TODO - not totally sure on the user data at this time...
+    // TODO - Need to implement the callback, complete with userdata and such.
     // MQTT_CLIENT_CALL_CALLBACK(connection, on_operation_statistics);
 }
 

@@ -108,8 +108,8 @@ struct aws_mqtt_request {
 
     /* How this operation is currently affecting the statistics of the connection */
     enum aws_mqtt_operation_statistic_state_flags statistic_state_flags;
-    /* Needed so we know how to decode this packet to determine it's size and how to handle it */
-    enum aws_mqtt_packet_type packet_type;
+    /* The encoded size of the packet - used for operation statistics tracking */
+    uint64_t packet_size;
 
     uint16_t packet_id;
     bool retryable;
@@ -318,21 +318,8 @@ AWS_MQTT_API uint16_t mqtt_create_request(
     void *send_request_ud,
     aws_mqtt_op_complete_fn *on_complete,
     void *on_complete_ud,
-    bool noRetry);
-
-/**
- * The same as mqtt_create_request, but it takes an additional argument, a packet type, to store the type of the
- * packet for processing based on packet type. Should be used over mqtt_create_request whenever possible. Packets
- * created via mqtt_create_request will not be used when processing packets based on type (like operation statistics)
- */
-AWS_MQTT_API uint16_t mqtt_create_request_with_type(
-    struct aws_mqtt_client_connection *connection,
-    aws_mqtt_send_request_fn *send_request,
-    void *send_request_ud,
-    aws_mqtt_op_complete_fn *on_complete,
-    void *on_complete_ud,
     bool noRetry,
-    enum aws_mqtt_packet_type packet_type);
+    uint64_t packet_size);
 
 /* Call when an ack packet comes back from the server. */
 AWS_MQTT_API void mqtt_request_complete(

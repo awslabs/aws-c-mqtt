@@ -727,7 +727,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 mqtt_connection_lock_synced_data(connection);
 
                 // Set the status as incomplete
-                aws_mqtt_connection_statistics_change_operation_statistic_state(connection, request, AWS_MQTT_OSS_INCOMPLETE);
+                aws_mqtt_connection_statistics_change_operation_statistic_state(
+                    connection, request, AWS_MQTT_OSS_INCOMPLETE);
 
                 aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &request->list_node);
                 mqtt_connection_unlock_synced_data(connection);
@@ -749,7 +750,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 mqtt_connection_lock_synced_data(connection);
 
                 // Cancel the request in the operation statistics
-                aws_mqtt_connection_statistics_change_operation_statistic_state(request->connection, request, AWS_MQTT_OSS_NONE);
+                aws_mqtt_connection_statistics_change_operation_statistic_state(
+                    request->connection, request, AWS_MQTT_OSS_NONE);
 
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
@@ -792,7 +794,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 mqtt_connection_lock_synced_data(connection);
 
                 // Set the request as complete in the operation statistics
-                aws_mqtt_connection_statistics_change_operation_statistic_state(request->connection, request, AWS_MQTT_OSS_NONE);
+                aws_mqtt_connection_statistics_change_operation_statistic_state(
+                    request->connection, request, AWS_MQTT_OSS_NONE);
 
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
@@ -811,8 +814,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
 
-                // Set the request as incomplete and unacked in the operation statistics
-                aws_mqtt_connection_statistics_change_operation_statistic_state(request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
+                // Set the request as incomplete and un-acked in the operation statistics
+                aws_mqtt_connection_statistics_change_operation_statistic_state(
+                    request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
 
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
@@ -829,28 +833,8 @@ uint16_t mqtt_create_request(
     void *send_request_ud,
     aws_mqtt_op_complete_fn *on_complete,
     void *on_complete_ud,
-    bool noRetry) {
-
-    // For backwards compatibility, we just call mqtt_create_request_with_type but set the type to NONE
-    return mqtt_create_request_with_type(
-        connection,
-        send_request,
-        send_request_ud,
-        on_complete,
-        on_complete_ud,
-        noRetry,
-        AWS_MQTT_PACKET_RESERVED
-    );
-}
-
-uint16_t mqtt_create_request_with_type(
-    struct aws_mqtt_client_connection *connection,
-    aws_mqtt_send_request_fn *send_request,
-    void *send_request_ud,
-    aws_mqtt_op_complete_fn *on_complete,
-    void *on_complete_ud,
     bool noRetry,
-    enum aws_mqtt_packet_type packet_type) {
+    uint64_t packet_size) {
 
     AWS_ASSERT(connection);
     AWS_ASSERT(send_request);
@@ -945,7 +929,7 @@ uint16_t mqtt_create_request_with_type(
         next_request->send_request_ud = send_request_ud;
         next_request->on_complete = on_complete;
         next_request->on_complete_ud = on_complete_ud;
-        next_request->packet_type = packet_type;
+        next_request->packet_size = packet_size;
         aws_channel_task_init(
             &next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_outgoing_request_task");
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
@@ -960,7 +944,8 @@ uint16_t mqtt_create_request_with_type(
         }
 
         // Set the status as incomplete
-        aws_mqtt_connection_statistics_change_operation_statistic_state(next_request->connection, next_request, AWS_MQTT_OSS_INCOMPLETE);
+        aws_mqtt_connection_statistics_change_operation_statistic_state(
+            next_request->connection, next_request, AWS_MQTT_OSS_INCOMPLETE);
 
         mqtt_connection_unlock_synced_data(connection);
 
@@ -1003,8 +988,9 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
             on_complete = request->on_complete;
             on_complete_ud = request->on_complete_ud;
 
-            // Set the status as complete (TODO)
-            aws_mqtt_connection_statistics_change_operation_statistic_state(request->connection, request, AWS_MQTT_OSS_NONE);
+            // Set the status as complete
+            aws_mqtt_connection_statistics_change_operation_statistic_state(
+                request->connection, request, AWS_MQTT_OSS_NONE);
 
             /* clean up request resources */
             aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
