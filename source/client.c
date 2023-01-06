@@ -2702,7 +2702,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     /* The fixed header is 2 bytes */
     unsubscribe_packet_size += 2;
     /* Topic filter */
-    unsubscribe_packet_size += 2 + task_arg->filter.len;
+    unsubscribe_packet_size += task_arg->filter.len;
     /* The packet ID is always 2 bytes */
     unsubscribe_packet_size += 2;
 
@@ -2974,7 +2974,7 @@ uint16_t aws_mqtt_client_connection_publish(
     /* The fixed header is 2 bytes */
     publish_packet_size += 2;
     /* Topic name */
-    publish_packet_size += 2 + arg->topic.len;
+    publish_packet_size += arg->topic.len;
     /* The Payload */
     publish_packet_size += arg->payload.len;
     /* The packet ID is always 2 bytes */
@@ -3155,15 +3155,6 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
             }
         }
         request->statistic_state_flags = new_state_flags;
-
-        fprintf(
-            stderr,
-            "\n Incomplete: \n\t count %zu\n\t size %zu bytes"
-            "\n Unacked: \n\t count %zu\n\t size %zu bytes\n",
-            aws_atomic_load_int(&stats->incomplete_operation_count_atomic),
-            aws_atomic_load_int(&stats->incomplete_operation_size_atomic),
-            aws_atomic_load_int(&stats->unacked_operation_count_atomic),
-            aws_atomic_load_int(&stats->unacked_operation_size_atomic));
     }
 
     // If the callback is defined, then call it
@@ -3172,20 +3163,20 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
     }
 }
 
-void aws_mqtt_client_connection_get_stats(
+int aws_mqtt_client_connection_get_stats(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_connection_operation_statistics *stats) {
     // Error checking
     if (!connection) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Invalid MQTT311 connection used when trying to get operation statistics");
-        return;
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
     if (!stats) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Invalid MQTT311 connection statistics struct used when trying to get operation statistics",
             (void *)connection);
-        return;
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
     {
@@ -3204,4 +3195,6 @@ void aws_mqtt_client_connection_get_stats(
         /* END CRITICAL SECTION */
         mqtt_connection_unlock_synced_data(connection);
     }
+
+    return AWS_OP_SUCCESS;
 }

@@ -61,6 +61,11 @@ add_test_case(mqtt_clean_session_keep_next_session)
 add_test_case(mqtt_connection_publish_QoS1_timeout)
 add_test_case(mqtt_connection_unsub_timeout)
 add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
+# Operation statistics tests
+add_test_case(mqtt_operation_statistics_simple_publish)
+add_test_case(mqtt_operation_statistics_incomplete_publish)
+add_test_case(mqtt_operation_statistics_simple_subscribe)
+add_test_case(mqtt_operation_statistics_incomplete_subscribe)
 
 # MQTT5 tests
 

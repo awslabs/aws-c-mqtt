@@ -624,11 +624,12 @@ uint16_t aws_mqtt_client_connection_publish(
 
 /**
  * Queries the connection's internal statistics for incomplete operations.
- * @param connection connection to get statistics for
- * @param stats set of incomplete operation statistics
+ * \param connection connection to get statistics for
+ * \param stats set of incomplete operation statistics
+ * \returns AWS_OP_SUCCESS if getting the operation statistics were successful, AWS_OP_ERR otherwise
  */
 AWS_MQTT_API
-void aws_mqtt_client_connection_get_stats(
+int aws_mqtt_client_connection_get_stats(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_connection_operation_statistics *stats);
 
