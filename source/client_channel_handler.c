@@ -726,7 +726,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
 
-                // Set the status as incomplete
+                /* Set the status as incomplete (has to be called with synced data locked) */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     connection, request, AWS_MQTT_OSS_INCOMPLETE);
 
@@ -749,7 +749,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
 
-                // Cancel the request in the operation statistics
+                /* Cancel the request in the operation statistics (has to be called with synced data locked) */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
@@ -793,7 +793,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
 
-                // Set the request as complete in the operation statistics
+                /* Set the request as complete in the operation statistics (has to be called with synced data locked) */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
@@ -814,7 +814,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
 
-                // Set the request as incomplete and un-acked in the operation statistics
+                /* Set the request as incomplete and un-acked in the operation statistics
+                 * (has to be called with synced data locked) */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
 
@@ -943,7 +944,7 @@ uint16_t mqtt_create_request(
             aws_channel_acquire_hold(channel);
         }
 
-        // Set the status as incomplete
+        /* Set the status as incomplete (has to be called with synced data locked) */
         aws_mqtt_connection_statistics_change_operation_statistic_state(
             next_request->connection, next_request, AWS_MQTT_OSS_INCOMPLETE);
 
@@ -988,7 +989,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
             on_complete = request->on_complete;
             on_complete_ud = request->on_complete_ud;
 
-            // Set the status as complete
+            /* Set the status as complete (has to be called with synced data locked) */
             aws_mqtt_connection_statistics_change_operation_statistic_state(
                 request->connection, request, AWS_MQTT_OSS_NONE);
 

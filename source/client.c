@@ -3126,8 +3126,11 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
         return;
     }
 
-    /* NOTE: It is ASSUMED that we are in a locked state with the synced data. We do not NOT check this here nor enforce
-     * it at this time. */
+    /**
+     * NOTE: This function ASSUMES that the synced data lock is held. This is required but we cannot nicely do it
+     * in this function because a couple places have to call it in an already held shared lock because it is freeing/destroying
+     * packets...
+     */
     {
         struct aws_mqtt_connection_operation_statistics_impl *stats =
             &connection->synced_data.operation_statistics_impl;
@@ -3155,18 +3158,18 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
 
         fprintf(
             stderr,
-            "\n Incomplete operation count %zu - Incomplete operation size: %zu \n",
+            "\n Incomplete: \n\t count %zu\n\t size %zu bytes"
+            "\n Unacked: \n\t count %zu\n\t size %zu bytes\n",
             aws_atomic_load_int(&stats->incomplete_operation_count_atomic),
-            aws_atomic_load_int(&stats->incomplete_operation_size_atomic));
-        fprintf(
-            stderr,
-            "\n Unacked operation count %zu - Unacked operation size: %zu \n",
+            aws_atomic_load_int(&stats->incomplete_operation_size_atomic),
             aws_atomic_load_int(&stats->unacked_operation_count_atomic),
             aws_atomic_load_int(&stats->unacked_operation_size_atomic));
     }
 
-    // TODO - Need to implement the callback, complete with userdata and such.
-    // MQTT_CLIENT_CALL_CALLBACK(connection, on_operation_statistics);
+    // If the callback is defined, then call it
+    if (connection && connection->on_operation_statistics) {
+        (*connection->on_operation_statistics)(connection, request->packet_id, request->packet_size, NULL);
+    }
 }
 
 void aws_mqtt_client_connection_get_stats(

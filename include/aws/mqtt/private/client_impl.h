@@ -210,7 +210,6 @@ struct aws_mqtt_client_connection {
     aws_mqtt_client_on_disconnect_fn *on_disconnect;
     void *on_disconnect_ud;
     aws_mqtt_operation_statistics_fn *on_operation_statistics;
-    void *on_operation_statistics_ud;
 
     /* Connection tasks. */
     struct aws_mqtt_reconnect_task *reconnect_task;
@@ -348,6 +347,7 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 /**
  * Changes the operation statistics for the passed-in aws_mqtt_request. Used for tracking
  * whether operations have been completed or not.
+ * NOTE: This HAS to be called with the synced data lock held!
  * @param connection The connection whose operations are being tracked
  * @param request The request to change the state of
  * @param new_state_flags The new state to use

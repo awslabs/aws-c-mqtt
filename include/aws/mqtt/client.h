@@ -98,10 +98,14 @@ typedef void(aws_mqtt_suback_fn)(
     int error_code,
     void *userdata);
 
-/* This doesn't replace anything, it's just for test verification of statistic changes */
+/**
+ * This doesn't replace anything, it's just for test verification of statistic changes.
+ * The userdata argument is always a placehold (null) currently.
+ */
 typedef void (*aws_mqtt_operation_statistics_fn)(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
+    uint64_t packet_size,
     void *userdata);
 
 /**
