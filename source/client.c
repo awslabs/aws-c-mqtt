@@ -3128,8 +3128,8 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
 
     /**
      * NOTE: This function ASSUMES that the synced data lock is held. This is required but we cannot nicely do it
-     * in this function because a couple places have to call it in an already held shared lock because it is freeing/destroying
-     * packets...
+     * in this function because a couple places have to call it in an already held shared lock because it is
+     * freeing/destroying packets...
      */
     {
         struct aws_mqtt_connection_operation_statistics_impl *stats =
