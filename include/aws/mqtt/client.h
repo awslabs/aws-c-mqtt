@@ -436,9 +436,9 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
 /**
  * Sets the callback to call whenever the operation statistics change.
  *
- * \param[in] connection        The connection object
- * \param[in] on_any_publish    The function to call when the operation statistics change (pass NULL to unset)
- * \param[in] on_any_publish_ud Userdata for on_operation_statistics
+ * \param[in] connection                  The connection object
+ * \param[in] on_operation_statistics     The function to call when the operation statistics change (pass NULL to unset)
+ * \param[in] on_operation_statistics_ud  Userdata for on_operation_statistics
  */
 AWS_MQTT_API
 int aws_mqtt_client_connection_set_on_operation_statistics_handler(
@@ -631,9 +631,9 @@ uint16_t aws_mqtt_client_connection_publish(
     void *userdata);
 
 /**
- * Queries the connection's internal statistics for incomplete operations.
+ * Queries the connection's internal statistics for incomplete/unacked operations.
  * \param connection connection to get statistics for
- * \param stats set of incomplete operation statistics
+ * \param stats set of incomplete/unacked operation statistics
  * \returns AWS_OP_SUCCESS if getting the operation statistics were successful, AWS_OP_ERR otherwise
  */
 AWS_MQTT_API

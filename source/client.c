@@ -1890,13 +1890,10 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting multi-topic subscribe", (void *)connection);
 
-    /* Calculate the size of the subscribe packet */
-    uint64_t subscribe_packet_size = 0;
-    /* The fixed header is 2 bytes */
-    subscribe_packet_size += 2;
-    /* Packet ID is always 2 bytes */
-    subscribe_packet_size += 2;
-    /* NOTE: The size of the topic filter(s) are calculated in the loop below */
+    /* Calculate the size of the subscribe packet
+     * The fixed header is 2 bytes and the packet ID is 2 bytes.
+     * Note: The size of the topic filter(s) are calculated in the loop below */
+    uint64_t subscribe_packet_size = 4;
 
     for (size_t i = 0; i < num_topics; ++i) {
 
@@ -1938,8 +1935,7 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
         aws_array_list_push_back(&task_arg->topics, &task_topic);
 
         /* Subscribe topic filter is: always 3 bytes (1 for QoS, 2 for Length MSB/LSB) + the size of the topic filter */
-        subscribe_packet_size += 3;
-        subscribe_packet_size += task_topic->request.topic.len;
+        subscribe_packet_size += 3 + task_topic->request.topic.len;
     }
 
     uint16_t packet_id = mqtt_create_request(
@@ -2083,15 +2079,12 @@ uint16_t aws_mqtt_client_connection_subscribe(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    /* Calculate the size of the (single) subscribe packet */
-    uint64_t subscribe_packet_size = 0;
-    /* The fixed header is 2 bytes */
-    subscribe_packet_size += 2;
-    /* Subscribe topic filter is: always 3 bytes (1 for QoS, 2 for Length MSB/LSB) + the size of the topic filter */
-    subscribe_packet_size += 3;
-    subscribe_packet_size += topic_filter->len;
-    /* The packet ID is always 2 bytes */
-    subscribe_packet_size += 2;
+    /* Calculate the size of the (single) subscribe packet
+     * The fixed header is 2 bytes,
+     * the topic filter is always at least 3 bytes (1 for QoS, 2 for Length MSB/LSB)
+     * - plus the size of the topic filter
+     * and finally the packet ID is 2 bytes */
+    uint64_t subscribe_packet_size = 7 + topic_filter->len;
 
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
@@ -2257,16 +2250,11 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
     task_topic->request.on_cleanup = on_ud_cleanup;
     task_topic->request.on_publish_ud = on_publish_ud;
 
-    /* Calculate the size of the (local) subscribe packet */
-    uint64_t subscribe_packet_size = 0;
-    /* The fixed header is 2 bytes */
-    subscribe_packet_size += 2;
-    /* Local subscribe topic filter is: always 3 bytes (1 for QoS, 2 for Length MSB/LSB) + the size of the topic filter
-     */
-    subscribe_packet_size += 3;
-    subscribe_packet_size += topic_filter->len;
-    /* The packet ID is always 2 bytes */
-    subscribe_packet_size += 2;
+    /* Calculate the size of the (local) subscribe packet
+     * The fixed header is 2 bytes, the packet ID is 2 bytes
+     * the topic filter is always 3 bytes (1 for QoS, 2 for Length MSB/LSB)
+     * - plus the size of the topic filter */
+    uint64_t subscribe_packet_size = 7 + topic_filter->len;
 
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
@@ -2499,17 +2487,15 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     task_arg->on_suback.multi = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
 
-    /* Calculate the size of the packet */
-    uint64_t resubscribe_packet_size = 0;
-    /* The fixed header is 2 bytes */
-    resubscribe_packet_size += 2;
+    /* Calculate the size of the packet.
+     * The fixed header is 2 bytes and the packet ID is 2 bytes
+     * plus the size of each topic in the topic tree */
+    uint64_t resubscribe_packet_size = 4;
     /* Get the length of each subscription we are going to resubscribe with */
     aws_mqtt_topic_tree_iterate(
         &connection->thread_data.subscriptions,
         s_reconnect_resub_operation_statistics_iterator,
         &resubscribe_packet_size);
-    /* The packet ID is always 2 bytes */
-    resubscribe_packet_size += 2;
 
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
@@ -2713,14 +2699,10 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
 
-    /* Calculate the size of the unsubscribe packet */
-    uint64_t unsubscribe_packet_size = 0;
-    /* The fixed header is 2 bytes */
-    unsubscribe_packet_size += 2;
-    /* Topic filter */
-    unsubscribe_packet_size += task_arg->filter.len;
-    /* The packet ID is always 2 bytes */
-    unsubscribe_packet_size += 2;
+    /* Calculate the size of the unsubscribe packet.
+     * The fixed header is always 2 bytes, the packet ID is always 2 bytes
+     * plus the size of the topic filter */
+    uint64_t unsubscribe_packet_size = 4 + task_arg->filter.len;
 
     uint16_t packet_id = mqtt_create_request(
         connection,
@@ -2985,16 +2967,10 @@ uint16_t aws_mqtt_client_connection_publish(
     arg->on_complete = on_complete;
     arg->userdata = userdata;
 
-    /* Calculate the size of the publish packet */
-    uint64_t publish_packet_size = 0;
-    /* The fixed header is 2 bytes */
-    publish_packet_size += 2;
-    /* Topic name */
-    publish_packet_size += arg->topic.len;
-    /* The Payload */
-    publish_packet_size += arg->payload.len;
-    /* The packet ID is always 2 bytes */
-    publish_packet_size += 2;
+    /* Calculate the size of the publish packet.
+     * The fixed header size is 2 bytes, the packet ID is 2 bytes,
+     * plus the size of both the topic name and payload */
+    uint64_t publish_packet_size = 4 + arg->topic.len + arg->payload.len;
 
     bool retry = qos == AWS_MQTT_QOS_AT_MOST_ONCE;
     uint16_t packet_id =
@@ -3106,7 +3082,7 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    /* NOTE: The pingreq packet is always the same size, so we can use hardcoded value for it */
+    /* NOTE: The pingreq packet is always the same size (2 bytes), so we can use hardcoded value for it */
     uint16_t packet_id = mqtt_create_request(
         connection, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ s_pingreq_packet_size);
 
