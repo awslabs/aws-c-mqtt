@@ -484,6 +484,19 @@ static void s_wait_for_ops_completed(struct mqtt_connection_state_test *state_te
     aws_mutex_unlock(&state_test_data->lock);
 }
 
+static bool s_operation_statistics_is_subscribe_completed(void *arg) {
+    struct mqtt_connection_state_test *state_test_data = arg;
+    return state_test_data->subscribe_completed;
+}
+
+static void s_operation_statistics_wait_for_subscribe_to_complete(struct mqtt_connection_state_test *state_test_data) {
+    aws_mutex_lock(&state_test_data->lock);
+    aws_condition_variable_wait_pred(
+        &state_test_data->cvar, &state_test_data->lock, s_operation_statistics_is_subscribe_completed, state_test_data);
+    state_test_data->subscribe_completed = false;
+    aws_mutex_unlock(&state_test_data->lock);
+}
+
 /* ========== PUBLISH TESTS ========== */
 
 /**
@@ -507,19 +520,19 @@ static int s_test_mqtt_operation_statistics_simple_publish(struct aws_allocator 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message");
 
-    // Connect
+    /* Connect */
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     s_operation_statistics_wait_for_connection_to_complete(state_test_data);
 
-    // Stop ACKS so we make sure the operation statistics correctly identify we sent a packet
+    /* Stop ACKS so we make sure the operation statistics has time to allow us to identify we sent a packet */
     mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
 
-    // We want to wait for 1 operation to complete
+    /* We want to wait for 1 operation to complete */
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
     aws_mutex_unlock(&state_test_data->lock);
 
-    // Publish a packet
+    /* Publish a packet */
     uint16_t packet_id_1 = aws_mqtt_client_connection_publish(
         state_test_data->mqtt_connection,
         &pub_topic,
@@ -530,12 +543,12 @@ static int s_test_mqtt_operation_statistics_simple_publish(struct aws_allocator 
         state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
-    // Wait just a little bit to let it go to be moved into the queue/socket to be un-acked
-    // If we do it too soon, it might be in between (but it is inconsistent!)
+    /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
+     * to be unacked. If we check right away, we may or may not see it in the un-acked statistics */
     aws_thread_current_sleep((uint64_t)ONE_SEC * 3);
 
-    // Make sure the sizes are correct and there is only one operation waiting
-    // (The size of the topic, the size of the payload, 2 for the header, 2 for the packet ID)
+    /* Make sure the sizes are correct and there is only one operation waiting
+     * (The size of the topic, the size of the payload, 2 for the header, 2 for the packet ID) */
     uint64_t expected_packet_size = pub_topic.len + payload_1.len + 4;
     struct aws_mqtt_connection_operation_statistics operation_statistics;
     ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
@@ -544,20 +557,18 @@ static int s_test_mqtt_operation_statistics_simple_publish(struct aws_allocator 
     ASSERT_INT_EQUALS(1, operation_statistics.unacked_operation_count);
     ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.unacked_operation_size);
 
-    // Send the PubAck
+    /* Send the PubAck and wait for the client to receive it */
     mqtt_mock_server_send_puback(state_test_data->mock_server, packet_id_1);
-
-    // Make sure the publish finished
     s_wait_for_ops_completed(state_test_data);
 
-    // Make sure the operation values are back to zero now that the publish went out
+    /* Make sure the operation values are back to zero now that the publish went out */
     ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
     ASSERT_INT_EQUALS(0, operation_statistics.incomplete_operation_count);
     ASSERT_INT_EQUALS(0, operation_statistics.incomplete_operation_size);
     ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_count);
     ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_size);
 
-    // Disconnect
+    /* Disconnect */
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         state_test_data->mqtt_connection, s_operation_statistics_on_disconnect_fn, state_test_data));
     s_operation_statistics_wait_for_disconnect_to_complete(state_test_data);
@@ -594,16 +605,16 @@ static int s_test_mqtt_operation_statistics_simple_subscribe(struct aws_allocato
 
     struct aws_byte_cursor sub_topic = aws_byte_cursor_from_c_str("/test/topic");
 
-    // Connect
+    /* Connect */
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     s_operation_statistics_wait_for_connection_to_complete(state_test_data);
 
-    // We want to wait for 1 operation
+    /* We want to wait for 1 operation */
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
     aws_mutex_unlock(&state_test_data->lock);
 
-    // Stop ACKS so we make sure the operation statistics correctly identify we sent a packet
+    /* Stop ACKS so we make sure the operation statistics has time to allow us to identify we sent a packet */
     mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
 
     // Send a subscribe packet
@@ -618,12 +629,12 @@ static int s_test_mqtt_operation_statistics_simple_subscribe(struct aws_allocato
         state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
-    // Wait just a little bit to let it go to be moved into the queue/socket to be un-acked
-    // If we do it too soon, it might be in between (but it is inconsistent!)
+    /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
+     * to be unacked. If we check right away, we may or may not see it in the un-acked statistics */
     aws_thread_current_sleep((uint64_t)ONE_SEC * 3);
 
-    // Make sure the sizes are correct and there is only one operation waiting
-    // (The size of the topic + 3 (QoS, MSB, LSB), 2 for the header, 2 for the packet ID)
+    /* Make sure the sizes are correct and there is only one operation waiting
+     * (The size of the topic + 3 (QoS, MSB, LSB), 2 for the header, 2 for the packet ID) */
     uint64_t expected_packet_size = sub_topic.len + 7;
     struct aws_mqtt_connection_operation_statistics operation_statistics;
     ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
@@ -632,20 +643,18 @@ static int s_test_mqtt_operation_statistics_simple_subscribe(struct aws_allocato
     ASSERT_INT_EQUALS(1, operation_statistics.unacked_operation_count);
     ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.unacked_operation_size);
 
-    // Send the SubAck
+    /* Send the SubAck and wait for the client to get the ACK */
     mqtt_mock_server_send_single_suback(state_test_data->mock_server, packet_id_1, AWS_MQTT_QOS_AT_LEAST_ONCE);
-
-    // Wait for the ACK
     s_wait_for_ops_completed(state_test_data);
 
-    // Make sure the operation statistics are empty
+    /* Make sure the operation statistics are empty */
     ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
     ASSERT_INT_EQUALS(0, operation_statistics.incomplete_operation_count);
     ASSERT_INT_EQUALS(0, operation_statistics.incomplete_operation_size);
     ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_count);
     ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_size);
 
-    // Disconnect
+    /* Disconnect */
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         state_test_data->mqtt_connection, s_operation_statistics_on_disconnect_fn, state_test_data));
     s_operation_statistics_wait_for_disconnect_to_complete(state_test_data);
@@ -682,19 +691,19 @@ static int s_test_mqtt_operation_statistics_simple_unsubscribe(struct aws_alloca
 
     struct aws_byte_cursor unsub_topic = aws_byte_cursor_from_c_str("/test/topic");
 
-    // Connect
+    /* Connect */
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     s_operation_statistics_wait_for_connection_to_complete(state_test_data);
 
-    // We want to wait for 1 operation
+    /* We want to wait for 1 operation */
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
     aws_mutex_unlock(&state_test_data->lock);
 
-    // Stop ACKS so we make sure the operation statistics correctly identify we sent a packet
+    /* Stop ACKS so we make sure the operation statistics has time to allow us to identify we sent a packet */
     mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
 
-    // Send a subscribe packet
+    /* Send a subscribe packet */
     uint16_t packet_id_1 = aws_mqtt_client_connection_unsubscribe(
         state_test_data->mqtt_connection,
         &unsub_topic,
@@ -702,12 +711,12 @@ static int s_test_mqtt_operation_statistics_simple_unsubscribe(struct aws_alloca
         state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
-    // Wait just a little bit to let it go to be moved into the queue/socket to be un-acked
-    // If we do it too soon, it might be in between (but it is inconsistent!)
+    /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
+     * to be unacked. If we check right away, we may or may not see it in the un-acked statistics */
     aws_thread_current_sleep((uint64_t)ONE_SEC * 3);
 
-    // Make sure the sizes are correct and there is only one operation waiting
-    // (The size of the topic, 2 for the header, 2 for the packet ID)
+    /* Make sure the sizes are correct and there is only one operation waiting
+     * (The size of the topic, 2 for the header, 2 for the packet ID) */
     uint64_t expected_packet_size = unsub_topic.len + 4;
     struct aws_mqtt_connection_operation_statistics operation_statistics;
     ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
@@ -716,20 +725,18 @@ static int s_test_mqtt_operation_statistics_simple_unsubscribe(struct aws_alloca
     ASSERT_INT_EQUALS(1, operation_statistics.unacked_operation_count);
     ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.unacked_operation_size);
 
-    // Send the UnsubAck
+    /* Send the UnsubAck and wait for the client to get the ACK */
     mqtt_mock_server_send_unsuback(state_test_data->mock_server, packet_id_1);
-
-    // Wait for the ACK
     s_wait_for_ops_completed(state_test_data);
 
-    // Make sure the operation statistics are empty
+    /* Make sure the operation statistics are empty */
     ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
     ASSERT_INT_EQUALS(0, operation_statistics.incomplete_operation_count);
     ASSERT_INT_EQUALS(0, operation_statistics.incomplete_operation_size);
     ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_count);
     ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_size);
 
-    // Disconnect
+    /* Disconnect */
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         state_test_data->mqtt_connection, s_operation_statistics_on_disconnect_fn, state_test_data));
     s_operation_statistics_wait_for_disconnect_to_complete(state_test_data);
@@ -744,9 +751,161 @@ AWS_TEST_CASE_FIXTURE(
     s_operation_statistics_clean_up_mqtt_server_fn,
     &test_data)
 
+/* ========== RESUBSCRIBE TESTS ========== */
+
+/**
+ * Subscribe to multiple topics prior to connection, make a CONNECT, unsubscribe to a topic, disconnect with the broker,
+ * make a connection with clean_session set to true, then call resubscribe (without the server being able to send ACKs)
+ * and confirm the operation statistics size is correct, then resubscribe and finally disconnect.
+ */
+static int s_test_mqtt_operation_statistics_simple_resubscribe(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_operation_statistics_on_connection_complete_fn,
+    };
+
+    struct aws_byte_cursor sub_topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
+    struct aws_byte_cursor sub_topic_2 = aws_byte_cursor_from_c_str("/test/topic2");
+    struct aws_byte_cursor sub_topic_3 = aws_byte_cursor_from_c_str("/test/topic3");
+
+    /* We want to wait for 3 operations */
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 3;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    /* Subscribe to the three topics */
+    uint16_t sub_packet_id_1 = aws_mqtt_client_connection_subscribe(
+        state_test_data->mqtt_connection,
+        &sub_topic_1,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_operation_statistics_on_publish_received,
+        state_test_data,
+        NULL,
+        s_operation_statistics_on_suback,
+        state_test_data);
+    ASSERT_TRUE(sub_packet_id_1 > 0);
+    uint16_t sub_packet_id_2 = aws_mqtt_client_connection_subscribe(
+        state_test_data->mqtt_connection,
+        &sub_topic_2,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_operation_statistics_on_publish_received,
+        state_test_data,
+        NULL,
+        s_operation_statistics_on_suback,
+        state_test_data);
+    ASSERT_TRUE(sub_packet_id_2 > 0);
+    uint16_t sub_packet_id_3 = aws_mqtt_client_connection_subscribe(
+        state_test_data->mqtt_connection,
+        &sub_topic_3,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_operation_statistics_on_publish_received,
+        state_test_data,
+        NULL,
+        s_operation_statistics_on_suback,
+        state_test_data);
+    ASSERT_TRUE(sub_packet_id_3 > 0);
+
+    /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
+     * to be unacked. If we check right away, we may or may not see it in the un-acked statistics */
+    aws_thread_current_sleep((uint64_t)ONE_SEC * 3);
+
+    /* Confirm the 3 subscribes are both pending and unacked, and confirm their byte size
+     * The size = each subscribe: 4 (fixed header + packet ID) + topic filter + 3 (QoS, MSB and LSB length) */
+    uint64_t expected_packet_size = 12; // fixed packet headers and IDs
+    expected_packet_size += sub_topic_1.len + 3;
+    expected_packet_size += sub_topic_2.len + 3;
+    expected_packet_size += sub_topic_3.len + 3;
+    /* Check the size (Note: UnAcked will be ZERO because we are not connected) */
+    struct aws_mqtt_connection_operation_statistics operation_statistics;
+    ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
+    ASSERT_INT_EQUALS(3, operation_statistics.incomplete_operation_count);
+    ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.incomplete_operation_size);
+    ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_count);
+    ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_size);
+
+    /* Connect */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_operation_statistics_wait_for_connection_to_complete(state_test_data);
+
+    /* Wait for the subscribes to complete */
+    s_wait_for_ops_completed(state_test_data);
+
+    /* We want to wait for 1 operation */
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
+    /* unsubscribe to the first topic */
+    uint16_t unsub_packet_id = aws_mqtt_client_connection_unsubscribe(
+        state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data);
+    ASSERT_TRUE(unsub_packet_id > 0);
+    s_wait_for_ops_completed(state_test_data);
+
+    /* Disconnect */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, s_operation_statistics_on_disconnect_fn, state_test_data));
+    s_operation_statistics_wait_for_disconnect_to_complete(state_test_data);
+    /* Note: The client is still subscribed to both topic_2 and topic_3 */
+
+    /* Reconnect to the same server */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_operation_statistics_wait_for_connection_to_complete(state_test_data);
+
+    /* Get all the packets out of the way */
+    ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->mock_server));
+
+    // Stop ACKs - we want to determine the size
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    /* Resubscribes to topic_2 & topic_3 (Note: we do not need a callback for the purpose of this test) */
+    uint16_t resub_packet_id =
+        aws_mqtt_resubscribe_existing_topics(state_test_data->mqtt_connection, NULL, state_test_data);
+    ASSERT_TRUE(resub_packet_id > 0);
+
+    /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
+     * to be unacked. If we check right away, we may or may not see it in the un-acked statistics */
+    aws_thread_current_sleep((uint64_t)ONE_SEC * 3);
+
+    // Make sure the resubscribe packet size is correct and there is only one resubscribe waiting
+    // The size = 4 (fixed header + packet ID) + [for each topic](topic filter size + 3 (QoS, MSB and LSB length))
+    expected_packet_size = 4;
+    expected_packet_size += sub_topic_2.len + 3;
+    expected_packet_size += sub_topic_3.len + 3;
+    ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
+    ASSERT_INT_EQUALS(1, operation_statistics.incomplete_operation_count);
+    ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.incomplete_operation_size);
+    ASSERT_INT_EQUALS(1, operation_statistics.unacked_operation_count);
+    ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.unacked_operation_size);
+
+    /* Send the resubscribe */
+    mqtt_mock_server_send_single_suback(state_test_data->mock_server, resub_packet_id, AWS_MQTT_QOS_AT_LEAST_ONCE);
+    s_operation_statistics_wait_for_subscribe_to_complete(state_test_data);
+
+    /* Enable ACKs again, and then disconnect */
+    mqtt_mock_server_enable_auto_ack(state_test_data->mock_server);
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_operation_statistics_on_disconnect_fn, state_test_data));
+    s_operation_statistics_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_operation_statistics_simple_resubscribe,
+    s_operation_statistics_setup_mqtt_server_fn,
+    s_test_mqtt_operation_statistics_simple_resubscribe,
+    s_operation_statistics_clean_up_mqtt_server_fn,
+    &test_data)
+
 /* ========== OTHER TESTS ========== */
 
-// TODO: Add Resubscribe operation tests
+// TODO: Add PingReq test?
 
 // TODO: Add test that adds a bunch of publishes offline, confirms they are there with correct size in incomplete
 

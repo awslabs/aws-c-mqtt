@@ -2332,6 +2332,19 @@ static bool s_reconnect_resub_iterator(const struct aws_byte_cursor *topic, enum
     return true;
 }
 
+static bool s_reconnect_resub_operation_statistics_iterator(
+    const struct aws_byte_cursor *topic,
+    enum aws_mqtt_qos qos,
+    void *user_data) {
+    (void)qos;
+    uint64_t *packet_size = user_data;
+    /* Always 3 bytes (1 for QoS, 2 for length MSB and LSB respectively) */
+    *packet_size += 3;
+    /* The size of the topic filter */
+    *packet_size += topic->len;
+    return true;
+}
+
 static enum aws_mqtt_client_request_state s_resubscribe_send(
     uint16_t packet_id,
     bool is_first_attempt,
@@ -2490,8 +2503,11 @@ uint16_t aws_mqtt_resubscribe_existing_topics(
     uint64_t resubscribe_packet_size = 0;
     /* The fixed header is 2 bytes */
     resubscribe_packet_size += 2;
-    /* TODO - add the size of the topics here! This is a little complicated compared
-       to the other operations because we are resubscribing... Will need to think on how to elegantly do this... */
+    /* Get the length of each subscription we are going to resubscribe with */
+    aws_mqtt_topic_tree_iterate(
+        &connection->thread_data.subscriptions,
+        s_reconnect_resub_operation_statistics_iterator,
+        &resubscribe_packet_size);
     /* The packet ID is always 2 bytes */
     resubscribe_packet_size += 2;
 

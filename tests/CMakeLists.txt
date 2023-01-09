@@ -65,6 +65,7 @@ add_test_case(mqtt_connection_publish_QoS1_timeout_connection_lost_reset_time)
 add_test_case(mqtt_operation_statistics_simple_publish)
 add_test_case(mqtt_operation_statistics_simple_subscribe)
 add_test_case(mqtt_operation_statistics_simple_unsubscribe)
+add_test_case(mqtt_operation_statistics_simple_resubscribe)
 
 # MQTT5 tests
 
