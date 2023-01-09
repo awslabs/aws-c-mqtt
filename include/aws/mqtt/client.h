@@ -99,13 +99,10 @@ typedef void(aws_mqtt_suback_fn)(
     void *userdata);
 
 /**
- * This doesn't replace anything, it's just for test verification of statistic changes.
- * The userdata argument is always a placehold (null) currently.
+ * Called when the operation statistics change.
  */
-typedef void (*aws_mqtt_operation_statistics_fn)(
+typedef void (aws_mqtt_on_operation_statistics_fn)(
     struct aws_mqtt_client_connection *connection,
-    uint16_t packet_id,
-    uint64_t packet_size,
     void *userdata);
 
 /**
@@ -437,6 +434,19 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_publish_received_fn *on_any_publish,
     void *on_any_publish_ud);
+
+/**
+ * Sets the callback to call whenever the operation statistics change.
+ *
+ * \param[in] connection        The connection object
+ * \param[in] on_any_publish    The function to call when the operation statistics change (pass NULL to unset)
+ * \param[in] on_any_publish_ud Userdata for on_operation_statistics
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_on_operation_statistics_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_on_operation_statistics_fn *on_operation_statistics,
+    void *on_operation_statistics_ud);
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.

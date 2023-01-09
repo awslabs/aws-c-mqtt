@@ -70,6 +70,7 @@ add_test_case(mqtt_operation_statistics_qos0_publish)
 add_test_case(mqtt_operation_statistics_simple_subscribe)
 add_test_case(mqtt_operation_statistics_simple_unsubscribe)
 add_test_case(mqtt_operation_statistics_simple_resubscribe)
+add_test_case(mqtt_operation_statistics_simple_callback)
 
 # MQTT5 tests
 

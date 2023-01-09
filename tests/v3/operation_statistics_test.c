@@ -1027,7 +1027,7 @@ static int s_test_mqtt_operation_statistics_simple_subscribe(struct aws_allocato
 
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
      * to be unacked. If we check right away, we may or may not see it in the un-acked statistics */
-    aws_thread_current_sleep((uint64_t)ONE_SEC;
+    aws_thread_current_sleep((uint64_t)ONE_SEC);
 
     /* Make sure the sizes are correct and there is only one operation waiting
      * (The size of the topic + 3 (QoS, MSB, LSB), 2 for the header, 2 for the packet ID) */
@@ -1301,6 +1301,113 @@ AWS_TEST_CASE_FIXTURE(
 
 /* ========== OTHER TESTS ========== */
 
-// TODO: Add PingReq test?
+static void s_test_operation_statistics_simple_callback(struct aws_mqtt_client_connection *connection, void *userdata) {
+    uint16_t *statistics_count = (uint16_t *)userdata;
+    *statistics_count += 1;
 
-// TODO: Add operation statistics callback tests
+    // Confirm we can get the operation statistics from the callback
+    struct aws_mqtt_connection_operation_statistics operation_statistics;
+    aws_mqtt_client_connection_get_stats(connection, &operation_statistics);
+    (void)operation_statistics;
+}
+
+/**
+ * Tests the operation statistics callback to make sure it is being called as expected. This is a very simple
+ * test that just ensures the callback is being called multiple times AND that you can access the operation
+ * statistics from within the callback.
+ */
+static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    return AWS_OP_SUCCESS;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_operation_statistics_on_connection_complete_fn,
+    };
+
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message");
+
+    /* Connect */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_operation_statistics_wait_for_connection_to_complete(state_test_data);
+
+    /* Set the operation statistics callback */
+    uint16_t statistics_count = 0;
+    aws_mqtt_client_connection_set_on_operation_statistics_handler(
+        state_test_data->mqtt_connection, s_test_operation_statistics_simple_callback, &statistics_count);
+
+    // /* Stop ACKS so we make sure the operation statistics has time to allow us to identify we sent a packet */
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    // /* We want to wait for 1 operation to complete */
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    /* Publish a packet */
+    uint16_t packet_id_1 = aws_mqtt_client_connection_publish(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload_1,
+        s_on_op_complete,
+        state_test_data);
+    ASSERT_TRUE(packet_id_1 > 0);
+
+    /* Assert the callback was called */
+    ASSERT_INT_EQUALS(1, statistics_count);
+
+    /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
+     * to be unacked. If we check right away, we may or may not see it in the un-acked statistics */
+    aws_thread_current_sleep((uint64_t)ONE_SEC);
+
+    /* Make sure the sizes are correct and there is only one operation waiting
+     * (The size of the topic, the size of the payload, 2 for the header, 2 for the packet ID) */
+    uint64_t expected_packet_size = pub_topic.len + payload_1.len + 4;
+    struct aws_mqtt_connection_operation_statistics operation_statistics;
+    ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
+    ASSERT_INT_EQUALS(1, operation_statistics.incomplete_operation_count);
+    ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.incomplete_operation_size);
+    ASSERT_INT_EQUALS(1, operation_statistics.unacked_operation_count);
+    ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.unacked_operation_size);
+
+    /* Assert the callback was called */
+    ASSERT_INT_EQUALS(2, statistics_count);
+
+    /* Send the PubAck and wait for the client to receive it */
+    mqtt_mock_server_send_puback(state_test_data->mock_server, packet_id_1);
+    s_wait_for_ops_completed(state_test_data);
+
+    // /* Assert the callback was called */
+    // ASSERT_INT_EQUALS(3, statistics_count);
+
+    /* Make sure the operation values are back to zero now that the publish went out */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
+    ASSERT_INT_EQUALS(0, operation_statistics.incomplete_operation_count);
+    ASSERT_INT_EQUALS(0, operation_statistics.incomplete_operation_size);
+    ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_count);
+    ASSERT_INT_EQUALS(0, operation_statistics.unacked_operation_size);
+
+    /* Disconnect */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, s_operation_statistics_on_disconnect_fn, state_test_data));
+    s_operation_statistics_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_operation_statistics_simple_callback,
+    s_operation_statistics_setup_mqtt_server_fn,
+    s_test_mqtt_operation_statistics_simple_callback,
+    s_operation_statistics_clean_up_mqtt_server_fn,
+    &test_data)
+

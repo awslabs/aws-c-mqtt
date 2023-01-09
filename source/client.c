@@ -3142,12 +3142,9 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
         return;
     }
 
-    /**
-     * NOTE: This function ASSUMES that the synced data lock is held. This is required but we cannot nicely do it
-     * in this function because a couple places have to call it in an already held shared lock because it is
-     * freeing/destroying packets...
-     */
-    {
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+
         struct aws_mqtt_connection_operation_statistics_impl *stats =
             &connection->synced_data.operation_statistics_impl;
 
@@ -3171,11 +3168,13 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
             }
         }
         request->statistic_state_flags = new_state_flags;
-    }
+
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
 
     // If the callback is defined, then call it
-    if (connection && connection->on_operation_statistics) {
-        (*connection->on_operation_statistics)(connection, request->packet_id, request->packet_size, NULL);
+    if (connection && connection->on_any_operation_statistics && connection->on_any_operation_statistics_ud) {
+        (*connection->on_any_operation_statistics)(connection, connection->on_any_operation_statistics_ud);
     }
 }
 
@@ -3211,6 +3210,19 @@ int aws_mqtt_client_connection_get_stats(
         /* END CRITICAL SECTION */
         mqtt_connection_unlock_synced_data(connection);
     }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt_client_connection_set_on_operation_statistics_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_on_operation_statistics_fn *on_operation_statistics,
+    void *on_operation_statistics_ud) {
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting on_operation_statistics handler", (void *)connection);
+
+    connection->on_any_operation_statistics = on_operation_statistics;
+    connection->on_any_operation_statistics_ud = on_operation_statistics_ud;
 
     return AWS_OP_SUCCESS;
 }
