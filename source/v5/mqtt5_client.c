@@ -725,20 +725,33 @@ static void s_aws_mqtt5_client_shutdown_channel_clean(
     aws_mqtt5_operation_disconnect_release(disconnect_op);
 }
 
-static void s_mqtt5_client_shutdown(
-    struct aws_client_bootstrap *bootstrap,
-    int error_code,
-    struct aws_channel *channel,
-    void *user_data) {
+struct aws_mqtt5_shutdown_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    int error_code;
+    struct aws_mqtt5_client *client;
+};
 
-    (void)bootstrap;
-    (void)channel;
+static void s_mqtt5_client_shutdown_final(int error_code, struct aws_mqtt5_client *client);
 
-    struct aws_mqtt5_client *client = user_data;
+static void s_shutdown_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
 
-    if (error_code == AWS_ERROR_SUCCESS) {
-        error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
+    struct aws_mqtt5_shutdown_task *shutdown_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
     }
+
+    s_mqtt5_client_shutdown_final(shutdown_task->error_code, shutdown_task->client);
+
+done:
+
+    aws_mem_release(shutdown_task->allocator, shutdown_task);
+}
+
+static void s_mqtt5_client_shutdown_final(int error_code, struct aws_mqtt5_client *client) {
+
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     s_aws_mqtt5_client_emit_final_lifecycle_event(client, error_code, NULL, NULL);
 
@@ -764,6 +777,36 @@ static void s_mqtt5_client_shutdown(
     }
 }
 
+static void s_mqtt5_client_shutdown(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)channel;
+
+    struct aws_mqtt5_client *client = user_data;
+
+    if (error_code == AWS_ERROR_SUCCESS) {
+        error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
+    }
+
+    if (aws_event_loop_thread_is_callers_thread(client->loop)) {
+        s_mqtt5_client_shutdown_final(error_code, client);
+        return;
+    }
+
+    struct aws_mqtt5_shutdown_task *shutdown_task =
+        aws_mem_calloc(client->allocator, 1, sizeof(struct aws_mqtt5_shutdown_task));
+
+    aws_task_init(&shutdown_task->task, s_shutdown_task_fn, (void *)shutdown_task, "ShutdownTask");
+    shutdown_task->allocator = client->allocator;
+    shutdown_task->client = client;
+    shutdown_task->error_code = error_code;
+    aws_event_loop_schedule_task_now(client->loop, &shutdown_task->task);
+}
+
 static void s_mqtt5_client_setup(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
@@ -776,13 +819,14 @@ static void s_mqtt5_client_setup(
     AWS_FATAL_ASSERT((error_code != 0) == (channel == NULL));
     struct aws_mqtt5_client *client = user_data;
 
-    AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
-
     if (error_code != AWS_OP_SUCCESS) {
         /* client shutdown already handles this case, so just call that. */
         s_mqtt5_client_shutdown(bootstrap, error_code, channel, user_data);
         return;
     }
+
+    AWS_FATAL_ASSERT(client->current_state == AWS_MCS_CONNECTING);
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     if (client->desired_state != AWS_MCS_CONNECTED) {
         aws_raise_error(AWS_ERROR_MQTT5_USER_REQUESTED_STOP);
@@ -836,32 +880,22 @@ static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_c
     }
 }
 
-static void s_on_websocket_setup(
-    struct aws_websocket *websocket,
-    int error_code,
-    int handshake_response_status,
-    const struct aws_http_header *handshake_response_header_array,
-    size_t num_handshake_response_headers,
-    void *user_data) {
-
-    (void)handshake_response_status;
-    (void)handshake_response_header_array;
-    (void)num_handshake_response_headers;
+static void s_on_websocket_setup(const struct aws_websocket_on_connection_setup_data *setup, void *user_data) {
 
     struct aws_mqtt5_client *client = user_data;
     client->handshake = aws_http_message_release(client->handshake);
 
     /* Setup callback contract is: if error_code is non-zero then websocket is NULL. */
-    AWS_FATAL_ASSERT((error_code != 0) == (websocket == NULL));
+    AWS_FATAL_ASSERT((setup->error_code != 0) == (setup->websocket == NULL));
 
     struct aws_channel *channel = NULL;
 
-    if (websocket) {
-        channel = aws_websocket_get_channel(websocket);
+    if (setup->websocket) {
+        channel = aws_websocket_get_channel(setup->websocket);
         AWS_ASSERT(channel);
 
         /* Websocket must be "converted" before the MQTT handler can be installed next to it. */
-        if (aws_websocket_convert_to_midchannel_handler(websocket)) {
+        if (aws_websocket_convert_to_midchannel_handler(setup->websocket)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_CLIENT,
                 "id=%p: Failed converting websocket, error %d (%s)",
@@ -875,7 +909,7 @@ static void s_on_websocket_setup(
     }
 
     /* Call into the channel-setup callback, the rest of the logic is the same. */
-    s_mqtt5_client_setup(client->config->bootstrap, error_code, channel, client);
+    s_mqtt5_client_setup(client->config->bootstrap, setup->error_code, channel, client);
 }
 
 struct aws_mqtt5_websocket_transform_complete_task {
@@ -936,9 +970,9 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
         }
     }
 
-error:
-
-    s_on_websocket_setup(NULL, error_code, -1, NULL, 0, client);
+error:;
+    struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = error_code};
+    s_on_websocket_setup(&websocket_setup, client);
 
 done:
 
@@ -1164,7 +1198,8 @@ static bool s_should_resume_session(const struct aws_mqtt5_client *client) {
     enum aws_mqtt5_client_session_behavior_type session_behavior =
         aws_mqtt5_client_session_behavior_type_to_non_default(client->config->session_behavior);
 
-    return session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully;
+    return (session_behavior == AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS && client->has_connected_successfully) ||
+           (session_behavior == AWS_MQTT5_CSBT_REJOIN_ALWAYS);
 }
 
 static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *client) {
@@ -1716,13 +1751,20 @@ static void s_aws_mqtt5_client_on_connack(
     /* Check if a session is being rejoined and perform associated rejoin connect logic here */
     if (client->negotiated_settings.rejoined_session) {
         /* Disconnect if the server is attempting to connect the client to an unexpected session */
-        if (aws_mqtt5_client_session_behavior_type_to_non_default(client->config->session_behavior) ==
-                AWS_MQTT5_CSBT_CLEAN ||
-            client->has_connected_successfully == false) {
+        if (!s_should_resume_session(client)) {
             s_aws_mqtt5_client_emit_final_lifecycle_event(
                 client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION, connack_view, NULL);
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION);
             return;
+        } else if (!client->has_connected_successfully) {
+            /*
+             * We were configured with REJOIN_ALWAYS and this is the first connection.  This is technically not safe
+             * and so let's log a warning for future diagnostics should it cause the user problems.
+             */
+            AWS_LOGF_WARN(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: initial connection rejoined existing session.  This may cause packet id collisions.",
+                (void *)client);
         }
     }
 
