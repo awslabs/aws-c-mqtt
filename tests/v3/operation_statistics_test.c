@@ -1357,9 +1357,6 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
         state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
-    /* Assert the callback was called */
-    ASSERT_INT_EQUALS(1, statistics_count);
-
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
      * to be unacked. If we check right away, we may or may not see it in the un-acked statistics */
     aws_thread_current_sleep((uint64_t)ONE_SEC);
@@ -1374,7 +1371,7 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
     ASSERT_INT_EQUALS(1, operation_statistics.unacked_operation_count);
     ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.unacked_operation_size);
 
-    /* Assert the callback was called */
+    /* Assert the callback was called twice (first for putting in incomplete, second for putting in unacked) */
     ASSERT_INT_EQUALS(2, statistics_count);
 
     /* Send the PubAck and wait for the client to receive it */
@@ -1382,7 +1379,8 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
     s_wait_for_ops_completed(state_test_data);
 
     // /* Assert the callback was called */
-    // ASSERT_INT_EQUALS(3, statistics_count);
+    aws_thread_current_sleep((uint64_t)ONE_SEC);
+    ASSERT_INT_EQUALS(3, statistics_count);
 
     /* Make sure the operation values are back to zero now that the publish went out */
     ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
