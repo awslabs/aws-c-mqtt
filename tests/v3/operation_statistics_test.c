@@ -616,13 +616,13 @@ static int s_test_mqtt_operation_statistics_offline_publish(struct aws_allocator
     /* Publish the five packets */
     for (int i = 0; i < 5; i++) {
         uint16_t packet = aws_mqtt_client_connection_publish(
-        state_test_data->mqtt_connection,
-        &pub_topic,
-        AWS_MQTT_QOS_AT_LEAST_ONCE,
-        false,
-        &payload,
-        s_on_op_complete,
-        state_test_data);
+            state_test_data->mqtt_connection,
+            &pub_topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            false,
+            &payload,
+            s_on_op_complete,
+            state_test_data);
         ASSERT_TRUE(packet > 0);
 
         if (i == 0) {
@@ -718,13 +718,13 @@ static int s_test_mqtt_operation_statistics_disconnect_publish(struct aws_alloca
     /* Publish the five packets */
     for (int i = 0; i < 5; i++) {
         uint16_t packet = aws_mqtt_client_connection_publish(
-        state_test_data->mqtt_connection,
-        &pub_topic,
-        AWS_MQTT_QOS_AT_LEAST_ONCE,
-        false,
-        &payload,
-        s_on_op_complete,
-        state_test_data);
+            state_test_data->mqtt_connection,
+            &pub_topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            false,
+            &payload,
+            s_on_op_complete,
+            state_test_data);
         ASSERT_TRUE(packet > 0);
     }
 
@@ -782,9 +782,9 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * Makes a publish offline, checks operation statistics, connects to non-ACK sending server, checks operation statistics,
- * makes another publish while online, checks operation statistics, disconnects, makes another publish,
- * and finally checks operation statistics one last time.
+ * Makes a publish offline, checks operation statistics, connects to non-ACK sending server, checks operation
+ * statistics, makes another publish while online, checks operation statistics, disconnects, makes another publish, and
+ * finally checks operation statistics one last time.
  */
 static int s_test_mqtt_operation_statistics_reconnect_publish(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
@@ -1101,10 +1101,7 @@ static int s_test_mqtt_operation_statistics_simple_unsubscribe(struct aws_alloca
 
     /* Send a subscribe packet */
     uint16_t packet_id_1 = aws_mqtt_client_connection_unsubscribe(
-        state_test_data->mqtt_connection,
-        &unsub_topic,
-        s_on_op_complete,
-        state_test_data);
+        state_test_data->mqtt_connection, &unsub_topic, s_on_op_complete, state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
@@ -1285,8 +1282,8 @@ static int s_test_mqtt_operation_statistics_simple_resubscribe(struct aws_alloca
 
     /* Enable ACKs again, and then disconnect */
     mqtt_mock_server_enable_auto_ack(state_test_data->mock_server);
-    ASSERT_SUCCESS(
-        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_operation_statistics_on_disconnect_fn, state_test_data));
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, s_operation_statistics_on_disconnect_fn, state_test_data));
     s_operation_statistics_wait_for_disconnect_to_complete(state_test_data);
 
     return AWS_OP_SUCCESS;
@@ -1410,4 +1407,3 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_operation_statistics_simple_callback,
     s_operation_statistics_clean_up_mqtt_server_fn,
     &test_data)
-

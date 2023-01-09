@@ -101,9 +101,7 @@ typedef void(aws_mqtt_suback_fn)(
 /**
  * Called when the operation statistics change.
  */
-typedef void (aws_mqtt_on_operation_statistics_fn)(
-    struct aws_mqtt_client_connection *connection,
-    void *userdata);
+typedef void(aws_mqtt_on_operation_statistics_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
 /**
  * Called when a publish message is received.

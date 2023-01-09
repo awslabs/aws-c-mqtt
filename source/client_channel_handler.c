@@ -723,7 +723,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 request->packet_id);
 
             /* Set the status as incomplete */
-            aws_mqtt_connection_statistics_change_operation_statistic_state(connection, request, AWS_MQTT_OSS_INCOMPLETE);
+            aws_mqtt_connection_statistics_change_operation_statistic_state(
+                connection, request, AWS_MQTT_OSS_INCOMPLETE);
 
             /* put it into the offline queue. */
             { /* BEGIN CRITICAL SECTION */
@@ -748,8 +749,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             }
 
             /* Cancel the request in the operation statistics */
-            aws_mqtt_connection_statistics_change_operation_statistic_state(
-                    connection, request, AWS_MQTT_OSS_NONE);
+            aws_mqtt_connection_statistics_change_operation_statistic_state(connection, request, AWS_MQTT_OSS_NONE);
 
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
@@ -998,7 +998,8 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
 
     if (request != NULL) {
         /* Set the status as complete */
-        aws_mqtt_connection_statistics_change_operation_statistic_state(request->connection, request, AWS_MQTT_OSS_NONE);
+        aws_mqtt_connection_statistics_change_operation_statistic_state(
+            request->connection, request, AWS_MQTT_OSS_NONE);
 
         { /* BEGIN CRITICAL SECTION */
             mqtt_connection_lock_synced_data(connection);
