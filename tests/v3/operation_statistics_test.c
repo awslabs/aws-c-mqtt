@@ -1317,8 +1317,6 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
-    return AWS_OP_SUCCESS;
-
     struct aws_mqtt_connection_options connection_options = {
         .user_data = state_test_data,
         .clean_session = true,
