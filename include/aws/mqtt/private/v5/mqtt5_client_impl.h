@@ -12,6 +12,7 @@
 #include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
 #include <aws/io/channel.h>
+#include <aws/mqtt/private/v5/mqtt5_callbacks.h>
 #include <aws/mqtt/private/v5/mqtt5_decoder.h>
 #include <aws/mqtt/private/v5/mqtt5_encoder.h>
 #include <aws/mqtt/private/v5/mqtt5_topic_alias.h>
@@ -438,6 +439,11 @@ struct aws_mqtt5_client {
      * Wraps all state related to outbound flow control.
      */
     struct aws_mqtt5_client_flow_control_state flow_control_state;
+
+    /*
+     * Manages notification listener chains for lifecycle events and incoming publishes
+     */
+    struct aws_mqtt5_callback_set_manager callback_manager;
 
     /*
      * When should the next PINGREQ be sent?

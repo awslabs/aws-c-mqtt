@@ -284,6 +284,8 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
         client_termination_handler_user_data = client->config->client_termination_handler_user_data;
     }
 
+    aws_mqtt5_callback_set_manager_clean_up(&client->callback_manager);
+
     aws_mqtt5_client_operational_state_clean_up(&client->operational_state);
 
     aws_mqtt5_client_options_storage_destroy((struct aws_mqtt5_client_options_storage *)client->config);
@@ -314,16 +316,13 @@ static void s_on_mqtt5_client_zero_ref_count(void *user_data) {
 static void s_aws_mqtt5_client_emit_stopped_lifecycle_event(struct aws_mqtt5_client *client) {
     AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: emitting stopped lifecycle event", (void *)client);
 
-    if (client->config->lifecycle_event_handler != NULL) {
-        struct aws_mqtt5_client_lifecycle_event event;
-        AWS_ZERO_STRUCT(event);
+    struct aws_mqtt5_client_lifecycle_event event;
+    AWS_ZERO_STRUCT(event);
 
-        event.event_type = AWS_MQTT5_CLET_STOPPED;
-        event.client = client;
-        event.user_data = client->config->lifecycle_event_handler_user_data;
+    event.event_type = AWS_MQTT5_CLET_STOPPED;
+    event.client = client;
 
-        (*client->config->lifecycle_event_handler)(&event);
-    }
+    aws_mqtt5_callback_set_manager_on_lifecycle_event(&client->callback_manager, &event);
 }
 
 static void s_aws_mqtt5_client_emit_connecting_lifecycle_event(struct aws_mqtt5_client *client) {
@@ -331,16 +330,13 @@ static void s_aws_mqtt5_client_emit_connecting_lifecycle_event(struct aws_mqtt5_
 
     client->lifecycle_state = AWS_MQTT5_LS_CONNECTING;
 
-    if (client->config->lifecycle_event_handler != NULL) {
-        struct aws_mqtt5_client_lifecycle_event event;
-        AWS_ZERO_STRUCT(event);
+    struct aws_mqtt5_client_lifecycle_event event;
+    AWS_ZERO_STRUCT(event);
 
-        event.event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT;
-        event.client = client;
-        event.user_data = client->config->lifecycle_event_handler_user_data;
+    event.event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT;
+    event.client = client;
 
-        (*client->config->lifecycle_event_handler)(&event);
-    }
+    aws_mqtt5_callback_set_manager_on_lifecycle_event(&client->callback_manager, &event);
 }
 
 static void s_aws_mqtt5_client_emit_connection_success_lifecycle_event(
@@ -351,18 +347,15 @@ static void s_aws_mqtt5_client_emit_connection_success_lifecycle_event(
 
     client->lifecycle_state = AWS_MQTT5_LS_CONNECTED;
 
-    if (client->config->lifecycle_event_handler != NULL) {
-        struct aws_mqtt5_client_lifecycle_event event;
-        AWS_ZERO_STRUCT(event);
+    struct aws_mqtt5_client_lifecycle_event event;
+    AWS_ZERO_STRUCT(event);
 
-        event.event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS;
-        event.client = client;
-        event.user_data = client->config->lifecycle_event_handler_user_data;
-        event.settings = &client->negotiated_settings;
-        event.connack_data = connack_view;
+    event.event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS;
+    event.client = client;
+    event.settings = &client->negotiated_settings;
+    event.connack_data = connack_view;
 
-        (*client->config->lifecycle_event_handler)(&event);
-    }
+    aws_mqtt5_callback_set_manager_on_lifecycle_event(&client->callback_manager, &event);
 }
 
 /*
@@ -409,15 +402,12 @@ static void s_aws_mqtt5_client_emit_final_lifecycle_event(
     }
 
     event.error_code = error_code;
-    event.user_data = client->config->lifecycle_event_handler_user_data;
     event.connack_data = connack_view;
     event.disconnect_data = disconnect_view;
 
     client->lifecycle_state = AWS_MQTT5_LS_NONE;
 
-    if (client->config->lifecycle_event_handler != NULL) {
-        (*client->config->lifecycle_event_handler)(&event);
-    }
+    aws_mqtt5_callback_set_manager_on_lifecycle_event(&client->callback_manager, &event);
 }
 
 /*
@@ -1930,7 +1920,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
         case AWS_MQTT5_PT_PUBLISH: {
             const struct aws_mqtt5_packet_publish_view *publish_view = packet_view;
 
-            client->config->publish_received_handler(publish_view, client->config->publish_received_handler_user_data);
+            aws_mqtt5_callback_set_manager_on_publish_received(&client->callback_manager, publish_view);
 
             /* Send a puback if QoS 1+ */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
@@ -2056,6 +2046,8 @@ struct aws_mqtt5_client *aws_mqtt5_client_new(
     client->vtable = &s_default_client_vtable;
 
     aws_ref_count_init(&client->ref_count, client, s_on_mqtt5_client_zero_ref_count);
+
+    aws_mqtt5_callback_set_manager_init(&client->callback_manager, client);
 
     if (aws_mqtt5_client_operational_state_init(&client->operational_state, allocator, client)) {
         goto on_error;
