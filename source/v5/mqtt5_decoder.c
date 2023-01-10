@@ -55,15 +55,16 @@ static int s_aws_mqtt5_decoder_read_packet_type_on_data(
     aws_byte_cursor_advance(data, 1);
     aws_byte_buf_append_byte_dynamic(&decoder->scratch_space, byte);
 
+    enum aws_mqtt5_packet_type packet_type = (byte >> 4);
+
     if (s_is_full_packet_logging_enabled(decoder)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "id=%p: Decoder FPL first byte: %2X",
+            "id=%p: Decoder FPL first byte: %2X - packet type enum is: %i",
             decoder->options.callback_user_data,
-            (unsigned int)byte);
+            (unsigned int)byte,
+            (unsigned int)packet_type);
     }
-
-    enum aws_mqtt5_packet_type packet_type = (byte >> 4);
 
     if (!s_is_decodable_packet_type(decoder, packet_type)) {
         AWS_LOGF_ERROR(

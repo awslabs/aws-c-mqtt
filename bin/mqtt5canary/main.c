@@ -101,7 +101,7 @@ static void s_usage(int exit_code) {
     fprintf(stderr, "  -t, --threads: number of eventloop group threads to use\n");
     fprintf(stderr, "  -C, --clients: number of mqtt5 clients to use\n");
     fprintf(stderr, "  -T, --tps: operations to run per second\n");
-    fprintf(stderr, "  -s, --seconds: seconds to run canary test\n");
+    fprintf(stderr, "  -s, --seconds: seconds to run canary test (set as 0 to run forever) \n");
     fprintf(stderr, "  -h, --help\n");
     fprintf(stderr, "            Display this message and quit.\n");
     exit(exit_code);
@@ -411,6 +411,22 @@ static int s_aws_mqtt5_canary_operation_stop(struct aws_mqtt5_canary_test_client
     return AWS_OP_SUCCESS;
 }
 
+static void s_aws_mqtt5_canary_operation_subscribe_completion(
+    const struct aws_mqtt5_packet_suback_view *suback,
+    int error_code,
+    void *complete_ctx) {
+    (void)suback;
+
+    struct aws_mqtt5_canary_test_client *test_client = (struct aws_mqtt5_canary_test_client *)(complete_ctx);
+    if (error_code != AWS_MQTT5_UARC_SUCCESS) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CANARY,
+            "ID:" PRInSTR " Subscribe completed with error code: %i",
+            AWS_BYTE_CURSOR_PRI(test_client->client_id),
+            error_code);
+    }
+}
+
 static int s_aws_mqtt5_canary_operation_subscribe(struct aws_mqtt5_canary_test_client *test_client) {
     if (!test_client->is_connected) {
         return s_aws_mqtt5_canary_operation_start(test_client);
@@ -448,6 +464,10 @@ static int s_aws_mqtt5_canary_operation_subscribe(struct aws_mqtt5_canary_test_c
         .subscriptions = subscriptions,
         .subscription_count = AWS_ARRAY_SIZE(subscriptions),
     };
+    struct aws_mqtt5_subscribe_completion_options subscribe_view_options = {
+        .completion_callback = &s_aws_mqtt5_canary_operation_subscribe_completion,
+        .completion_user_data = test_client,
+    };
 
     test_client->subscription_count++;
 
@@ -456,7 +476,7 @@ static int s_aws_mqtt5_canary_operation_subscribe(struct aws_mqtt5_canary_test_c
         "ID:" PRInSTR " Subscribe to topic: " PRInSTR,
         AWS_BYTE_CURSOR_PRI(test_client->client_id),
         AWS_BYTE_CURSOR_PRI(subscriptions->topic_filter));
-    return aws_mqtt5_client_subscribe(test_client->client, &subscribe_view, NULL);
+    return aws_mqtt5_client_subscribe(test_client->client, &subscribe_view, &subscribe_view_options);
 }
 
 static int s_aws_mqtt5_canary_operation_unsubscribe_bad(struct aws_mqtt5_canary_test_client *test_client) {
@@ -481,6 +501,22 @@ static int s_aws_mqtt5_canary_operation_unsubscribe_bad(struct aws_mqtt5_canary_
 
     AWS_LOGF_INFO(AWS_LS_MQTT5_CANARY, "ID:" PRInSTR " Unsubscribe Bad", AWS_BYTE_CURSOR_PRI(test_client->client_id));
     return aws_mqtt5_client_unsubscribe(test_client->client, &unsubscribe_view, NULL);
+}
+
+static void s_aws_mqtt5_canary_operation_unsubscribe_completion(
+    const struct aws_mqtt5_packet_unsuback_view *unsuback,
+    int error_code,
+    void *complete_ctx) {
+    (void)unsuback;
+
+    struct aws_mqtt5_canary_test_client *test_client = (struct aws_mqtt5_canary_test_client *)(complete_ctx);
+    if (error_code != AWS_MQTT5_UARC_SUCCESS) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CANARY,
+            "ID:" PRInSTR " Unsubscribe completed with error code: %i",
+            AWS_BYTE_CURSOR_PRI(test_client->client_id),
+            error_code);
+    }
 }
 
 static int s_aws_mqtt5_canary_operation_unsubscribe(struct aws_mqtt5_canary_test_client *test_client) {
@@ -512,13 +548,34 @@ static int s_aws_mqtt5_canary_operation_unsubscribe(struct aws_mqtt5_canary_test
         .topic_filters = unsubscribes,
         .topic_filter_count = AWS_ARRAY_SIZE(unsubscribes),
     };
+    struct aws_mqtt5_unsubscribe_completion_options unsubscribe_view_options = {
+        .completion_callback = &s_aws_mqtt5_canary_operation_unsubscribe_completion,
+        .completion_user_data = test_client};
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT5_CANARY,
         "ID:" PRInSTR " Unsubscribe from topic: " PRInSTR,
         AWS_BYTE_CURSOR_PRI(test_client->client_id),
         AWS_BYTE_CURSOR_PRI(topic));
-    return aws_mqtt5_client_unsubscribe(test_client->client, &unsubscribe_view, NULL);
+    return aws_mqtt5_client_unsubscribe(test_client->client, &unsubscribe_view, &unsubscribe_view_options);
+}
+
+static void s_aws_mqtt5_canary_operation_publish_completion(
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
+    int error_code,
+    void *complete_ctx) {
+    (void)packet;
+    (void)packet_type;
+
+    struct aws_mqtt5_canary_test_client *test_client = (struct aws_mqtt5_canary_test_client *)(complete_ctx);
+    if (error_code != AWS_MQTT5_PARC_SUCCESS) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CANARY,
+            "ID:" PRInSTR " Publish completed with error code: %i",
+            AWS_BYTE_CURSOR_PRI(test_client->client_id),
+            error_code);
+    }
 }
 
 static int s_aws_mqtt5_canary_operation_publish(
@@ -570,8 +627,10 @@ static int s_aws_mqtt5_canary_operation_publish(
         .user_properties = user_properties,
         .user_property_count = AWS_ARRAY_SIZE(user_properties),
     };
+    struct aws_mqtt5_publish_completion_options packet_publish_view_options = {
+        .completion_callback = &s_aws_mqtt5_canary_operation_publish_completion, .completion_user_data = test_client};
 
-    return aws_mqtt5_client_publish(test_client->client, &packet_publish_view, NULL);
+    return aws_mqtt5_client_publish(test_client->client, &packet_publish_view, &packet_publish_view_options);
 }
 
 static int s_aws_mqtt5_canary_operation_publish_qos0(struct aws_mqtt5_canary_test_client *test_client) {
@@ -863,6 +922,7 @@ int main(int argc, char **argv) {
         .websocket_handshake_transform = websocket_handshake_transform,
         .websocket_handshake_transform_user_data = websocket_handshake_transform_user_data,
         .publish_received_handler = s_on_publish_received,
+        .ack_timeout_seconds = 60,
     };
 
     struct aws_mqtt5_canary_test_client clients[AWS_MQTT5_CANARY_CLIENT_MAX];
@@ -900,10 +960,13 @@ int main(int argc, char **argv) {
     size_t operations_executed = 0;
     uint64_t time_test_finish = 0;
     aws_high_res_clock_get_ticks(&time_test_finish);
-    time_test_finish +=
-        aws_timestamp_convert(tester_options.test_run_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-
-    printf("Running test for %zu seconds\n", tester_options.test_run_seconds);
+    if (tester_options.test_run_seconds > 0) {
+        time_test_finish +=
+            aws_timestamp_convert(tester_options.test_run_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        printf("Running test for %zu seconds\n", tester_options.test_run_seconds);
+    } else {
+        printf("Running test for infinity seconds\n");
+    }
 
     while (!done) {
         uint64_t now = 0;
@@ -916,7 +979,7 @@ int main(int argc, char **argv) {
 
         (*operation_fn)(&clients[rand() % tester_options.client_count]);
 
-        if (now > time_test_finish) {
+        if (now > time_test_finish && tester_options.test_run_seconds > 0) {
             done = true;
         }
 
