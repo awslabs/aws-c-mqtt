@@ -1184,9 +1184,9 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
                 result = s_aws_mqtt5_decoder_read_packet_on_data(decoder, &data);
                 if (s_is_full_packet_logging_enabled(decoder)) {
                     if (result == AWS_MQTT5_DRT_ERROR) {
-                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading data");
+                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading data from packet");
                     } else if (result == AWS_MQTT5_DRT_MORE_DATA) {
-                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "More data requested reading data");
+                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "More data requested reading data from packet");
                     }
                 }
                 break;
