@@ -1128,6 +1128,9 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
 
         struct aws_byte_cursor copy_cursor = aws_byte_cursor_advance(data, copy_length);
         if (aws_byte_buf_append_dynamic(&decoder->scratch_space, &copy_cursor)) {
+            if (s_is_full_packet_logging_enabled(decoder)) {
+                AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error trying to allocate scratch space");
+            }
             return AWS_MQTT5_DRT_ERROR;
         }
 
@@ -1138,14 +1141,9 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
         decoder->packet_cursor = aws_byte_cursor_from_buf(&decoder->scratch_space);
     }
 
-    struct aws_byte_cursor copy_cursor;
-    if (s_is_full_packet_logging_enabled(decoder)) {
-        copy_cursor = aws_byte_cursor_from_array(decoder->packet_cursor.ptr, decoder->packet_cursor.len);
-    }
-
     if (s_aws_mqtt5_decoder_decode_packet(decoder)) {
         if (s_is_full_packet_logging_enabled(decoder)) {
-            s_log_packet_cursor(decoder, &copy_cursor);
+            s_log_packet_cursor(decoder, &decoder->packet_cursor);
         }
         return AWS_MQTT5_DRT_ERROR;
     }
@@ -1163,8 +1161,10 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
             case AWS_MQTT5_DS_READ_PACKET_TYPE:
                 result = s_aws_mqtt5_decoder_read_packet_type_on_data(decoder, &data);
                 if (s_is_full_packet_logging_enabled(decoder)) {
-                    if (result != AWS_MQTT5_DRT_SUCCESS) {
+                    if (result == AWS_MQTT5_DRT_ERROR) {
                         AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading packet type");
+                    } else if (result == AWS_MQTT5_DRT_MORE_DATA) {
+                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "More data requested reading packet type");
                     }
                 }
                 break;
@@ -1172,8 +1172,10 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
             case AWS_MQTT5_DS_READ_REMAINING_LENGTH:
                 result = s_aws_mqtt5_decoder_read_remaining_length_on_data(decoder, &data);
                 if (s_is_full_packet_logging_enabled(decoder)) {
-                    if (result != AWS_MQTT5_DRT_SUCCESS) {
+                    if (result == AWS_MQTT5_DRT_ERROR) {
                         AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading packet remaining length");
+                    } else if (result == AWS_MQTT5_DRT_MORE_DATA) {
+                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "More data requested reading packet remaining length");
                     }
                 }
                 break;
@@ -1181,14 +1183,19 @@ int aws_mqtt5_decoder_on_data_received(struct aws_mqtt5_decoder *decoder, struct
             case AWS_MQTT5_DS_READ_PACKET:
                 result = s_aws_mqtt5_decoder_read_packet_on_data(decoder, &data);
                 if (s_is_full_packet_logging_enabled(decoder)) {
-                    if (result != AWS_MQTT5_DRT_SUCCESS) {
+                    if (result == AWS_MQTT5_DRT_ERROR) {
                         AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Error detected reading data");
+                    } else if (result == AWS_MQTT5_DRT_MORE_DATA) {
+                        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "More data requested reading data");
                     }
                 }
                 break;
 
             default:
                 result = AWS_MQTT5_DRT_ERROR;
+                if (s_is_full_packet_logging_enabled(decoder)) {
+                    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "decoder state is unexpected! Decoder state is %u", (uint32_t)decoder->state );
+                }
                 break;
         }
     }
