@@ -157,7 +157,6 @@ typedef void(aws_mqtt_transform_websocket_handshake_fn)(
  * Called each time a valid websocket connection is established.
  *
  * All required headers have been checked already (ex: "Sec-Websocket-Accept"),
- * but optional headers have not (Ex: "Sec-Websocket-Protocol").
  *
  * Return AWS_OP_SUCCESS to accept the connection or AWS_OP_ERR to stop the connection attempt.
  */

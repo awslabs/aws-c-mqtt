@@ -681,7 +681,8 @@ void s_websocket_channel_async_failure_task_fn(struct aws_task *task, void *arg,
     struct websocket_channel_failure_wrapper *wrapper = arg;
     struct aws_websocket_client_connection_options *options = &wrapper->websocket_options;
 
-    (*wrapper->websocket_options.on_connection_setup)(NULL, AWS_ERROR_INVALID_STATE, 0, NULL, 0, options->user_data);
+    struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = AWS_ERROR_INVALID_STATE};
+    (*wrapper->websocket_options.on_connection_setup)(&websocket_setup, options->user_data);
 }
 
 static int s_mqtt5_client_test_asynchronous_websocket_failure_fn(
@@ -2733,7 +2734,7 @@ static int s_mqtt5_client_flow_control_iot_core_publish_tps_fn(struct aws_alloca
 
 AWS_TEST_CASE(mqtt5_client_flow_control_iot_core_publish_tps, s_mqtt5_client_flow_control_iot_core_publish_tps_fn)
 
-static int s_aws_mqtt5_mock_server_handle_connect_honor_session(
+static int s_aws_mqtt5_mock_server_handle_connect_honor_session_after_success(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -2750,6 +2751,24 @@ static int s_aws_mqtt5_mock_server_handle_connect_honor_session(
     if (connection->test_fixture->client->has_connected_successfully) {
         connack_view.session_present = !connect_packet->clean_start;
     }
+
+    return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+static int s_aws_mqtt5_mock_server_handle_connect_honor_session_unconditional(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_connect_view *connect_packet = packet;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+    connack_view.session_present = !connect_packet->clean_start;
 
     return s_aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
 }
@@ -2804,6 +2823,7 @@ static bool s_compute_expected_rejoined_session(
         case AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS:
             return connect_index > 0;
 
+        case AWS_MQTT5_CSBT_REJOIN_ALWAYS:
         default:
             return true;
     }
@@ -2834,7 +2854,7 @@ static int s_do_mqtt5_client_session_resumption_test(
 
     test_options.client_options.session_behavior = session_behavior;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
-        s_aws_mqtt5_mock_server_handle_connect_honor_session;
+        s_aws_mqtt5_mock_server_handle_connect_honor_session_unconditional;
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
         .client_options = &test_options.client_options,
@@ -2908,6 +2928,16 @@ static int s_mqtt5_client_session_resumption_post_success_fn(struct aws_allocato
 }
 
 AWS_TEST_CASE(mqtt5_client_session_resumption_post_success, s_mqtt5_client_session_resumption_post_success_fn)
+
+static int s_mqtt5_client_session_resumption_always_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt5_client_session_resumption_test(allocator, AWS_MQTT5_CSBT_REJOIN_ALWAYS));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_session_resumption_always, s_mqtt5_client_session_resumption_always_fn)
 
 static uint8_t s_sub_pub_unsub_topic_filter[] = "hello/+";
 
@@ -3833,7 +3863,7 @@ static int mqtt5_client_no_session_after_client_stop_fn(struct aws_allocator *al
         s_aws_mqtt5_mock_server_handle_publish_no_puback_on_first_connect;
     /* Simulate reconnecting to an existing connection */
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
-        s_aws_mqtt5_mock_server_handle_connect_honor_session;
+        s_aws_mqtt5_mock_server_handle_connect_honor_session_after_success;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
@@ -3923,7 +3953,7 @@ static int mqtt5_client_restore_session_on_ping_timeout_reconnect_fn(struct aws_
         s_aws_mqtt5_mock_server_handle_publish_no_puback_on_first_connect;
     /* Simulate reconnecting to an existing connection */
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
-        s_aws_mqtt5_mock_server_handle_connect_honor_session;
+        s_aws_mqtt5_mock_server_handle_connect_honor_session_after_success;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
@@ -4459,7 +4489,7 @@ static int s_mqtt5_client_statistics_publish_qos1_requeue_fn(struct aws_allocato
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
         s_aws_mqtt5_server_disconnect_on_first_publish_puback_after;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
-        s_aws_mqtt5_mock_server_handle_connect_honor_session;
+        s_aws_mqtt5_mock_server_handle_connect_honor_session_after_success;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
     struct aws_mqtt5_sub_pub_unsub_context full_test_context = {

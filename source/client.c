@@ -549,7 +549,7 @@ static void s_mqtt_client_init(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Adding username " PRInSTR " to connection",
             (void *)connection,
-            AWS_BYTE_CURSOR_PRI(username_cur))
+            AWS_BYTE_CURSOR_PRI(username_cur));
 
         struct aws_byte_cursor password_cur = {
             .ptr = NULL,
@@ -1158,18 +1158,10 @@ static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_c
     }
 }
 
-static void s_on_websocket_setup(
-    struct aws_websocket *websocket,
-    int error_code,
-    int handshake_response_status,
-    const struct aws_http_header *handshake_response_header_array,
-    size_t num_handshake_response_headers,
-    void *user_data) {
-
-    (void)handshake_response_status;
+static void s_on_websocket_setup(const struct aws_websocket_on_connection_setup_data *setup, void *user_data) {
 
     /* Setup callback contract is: if error_code is non-zero then websocket is NULL. */
-    AWS_FATAL_ASSERT((error_code != 0) == (websocket == NULL));
+    AWS_FATAL_ASSERT((setup->error_code != 0) == (setup->websocket == NULL));
 
     struct aws_mqtt_client_connection *connection = user_data;
     struct aws_channel *channel = NULL;
@@ -1179,13 +1171,13 @@ static void s_on_websocket_setup(
         connection->websocket.handshake_request = NULL;
     }
 
-    if (websocket) {
-        channel = aws_websocket_get_channel(websocket);
+    if (setup->websocket) {
+        channel = aws_websocket_get_channel(setup->websocket);
         AWS_FATAL_ASSERT(channel);
         AWS_FATAL_ASSERT(aws_channel_get_event_loop(channel) == connection->loop);
 
         /* Websocket must be "converted" before the MQTT handler can be installed next to it. */
-        if (aws_websocket_convert_to_midchannel_handler(websocket)) {
+        if (aws_websocket_convert_to_midchannel_handler(setup->websocket)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Failed converting websocket, error %d (%s)",
@@ -1203,8 +1195,8 @@ static void s_on_websocket_setup(
 
             if (connection->websocket.handshake_validator(
                     connection,
-                    handshake_response_header_array,
-                    num_handshake_response_headers,
+                    setup->handshake_response_header_array,
+                    setup->num_handshake_response_headers,
                     connection->websocket.handshake_validator_ud)) {
 
                 AWS_LOGF_ERROR(
@@ -1224,7 +1216,7 @@ static void s_on_websocket_setup(
     }
 
     /* Call into the channel-setup callback, the rest of the logic is the same. */
-    s_mqtt_client_init(connection->client->bootstrap, error_code, channel, connection);
+    s_mqtt_client_init(connection->client->bootstrap, setup->error_code, channel, connection);
 }
 
 static aws_mqtt_transform_websocket_handshake_complete_fn s_websocket_handshake_transform_complete; /* fwd declare */
@@ -1323,9 +1315,10 @@ static void s_websocket_handshake_transform_complete(
     /* Success */
     return;
 
-error:
+error:;
     /* Proceed to next step, telling it that we failed. */
-    s_on_websocket_setup(NULL, error_code, -1, NULL, 0, connection);
+    struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = error_code};
+    s_on_websocket_setup(&websocket_setup, connection);
 }
 
 #else  /* AWS_MQTT_WITH_WEBSOCKETS */

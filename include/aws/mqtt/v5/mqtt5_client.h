@@ -48,6 +48,14 @@ enum aws_mqtt5_client_session_behavior_type {
      * Always attempt to rejoin an existing session after an initial connection success.
      */
     AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS,
+
+    /**
+     * Always attempt to rejoin an existing session.  Since the client does not support durable session persistence,
+     * this option is not guaranteed to be spec compliant because any unacknowledged qos1 publishes (which are
+     * part of the client session state) will not be present on the initial connection.  Until we support
+     * durable session resumption, this option is technically spec-breaking, but useful.
+     */
+    AWS_MQTT5_CSBT_REJOIN_ALWAYS,
 };
 
 /**
@@ -63,7 +71,8 @@ enum aws_mqtt5_client_session_behavior_type {
  */
 enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
     /**
-     * Maps to AWS_MQTT5_COTABT_LRU at the moment
+     * Maps to AWS_MQTT5_COTABT_DISABLED  This keeps the client from being broken (by default) if the broker
+     * topic aliasing implementation has a problem.
      */
     AWS_MQTT5_COTABT_DEFAULT,
 
