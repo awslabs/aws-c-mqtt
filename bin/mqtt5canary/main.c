@@ -882,8 +882,6 @@ int main(int argc, char **argv) {
         clients[i].shared_topic = shared_topic;
         clients[i].client = aws_mqtt5_client_new(allocator, &client_options);
 
-        aws_mqtt5_client_enable_full_packet_logging(clients[i].client);
-
         aws_mqtt5_canary_operation_fn *operation_fn =
             s_aws_mqtt5_canary_operation_table.operation_by_operation_type[AWS_MQTT5_CANARY_OPERATION_START];
         (*operation_fn)(&clients[i]);
