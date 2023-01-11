@@ -7,15 +7,13 @@
 
 #include <aws/common/hash_table.h>
 #include <aws/common/linked_list.h>
+#include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
 struct aws_iot_service_client_config_storage {
-
     size_t max_event_subscriptions;
     size_t max_request_concurrency;
-
-    uint32_t request_timeout_ms;
 };
 
 static void s_aws_iot_service_client_config_storage_init(
@@ -23,7 +21,6 @@ static void s_aws_iot_service_client_config_storage_init(
     const struct aws_iot_service_client_config *options) {
     storage->max_event_subscriptions = options->max_event_subscriptions;
     storage->max_request_concurrency = options->max_request_concurrency;
-    storage->request_timeout_ms = options->request_timeout_ms;
 }
 
 static void s_aws_iot_service_client_config_storage_clean_up(struct aws_iot_service_client_config_storage *storage) {
@@ -36,9 +33,12 @@ struct aws_iot_service_client {
     struct aws_ref_count ref_count;
 
     struct aws_iot_service_client_config_storage config;
+    struct aws_event_loop *loop;
     struct aws_mqtt5_listener *client_listener;
 
-    struct aws_hash_table event_subscriptions;
+    struct aws_linked_list event_subscription_queue;
+    struct aws_linked_list event_subscriptions;
+    struct aws_hash_table event_subscriptions_by_topic;
 };
 
 enum aws_iot_service_client_event_subscription_state {
@@ -59,18 +59,18 @@ struct aws_iot_service_client_event_subscription {
     enum aws_iot_service_client_event_subscription_state state;
 };
 
-int aws_iot_service_client_subscribe_to_event_stream(
+int aws_iot_service_client_subscribe_to_event(
     struct aws_iot_service_client *client,
-    const struct aws_iot_service_client_subscribe_to_event_config *options) {
+    const struct aws_iot_service_client_event_subscribe_config *options) {
     (void)client;
     (void)options;
 
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }
 
-int aws_iot_service_client_unsubscribe_from_event_stream(
+int aws_iot_service_client_unsubscribe_from_event(
     struct aws_iot_service_client *client,
-    const struct aws_iot_service_client_unsubscribe_from_event_config *options) {
+    const struct aws_iot_service_client_event_unsubscribe_config *options) {
     (void)client;
     (void)options;
 
@@ -103,6 +103,8 @@ static void s_on_mqtt5_listener_termination_completion_fn(void *complete_ctx) {
     struct aws_iot_service_client *service_client = complete_ctx;
 
     s_aws_iot_service_client_config_storage_clean_up(&service_client->config);
+
+    aws_hash_table_clean_up(&service_client->event_subscriptions_by_topic);
 
     aws_mem_release(service_client->allocator, service_client);
 }
@@ -137,6 +139,13 @@ struct aws_iot_service_client *aws_iot_service_client_release(struct aws_iot_ser
     return NULL;
 }
 
+static bool s_aws_iot_client_topic_hash_equality_fn(const void *a, const void *b) {
+    const struct aws_byte_cursor *a_cursor = a;
+    const struct aws_byte_cursor *b_cursor = b;
+
+    return aws_byte_cursor_eq(a_cursor, b_cursor);
+}
+
 struct aws_iot_service_client *aws_iot_service_client_new(
     struct aws_allocator *allocator,
     const struct aws_iot_service_client_config *options) {
@@ -162,8 +171,30 @@ struct aws_iot_service_client *aws_iot_service_client_new(
         .termination_callback_user_data = client,
     };
 
+    aws_linked_list_init(&client->event_subscription_queue);
+    aws_linked_list_init(&client->event_subscriptions);
+
+    if (aws_hash_table_init(
+            &client->event_subscriptions_by_topic,
+            allocator,
+            sizeof(struct aws_iot_service_client_event_subscription *),
+            aws_hash_byte_cursor_ptr,
+            s_aws_iot_client_topic_hash_equality_fn,
+            NULL,
+            NULL)) {
+        goto done;
+    }
+
     client->client_listener = aws_mqtt5_listener_new(allocator, &listener_config);
     AWS_FATAL_ASSERT(client->client_listener != NULL);
 
+    client->loop = aws_mqtt5_client_get_event_loop(options->mqtt5_client);
+
     return client;
+
+done:
+
+    s_aws_iot_service_client_start_shutdown(client);
+
+    return NULL;
 }

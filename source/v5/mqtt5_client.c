@@ -3345,3 +3345,7 @@ void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt
 void aws_mqtt5_client_enable_full_packet_logging(struct aws_mqtt5_client *client) {
     aws_mqtt5_decoder_enable_full_packet_logging(&client->decoder);
 }
+
+struct aws_event_loop *aws_mqtt5_client_get_event_loop(struct aws_mqtt5_client *client) {
+    return client->loop;
+}

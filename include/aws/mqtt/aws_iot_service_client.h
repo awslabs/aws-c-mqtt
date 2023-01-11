@@ -20,15 +20,14 @@ struct aws_iot_service_client_config {
     size_t max_event_subscriptions;
     size_t max_request_concurrency;
 
-    uint32_t request_timeout_ms;
-
     /* Missing:
      *
      * Retry controls
+     * Timeout controls
      */
 };
 
-struct aws_iot_service_client_subscription_complete_data {
+struct aws_iot_service_client_event_subscription_complete_data {
     struct aws_iot_service_client *client;
 
     int error_code;
@@ -38,7 +37,7 @@ struct aws_iot_service_client_subscription_complete_data {
     void *user_data;
 };
 
-struct aws_iot_service_client_subscription_lost_data {
+struct aws_iot_service_client_event_subscription_lost_data {
     struct aws_iot_service_client *client;
 
     int error_code;
@@ -56,15 +55,15 @@ struct aws_iot_service_client_event_received_data {
 };
 
 typedef void(aws_iot_service_client_event_subscription_complete_fn)(
-    const struct aws_iot_service_client_subscription_complete_data *subscription_complete_data);
+    const struct aws_iot_service_client_event_subscription_complete_data *subscription_complete_data);
 
 typedef void(aws_iot_service_client_event_subscription_lost_fn)(
-    const struct aws_iot_service_client_subscription_lost_data *subscription_lost_data);
+    const struct aws_iot_service_client_event_subscription_lost_data *subscription_lost_data);
 
 typedef void(aws_iot_service_client_event_received_fn)(
     const struct aws_iot_service_client_event_received_data *event_received_data);
 
-struct aws_iot_service_client_subscribe_to_event_config {
+struct aws_iot_service_client_event_subscribe_config {
 
     struct aws_byte_cursor event_topic_name;
 
@@ -77,7 +76,7 @@ struct aws_iot_service_client_subscribe_to_event_config {
     void *user_data;
 };
 
-struct aws_iot_service_client_unsubscribe_complete_data {
+struct aws_iot_service_client_event_unsubscribe_complete_data {
     struct aws_iot_service_client *client;
 
     int error_code;
@@ -86,9 +85,9 @@ struct aws_iot_service_client_unsubscribe_complete_data {
 };
 
 typedef void(aws_iot_service_client_event_unsubscribe_complete_fn)(
-    const struct aws_iot_service_client_unsubscribe_complete_data *unsubscribe_complete_data);
+    const struct aws_iot_service_client_event_unsubscribe_complete_data *unsubscribe_complete_data);
 
-struct aws_iot_service_client_unsubscribe_from_event_config {
+struct aws_iot_service_client_event_unsubscribe_config {
     struct aws_byte_cursor event_topic_name;
 
     aws_iot_service_client_event_unsubscribe_complete_fn *unsubscribe_complete_callback;
@@ -116,13 +115,13 @@ AWS_MQTT_API struct aws_iot_service_client *aws_iot_service_client_acquire(struc
 
 AWS_MQTT_API struct aws_iot_service_client *aws_iot_service_client_release(struct aws_iot_service_client *client);
 
-AWS_MQTT_API int aws_iot_service_client_subscribe_to_event_stream(
+AWS_MQTT_API int aws_iot_service_client_subscribe_to_event(
     struct aws_iot_service_client *client,
-    const struct aws_iot_service_client_subscribe_to_event_config *options);
+    const struct aws_iot_service_client_event_subscribe_config *options);
 
-AWS_MQTT_API int aws_iot_service_client_unsubscribe_from_event_stream(
+AWS_MQTT_API int aws_iot_service_client_unsubscribe_from_event(
     struct aws_iot_service_client *client,
-    const struct aws_iot_service_client_unsubscribe_from_event_config *options);
+    const struct aws_iot_service_client_event_unsubscribe_config *options);
 
 AWS_MQTT_API int aws_iot_service_client_submit_request(
     struct aws_iot_service_client *client,
