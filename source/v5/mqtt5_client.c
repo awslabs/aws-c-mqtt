@@ -3341,7 +3341,3 @@ void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt
     stats->unacked_operation_size =
         (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.unacked_operation_size_atomic);
 }
-
-void aws_mqtt5_client_enable_full_packet_logging(struct aws_mqtt5_client *client) {
-    aws_mqtt5_decoder_enable_full_packet_logging(&client->decoder);
-}
