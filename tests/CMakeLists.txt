@@ -3,8 +3,8 @@ include(AwsTestHarness)
 include(AwsLibFuzzer)
 enable_testing()
 
-file(GLOB TEST_HDRS "v3/*.h v5/*.h")
-set(TEST_SRC v3/*.c v5/*.c)
+file(GLOB TEST_HDRS "v3/*.h v5/*.h" "service_client/*.h")
+set(TEST_SRC v3/*.c v5/*.c service_client/*.c)
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
@@ -309,6 +309,8 @@ add_test_case(rate_limiter_token_bucket_fractional_iteration)
 add_test_case(rate_limiter_token_bucket_large_fractional_iteration)
 add_test_case(rate_limiter_token_bucket_real_iteration)
 add_test_case(rate_limiter_token_bucket_reset)
+
+add_test_case(aws_iot_service_client_new_destroy)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

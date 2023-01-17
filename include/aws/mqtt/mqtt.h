@@ -86,6 +86,7 @@ enum aws_mqtt_log_subject {
     AWS_LS_MQTT5_GENERAL,
     AWS_LS_MQTT5_CLIENT,
     AWS_LS_MQTT5_CANARY,
+    AWS_LS_MQTT_AWS_IOT_SERVICE_CLIENT,
 };
 
 /** Function called on cleanup of a userdata. */
