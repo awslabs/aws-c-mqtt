@@ -1224,8 +1224,8 @@ AWS_TEST_CASE_FIXTURE(
 /* ========== OTHER TESTS ========== */
 
 static void s_test_operation_statistics_simple_callback(struct aws_mqtt_client_connection *connection, void *userdata) {
-    uint16_t *statistics_count = (uint16_t *)userdata;
-    *statistics_count += 1;
+    struct aws_atomic_var *statistics_count = (struct aws_atomic_var *)userdata;
+    aws_atomic_fetch_add(statistics_count, 1);
 
     // Confirm we can get the operation statistics from the callback
     struct aws_mqtt_connection_operation_statistics operation_statistics;
@@ -1259,7 +1259,8 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
     s_operation_statistics_wait_for_connection_to_complete(state_test_data);
 
     /* Set the operation statistics callback */
-    uint16_t statistics_count = 0;
+    struct aws_atomic_var statistics_count;
+    aws_atomic_store_int(&statistics_count, 0);
     aws_mqtt_client_connection_set_on_operation_statistics_handler(
         state_test_data->mqtt_connection, s_test_operation_statistics_simple_callback, &statistics_count);
 
@@ -1297,7 +1298,7 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
     ASSERT_INT_EQUALS(expected_packet_size, operation_statistics.unacked_operation_size);
 
     /* Assert the callback was called twice (first for putting in incomplete, second for putting in unacked) */
-    ASSERT_INT_EQUALS(2, statistics_count);
+    ASSERT_INT_EQUALS(2, aws_atomic_load_int(&statistics_count));
 
     /* Send the PubAck and wait for the client to receive it */
     mqtt_mock_server_send_puback(state_test_data->mock_server, packet_id_1);
@@ -1305,7 +1306,7 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
 
     // /* Assert the callback was called */
     aws_thread_current_sleep((uint64_t)ONE_SEC);
-    ASSERT_INT_EQUALS(3, statistics_count);
+    ASSERT_INT_EQUALS(3, aws_atomic_load_int(&statistics_count));
 
     /* Make sure the operation values are back to zero now that the publish went out */
     ASSERT_SUCCESS(aws_mqtt_client_connection_get_stats(state_test_data->mqtt_connection, &operation_statistics));
