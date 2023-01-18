@@ -350,6 +350,18 @@ AWS_MQTT_API void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connec
 /* Creates the task used to reestablish a broken connection */
 AWS_MQTT_API void aws_create_reconnect_task(struct aws_mqtt_client_connection *connection);
 
+/**
+ * Sets the callback to call whenever the operation statistics change.
+ *
+ * \param[in] connection                  The connection object
+ * \param[in] on_operation_statistics     The function to call when the operation statistics change (pass NULL to unset)
+ * \param[in] on_operation_statistics_ud  Userdata for on_operation_statistics
+ */
+AWS_MQTT_API int aws_mqtt_client_connection_set_on_operation_statistics_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_on_operation_statistics_fn *on_operation_statistics,
+    void *on_operation_statistics_ud);
+
 /*
  * Sends a PINGREQ packet to the server to keep the connection alive. This is not exported and should not ever
  * be called directly. This function is driven by the timeout values passed to aws_mqtt_client_connect().
@@ -377,17 +389,5 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_request *request,
     enum aws_mqtt_operation_statistic_state_flags new_state_flags);
-
-/**
- * Sets the callback to call whenever the operation statistics change.
- *
- * \param[in] connection                  The connection object
- * \param[in] on_operation_statistics     The function to call when the operation statistics change (pass NULL to unset)
- * \param[in] on_operation_statistics_ud  Userdata for on_operation_statistics
- */
-int aws_mqtt_client_connection_set_on_operation_statistics_handler(
-    struct aws_mqtt_client_connection *connection,
-    aws_mqtt_on_operation_statistics_fn *on_operation_statistics,
-    void *on_operation_statistics_ud);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */
