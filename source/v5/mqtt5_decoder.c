@@ -1052,6 +1052,7 @@ static int s_aws_mqtt5_decoder_decode_packet(struct aws_mqtt5_decoder *decoder) 
     aws_mqtt5_decoding_fn *decoder_fn = decoder->options.decoder_table->decoders_by_packet_type[packet_type];
     if (decoder_fn == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Decoder decode packet function missing for enum: %d", packet_type);
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "Decoder decode packet first byte is: %u", packet_type);
         return aws_raise_error(AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 
@@ -1145,6 +1146,8 @@ static enum aws_mqtt5_decode_result_type s_aws_mqtt5_decoder_read_packet_on_data
     if (s_aws_mqtt5_decoder_decode_packet(decoder)) {
         if (s_is_full_packet_logging_enabled(decoder)) {
             s_log_packet_cursor(decoder, &decoder->packet_cursor);
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "\n PRINTING DATA USING LOG PACKET CURSOR \n");
+            s_log_packet_cursor(decoder, data);
         }
         return AWS_MQTT5_DRT_ERROR;
     }
