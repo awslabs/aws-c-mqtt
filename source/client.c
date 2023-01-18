@@ -32,9 +32,6 @@
 #    pragma warning(disable : 4204)
 #endif
 
-/* The size of a PINGREQ packet is always 2 bytes */
-static const uint64_t s_pingreq_packet_size = 2;
-
 /* 3 seconds */
 static const uint64_t s_default_ping_timeout_ns = 3000000000;
 
@@ -813,7 +810,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->reconnect_timeouts.max_sec = 128;
     aws_linked_list_init(&connection->synced_data.pending_requests_list);
     aws_linked_list_init(&connection->thread_data.ongoing_requests_list);
-    s_init_statistics(&connection->synced_data.operation_statistics_impl);
+    s_init_statistics(&connection->operation_statistics_impl);
 
     if (aws_mutex_init(&connection->synced_data.lock)) {
         AWS_LOGF_ERROR(
@@ -3082,9 +3079,8 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    /* NOTE: The pingreq packet is always the same size (2 bytes), so we can use hardcoded value for it */
-    uint16_t packet_id = mqtt_create_request(
-        connection, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ s_pingreq_packet_size);
+    uint16_t packet_id =
+        mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ 0);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
 
@@ -3113,40 +3109,40 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
     }
 
     uint64_t packet_size = request->packet_size;
+    /**
+     * If the packet size is zero, then just skip it as we only want to track packets we have intentially
+     * calculated the size of and therefore it will be non-zero (zero packets will be ACKs, Pings, etc)
+     */
+    if (packet_size <= 0) {
+        return;
+    }
+
     enum aws_mqtt_operation_statistic_state_flags old_state_flags = request->statistic_state_flags;
     if (new_state_flags == old_state_flags) {
         return;
     }
 
-    { /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
-
-        struct aws_mqtt_connection_operation_statistics_impl *stats =
-            &connection->synced_data.operation_statistics_impl;
-
-        if ((old_state_flags & AWS_MQTT_OSS_INCOMPLETE) != (new_state_flags & AWS_MQTT_OSS_INCOMPLETE)) {
-            if ((new_state_flags & AWS_MQTT_OSS_INCOMPLETE) != 0) {
-                aws_atomic_fetch_add(&stats->incomplete_operation_count_atomic, 1);
-                aws_atomic_fetch_add(&stats->incomplete_operation_size_atomic, (size_t)packet_size);
-            } else {
-                aws_atomic_fetch_sub(&stats->incomplete_operation_count_atomic, 1);
-                aws_atomic_fetch_sub(&stats->incomplete_operation_size_atomic, (size_t)packet_size);
-            }
+    struct aws_mqtt_connection_operation_statistics_impl *stats = &connection->operation_statistics_impl;
+    if ((old_state_flags & AWS_MQTT_OSS_INCOMPLETE) != (new_state_flags & AWS_MQTT_OSS_INCOMPLETE)) {
+        if ((new_state_flags & AWS_MQTT_OSS_INCOMPLETE) != 0) {
+            aws_atomic_fetch_add(&stats->incomplete_operation_count_atomic, 1);
+            aws_atomic_fetch_add(&stats->incomplete_operation_size_atomic, (size_t)packet_size);
+        } else {
+            aws_atomic_fetch_sub(&stats->incomplete_operation_count_atomic, 1);
+            aws_atomic_fetch_sub(&stats->incomplete_operation_size_atomic, (size_t)packet_size);
         }
+    }
 
-        if ((old_state_flags & AWS_MQTT_OSS_UNACKED) != (new_state_flags & AWS_MQTT_OSS_UNACKED)) {
-            if ((new_state_flags & AWS_MQTT_OSS_UNACKED) != 0) {
-                aws_atomic_fetch_add(&stats->unacked_operation_count_atomic, 1);
-                aws_atomic_fetch_add(&stats->unacked_operation_size_atomic, (size_t)packet_size);
-            } else {
-                aws_atomic_fetch_sub(&stats->unacked_operation_count_atomic, 1);
-                aws_atomic_fetch_sub(&stats->unacked_operation_size_atomic, (size_t)packet_size);
-            }
+    if ((old_state_flags & AWS_MQTT_OSS_UNACKED) != (new_state_flags & AWS_MQTT_OSS_UNACKED)) {
+        if ((new_state_flags & AWS_MQTT_OSS_UNACKED) != 0) {
+            aws_atomic_fetch_add(&stats->unacked_operation_count_atomic, 1);
+            aws_atomic_fetch_add(&stats->unacked_operation_size_atomic, (size_t)packet_size);
+        } else {
+            aws_atomic_fetch_sub(&stats->unacked_operation_count_atomic, 1);
+            aws_atomic_fetch_sub(&stats->unacked_operation_size_atomic, (size_t)packet_size);
         }
-        request->statistic_state_flags = new_state_flags;
-
-        mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
+    }
+    request->statistic_state_flags = new_state_flags;
 
     // If the callback is defined, then call it
     if (connection && connection->on_any_operation_statistics && connection->on_any_operation_statistics_ud) {
@@ -3170,22 +3166,14 @@ int aws_mqtt_client_connection_get_stats(
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
-    {
-        /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
-
-        stats->incomplete_operation_count = (uint64_t)aws_atomic_load_int(
-            &connection->synced_data.operation_statistics_impl.incomplete_operation_count_atomic);
-        stats->incomplete_operation_size = (uint64_t)aws_atomic_load_int(
-            &connection->synced_data.operation_statistics_impl.incomplete_operation_size_atomic);
-        stats->unacked_operation_count = (uint64_t)aws_atomic_load_int(
-            &connection->synced_data.operation_statistics_impl.unacked_operation_count_atomic);
-        stats->unacked_operation_size = (uint64_t)aws_atomic_load_int(
-            &connection->synced_data.operation_statistics_impl.unacked_operation_size_atomic);
-
-        /* END CRITICAL SECTION */
-        mqtt_connection_unlock_synced_data(connection);
-    }
+    stats->incomplete_operation_count =
+        (uint64_t)aws_atomic_load_int(&connection->operation_statistics_impl.incomplete_operation_count_atomic);
+    stats->incomplete_operation_size =
+        (uint64_t)aws_atomic_load_int(&connection->operation_statistics_impl.incomplete_operation_size_atomic);
+    stats->unacked_operation_count =
+        (uint64_t)aws_atomic_load_int(&connection->operation_statistics_impl.unacked_operation_count_atomic);
+    stats->unacked_operation_size =
+        (uint64_t)aws_atomic_load_int(&connection->operation_statistics_impl.unacked_operation_size_atomic);
 
     return AWS_OP_SUCCESS;
 }

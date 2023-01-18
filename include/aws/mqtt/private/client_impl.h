@@ -63,25 +63,25 @@ enum aws_mqtt_client_request_state {
  * Contains some simple statistics about the current state of the connection's queue of operations
  */
 struct aws_mqtt_connection_operation_statistics_impl {
-    /*
+    /**
      * total number of operations submitted to the connection that have not yet been completed.  Unacked operations
      * are a subset of this.
      */
     struct aws_atomic_var incomplete_operation_count_atomic;
 
-    /*
+    /**
      * total packet size of operations submitted to the connection that have not yet been completed.  Unacked operations
      * are a subset of this.
      */
     struct aws_atomic_var incomplete_operation_size_atomic;
 
-    /*
+    /**
      * total number of operations that have been sent to the server and are waiting for a corresponding ACK before
      * they can be completed.
      */
     struct aws_atomic_var unacked_operation_count_atomic;
 
-    /*
+    /**
      * total packet size of operations that have been sent to the server and are waiting for a corresponding ACK before
      * they can be completed.
      */
@@ -97,6 +97,23 @@ struct aws_mqtt_connection_operation_statistics_impl {
  */
 typedef enum aws_mqtt_client_request_state(
     aws_mqtt_send_request_fn)(uint16_t packet_id, bool is_first_attempt, void *userdata);
+
+/**
+ * Called when the operation statistics change.
+ */
+typedef void(aws_mqtt_on_operation_statistics_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+
+/* Flags that indicate the way in which way an operation is currently affecting the statistics of the connection */
+enum aws_mqtt_operation_statistic_state_flags {
+    /* The operation is not affecting the connection's statistics at all */
+    AWS_MQTT_OSS_NONE = 0,
+
+    /* The operation is affecting the connection's "incomplete operation" statistics */
+    AWS_MQTT_OSS_INCOMPLETE = 1 << 0,
+
+    /* The operation is affecting the connection's "unacked operation" statistics */
+    AWS_MQTT_OSS_UNACKED = 1 << 1,
+};
 
 struct aws_mqtt_request {
     struct aws_linked_list_node list_node;
@@ -273,11 +290,6 @@ struct aws_mqtt_client_connection {
          */
         uint16_t packet_id;
 
-        /**
-         * Statistics tracking operational state
-         */
-        struct aws_mqtt_connection_operation_statistics_impl operation_statistics_impl;
-
     } synced_data;
 
     struct {
@@ -289,6 +301,11 @@ struct aws_mqtt_client_connection {
 
         struct aws_http_message *handshake_request;
     } websocket;
+
+    /**
+     * Statistics tracking operational state
+     */
+    struct aws_mqtt_connection_operation_statistics_impl operation_statistics_impl;
 };
 
 struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
@@ -360,5 +377,17 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_request *request,
     enum aws_mqtt_operation_statistic_state_flags new_state_flags);
+
+/**
+ * Sets the callback to call whenever the operation statistics change.
+ *
+ * \param[in] connection                  The connection object
+ * \param[in] on_operation_statistics     The function to call when the operation statistics change (pass NULL to unset)
+ * \param[in] on_operation_statistics_ud  Userdata for on_operation_statistics
+ */
+int aws_mqtt_client_connection_set_on_operation_statistics_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_on_operation_statistics_fn *on_operation_statistics,
+    void *on_operation_statistics_ud);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */

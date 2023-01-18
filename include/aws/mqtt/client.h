@@ -99,11 +99,6 @@ typedef void(aws_mqtt_suback_fn)(
     void *userdata);
 
 /**
- * Called when the operation statistics change.
- */
-typedef void(aws_mqtt_on_operation_statistics_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
-
-/**
  * Called when a publish message is received.
  *
  * \param[in] connection    The connection object
@@ -230,41 +225,29 @@ struct aws_mqtt_connection_options {
  * Contains some simple statistics about the current state of the connection's queue of operations
  */
 struct aws_mqtt_connection_operation_statistics {
-    /*
+    /**
      * total number of operations submitted to the connection that have not yet been completed.  Unacked operations
      * are a subset of this.
      */
     uint64_t incomplete_operation_count;
 
-    /*
+    /**
      * total packet size of operations submitted to the connection that have not yet been completed.  Unacked operations
      * are a subset of this.
      */
     uint64_t incomplete_operation_size;
 
-    /*
+    /**
      * total number of operations that have been sent to the server and are waiting for a corresponding ACK before
      * they can be completed.
      */
     uint64_t unacked_operation_count;
 
-    /*
+    /**
      * total packet size of operations that have been sent to the server and are waiting for a corresponding ACK before
      * they can be completed.
      */
     uint64_t unacked_operation_size;
-};
-
-/* Flags that indicate the way in which way an operation is currently affecting the statistics of the connection */
-enum aws_mqtt_operation_statistic_state_flags {
-    /* The operation is not affecting the connection's statistics at all */
-    AWS_MQTT_OSS_NONE = 0,
-
-    /* The operation is affecting the connection's "incomplete operation" statistics */
-    AWS_MQTT_OSS_INCOMPLETE = 1 << 0,
-
-    /* The operation is affecting the connection's "unacked operation" statistics */
-    AWS_MQTT_OSS_UNACKED = 1 << 1,
 };
 
 AWS_EXTERN_C_BEGIN
@@ -432,19 +415,6 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_publish_received_fn *on_any_publish,
     void *on_any_publish_ud);
-
-/**
- * Sets the callback to call whenever the operation statistics change.
- *
- * \param[in] connection                  The connection object
- * \param[in] on_operation_statistics     The function to call when the operation statistics change (pass NULL to unset)
- * \param[in] on_operation_statistics_ud  Userdata for on_operation_statistics
- */
-AWS_MQTT_API
-int aws_mqtt_client_connection_set_on_operation_statistics_handler(
-    struct aws_mqtt_client_connection *connection,
-    aws_mqtt_on_operation_statistics_fn *on_operation_statistics,
-    void *on_operation_statistics_ud);
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.

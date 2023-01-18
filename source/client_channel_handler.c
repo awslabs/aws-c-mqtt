@@ -722,13 +722,13 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 (void *)task,
                 request->packet_id);
 
-            /* Set the status as incomplete */
-            aws_mqtt_connection_statistics_change_operation_statistic_state(
-                connection, request, AWS_MQTT_OSS_INCOMPLETE);
-
             /* put it into the offline queue. */
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
+
+                /* Set the status as incomplete */
+                aws_mqtt_connection_statistics_change_operation_statistic_state(
+                    connection, request, AWS_MQTT_OSS_INCOMPLETE);
 
                 aws_linked_list_push_back(&connection->synced_data.pending_requests_list, &request->list_node);
 
@@ -748,11 +748,11 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                     connection, request->packet_id, AWS_ERROR_MQTT_NOT_CONNECTED, request->on_complete_ud);
             }
 
-            /* Cancel the request in the operation statistics */
-            aws_mqtt_connection_statistics_change_operation_statistic_state(connection, request, AWS_MQTT_OSS_NONE);
-
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
+
+                /* Cancel the request in the operation statistics */
+                aws_mqtt_connection_statistics_change_operation_statistic_state(connection, request, AWS_MQTT_OSS_NONE);
 
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
@@ -792,12 +792,12 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
             }
 
-            /* Set the request as complete in the operation statistics */
-            aws_mqtt_connection_statistics_change_operation_statistic_state(
-                request->connection, request, AWS_MQTT_OSS_NONE);
-
             { /* BEGIN CRITICAL SECTION */
                 mqtt_connection_lock_synced_data(connection);
+
+                /* Set the request as complete in the operation statistics */
+                aws_mqtt_connection_statistics_change_operation_statistic_state(
+                    request->connection, request, AWS_MQTT_OSS_NONE);
 
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
@@ -943,7 +943,7 @@ uint16_t mqtt_create_request(
 
     } /* END CRITICAL SECTION */
 
-    if (next_request) {
+    if (next_request && next_request->packet_size > 0) {
         /* Set the status as incomplete */
         aws_mqtt_connection_statistics_change_operation_statistic_state(
             next_request->connection, next_request, AWS_MQTT_OSS_INCOMPLETE);
@@ -975,7 +975,6 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
     bool found_request = false;
     aws_mqtt_op_complete_fn *on_complete = NULL;
     void *on_complete_ud = NULL;
-    struct aws_mqtt_request *request = NULL;
 
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
@@ -984,32 +983,22 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
         if (elem != NULL) {
             found_request = true;
 
-            request = elem->value;
+            struct aws_mqtt_request *request = elem->value;
             on_complete = request->on_complete;
             on_complete_ud = request->on_complete_ud;
+
+            /* Set the status as complete */
+            aws_mqtt_connection_statistics_change_operation_statistic_state(
+                request->connection, request, AWS_MQTT_OSS_NONE);
 
             /* clean up request resources */
             aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
             /* remove the request from the list, which is thread_data.ongoing_requests_list */
             aws_linked_list_remove(&request->list_node);
+            aws_memory_pool_release(&connection->synced_data.requests_pool, request);
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
-
-    if (request != NULL) {
-        /* Set the status as complete */
-        aws_mqtt_connection_statistics_change_operation_statistic_state(
-            request->connection, request, AWS_MQTT_OSS_NONE);
-
-        { /* BEGIN CRITICAL SECTION */
-            mqtt_connection_lock_synced_data(connection);
-
-            // We release the memory here because we need it to stay alive long enough to send to the statistics change
-            aws_memory_pool_release(&connection->synced_data.requests_pool, request);
-
-            mqtt_connection_unlock_synced_data(connection);
-        } /* END CRITICAL SECTION */
-    }
 
     if (!found_request) {
         AWS_LOGF_DEBUG(
