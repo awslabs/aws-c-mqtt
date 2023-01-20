@@ -2,7 +2,7 @@ version: 0.2
 env:
   shell: bash
   variables:
-    CANARY_DURATION: 300
+    CANARY_DURATION: 1200
     CANARY_THREADS: 3
     CANARY_TPS: 50
     CANARY_CLIENT_COUNT: 10
