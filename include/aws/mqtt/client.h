@@ -221,6 +221,35 @@ struct aws_mqtt_connection_options {
     bool clean_session;
 };
 
+/**
+ * Contains some simple statistics about the current state of the connection's queue of operations
+ */
+struct aws_mqtt_connection_operation_statistics {
+    /**
+     * total number of operations submitted to the connection that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    uint64_t incomplete_operation_count;
+
+    /**
+     * total packet size of operations submitted to the connection that have not yet been completed.  Unacked operations
+     * are a subset of this.
+     */
+    uint64_t incomplete_operation_size;
+
+    /**
+     * total number of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    uint64_t unacked_operation_count;
+
+    /**
+     * total packet size of operations that have been sent to the server and are waiting for a corresponding ACK before
+     * they can be completed.
+     */
+    uint64_t unacked_operation_size;
+};
+
 AWS_EXTERN_C_BEGIN
 
 /**
@@ -570,6 +599,17 @@ uint16_t aws_mqtt_client_connection_publish(
     const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata);
+
+/**
+ * Queries the connection's internal statistics for incomplete/unacked operations.
+ * \param connection connection to get statistics for
+ * \param stats set of incomplete/unacked operation statistics
+ * \returns AWS_OP_SUCCESS if getting the operation statistics were successful, AWS_OP_ERR otherwise
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_get_stats(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_connection_operation_statistics *stats);
 
 AWS_EXTERN_C_END
 
