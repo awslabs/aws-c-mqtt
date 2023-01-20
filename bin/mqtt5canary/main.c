@@ -136,7 +136,7 @@ static void s_parse_options(
 
     while (true) {
         int option_index = 0;
-        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:whtp:C:T:s:", s_long_options, &option_index);
+        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wht:p:C:T:s:", s_long_options, &option_index);
         if (c == -1) {
             break;
         }
