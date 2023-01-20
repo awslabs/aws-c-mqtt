@@ -1592,6 +1592,7 @@ static int s_mqtt_client_connect(
         channel_options.tls_options = connection->use_tls ? &connection->tls_options : NULL;
         channel_options.setup_callback = &s_mqtt_client_init;
         channel_options.shutdown_callback = &s_mqtt_client_shutdown;
+        //channel_options.channel_destruction_callback = ??;
         channel_options.user_data = connection;
         channel_options.requested_event_loop = connection->loop;
 
