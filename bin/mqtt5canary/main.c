@@ -97,6 +97,7 @@ static void s_usage(int exit_code) {
     fprintf(stderr, "  -l, --log FILE: dumps logs to FILE instead of stderr.\n");
     fprintf(stderr, "  -v, --verbose: ERROR|INFO|DEBUG|TRACE: log level to configure. Default is none.\n");
     fprintf(stderr, "  -w, --websockets: use mqtt-over-websockets rather than direct mqtt\n");
+    fprintf(stderr, "  -p, --port: Port to use when making MQTT connections\n");
 
     fprintf(stderr, "  -t, --threads: number of eventloop group threads to use\n");
     fprintf(stderr, "  -C, --clients: number of mqtt5 clients to use\n");
@@ -115,6 +116,7 @@ static struct aws_cli_option s_long_options[] = {
     {"log", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'l'},
     {"verbose", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'v'},
     {"websockets", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'w'},
+    {"port", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'p'},
     {"help", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'h'},
 
     {"threads", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 't'},
@@ -134,7 +136,7 @@ static void s_parse_options(
 
     while (true) {
         int option_index = 0;
-        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wht:C:T:s:", s_long_options, &option_index);
+        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:whtp:C:T:s:", s_long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -177,6 +179,9 @@ static void s_parse_options(
                 break;
             case 'w':
                 ctx->use_websockets = true;
+                break;
+            case 'p':
+                ctx->port = (uint16_t)atoi(aws_cli_optarg);
                 break;
             case 't':
                 tester_options->elg_max_threads = (uint16_t)atoi(aws_cli_optarg);
@@ -765,7 +770,9 @@ int main(int argc, char **argv) {
     app_ctx.signal = (struct aws_condition_variable)AWS_CONDITION_VARIABLE_INIT;
     app_ctx.connect_timeout = 3000;
     aws_mutex_init(&app_ctx.lock);
-    app_ctx.port = 1883;
+    if (app_ctx.port == 0) {
+        app_ctx.port = 1883;
+    }
 
     struct aws_mqtt5_canary_tester_options tester_options;
     AWS_ZERO_STRUCT(tester_options);

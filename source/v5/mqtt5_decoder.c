@@ -22,6 +22,7 @@ static void s_reset_decoder_for_new_packet(struct aws_mqtt5_decoder *decoder) {
 
     decoder->packet_first_byte = 0;
     decoder->remaining_length = 0;
+    decoder->state = AWS_MQTT5_DS_READ_PACKET_TYPE;
     AWS_ZERO_STRUCT(decoder->packet_cursor);
 }
 
