@@ -513,7 +513,7 @@ static int s_aws_mqtt5_canary_operation_subscribe(struct aws_mqtt5_canary_test_c
         .subscription_count = AWS_ARRAY_SIZE(subscriptions),
     };
 
-        struct aws_mqtt5_subscribe_completion_options subscribe_view_options = {
+    struct aws_mqtt5_subscribe_completion_options subscribe_view_options = {
         .completion_callback = &s_aws_mqtt5_canary_operation_subscribe_completion,
         .completion_user_data = test_client,
     };
@@ -584,8 +584,7 @@ static int s_aws_mqtt5_canary_operation_unsubscribe(struct aws_mqtt5_canary_test
 
     struct aws_mqtt5_unsubscribe_completion_options unsubscribe_view_options = {
         .completion_callback = &s_aws_mqtt5_canary_operation_unsubscribe_completion,
-        .completion_user_data = test_client
-    };
+        .completion_user_data = test_client};
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT5_CANARY,
@@ -646,8 +645,7 @@ static int s_aws_mqtt5_canary_operation_publish(
     };
 
     struct aws_mqtt5_publish_completion_options packet_publish_view_options = {
-        .completion_callback = &s_aws_mqtt5_canary_operation_publish_completion, .completion_user_data = test_client
-    };
+        .completion_callback = &s_aws_mqtt5_canary_operation_publish_completion, .completion_user_data = test_client};
 
     return aws_mqtt5_client_publish(test_client->client, &packet_publish_view, &packet_publish_view_options);
 }
