@@ -182,6 +182,7 @@ static void s_parse_options(
                 break;
             case 'p':
                 ctx->port = (uint16_t)atoi(aws_cli_optarg);
+                break;
             case 't':
                 tester_options->elg_max_threads = (uint16_t)atoi(aws_cli_optarg);
                 break;
