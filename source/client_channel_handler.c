@@ -100,7 +100,8 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
         } else {
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
-                "id=%p: Skipped sending PING because last outbound packet %llu is less than ping timeout %llu",
+                "id=%p: Skipped sending PING because last outbound packet %" PRIu64
+                "is less than ping timeout %" PRIu64,
                 (void *)connection,
                 outbound_delta,
                 ping_time_ns);
