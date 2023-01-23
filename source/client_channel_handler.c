@@ -823,9 +823,15 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 (void *)request->connection,
                 request->packet_id);
 
-            /* Set the request as incomplete and un-acked in the operation statistics */
-            aws_mqtt_connection_statistics_change_operation_statistic_state(
-                request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
+            { /* BEGIN CRITICAL SECTION */
+                mqtt_connection_lock_synced_data(connection);
+
+                /* Set the request as incomplete and un-acked in the operation statistics */
+                aws_mqtt_connection_statistics_change_operation_statistic_state(
+                    request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
+
+                mqtt_connection_unlock_synced_data(connection);
+            } /* END CRITICAL SECTION */
 
             /* Put the request into the ongoing list */
             aws_linked_list_push_back(&connection->thread_data.ongoing_requests_list, &request->list_node);
@@ -944,15 +950,15 @@ uint16_t mqtt_create_request(
             aws_channel_schedule_task_now_serialized(connection->slot->channel, &next_request->outgoing_task);
         }
 
+        if (next_request && next_request->packet_size > 0) {
+            /* Set the status as incomplete */
+            aws_mqtt_connection_statistics_change_operation_statistic_state(
+                next_request->connection, next_request, AWS_MQTT_OSS_INCOMPLETE);
+        }
+
         mqtt_connection_unlock_synced_data(connection);
 
     } /* END CRITICAL SECTION */
-
-    if (next_request && next_request->packet_size > 0) {
-        /* Set the status as incomplete */
-        aws_mqtt_connection_statistics_change_operation_statistic_state(
-            next_request->connection, next_request, AWS_MQTT_OSS_INCOMPLETE);
-    }
 
     return next_request->packet_id;
 }
