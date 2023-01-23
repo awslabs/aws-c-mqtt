@@ -137,12 +137,6 @@ struct aws_mqtt_request {
     void *on_complete_ud;
 };
 
-struct aws_mqtt_reconnect_task {
-    struct aws_task task;
-    struct aws_atomic_var connection_ptr;
-    struct aws_allocator *allocator;
-};
-
 /* The lifetime of this struct is from subscribe -> suback */
 struct subscribe_task_arg {
 
@@ -230,7 +224,8 @@ struct aws_mqtt_client_connection {
     void *on_any_operation_statistics_ud;
 
     /* Connection tasks. */
-    struct aws_mqtt_reconnect_task *reconnect_task;
+    struct aws_task reconnect_task;
+
     struct aws_channel_task ping_task;
 
     /**
@@ -323,6 +318,12 @@ void mqtt_connection_set_state(
     struct aws_mqtt_client_connection *connection,
     enum aws_mqtt_client_connection_state state);
 
+/* Only callable from the connection's event loop */
+void aws_mqtt_connection_schedule_reconnect(struct aws_mqtt_client_connection *connection);
+
+/* Only callable from the connection's event loop */
+void aws_mqtt_connection_cancel_reconnect(struct aws_mqtt_client_connection *connection);
+
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).
  * send_request will be called from request_timeout_task if everything succeed. Not called with error.
@@ -344,11 +345,8 @@ AWS_MQTT_API void mqtt_request_complete(
     int error_code,
     uint16_t packet_id);
 
-/* Call to close the connection with an error code */
+/* Call to close the connection with an error code.  Lock must be held before calling. */
 AWS_MQTT_API void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
-
-/* Creates the task used to reestablish a broken connection */
-AWS_MQTT_API void aws_create_reconnect_task(struct aws_mqtt_client_connection *connection);
 
 /**
  * Sets the callback to call whenever the operation statistics change.

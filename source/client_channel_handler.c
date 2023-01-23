@@ -169,8 +169,6 @@ static int s_packet_handler_connack(
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
     } else {
 
-        aws_create_reconnect_task(connection);
-
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: connection is a new connection, invoking on_connection_complete callback",
@@ -657,7 +655,19 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 static void s_destroy(struct aws_channel_handler *handler) {
 
     struct aws_mqtt_client_connection *connection = handler->impl;
-    (void)connection;
+
+    /* In case user called disconnect from the on_interrupted callback */
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_RECONNECTING) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: old channel fully shut down.  It's now safe to schedule reconnect.",
+                (void *)connection);
+            aws_mqtt_connection_schedule_reconnect(connection);
+        }
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
 }
 
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
@@ -1013,21 +1023,24 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     struct mqtt_shutdown_task *task = AWS_CONTAINER_OF(channel_task, struct mqtt_shutdown_task, task);
     struct aws_mqtt_client_connection *connection = arg;
 
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection->loop));
+
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Doing disconnect", (void *)connection);
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         /* If there is an outstanding reconnect task, cancel it */
-        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING && connection->reconnect_task) {
-            aws_atomic_store_ptr(&connection->reconnect_task->connection_ptr, NULL);
-            /* If the reconnect_task isn't scheduled, free it */
-            if (connection->reconnect_task && !connection->reconnect_task->task.timestamp) {
-                aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
-            }
-            connection->reconnect_task = NULL;
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            aws_mqtt_connection_cancel_reconnect(connection);
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
+    /*
+     * It's safe to access slot/channel here because we're in the event loop thread and slot can only change in
+     * response to in-event-loop-thread callbacks.
+     *
+     * TODO: verify we only change slot under the lock.
+     */
     if (connection->slot && connection->slot->channel) {
         aws_channel_shutdown(connection->slot->channel, task->error_code);
     }
@@ -1036,6 +1049,8 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
 }
 
 void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
+    /* Only safe to call with lock held */
+
     if (connection->slot) {
         struct mqtt_shutdown_task *shutdown_task =
             aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));
