@@ -36,21 +36,50 @@ static int s_packet_handler_default(
     return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
 }
 
+static void s_schedule_ping_get_outbound_delta_data(
+    struct aws_mqtt_client_connection *connection,
+    uint64_t *result_now,
+    uint64_t *result_outbound_delta,
+    uint64_t *result_ping_time_ns) {
+    uint64_t now = 0;
+    aws_channel_current_clock_time(connection->slot->channel, &now);
+    uint64_t outbound_delta = now - connection->last_outbound_socket_write_time;
+    uint64_t ping_time_ns =
+        aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+    if (result_now != NULL) {
+        *result_now = now;
+    }
+    if (result_outbound_delta != NULL) {
+        *result_outbound_delta = outbound_delta;
+    }
+    if (result_ping_time_ns != NULL) {
+        *result_ping_time_ns = ping_time_ns;
+    }
+}
+
 static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
 static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
     aws_channel_task_init(&connection->ping_task, s_on_time_to_ping, connection, "mqtt_ping");
 
     uint64_t now = 0;
-    aws_channel_current_clock_time(connection->slot->channel, &now);
-    AWS_LOGF_TRACE(
-        AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING. current timestamp is %" PRIu64, (void *)connection, now);
+    uint64_t outbound_delta = 0;
+    uint64_t ping_time_ns = 0;
+    s_schedule_ping_get_outbound_delta_data(connection, &now, &outbound_delta, &ping_time_ns);
 
-    uint64_t schedule_time =
-        now + aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING task. current timestamp is %" PRIu64, (void *)connection, now);
+
+    uint64_t schedule_time = 0;
+    if (outbound_delta < ping_time_ns) {
+        schedule_time = now + ping_time_ns + outbound_delta;
+    } else {
+        schedule_time = now + ping_time_ns;
+    }
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: The next ping will be run at timestamp %" PRIu64,
+        "id=%p: The next PING task will be run at timestamp %" PRIu64,
         (void *)connection,
         schedule_time);
     aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, schedule_time);
@@ -61,8 +90,21 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_mqtt_client_connection *connection = arg;
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
-        aws_mqtt_client_connection_ping(connection);
+
+        uint64_t outbound_delta = 0;
+        uint64_t ping_time_ns = 0;
+        s_schedule_ping_get_outbound_delta_data(connection, NULL, &outbound_delta, &ping_time_ns);
+        if (outbound_delta > ping_time_ns) {
+            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
+            aws_mqtt_client_connection_ping(connection);
+        } else {
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Skipped sending PING because last outbound packet %llu is less than ping timeout %llu",
+                (void *)connection,
+                outbound_delta,
+                ping_time_ns);
+        }
         s_schedule_ping(connection);
     }
 }
@@ -799,6 +841,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
+                /* Cache the time of the write on the socket */
+                aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
+
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
                 aws_memory_pool_release(&connection->synced_data.requests_pool, request);
@@ -816,6 +861,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             /* Set the request as incomplete and un-acked in the operation statistics */
             aws_mqtt_connection_statistics_change_operation_statistic_state(
                 request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
+
+            /* Cache the time of the write on the socket */
+            aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
 
             /* Put the request into the ongoing list */
             aws_linked_list_push_back(&connection->thread_data.ongoing_requests_list, &request->list_node);

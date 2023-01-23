@@ -303,6 +303,12 @@ struct aws_mqtt_client_connection {
     } websocket;
 
     /**
+     * Remember the time of the last outbound socket write time.
+     * This helps us schedule the ping task correctly on congested sockets
+     */
+    uint64_t last_outbound_socket_write_time;
+
+    /**
      * Statistics tracking operational state
      */
     struct aws_mqtt_connection_operation_statistics_impl operation_statistics_impl;
