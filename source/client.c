@@ -612,11 +612,17 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
 
         mqtt_connection_lock_synced_data(connection);
 
+        /* Check the state and determine if the desired state is to disconnect. If it is, then abort the reconnect */
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            mqtt_connection_unlock_synced_data(connection);
+            return;
+        }
+
         aws_high_res_clock_get_ticks(&connection->reconnect_timeouts.next_attempt_ms);
         connection->reconnect_timeouts.next_attempt_ms += aws_timestamp_convert(
             connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
-        AWS_LOGF_TRACE(
+        AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
             (void *)connection,
