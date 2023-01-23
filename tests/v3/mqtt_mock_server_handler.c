@@ -28,6 +28,7 @@ struct mqtt_mock_server_handler {
 
         size_t ping_resp_avail;
         size_t pubacks_received;
+        size_t ping_received;
         size_t connacks_avail;
         bool auto_ack;
 
@@ -111,6 +112,7 @@ static int s_mqtt_mock_server_handler_process_packet(
             size_t ping_resp_available = 0;
             aws_mutex_lock(&server->synced.lock);
             ping_resp_available = server->synced.ping_resp_avail > 0 ? server->synced.ping_resp_avail-- : 0;
+            server->synced.ping_received += 1;
             aws_mutex_unlock(&server->synced.lock);
 
             if (ping_resp_available) {
@@ -724,4 +726,12 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
     server->synced.decoded_index = length;
     aws_mutex_unlock(&server->synced.lock);
     return AWS_OP_SUCCESS;
+}
+
+size_t mqtt_mock_server_get_ping_count(struct aws_channel_handler *handler) {
+    struct mqtt_mock_server_handler *server = handler->impl;
+    aws_mutex_lock(&server->synced.lock);
+    size_t count = server->synced.ping_received;
+    aws_mutex_unlock(&server->synced.lock);
+    return count;
 }

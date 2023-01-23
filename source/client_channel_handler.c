@@ -94,7 +94,7 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
         uint64_t outbound_delta = 0;
         uint64_t ping_time_ns = 0;
         s_schedule_ping_get_outbound_delta_data(connection, NULL, &outbound_delta, &ping_time_ns);
-        if (outbound_delta > ping_time_ns) {
+        if (outbound_delta >= ping_time_ns) {
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
             aws_mqtt_client_connection_ping(connection);
         } else {
@@ -842,8 +842,13 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
-                /* Cache the time of the write on the socket */
-                aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
+                /* WORKING NOTE: I am not confident this is the proper solution. This fixes the PING resetting itself,
+                 * but with this solution only operations (publish, subscribe, unsubscribe) can reset the PING, meaning
+                 * ACKs and ping responses will not... */
+                /* Cache the time of the write on the socket IF the packet has a packet size (I.E an operation) */
+                if (request->packet_size > 0) {
+                    aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
+                }
 
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
@@ -863,8 +868,10 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             aws_mqtt_connection_statistics_change_operation_statistic_state(
                 request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
 
-            /* Cache the time of the write on the socket */
-            aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
+            /* Cache the time of the write on the socket IF the packet has a packet size (I.E an operation) */
+            if (request->packet_size > 0) {
+                aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
+            }
 
             /* Put the request into the ongoing list */
             aws_linked_list_push_back(&connection->thread_data.ongoing_requests_list, &request->list_node);
