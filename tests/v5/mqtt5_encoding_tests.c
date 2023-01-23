@@ -332,6 +332,39 @@ static int s_aws_mqtt5_encode_decode_round_trip_test(
 
     ASSERT_INT_EQUALS(1, tester.view_count);
 
+    /* Now do a check where we partially decode the buffer, reset, and then fully decode. */
+    aws_mqtt5_decoder_reset(&decoder);
+    tester.view_count = 0;
+
+    whole_cursor = aws_byte_cursor_from_buf(&whole_dest);
+    if (decode_fragment_size >= whole_cursor.len) {
+        whole_cursor.len--;
+    } else {
+        whole_cursor.len -= decode_fragment_size;
+    }
+
+    while (whole_cursor.len > 0) {
+        size_t advance = aws_min_size(whole_cursor.len, decode_fragment_size);
+        struct aws_byte_cursor fragment_cursor = aws_byte_cursor_advance(&whole_cursor, advance);
+
+        ASSERT_SUCCESS(aws_mqtt5_decoder_on_data_received(&decoder, fragment_cursor));
+    }
+
+    /* Nothing should have been received */
+    ASSERT_INT_EQUALS(0, tester.view_count);
+
+    /* Reset and decode the whole packet, everything should be fine */
+    aws_mqtt5_decoder_reset(&decoder);
+    whole_cursor = aws_byte_cursor_from_buf(&whole_dest);
+    while (whole_cursor.len > 0) {
+        size_t advance = aws_min_size(whole_cursor.len, decode_fragment_size);
+        struct aws_byte_cursor fragment_cursor = aws_byte_cursor_advance(&whole_cursor, advance);
+
+        ASSERT_SUCCESS(aws_mqtt5_decoder_on_data_received(&decoder, fragment_cursor));
+    }
+
+    ASSERT_INT_EQUALS(1, tester.view_count);
+
     aws_byte_buf_clean_up(&whole_dest);
     aws_mqtt5_inbound_topic_alias_resolver_clean_up(&inbound_alias_resolver);
     aws_mqtt5_encoder_clean_up(&encoder);
