@@ -2782,7 +2782,7 @@ static int s_test_mqtt_connection_ping_norm_fn(struct aws_allocator *allocator, 
     s_wait_for_connection_to_complete(state_test_data);
 
     /* Wait for 4.5 seconds */
-    aws_thread_current_sleep((uint64_t)ONE_SEC * 4.5);
+    aws_thread_current_sleep(4500000000);
 
     /* Ensure the server got 4 PING packets */
     ASSERT_INT_EQUALS(4, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
@@ -2837,7 +2837,7 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
         ASSERT_TRUE(packet_id_1 > 0);
 
         /* Wait 0.8 seconds */
-        aws_thread_current_sleep((uint64_t)ONE_SEC * 0.8);
+        aws_thread_current_sleep(800000000);
     }
 
     /* Ensure the server got 0 PING packets */
