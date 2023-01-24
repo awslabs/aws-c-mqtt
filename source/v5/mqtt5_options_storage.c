@@ -186,11 +186,7 @@ static int s_aws_mqtt5_user_property_set_validate(
         }
         if (!aws_text_is_valid_utf8(property->name)) {
             AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: %s - user property #%zu name not valid UTF8",
-                log_context,
-                log_prefix,
-                i);
+                AWS_LS_MQTT5_GENERAL, "id=%p: %s - user property #%zu name not valid UTF8", log_context, log_prefix, i);
             return aws_raise_error(AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION);
         }
         if (property->value.len > UINT16_MAX) {
