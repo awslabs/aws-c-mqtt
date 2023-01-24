@@ -6,6 +6,7 @@
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/encoding.h>
 #include <aws/common/string.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
@@ -183,6 +184,15 @@ static int s_aws_mqtt5_user_property_set_validate(
                 property->name.len);
             return aws_raise_error(AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION);
         }
+        if (!aws_text_is_valid_utf8(property->name)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: %s - user property #%zu name not valid UTF8",
+                log_context,
+                log_prefix,
+                i);
+            return aws_raise_error(AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION);
+        }
         if (property->value.len > UINT16_MAX) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
@@ -191,6 +201,15 @@ static int s_aws_mqtt5_user_property_set_validate(
                 log_prefix,
                 i,
                 property->value.len);
+            return aws_raise_error(AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION);
+        }
+        if (!aws_text_is_valid_utf8(property->value)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: %s - user property #%zu value not valid UTF8",
+                log_context,
+                log_prefix,
+                i);
             return aws_raise_error(AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION);
         }
     }
