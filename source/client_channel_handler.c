@@ -842,11 +842,11 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
-                /* WORKING NOTE: I am not confident this is the proper solution. This fixes the PING resetting itself,
-                 * but with this solution only operations (publish, subscribe, unsubscribe) can reset the PING, meaning
-                 * ACKs and ping responses will not... */
-                /* Cache the time of the write on the socket IF the packet has a packet size (I.E an operation) */
-                if (request->packet_size > 0) {
+                /**
+                 * Cache the time of the write on the socket so long as the packet was not a ping packet.
+                 * We do this to avoid the PING packet overriding the ping interval
+                 */
+                if (request->packet_type != AWS_MQTT_PACKET_PINGREQ) {
                     aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
                 }
 
@@ -868,8 +868,11 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             aws_mqtt_connection_statistics_change_operation_statistic_state(
                 request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
 
-            /* Cache the time of the write on the socket IF the packet has a packet size (I.E an operation) */
-            if (request->packet_size > 0) {
+            /**
+             * Cache the time of the write on the socket so long as the packet was not a ping packet.
+             * We do this to avoid the PING packet overriding the ping interval
+             */
+            if (request->packet_type != AWS_MQTT_PACKET_PINGREQ) {
                 aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
             }
 
@@ -886,7 +889,8 @@ uint16_t mqtt_create_request(
     aws_mqtt_op_complete_fn *on_complete,
     void *on_complete_ud,
     bool noRetry,
-    uint64_t packet_size) {
+    uint64_t packet_size,
+    enum aws_mqtt_packet_type packet_type) {
 
     AWS_ASSERT(connection);
     AWS_ASSERT(send_request);
@@ -982,6 +986,7 @@ uint16_t mqtt_create_request(
         next_request->on_complete = on_complete;
         next_request->on_complete_ud = on_complete_ud;
         next_request->packet_size = packet_size;
+        next_request->packet_type = packet_type;
         aws_channel_task_init(
             &next_request->outgoing_task, s_request_outgoing_task, next_request, "mqtt_outgoing_request_task");
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {

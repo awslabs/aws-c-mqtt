@@ -127,6 +127,8 @@ struct aws_mqtt_request {
     enum aws_mqtt_operation_statistic_state_flags statistic_state_flags;
     /* The encoded size of the packet - used for operation statistics tracking */
     uint64_t packet_size;
+    /* The type of the packet */
+    enum aws_mqtt_packet_type packet_type;
 
     uint16_t packet_id;
     bool retryable;
@@ -342,7 +344,8 @@ AWS_MQTT_API uint16_t mqtt_create_request(
     aws_mqtt_op_complete_fn *on_complete,
     void *on_complete_ud,
     bool noRetry,
-    uint64_t packet_size);
+    uint64_t packet_size,
+    enum aws_mqtt_packet_type packet_type);
 
 /* Call when an ack packet comes back from the server. */
 AWS_MQTT_API void mqtt_request_complete(
