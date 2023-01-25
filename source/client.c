@@ -612,16 +612,35 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
 
         mqtt_connection_lock_synced_data(connection);
 
-        /* Check the state and determine if the desired state is to disconnect. If it is, then abort the reconnect */
-        // WORKING TODO: Skip this for now, it is causing tests to fail. Will need to revisit.
-        // if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
-        //     // Free the task
-        //     aws_mem_release(reconnect->allocator, reconnect);
-        //     connection->reconnect_task = NULL;
+        /**
+         * Check the state and determine if this reconnect is happening in the middle of a disconnect! If it is, then
+         * abort the reconnect and finish the disconnect (as the disconnect is now deadlocked thanks to the reconnect)
+         */
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            /* If the slot was not removed, then remove it here! */
+            if (connection->slot) {
+                aws_channel_slot_remove(connection->slot);
+                AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: slot is removed successfully", (void *)connection);
+                connection->slot = NULL;
+            }
+            /**
+             * Set the state to disconnected and call the disconnect callback.
+             * If we do not do this here, it will never be called because the event-loop has called the reconnect in
+             * the middle of the disconnect and so it will deadlock. This fixes that and stops the deadlock.
+             */
+            mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
+            MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
 
-        //     mqtt_connection_unlock_synced_data(connection);
-        //     return;
-        // }
+            /* Free the reconnect task data */
+            connection->reconnect_task->task.timestamp = 0;
+            aws_mem_release(reconnect->allocator, reconnect);
+            connection->reconnect_task = NULL;
+
+            /* Unlock the synced data and release the connection ref count so it can die */
+            mqtt_connection_unlock_synced_data(connection);
+            aws_mqtt_client_connection_release(connection);
+            return;
+        }
 
         aws_high_res_clock_get_ticks(&connection->reconnect_timeouts.next_attempt_ms);
         connection->reconnect_timeouts.next_attempt_ms += aws_timestamp_convert(
