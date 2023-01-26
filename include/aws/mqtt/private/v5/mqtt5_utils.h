@@ -87,6 +87,14 @@ struct aws_mqtt5_negotiated_settings;
 #define AWS_MQTT5_CLIENT_DEFAULT_INBOUND_TOPIC_ALIAS_CACHE_SIZE 25
 #define AWS_MQTT5_CLIENT_DEFAULT_OUTBOUND_TOPIC_ALIAS_CACHE_SIZE 25
 
+/**
+ * Checks if a topic filter matches a shared subscription according to the mqtt5 spec
+ * @param codepoint codepoint to check, it is assumed that the codepoint already respecting
+ *                  RFC-3629
+ * @return true if this matches the definition of a shared subscription, false otherwise
+ */
+extern bool aws_mqtt_utf8_validator(const uint32_t codepoint);
+
 AWS_EXTERN_C_BEGIN
 
 /**

@@ -537,3 +537,18 @@ bool aws_mqtt_is_topic_filter_shared_subscription(struct aws_byte_cursor topic_c
 
     return true;
 }
+
+// UTF-8 encoded string validation respect to [MQTT-1.5.3-2].
+bool aws_mqtt_utf8_validator(const uint32_t codepoint) {
+    // Control characters are not valid
+    if ((codepoint >= 0x0001 && codepoint <= 0x001F) || (codepoint >= 0x007F && codepoint <= 0x009F)) {
+        return false;
+    }
+
+    // Unicode non-characters are not valid: https://www.unicode.org/faq/private_use.html#nonchar1
+    if ((codepoint & 0x00FFFF) == 0x00FFFF || (codepoint & 0x00FFFF) == 0x00FFFE || codepoint == 0x000000 ||
+        (codepoint >= 0xFDD0 && codepoint <= 0xFDEF)) {
+        return false;
+    }
+    return true;
+}
