@@ -93,7 +93,7 @@ struct aws_mqtt5_negotiated_settings;
  *                  RFC-3629
  * @return true if this matches the definition of a shared subscription, false otherwise
  */
-extern bool aws_mqtt_utf8_validator(const uint32_t codepoint);
+extern int aws_mqtt_utf8_validator(const uint32_t codepoint, void *user_data);
 
 AWS_EXTERN_C_BEGIN
 
