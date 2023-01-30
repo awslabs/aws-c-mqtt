@@ -34,6 +34,9 @@ static struct aws_byte_cursor s_too_long_for_uint16_cursor = {
     .len = AWS_ARRAY_SIZE(s_too_long_for_uint16),
 };
 
+// Mqtt5 Specific invalid codepoint in prohibited range U+007F - U+009F (value = U+008F)",
+static const struct aws_byte_cursor s_invalid_utf8_string = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2\x8F");
+
 static uint8_t s_user_prop_name[] = "name";
 static uint8_t s_user_prop_value[] = "value";
 
@@ -66,6 +69,21 @@ static const struct aws_mqtt5_user_property s_bad_user_properties_value[] = {
             },
     },
 };
+
+static const struct aws_mqtt5_user_property s_user_properties_with_invalid_name[] = {
+    {.name = s_invalid_utf8_string,
+     .value = {
+         .ptr = (uint8_t *)s_user_prop_value,
+         .len = AWS_ARRAY_SIZE(s_user_prop_value) - 1,
+     }}};
+
+static const struct aws_mqtt5_user_property s_user_properties_with_invalid_value[] = {
+    {.name =
+         {
+             .ptr = s_user_prop_name,
+             .len = AWS_ARRAY_SIZE(s_user_prop_name) - 1,
+         },
+     .value = s_invalid_utf8_string}};
 
 static struct aws_mqtt5_user_property s_bad_user_properties_too_many[AWS_MQTT5_CLIENT_MAXIMUM_USER_PROPERTIES + 1];
 
@@ -169,6 +187,16 @@ AWS_VALIDATION_FAILURE_TEST4(
     s_good_disconnect_view,
     s_make_reason_string_too_long_disconnect_view)
 
+static void s_make_reason_string_invalid_utf8_disconnect_view(struct aws_mqtt5_packet_disconnect_view *view) {
+    view->reason_string = &s_invalid_utf8_string;
+}
+
+AWS_VALIDATION_FAILURE_TEST4(
+    disconnect,
+    reason_string_invalid_utf8,
+    s_good_disconnect_view,
+    s_make_reason_string_invalid_utf8_disconnect_view)
+
 static void s_make_user_properties_name_too_long_disconnect_view(struct aws_mqtt5_packet_disconnect_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_name);
     view->user_properties = s_bad_user_properties_name;
@@ -180,6 +208,17 @@ AWS_VALIDATION_FAILURE_TEST4(
     s_good_disconnect_view,
     s_make_user_properties_name_too_long_disconnect_view)
 
+static void s_make_user_properties_name_invalid_utf8_disconnect_view(struct aws_mqtt5_packet_disconnect_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_name);
+    view->user_properties = s_user_properties_with_invalid_name;
+}
+
+AWS_VALIDATION_FAILURE_TEST4(
+    disconnect,
+    user_properties_name_too_long,
+    s_good_disconnect_view,
+    s_make_user_properties_name_invalid_utf8_disconnect_view)
+
 static void s_make_user_properties_value_too_long_disconnect_view(struct aws_mqtt5_packet_disconnect_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_value);
     view->user_properties = s_bad_user_properties_value;
@@ -190,6 +229,17 @@ AWS_VALIDATION_FAILURE_TEST4(
     user_properties_value_too_long,
     s_good_disconnect_view,
     s_make_user_properties_value_too_long_disconnect_view)
+
+static void s_make_user_properties_value_invalid_utf8_disconnect_view(struct aws_mqtt5_packet_disconnect_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_value);
+    view->user_properties = s_user_properties_with_invalid_value;
+}
+
+AWS_VALIDATION_FAILURE_TEST4(
+    disconnect,
+    user_properties_value_invalid_utf8,
+    s_good_disconnect_view,
+    s_make_user_properties_value_invalid_utf8_disconnect_view)
 
 static void s_make_user_properties_too_many_disconnect_view(struct aws_mqtt5_packet_disconnect_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_too_many);
@@ -211,11 +261,31 @@ static void s_make_client_id_too_long_connect_view(struct aws_mqtt5_packet_conne
 
 AWS_VALIDATION_FAILURE_TEST2(connect, client_id_too_long, s_good_connect_view, s_make_client_id_too_long_connect_view)
 
+static void s_make_client_id_invalid_utf8_connect_view(struct aws_mqtt5_packet_connect_view *view) {
+    view->client_id = s_invalid_utf8_string;
+}
+
+AWS_VALIDATION_FAILURE_TEST2(
+    connect,
+    client_id_invalid_utf8,
+    s_good_connect_view,
+    s_make_client_id_invalid_utf8_connect_view)
+
 static void s_make_username_too_long_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->username = &s_too_long_for_uint16_cursor;
 }
 
 AWS_VALIDATION_FAILURE_TEST2(connect, username_too_long, s_good_connect_view, s_make_username_too_long_connect_view)
+
+static void s_make_username_invalid_utf8_connect_view(struct aws_mqtt5_packet_connect_view *view) {
+    view->username = &s_invalid_utf8_string;
+}
+
+AWS_VALIDATION_FAILURE_TEST2(
+    connect,
+    username_invalid_utf8,
+    s_good_connect_view,
+    s_make_username_invalid_utf8_connect_view)
 
 static void s_make_password_too_long_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->password = &s_too_long_for_uint16_cursor;
@@ -441,6 +511,16 @@ static struct aws_mqtt5_subscription_view s_invalid_topic_filter_subscription[] 
     },
 };
 
+static struct aws_mqtt5_subscription_view s_invalid_utf8_topic_filter_subscription[] = {
+    {
+        .topic_filter = s_invalid_utf8_string,
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .no_local = false,
+        .retain_handling_type = AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE,
+        .retain_as_published = false,
+    },
+};
+
 static void s_make_invalid_topic_filter_subscribe_view(struct aws_mqtt5_packet_subscribe_view *view) {
     view->subscriptions = s_invalid_topic_filter_subscription;
     view->subscription_count = AWS_ARRAY_SIZE(s_invalid_topic_filter_subscription);
@@ -451,6 +531,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     invalid_topic_filter,
     s_good_subscribe_view,
     s_make_invalid_topic_filter_subscribe_view)
+
+static void s_make_invalid_utf8_topic_filter_subscribe_view(struct aws_mqtt5_packet_subscribe_view *view) {
+    view->subscriptions = s_invalid_utf8_topic_filter_subscription;
+    view->subscription_count = AWS_ARRAY_SIZE(s_invalid_utf8_topic_filter_subscription);
+};
+
+AWS_VALIDATION_FAILURE_TEST3(
+    subscribe,
+    invalid_utf8_topic_filter,
+    s_good_subscribe_view,
+    s_make_invalid_utf8_topic_filter_subscribe_view)
 
 static struct aws_mqtt5_subscription_view s_invalid_qos_subscription[] = {
     {
@@ -650,6 +741,8 @@ static struct aws_byte_cursor s_invalid_topic_filter[] = {
     },
 };
 
+static struct aws_byte_cursor s_invalid_utf8_topic_filter[] = {s_invalid_utf8_string};
+
 static void s_make_invalid_topic_filter_unsubscribe_view(struct aws_mqtt5_packet_unsubscribe_view *view) {
     view->topic_filters = s_invalid_topic_filter;
     view->topic_filter_count = AWS_ARRAY_SIZE(s_invalid_topic_filter);
@@ -660,6 +753,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     invalid_topic_filter,
     s_good_unsubscribe_view,
     s_make_invalid_topic_filter_unsubscribe_view)
+
+static void s_make_invalid_utf8_topic_filter_unsubscribe_view(struct aws_mqtt5_packet_unsubscribe_view *view) {
+    view->topic_filters = s_invalid_utf8_topic_filter;
+    view->topic_filter_count = AWS_ARRAY_SIZE(s_invalid_utf8_topic_filter);
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    unsubscribe,
+    invalid_utf8_topic_filter,
+    s_good_unsubscribe_view,
+    s_make_invalid_utf8_topic_filter_unsubscribe_view)
 
 static struct aws_byte_cursor s_invalid_topic_filter_for_iot_core[] = {
     {
@@ -728,6 +832,12 @@ static void s_make_invalid_topic_publish_view(struct aws_mqtt5_packet_publish_vi
 
 AWS_VALIDATION_FAILURE_TEST3(publish, invalid_topic, s_good_publish_view, s_make_invalid_topic_publish_view)
 
+static void s_make_invalid_utf8_topic_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->topic = s_invalid_utf8_string;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(publish, invalid_utf8_topic, s_good_publish_view, s_make_invalid_utf8_topic_publish_view)
+
 static uint8_t s_topic_too_long_for_iot_core[258];
 
 static void s_make_topic_too_long_for_iot_core_publish_view(struct aws_mqtt5_packet_publish_view *view) {
@@ -777,6 +887,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_publish_view,
     s_make_invalid_payload_format_publish_view)
 
+static void s_make_invalid_utf8_payload_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->payload_format = AWS_MQTT5_PFI_UTF8;
+    view->payload = s_invalid_utf8_string;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    publish,
+    invalid_utf8_payload,
+    s_good_publish_view,
+    s_make_invalid_utf8_payload_publish_view)
+
 static void s_make_response_topic_too_long_publish_view(struct aws_mqtt5_packet_publish_view *view) {
     view->response_topic = &s_too_long_for_uint16_cursor;
 }
@@ -802,6 +923,16 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_publish_view,
     s_make_response_topic_invalid_publish_view)
 
+static void s_make_response_topic_invalid_utf8_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->response_topic = &s_invalid_utf8_string;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    publish,
+    invalid_utf8_response_topic,
+    s_good_publish_view,
+    s_make_response_topic_invalid_utf8_publish_view)
+
 static void s_make_correlation_data_too_long_publish_view(struct aws_mqtt5_packet_publish_view *view) {
     view->correlation_data = &s_too_long_for_uint16_cursor;
 }
@@ -811,6 +942,16 @@ AWS_VALIDATION_FAILURE_TEST3(
     correlation_data_too_long,
     s_good_publish_view,
     s_make_correlation_data_too_long_publish_view)
+
+static void s_make_content_type_invalid_utf8_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->content_type = &s_invalid_utf8_string;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    publish,
+    invalid_utf8_content_type,
+    s_good_publish_view,
+    s_make_content_type_invalid_utf8_publish_view)
 
 static const uint32_t s_subscription_identifiers[] = {1, 2};
 
