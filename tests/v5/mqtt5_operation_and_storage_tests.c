@@ -29,6 +29,8 @@ static int s_verify_user_properties(
 }
 
 AWS_STATIC_STRING_FROM_LITERAL(s_client_id, "MyClientId");
+// Mqtt5 Specific invalid codepoint in prohibited range U+007F - U+009F (value = U+8F)",
+static struct aws_byte_cursor s_invalid_utf8_string = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2\x8F");
 
 static bool s_is_cursor_in_buffer(const struct aws_byte_buf *buffer, struct aws_byte_cursor cursor) {
     if (cursor.ptr < buffer->buffer) {
@@ -183,6 +185,28 @@ static const struct aws_mqtt5_user_property s_user_properties[] = {
     },
 };
 
+static const struct aws_mqtt5_user_property s_user_properties_with_invalid_name[] = {
+    s_user_properties[0],
+    {
+        .name = s_invalid_utf8_string,
+        .value =
+            {
+                .ptr = (uint8_t *)s_user_prop2_value,
+                .len = AWS_ARRAY_SIZE(s_user_prop2_value),
+            },
+    },
+};
+
+static const struct aws_mqtt5_user_property s_user_properties_with_invalid_value[] = {
+    s_user_properties[0],
+    {.name =
+         {
+             .ptr = (uint8_t *)s_user_prop2_name,
+             .len = AWS_ARRAY_SIZE(s_user_prop2_name),
+         },
+     .value = s_invalid_utf8_string},
+};
+
 static void s_aws_mqtt5_publish_completion_fn(
     enum aws_mqtt5_packet_type packet_type,
     const void *packet,
@@ -328,6 +352,17 @@ static struct aws_mqtt5_subscription_view s_subscriptions[] = {
                 .ptr = (uint8_t *)s_topic_filter2,
                 .len = AWS_ARRAY_SIZE(s_topic_filter2) - 1,
             },
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .no_local = false,
+        .retain_as_published = true,
+        .retain_handling_type = AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE_IF_NEW,
+    },
+};
+
+static struct aws_mqtt5_subscription_view s_invalid_subscriptions[] = {
+    s_subscriptions[0],
+    {
+        .topic_filter = s_invalid_utf8_string,
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
         .no_local = false,
         .retain_as_published = true,
@@ -490,6 +525,31 @@ static int s_mqtt5_subscribe_operation_new_set_all_fn(struct aws_allocator *allo
 
 AWS_TEST_CASE(mqtt5_subscribe_operation_new_set_all, s_mqtt5_subscribe_operation_new_set_all_fn)
 
+static int s_mqtt5_subscribe_view_utf8_string_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    struct aws_mqtt5_packet_subscribe_view subscribe_options = {
+        .subscriptions = s_subscriptions,
+        .subscription_count = AWS_ARRAY_SIZE(s_subscriptions),
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = s_user_properties,
+    };
+
+    uint32_t sub_id = 5;
+    subscribe_options.subscription_identifier = &sub_id;
+
+    /* invalid topic filter */
+    ASSERT_SUCCESS(aws_mqtt5_packet_subscribe_view_validate(&subscribe_options));
+    subscribe_options.subscriptions = s_invalid_subscription;
+    printf("Testing illegal subscribe view: topic filters.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_subscribe_view_validate(&subscribe_options));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_subscribe_view_utf8_string_validation_fn, s_mqtt5_subscribe_view_utf8_string_validation_fn)
+
 static void s_aws_mqtt5_unsubscribe_completion_fn(
     const struct aws_mqtt5_packet_unsuback_view *unsuback,
     int error_code,
@@ -512,6 +572,18 @@ static const struct aws_byte_cursor s_topics[] = {
         .ptr = (uint8_t *)s_unsub_topic_filter2,
         .len = AWS_ARRAY_SIZE(s_unsub_topic_filter2) - 1,
     },
+    {
+        .ptr = (uint8_t *)s_unsub_topic_filter3,
+        .len = AWS_ARRAY_SIZE(s_unsub_topic_filter3) - 1,
+    },
+};
+
+static const struct aws_byte_cursor s_invalid_topics[] = {
+    {
+        .ptr = (uint8_t *)s_unsub_topic_filter1,
+        .len = AWS_ARRAY_SIZE(s_unsub_topic_filter1) - 1,
+    },
+    s_invalid_utf8_string,
     {
         .ptr = (uint8_t *)s_unsub_topic_filter3,
         .len = AWS_ARRAY_SIZE(s_unsub_topic_filter3) - 1,
@@ -569,6 +641,28 @@ static int s_mqtt5_unsubscribe_operation_new_set_all_fn(struct aws_allocator *al
 }
 
 AWS_TEST_CASE(mqtt5_unsubscribe_operation_new_set_all, s_mqtt5_unsubscribe_operation_new_set_all_fn)
+
+static int s_mqtt5_unsubscribe_view_utf8_string_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    struct aws_mqtt5_packet_unsubscribe_view unsubscribe_options = {
+        .topic_filters = s_topics,
+        .topic_filter_count = AWS_ARRAY_SIZE(s_topics),
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = s_user_properties,
+    };
+
+    /* invalid topic filter */
+    ASSERT_SUCCESS(aws_mqtt5_packet_unsubscribe_view_validate(&unsubscribe_options));
+    unsubscribe_options.topic_filters = s_invalid_topics;
+    printf("Testing illegal unsubscribe view topic filters.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_unsubscribe_view_validate(&unsubscribe_options));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_unsubscribe_view_utf8_string_validation_fn, s_mqtt5_unsubscribe_view_utf8_string_validation_fn)
 
 static int s_aws_mqtt5_connect_storage_verify_required_properties(
     struct aws_mqtt5_packet_connect_storage *connect_storage,
@@ -736,6 +830,69 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
 }
 
 AWS_TEST_CASE(mqtt5_connect_storage_new_set_all, s_mqtt5_connect_storage_new_set_all_fn)
+
+static int s_mqtt5_connect_view_utf8_string_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    struct aws_mqtt5_packet_connect_view connect_options = {
+        .keep_alive_interval_seconds = 50,
+        .client_id = aws_byte_cursor_from_string(s_client_id),
+        .username = &s_username_cursor,
+        .password = &s_password_cursor,
+        .clean_start = true,
+        .session_expiry_interval_seconds = &s_session_expiry_interval_seconds,
+        .request_response_information = &s_request_response_information,
+        .request_problem_information = &s_request_problem_information,
+        .receive_maximum = &s_connect_receive_maximum,
+        .topic_alias_maximum = &s_connect_topic_alias_maximum,
+        .maximum_packet_size_bytes = &s_connect_maximum_packet_size_bytes,
+        .will_delay_interval_seconds = &s_will_delay_interval_seconds,
+        /* The will be tested in publish view */
+        .will = NULL,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = s_user_properties,
+        .authentication_method = &s_authentication_method_cursor,
+        .authentication_data = &s_authentication_data_cursor,
+    };
+
+    /* invalid payload */
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+    connect_options.client_id = s_invalid_utf8_string;
+    printf("Testing illegal connet view client_id.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+    printf("Reset connect view client id.\n");
+    connect_options.client_id = aws_byte_cursor_from_string(s_client_id),
+
+    /* invalid username */
+        ASSERT_SUCCESS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+    connect_options.username = &invalid_utf8_string;
+    printf("Testing illegal connect view username.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+    printf("Reset connect view username.\n");
+    connect_options.username = &s_username_cursor;
+
+    /* invalid property name */
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+    connect_options.user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_name),
+    connect_options.user_properties = &s_user_properties_with_invalid_name;
+    printf("Testing illegal connect view, user properties with invalid name.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+    printf("Reset connect view user properties with invalid name.\n");
+    connect_options.user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+    connect_options.user_properties = s_user_properties,
+
+    /* invalid property value */
+        ASSERT_SUCCESS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+    connect_options.user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_value),
+    connect_options.user_properties = &s_user_properties_with_invalid_value;
+    printf("Testing illegal connect view, user properties with invalid value.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_connect_view_validate(&connect_options));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_connect_view_utf8_string_validation_fn, s_mqtt5_connect_view_utf8_string_validation_fn)
 
 static int s_aws_mqtt5_connack_storage_verify_required_properties(
     struct aws_mqtt5_packet_connack_storage *connack_storage,
@@ -979,6 +1136,30 @@ static int s_mqtt5_disconnect_storage_new_set_all_fn(struct aws_allocator *alloc
 }
 
 AWS_TEST_CASE(mqtt5_disconnect_storage_new_set_all, s_mqtt5_disconnect_storage_new_set_all_fn)
+
+static int s_mqtt5_disconnect_view_utf8_string_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    struct aws_mqtt5_packet_disconnect_view disconnect_options = {
+        .reason_code = AWS_MQTT5_DRC_ADMINISTRATIVE_ACTION,
+        .session_expiry_interval_seconds = &s_session_expiry_interval_seconds,
+        .reason_string = &s_reason_string_cursor,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = s_user_properties,
+        .server_reference = &s_server_reference_cursor,
+    };
+
+    /* invalid payload */
+    ASSERT_SUCCESS(aws_mqtt5_packet_disconnect_view_validate(&connect_options));
+    connect_options.reason_string = &s_invalid_utf8_string;
+    printf("Testing illegal disconnect view reason string.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_disconnect_view_validate(&connect_options));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_disconnect_view_utf8_string_validation_fn, s_mqtt5_disconnect_view_utf8_string_validation_fn)
 
 static const enum aws_mqtt5_suback_reason_code s_suback_reason_codes[] = {
     AWS_MQTT5_SARC_GRANTED_QOS_0,
@@ -1324,6 +1505,71 @@ static int s_mqtt5_publish_storage_new_set_all_fn(struct aws_allocator *allocato
 }
 
 AWS_TEST_CASE(mqtt5_publish_storage_new_set_all, s_mqtt5_publish_storage_new_set_all_fn)
+
+static int s_mqtt5_publish_view_utf8_string_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_cursor response_topic = aws_byte_cursor_from_c_str(s_response_topic);
+    struct aws_byte_cursor correlation_data = aws_byte_cursor_from_c_str(s_correlation_data);
+    struct aws_byte_cursor content_type = aws_byte_cursor_from_c_str(s_content_type);
+    enum aws_mqtt5_payload_format_indicator payload_format = AWS_MQTT5_PFI_UTF8;
+    struct aws_byte_cursor payload_cursor = aws_byte_cursor_from_c_str(PUBLISH_PAYLOAD);
+    struct aws_byte_cursor topic_cursor = aws_byte_cursor_from_c_str(PUBLISH_TOPIC);
+
+    struct aws_mqtt5_packet_publish_view publish_options = {
+        .packet_id = 333,
+        .payload = payload_cursor,
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .retain = false,
+        .topic = topic_cursor,
+        .payload_format = &payload_format,
+        .message_expiry_interval_seconds = &s_message_expiry_interval_seconds,
+        .topic_alias = &s_topic_alias,
+        .response_topic = &response_topic,
+        .correlation_data = &correlation_data,
+        .subscription_identifier_count = AWS_ARRAY_SIZE(subscription_identifiers),
+        .subscription_identifiers = subscription_identifiers,
+        .content_type = &content_type,
+        .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
+        .user_properties = s_user_properties,
+    };
+
+    /* invalid payload */
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+    publish_options.payload = s_invalid_utf8_string;
+    printf("Testing illegal publish view payload.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+    printf("Reset publish view payload.\n");
+    publish_options.payload = payload_cursor;
+
+    /* invalid topic */
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+    publish_options.topic = s_invalid_utf8_string;
+    printf("Testing illegal publish view topic.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+    printf("Reset publish view topic.\n");
+    publish_options.topic = topic_cursor;
+
+    /* invalid response topic */
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+    publish_options.response_topic = &s_invalid_utf8_string;
+    printf("Testing illegal publish view response topic.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+    printf("Reset publish view response_topic.\n");
+    publish_options.response_topic = &response_topic;
+
+    /* invalid topic */
+    ASSERT_SUCCESS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+    publish_options.content_type = &s_invalid_utf8_string;
+    printf("Testing illegal publish view content type.\n");
+    ASSERT_FAILS(aws_mqtt5_packet_publish_view_validate(&publish_options));
+    printf("Reset publish view content_type.\n");
+    publish_options.content_type = &content_type;
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_publish_view_utf8_string_validation_fn, s_mqtt5_publish_view_utf8_string_validation_fn)
 
 static const enum aws_mqtt5_qos s_maximum_qos_at_least_once = AWS_MQTT5_QOS_AT_LEAST_ONCE;
 static const enum aws_mqtt5_qos s_maximum_qos_at_most_once = AWS_MQTT5_QOS_AT_MOST_ONCE;
