@@ -367,6 +367,17 @@ AWS_VALIDATION_FAILURE_TEST2(
     s_good_connect_view,
     s_make_user_properties_name_too_long_connect_view)
 
+static void s_make_user_properties_name_invalid_utf8_connect_view(struct aws_mqtt5_packet_connect_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_name);
+    view->user_properties = s_user_properties_with_invalid_name;
+}
+
+AWS_VALIDATION_FAILURE_TEST2(
+    connect,
+    user_properties_name_invalid_utf8,
+    s_good_connect_view,
+    s_make_user_properties_name_invalid_utf8_connect_view)
+
 static void s_make_user_properties_value_too_long_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_value);
     view->user_properties = s_bad_user_properties_value;
@@ -377,6 +388,17 @@ AWS_VALIDATION_FAILURE_TEST2(
     user_properties_value_too_long,
     s_good_connect_view,
     s_make_user_properties_value_too_long_connect_view)
+
+static void s_make_user_properties_value_invalid_utf8_connect_view(struct aws_mqtt5_packet_connect_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_value);
+    view->user_properties = s_user_properties_with_invalid_value;
+}
+
+AWS_VALIDATION_FAILURE_TEST2(
+    connect,
+    user_properties_value_invalid_utf8,
+    s_good_connect_view,
+    s_make_user_properties_value_invalid_utf8_connect_view)
 
 static void s_make_user_properties_too_many_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_too_many);
@@ -669,6 +691,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_subscribe_view,
     s_make_user_properties_name_too_long_subscribe_view)
 
+static void s_make_user_properties_name_invalid_utf8_subscribe_view(struct aws_mqtt5_packet_subscribe_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_name);
+    view->user_properties = s_user_properties_with_invalid_name;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    subscribe,
+    user_properties_name_invalid_utf8,
+    s_good_subscribe_view,
+    s_make_user_properties_name_invalid_utf8_subscribe_view)
+
 static void s_make_user_properties_value_too_long_subscribe_view(struct aws_mqtt5_packet_subscribe_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_value);
     view->user_properties = s_bad_user_properties_value;
@@ -679,6 +712,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     user_properties_value_too_long,
     s_good_subscribe_view,
     s_make_user_properties_value_too_long_subscribe_view)
+
+static void s_make_user_properties_value_invalid_utf8_subscribe_view(struct aws_mqtt5_packet_subscribe_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_value);
+    view->user_properties = s_user_properties_with_invalid_value;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    subscribe,
+    user_properties_value_invalid_utf8,
+    s_good_subscribe_view,
+    s_make_user_properties_value_invalid_utf8_subscribe_view)
 
 static void s_make_user_properties_too_many_subscribe_view(struct aws_mqtt5_packet_subscribe_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_too_many);
@@ -794,6 +838,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_unsubscribe_view,
     s_make_user_properties_name_too_long_unsubscribe_view)
 
+static void s_make_user_properties_name_invalid_utf8_unsubscribe_view(struct aws_mqtt5_packet_unsubscribe_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_name);
+    view->user_properties = s_user_properties_with_invalid_name;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    unsubscribe,
+    user_properties_name_invalid_utf8,
+    s_good_unsubscribe_view,
+    s_make_user_properties_name_invalid_utf8_unsubscribe_view)
+
 static void s_make_user_properties_value_too_long_unsubscribe_view(struct aws_mqtt5_packet_unsubscribe_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_value);
     view->user_properties = s_bad_user_properties_value;
@@ -804,6 +859,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     user_properties_value_too_long,
     s_good_unsubscribe_view,
     s_make_user_properties_value_too_long_unsubscribe_view)
+
+static void s_make_user_properties_value_invalid_utf8_unsubscribe_view(struct aws_mqtt5_packet_unsubscribe_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_value);
+    view->user_properties = s_user_properties_with_invalid_value;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    unsubscribe,
+    user_properties_value_invalid_utf8,
+    s_good_unsubscribe_view,
+    s_make_user_properties_value_invalid_utf8_unsubscribe_view)
 
 static void s_make_user_properties_too_many_unsubscribe_view(struct aws_mqtt5_packet_unsubscribe_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_too_many);
@@ -996,6 +1062,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_good_publish_view,
     s_make_user_properties_name_too_long_publish_view)
 
+static void s_make_user_properties_name_invalid_utf8_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_name);
+    view->user_properties = s_user_properties_with_invalid_name;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    publish,
+    user_properties_value_invalid_utf8,
+    s_good_publish_view,
+    s_make_user_properties_name_invalid_utf8_publish_view)
+
 static void s_make_user_properties_value_too_long_publish_view(struct aws_mqtt5_packet_publish_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_value);
     view->user_properties = s_bad_user_properties_value;
@@ -1006,6 +1083,17 @@ AWS_VALIDATION_FAILURE_TEST3(
     user_properties_value_too_long,
     s_good_publish_view,
     s_make_user_properties_value_too_long_publish_view)
+
+static void s_make_user_properties_value_invalid_utf8_publish_view(struct aws_mqtt5_packet_publish_view *view) {
+    view->user_property_count = AWS_ARRAY_SIZE(s_user_properties_with_invalid_value);
+    view->user_properties = s_user_properties_with_invalid_value;
+}
+
+AWS_VALIDATION_FAILURE_TEST3(
+    publish,
+    user_properties_value_invalid_utf8,
+    s_good_publish_view,
+    s_make_user_properties_value_invalid_utf8_publish_view)
 
 static void s_make_user_properties_too_many_publish_view(struct aws_mqtt5_packet_publish_view *view) {
     view->user_property_count = AWS_ARRAY_SIZE(s_bad_user_properties_too_many);
