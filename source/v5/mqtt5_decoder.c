@@ -1159,6 +1159,8 @@ int aws_mqtt5_decoder_init(
 
 void aws_mqtt5_decoder_reset(struct aws_mqtt5_decoder *decoder) {
     s_reset_decoder_for_new_packet(decoder);
+
+    decoder->state = AWS_MQTT5_DS_READ_PACKET_TYPE;
 }
 
 void aws_mqtt5_decoder_clean_up(struct aws_mqtt5_decoder *decoder) {
