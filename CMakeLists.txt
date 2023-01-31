@@ -39,17 +39,14 @@ include(AwsSanitizers)
 include(CheckCCompilerFlag)
 include(AwsFindPackage)
 
-file(GLOB AWS_MQTT_HEADERS
-        "include/aws/mqtt/*.h"
-        )
-
-file(GLOB AWS_MQTT5_HEADERS
-        "include/aws/mqtt/v5/*.h"
-        )
+file(GLOB AWS_MQTT_HEADERS "include/aws/mqtt/*.h")
+file(GLOB AWS_MQTT_V5_HEADERS "include/aws/mqtt/v5/*.h")
+file(GLOB AWS_MQTT_V311_HEADERS "include/aws/mqtt/v311/*.h")
 
 file(GLOB AWS_MQTT_PRIV_HEADERS
         "include/aws/mqtt/private/*.h"
         "include/aws/mqtt/private/v5/*.h"
+        "include/aws/mqtt/private/v311/*.h"
         )
 
 file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
@@ -59,15 +56,14 @@ file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
 file(GLOB AWS_MQTT_SRC
         "source/*.c"
         "source/v5/*.c"
+        "source/v311/*.c"
         )
 
 file(GLOB MQTT_HEADERS
         ${AWS_MQTT_HEADERS}
+        ${AWS_MQTT_V5_HEADERS}
+        ${AWS_MQTT_V311_HEADERS}
         ${AWS_MQTT_PRIV_HEADERS}
-        )
-
-file(GLOB AWS_MQTT5_HEADERS
-        ${AWS_MQTT5_HEADERS}
         )
 
 file(GLOB MQTT_SRC
@@ -99,7 +95,8 @@ target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
 install(FILES ${AWS_MQTT_HEADERS} DESTINATION "include/aws/mqtt" COMPONENT Development)
-install(FILES ${AWS_MQTT5_HEADERS} DESTINATION "include/aws/mqtt/v5" COMPONENT Development)
+install(FILES ${AWS_MQTT_V5_HEADERS} DESTINATION "include/aws/mqtt/v5" COMPONENT Development)
+install(FILES ${AWS_MQTT_V311_HEADERS} DESTINATION "include/aws/mqtt/v311" COMPONENT Development)
 install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "include/aws/testing/mqtt" COMPONENT Development)
 install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "include/aws/mqtt/private" COMPONENT Development)
 
