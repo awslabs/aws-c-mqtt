@@ -344,8 +344,7 @@ AWS_MQTT_API uint16_t mqtt_create_request(
     aws_mqtt_op_complete_fn *on_complete,
     void *on_complete_ud,
     bool noRetry,
-    uint64_t packet_size,
-    enum aws_mqtt_packet_type packet_type);
+    uint64_t packet_size);
 
 /* Call when an ack packet comes back from the server. */
 AWS_MQTT_API void mqtt_request_complete(
