@@ -9,6 +9,8 @@
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
+#include <inttypes.h>
+
 struct aws_mqtt5_callback_set_entry {
     struct aws_allocator *allocator;
 
