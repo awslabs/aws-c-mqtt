@@ -844,7 +844,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
 
                 /**
                  * Cache the time of the write on the socket so long as the packet was not a ping packet.
-                 * We do this to avoid the PING packet overriding the ping interval and can check if it's a ping based on packet size
+                 * We do this to avoid the PING packet overriding the ping interval and can check if it's a ping based
+                 * on packet size
                  */
                 if (request->packet_size > 0) {
                     aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);

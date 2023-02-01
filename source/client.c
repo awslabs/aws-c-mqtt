@@ -617,6 +617,9 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
          * abort the reconnect and finish the disconnect (as the disconnect is now deadlocked thanks to the reconnect)
          */
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT, "id=%p: Skipping reconnect: Client is trying to disconnect", (void *)connection);
+
             /* If the slot was not removed, then remove it here! */
             if (connection->slot) {
                 aws_channel_slot_remove(connection->slot);
@@ -3000,14 +3003,8 @@ uint16_t aws_mqtt_client_connection_publish(
     uint64_t publish_packet_size = 4 + arg->topic.len + arg->payload.len;
 
     bool retry = qos == AWS_MQTT_QOS_AT_MOST_ONCE;
-    uint16_t packet_id = mqtt_create_request(
-        connection,
-        &s_publish_send,
-        arg,
-        &s_publish_complete,
-        arg,
-        retry,
-        publish_packet_size);
+    uint16_t packet_id =
+        mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg, retry, publish_packet_size);
 
     if (packet_id == 0) {
         /* bummer, we failed to make a new request */
@@ -3115,8 +3112,8 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    uint16_t packet_id = mqtt_create_request(
-        connection, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ 0);
+    uint16_t packet_id =
+        mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ 0);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
 
