@@ -46,6 +46,11 @@ static void s_mqtt5_listener_initialize_task_fn(struct aws_task *task, void *arg
         listener->callback_set_id = aws_mqtt5_callback_set_manager_push_front(
             &listener->config.client->callback_manager, &listener->config.listener_callbacks);
         aws_mqtt5_listener_release(listener);
+        AWS_LOGF_INFO(
+            AWS_LS_MQTT5_GENERAL,
+            "id=%p: Mqtt5 Listener initialized, listener id=%p",
+            (void *)listener->client,
+            (void *)listener);
     } else {
         s_mqtt5_listener_destroy(listener);
     }
@@ -61,6 +66,11 @@ static void s_mqtt5_listener_terminate_task_fn(struct aws_task *task, void *arg,
     }
 
     s_mqtt5_listener_destroy(listener);
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT5_GENERAL,
+        "id=%p: Mqtt5 Listener terminated, listener id=%p",
+        (void *)listener->client,
+        (void *)listener);
 }
 
 static void s_aws_mqtt5_listener_on_zero_ref_count(void *context) {
