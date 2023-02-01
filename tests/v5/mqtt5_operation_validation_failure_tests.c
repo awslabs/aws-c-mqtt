@@ -35,7 +35,7 @@ static struct aws_byte_cursor s_too_long_for_uint16_cursor = {
 };
 
 // Mqtt5 Specific invalid codepoint in prohibited range U+007F - U+009F (value = U+008F)",
-static const struct aws_byte_cursor s_invalid_utf8_string = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2\x8F");
+static struct aws_byte_cursor s_invalid_utf8_string = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2\x8F");
 
 static uint8_t s_user_prop_name[] = "name";
 static uint8_t s_user_prop_value[] = "value";
