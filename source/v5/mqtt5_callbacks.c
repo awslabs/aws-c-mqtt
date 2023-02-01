@@ -85,12 +85,13 @@ void aws_mqtt5_callback_set_manager_remove(struct aws_mqtt5_callback_set_manager
 
         if (entry->id == callback_set_id) {
             aws_linked_list_remove(&entry->node);
-            aws_mem_release(entry->allocator, entry);
+
             AWS_LOGF_INFO(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: callback manager removed entry id=%" PRIu64,
                 (void *)manager->client,
                 entry->id);
+            aws_mem_release(entry->allocator, entry);
             return;
         }
     }
