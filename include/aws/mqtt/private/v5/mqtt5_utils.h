@@ -103,7 +103,6 @@ AWS_MQTT_API extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
  */
 AWS_MQTT_API extern struct aws_utf8_decoder_options g_aws_mqtt5_utf8_decoder_options;
 
-
 /**
  * Simple helper function to compute the first byte of an MQTT packet encoding as a function of 4 bit flags
  * and the packet type.
