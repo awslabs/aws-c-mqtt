@@ -7,6 +7,7 @@
 
 #include <aws/common/byte_buf.h>
 #include <aws/common/device_random.h>
+#include <aws/common/encoding.h>
 #include <inttypes.h>
 
 uint8_t aws_mqtt5_compute_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags) {
@@ -539,7 +540,7 @@ bool aws_mqtt_is_topic_filter_shared_subscription(struct aws_byte_cursor topic_c
 }
 
 /* UTF-8 encoded string validation respect to [MQTT-1.5.3-2]. */
-int aws_mqtt_utf8_validator(uint32_t codepoint, void *user_data) {
+static int aws_mqtt5_utf8_decoder(uint32_t codepoint, void *user_data) {
     (void)user_data;
     /* U+0000 - A UTF-8 Encoded String MUST NOT include an encoding of the null character U+0000. [MQTT-1.5.4-2]
      * U+0001..U+001F control characters are not valid
@@ -563,3 +564,7 @@ int aws_mqtt_utf8_validator(uint32_t codepoint, void *user_data) {
 
     return AWS_ERROR_SUCCESS;
 }
+
+struct aws_utf8_decoder_options g_aws_mqtt5_utf8_decoder_options = {
+    .on_codepoint = aws_mqtt5_utf8_decoder,
+};

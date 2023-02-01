@@ -12,6 +12,7 @@
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_byte_buf;
+struct aws_utf8_decoder_options;
 struct aws_mqtt5_negotiated_settings;
 
 #define AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER 268435455
@@ -87,14 +88,6 @@ struct aws_mqtt5_negotiated_settings;
 #define AWS_MQTT5_CLIENT_DEFAULT_INBOUND_TOPIC_ALIAS_CACHE_SIZE 25
 #define AWS_MQTT5_CLIENT_DEFAULT_OUTBOUND_TOPIC_ALIAS_CACHE_SIZE 25
 
-/**
- * Checks if a topic filter matches a shared subscription according to the mqtt5 spec
- * @param codepoint codepoint to check, it is assumed that the codepoint already respecting
- *                  RFC-3629
- * @return true if this matches the definition of a shared subscription, false otherwise
- */
-extern int aws_mqtt_utf8_validator(const uint32_t codepoint, void *user_data);
-
 AWS_EXTERN_C_BEGIN
 
 /**
@@ -103,6 +96,13 @@ AWS_EXTERN_C_BEGIN
  * {0x00, 0x04, "MQTT", 0x05}
  */
 AWS_MQTT_API extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
+
+/**
+ * utf8_decoder_options, used to setup the utf8_decoder
+ * The option will setup the callback to validate the utf8 string following mqtt5 specs
+ */
+AWS_MQTT_API extern struct aws_utf8_decoder_options g_aws_mqtt5_utf8_decoder_options;
+
 
 /**
  * Simple helper function to compute the first byte of an MQTT packet encoding as a function of 4 bit flags
