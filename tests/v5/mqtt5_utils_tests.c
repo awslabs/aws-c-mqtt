@@ -120,7 +120,7 @@ struct utf8_example {
     struct aws_byte_cursor text;
 };
 
-static struct utf8_example s_valid_utf8_examples[] = {
+static struct utf8_example s_valid_mqtt5_utf8_examples[] = {
     {
         .name = "1 letter",
         .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("a"),
@@ -132,10 +132,6 @@ static struct utf8_example s_valid_utf8_examples[] = {
     {
         .name = "empty string",
         .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(""),
-    },
-    {
-        .name = "Embedded null byte",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("a\x00b"),
     },
     {
         .name = "2 byte codepoint",
@@ -163,10 +159,6 @@ static struct utf8_example s_valid_utf8_examples[] = {
         .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xEF\xBB\xBF\x24\xC2\xA3"),
     },
     {
-        .name = "First possible 2 byte codepoint",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2\x80"),
-    },
-    {
         .name = "First possible 3 byte codepoint",
         .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xE0\xA0\x80"),
     },
@@ -175,20 +167,8 @@ static struct utf8_example s_valid_utf8_examples[] = {
         .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xF0\x90\x80\x80"),
     },
     {
-        .name = "Last possible 1 byte codepoint",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\x7F"),
-    },
-    {
         .name = "Last possible 2 byte codepoint",
         .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xDF\xBF"),
-    },
-    {
-        .name = "Last possible 3 byte codepoint",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xEF\xBF\xBF"),
-    },
-    {
-        .name = "Last possible 4 byte codepoint",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xF7\xBF\xBF\xBF"),
     },
     {
         .name = "Last valid codepoint before prohibited range U+D800 - U+DFFF",
@@ -201,10 +181,6 @@ static struct utf8_example s_valid_utf8_examples[] = {
     {
         .name = "Boundary condition",
         .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xEF\xBF\xBD"),
-    },
-    {
-        .name = "Boundary condition",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xF4\x8F\xBF\xBF"),
     },
     {
         .name = "Boundary condition",
@@ -261,8 +237,8 @@ static struct utf8_example s_illegal_mqtt5_utf8_examples[] = {
 static int s_mqtt5_utf8_encoded_string_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* Check the valid test cases */
-    for (size_t i = 0; i < AWS_ARRAY_SIZE(s_valid_utf8_examples); ++i) {
-        struct utf8_example example = s_valid_utf8_examples[i];
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(s_valid_mqtt5_utf8_examples); ++i) {
+        struct utf8_example example = s_valid_mqtt5_utf8_examples[i];
         printf("valid example [%zu]: %s\n", i, example.name);
         ASSERT_SUCCESS(aws_decode_utf8(example.text, &g_aws_mqtt5_utf8_decoder_options));
     }
@@ -270,8 +246,8 @@ static int s_mqtt5_utf8_encoded_string_test(struct aws_allocator *allocator, voi
     /* Glue all the valid test cases together, they ought to pass */
     struct aws_byte_buf all_good_text;
     aws_byte_buf_init(&all_good_text, allocator, 1024);
-    for (size_t i = 0; i < AWS_ARRAY_SIZE(s_valid_utf8_examples); ++i) {
-        aws_byte_buf_append_dynamic(&all_good_text, &s_valid_utf8_examples[i].text);
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(s_valid_mqtt5_utf8_examples); ++i) {
+        aws_byte_buf_append_dynamic(&all_good_text, &s_valid_mqtt5_utf8_examples[i].text);
     }
     ASSERT_SUCCESS(aws_decode_utf8(aws_byte_cursor_from_buf(&all_good_text), &g_aws_mqtt5_utf8_decoder_options));
     aws_byte_buf_clean_up(&all_good_text);
