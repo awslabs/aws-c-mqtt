@@ -1123,5 +1123,7 @@ void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int err
         shutdown_task->error_code = error_code;
         aws_channel_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
         aws_channel_schedule_task_now(connection->slot->channel, &shutdown_task->task);
+    } else {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Client currently has no slot to disconnect", (void *)connection);
     }
 }

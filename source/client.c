@@ -461,7 +461,7 @@ static void s_mqtt_client_init(
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
-    /* intall the slot and handler */
+    /* install the slot and handler */
     if (failed_create_slot) {
 
         AWS_LOGF_ERROR(
@@ -607,41 +607,46 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
     struct aws_mqtt_reconnect_task *reconnect = userdata;
     struct aws_mqtt_client_connection *connection = aws_atomic_load_ptr(&reconnect->connection_ptr);
 
+    /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
     if (status == AWS_TASK_STATUS_RUN_READY && connection) {
-        /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
-
         mqtt_connection_lock_synced_data(connection);
 
         /**
-         * Check the state and determine if this reconnect is happening in the middle of a disconnect! If it is, then
-         * abort the reconnect and finish the disconnect (as the disconnect is now deadlocked thanks to the reconnect)
+         * Check the state and if we are disconnecting (AWS_MQTT_CLIENT_STATE_DISCONNECTING) then we want to skip it
+         * and abort the reconnect task (or rather, just do not try to reconnect)
          */
         if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT, "id=%p: Skipping reconnect: Client is trying to disconnect", (void *)connection);
 
-            /* If the slot was not removed, then remove it here! */
-            if (connection->slot) {
-                aws_channel_slot_remove(connection->slot);
-                AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: slot is removed successfully", (void *)connection);
-                connection->slot = NULL;
-            }
             /**
-             * Set the state to disconnected and call the disconnect callback.
-             * If we do not do this here, it will never be called because the event-loop has called the reconnect in
-             * the middle of the disconnect and so it will deadlock. This fixes that and stops the deadlock.
+             * There is the nasty world where the disconnect task/function is called right when we are "reconnecting" as
+             * our state but we have not reconnected. When this happens, the disconnect function doesn't do anything
+             * beyond setting the state to AWS_MQTT_CLIENT_STATE_DISCONNECTING (aws_mqtt_client_connection_disconnect),
+             * meaning the disconnect callback will NOT be called nor will we release memory.
+             * For this reason, we have to do the callback and release of the connection here otherwise the code
+             * will DEADLOCK forever and that is bad.
              */
-            mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
-            MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+            bool perform_full_destroy = false;
+            if (!connection->slot) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Reconnect task called but client is disconnecting and has no slot. Finishing disconnect",
+                    (void *)connection);
+                mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
+                perform_full_destroy = true;
+            }
 
-            /* Free the reconnect task data */
             connection->reconnect_task->task.timestamp = 0;
             aws_mem_release(reconnect->allocator, reconnect);
             connection->reconnect_task = NULL;
 
-            /* Unlock the synced data and release the connection ref count so it can die */
+            /* Unlock the synced data, then potentially call the disconnect callback and release the connection */
             mqtt_connection_unlock_synced_data(connection);
-            aws_mqtt_client_connection_release(connection);
+            if (perform_full_destroy) {
+                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                aws_mqtt_client_connection_release(connection);
+            }
             return;
         }
 
