@@ -264,7 +264,7 @@ static int s_mqtt5_utf8_encoded_string_test(struct aws_allocator *allocator, voi
     for (size_t i = 0; i < AWS_ARRAY_SIZE(s_valid_utf8_examples); ++i) {
         struct utf8_example example = s_valid_utf8_examples[i];
         printf("valid example [%zu]: %s\n", i, example.name);
-        ASSERT_TRUE(aws_decode_utf8(example.text, &g_aws_mqtt5_utf8_decoder_options));
+        ASSERT_SUCCESS(aws_decode_utf8(example.text, &g_aws_mqtt5_utf8_decoder_options));
     }
 
     /* Glue all the valid test cases together, they ought to pass */
@@ -273,14 +273,14 @@ static int s_mqtt5_utf8_encoded_string_test(struct aws_allocator *allocator, voi
     for (size_t i = 0; i < AWS_ARRAY_SIZE(s_valid_utf8_examples); ++i) {
         aws_byte_buf_append_dynamic(&all_good_text, &s_valid_utf8_examples[i].text);
     }
-    ASSERT_TRUE(aws_decode_utf8(aws_byte_cursor_from_buf(&all_good_text), &g_aws_mqtt5_utf8_decoder_options));
+    ASSERT_SUCCESS(aws_decode_utf8(aws_byte_cursor_from_buf(&all_good_text), &g_aws_mqtt5_utf8_decoder_options));
     aws_byte_buf_clean_up(&all_good_text);
 
     /* Check the illegal test cases */
     for (size_t i = 0; i < AWS_ARRAY_SIZE(s_illegal_mqtt5_utf8_examples); ++i) {
         struct utf8_example example = s_illegal_mqtt5_utf8_examples[i];
         printf("illegal example [%zu]: %s\n", i, example.name);
-        ASSERT_FALSE(aws_decode_utf8(example.text, &g_aws_mqtt5_utf8_decoder_options));
+        ASSERT_FAILS(aws_decode_utf8(example.text, &g_aws_mqtt5_utf8_decoder_options));
     }
 
     return AWS_OP_SUCCESS;

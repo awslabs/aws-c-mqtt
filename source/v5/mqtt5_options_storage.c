@@ -185,7 +185,7 @@ static int s_aws_mqtt5_user_property_set_validate(
             return aws_raise_error(AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION);
         }
 
-        if (!aws_decode_utf8(property->name, &g_aws_mqtt5_utf8_decoder_options)) {
+        if (aws_decode_utf8(property->name, &g_aws_mqtt5_utf8_decoder_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL, "id=%p: %s - user property #%zu name not valid UTF8", log_context, log_prefix, i);
             return aws_raise_error(AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION);
@@ -200,7 +200,7 @@ static int s_aws_mqtt5_user_property_set_validate(
                 property->value.len);
             return aws_raise_error(AWS_ERROR_MQTT5_USER_PROPERTY_VALIDATION);
         }
-        if (!aws_decode_utf8(property->value, &g_aws_mqtt5_utf8_decoder_options)) {
+        if (aws_decode_utf8(property->value, &g_aws_mqtt5_utf8_decoder_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: %s - user property #%zu value not valid UTF8",
@@ -345,7 +345,7 @@ int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect
         return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
     }
 
-    if (!aws_decode_utf8(connect_options->client_id, &g_aws_mqtt5_utf8_decoder_options)) {
+    if (aws_decode_utf8(connect_options->client_id, &g_aws_mqtt5_utf8_decoder_options)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_connect_view - client id not valid UTF-8",
@@ -362,7 +362,7 @@ int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect
             return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
         }
 
-        if (!aws_decode_utf8(*connect_options->username, &g_aws_mqtt5_utf8_decoder_options)) {
+        if (aws_decode_utf8(*connect_options->username, &g_aws_mqtt5_utf8_decoder_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_connect_view - username not valid UTF-8",
@@ -1272,7 +1272,7 @@ int aws_mqtt5_packet_disconnect_view_validate(const struct aws_mqtt5_packet_disc
             return aws_raise_error(AWS_ERROR_MQTT5_DISCONNECT_OPTIONS_VALIDATION);
         }
 
-        if (!(aws_decode_utf8(*disconnect_view->reason_string, &g_aws_mqtt5_utf8_decoder_options))) {
+        if (aws_decode_utf8(*disconnect_view->reason_string, &g_aws_mqtt5_utf8_decoder_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_disconnect_view - reason string not valid UTF-8",
@@ -1604,7 +1604,7 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - missing topic", (void *)publish_view);
         return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
-    } else if (!aws_decode_utf8(publish_view->topic, &g_aws_mqtt5_utf8_decoder_options)) {
+    } else if (aws_decode_utf8(publish_view->topic, &g_aws_mqtt5_utf8_decoder_options)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL, "id=%p: aws_mqtt5_packet_publish_view - topic not valid UTF-8", (void *)publish_view);
         return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
@@ -1639,7 +1639,7 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
 
         // Make sure the payload data is UTF-8 if the payload_format set to UTF8
         if (*publish_view->payload_format == AWS_MQTT5_PFI_UTF8) {
-            if (!aws_decode_utf8(publish_view->payload, &g_aws_mqtt5_utf8_decoder_options)) {
+            if (aws_decode_utf8(publish_view->payload, &g_aws_mqtt5_utf8_decoder_options)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_MQTT5_GENERAL,
                     "id=%p: aws_mqtt5_packet_publish_view - payload value is not valid UTF-8 while payload format "
@@ -1659,7 +1659,7 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
             return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
         }
 
-        if (!aws_decode_utf8(*publish_view->response_topic, &g_aws_mqtt5_utf8_decoder_options)) {
+        if (aws_decode_utf8(*publish_view->response_topic, &g_aws_mqtt5_utf8_decoder_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_publish_view - response topic not valid UTF-8",
@@ -1705,7 +1705,7 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
             return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
         }
 
-        if (!aws_decode_utf8(*publish_view->content_type, &g_aws_mqtt5_utf8_decoder_options)) {
+        if (aws_decode_utf8(*publish_view->content_type, &g_aws_mqtt5_utf8_decoder_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_publish_view - content type not valid UTF-8",
@@ -2363,7 +2363,7 @@ int aws_mqtt5_packet_unsubscribe_view_validate(const struct aws_mqtt5_packet_uns
 
     for (size_t i = 0; i < unsubscribe_view->topic_filter_count; ++i) {
         const struct aws_byte_cursor *topic_filter = &unsubscribe_view->topic_filters[i];
-        if (!aws_decode_utf8(*topic_filter, &g_aws_mqtt5_utf8_decoder_options)) {
+        if (aws_decode_utf8(*topic_filter, &g_aws_mqtt5_utf8_decoder_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
                 "id=%p: aws_mqtt5_packet_unsubscribe_view - topic filter not valid UTF-8: \"" PRInSTR "\"",
@@ -2658,7 +2658,7 @@ static int s_aws_mqtt5_validate_subscription(
     const struct aws_mqtt5_subscription_view *subscription,
     void *log_context) {
 
-    if (!aws_decode_utf8(subscription->topic_filter, &g_aws_mqtt5_utf8_decoder_options)) {
+    if (aws_decode_utf8(subscription->topic_filter, &g_aws_mqtt5_utf8_decoder_options)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_GENERAL,
             "id=%p: aws_mqtt5_packet_subscribe_view - topic filter \"" PRInSTR "\" not valid UTF-8 in subscription",
