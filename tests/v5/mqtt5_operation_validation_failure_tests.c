@@ -35,8 +35,8 @@ static struct aws_byte_cursor s_too_long_for_uint16_cursor = {
 };
 
 // Mqtt5 Specific invalid codepoint in prohibited range U+007F - U+009F (value = U+008F)",
-static struct aws_byte_cursor s_invalid_utf8_string = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2\x8F");
-
+static uint8_t s_invalid_utf8[] = "\xC2\x8F";
+static struct aws_byte_cursor s_invalid_utf8_string = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(s_invalid_utf8);
 static uint8_t s_user_prop_name[] = "name";
 static uint8_t s_user_prop_value[] = "value";
 
@@ -71,7 +71,11 @@ static const struct aws_mqtt5_user_property s_bad_user_properties_value[] = {
 };
 
 static const struct aws_mqtt5_user_property s_user_properties_with_invalid_name[] = {
-    {.name = s_invalid_utf8_string,
+    {.name =
+         {
+             .ptr = (uint8_t *)s_invalid_utf8,
+             .len = AWS_ARRAY_SIZE(s_invalid_utf8) - 1,
+         },
      .value = {
          .ptr = (uint8_t *)s_user_prop_value,
          .len = AWS_ARRAY_SIZE(s_user_prop_value) - 1,
@@ -83,7 +87,10 @@ static const struct aws_mqtt5_user_property s_user_properties_with_invalid_value
              .ptr = s_user_prop_name,
              .len = AWS_ARRAY_SIZE(s_user_prop_name) - 1,
          },
-     .value = s_invalid_utf8_string}};
+     .value = {
+         .ptr = (uint8_t *)s_invalid_utf8,
+         .len = AWS_ARRAY_SIZE(s_invalid_utf8) - 1,
+     }}};
 
 static struct aws_mqtt5_user_property s_bad_user_properties_too_many[AWS_MQTT5_CLIENT_MAXIMUM_USER_PROPERTIES + 1];
 
@@ -215,7 +222,7 @@ static void s_make_user_properties_name_invalid_utf8_disconnect_view(struct aws_
 
 AWS_VALIDATION_FAILURE_TEST4(
     disconnect,
-    user_properties_name_too_long,
+    user_properties_name_invalid_utf8,
     s_good_disconnect_view,
     s_make_user_properties_name_invalid_utf8_disconnect_view)
 
@@ -535,7 +542,11 @@ static struct aws_mqtt5_subscription_view s_invalid_topic_filter_subscription[] 
 
 static struct aws_mqtt5_subscription_view s_invalid_utf8_topic_filter_subscription[] = {
     {
-        .topic_filter = s_invalid_utf8_string,
+        .topic_filter =
+            {
+                .ptr = (uint8_t *)s_invalid_utf8,
+                .len = AWS_ARRAY_SIZE(s_invalid_utf8) - 1,
+            },
         .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
         .no_local = false,
         .retain_handling_type = AWS_MQTT5_RHT_SEND_ON_SUBSCRIBE,
@@ -785,7 +796,10 @@ static struct aws_byte_cursor s_invalid_topic_filter[] = {
     },
 };
 
-static struct aws_byte_cursor s_invalid_utf8_topic_filter[] = {s_invalid_utf8_string};
+static struct aws_byte_cursor s_invalid_utf8_topic_filter[] = {{
+    .ptr = (uint8_t *)s_invalid_utf8,
+    .len = AWS_ARRAY_SIZE(s_invalid_utf8) - 1,
+}};
 
 static void s_make_invalid_topic_filter_unsubscribe_view(struct aws_mqtt5_packet_unsubscribe_view *view) {
     view->topic_filters = s_invalid_topic_filter;
@@ -942,6 +956,7 @@ static void s_make_no_topic_publish_view(struct aws_mqtt5_packet_publish_view *v
 AWS_VALIDATION_FAILURE_TEST3(publish, no_topic, s_good_publish_view, s_make_no_topic_publish_view)
 
 static enum aws_mqtt5_payload_format_indicator s_invalid_payload_format = 3;
+static enum aws_mqtt5_payload_format_indicator s_valid_payload_format = AWS_MQTT5_PFI_UTF8;
 
 static void s_make_invalid_payload_format_publish_view(struct aws_mqtt5_packet_publish_view *view) {
     view->payload_format = &s_invalid_payload_format;
@@ -954,7 +969,7 @@ AWS_VALIDATION_FAILURE_TEST3(
     s_make_invalid_payload_format_publish_view)
 
 static void s_make_invalid_utf8_payload_publish_view(struct aws_mqtt5_packet_publish_view *view) {
-    view->payload_format = AWS_MQTT5_PFI_UTF8;
+    view->payload_format = &s_valid_payload_format;
     view->payload = s_invalid_utf8_string;
 }
 
@@ -1069,7 +1084,7 @@ static void s_make_user_properties_name_invalid_utf8_publish_view(struct aws_mqt
 
 AWS_VALIDATION_FAILURE_TEST3(
     publish,
-    user_properties_value_invalid_utf8,
+    user_properties_name_invalid_utf8,
     s_good_publish_view,
     s_make_user_properties_name_invalid_utf8_publish_view)
 
