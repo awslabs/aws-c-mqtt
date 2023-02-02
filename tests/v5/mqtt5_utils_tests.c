@@ -258,77 +258,6 @@ static struct utf8_example s_illegal_mqtt5_utf8_examples[] = {
         .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xEF\xB7\xAF"),
     }};
 
-static const struct utf8_example s_illegal_utf8_examples[] = {
-    {
-        .name = "Missing last byte of 2 byte codepoint",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2"),
-    },
-    {
-        .name = "Missing last byte of 3 byte codepoint",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xE2\x82"),
-    },
-    {
-        .name = "Missing last byte of 4 byte codepoint",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xF0\x90\x8D"),
-    },
-    {
-        .name = "5 byte codepoints not allowed by RFC-3629",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xF8\x88\x80\x80\x80"),
-    },
-    {
-        .name = "6 byte codepoints not allowed by RFC-3629",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xFC\x84\x80\x80\x80\x80"),
-    },
-    {
-        .name = "Illegal first byte",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xFF"),
-    },
-    {
-        .name = "Overlong 2 byte encoding of U+00",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC0\x80"),
-    },
-    {
-        .name = "Overlong 3 byte encoding of U+00",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xE0\x80\x80"),
-    },
-    {
-        .name = "Overlong 4 byte encoding of U+00",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xF0\x80\x80\x80"),
-    },
-    {
-        .name = "Continuation byte as first byte (lowest possible value)",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\x80"),
-    },
-    {
-        .name = "Continuation byte as first byte (highest possible value)",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xBF"),
-    },
-    {
-        .name = "Unexpected continuation byte after valid codepoint",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\x61\x80"),
-    },
-    {
-        .name = "Illegal value for continuation byte (starts 11xxxxxx)",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2\xC0"),
-    },
-    {
-        .name = "Illegal value for continuation byte (starts 00xxxxxx)",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xC2\x3F"),
-    },
-    {
-        .name = "Codepoint in prohibited range U+D800 - U+DFFF (lowest possible value)",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xED\xA0\x80"),
-    },
-    {
-        .name = "Codepoint in prohibited range U+D800 - U+DFFF (highest possible value)",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xED\xBF\xBF"),
-    },
-    {
-        .name = "Codepoint in prohibited range U+D800 - U+DFFF (in the middle)",
-        .text = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\xED\xA3\xBF"),
-    },
-};
-
 static int s_mqtt5_utf8_encoded_string_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* Check the valid test cases */
@@ -348,7 +277,7 @@ static int s_mqtt5_utf8_encoded_string_test(struct aws_allocator *allocator, voi
     aws_byte_buf_clean_up(&all_good_text);
 
     /* Check the illegal test cases */
-    for (size_t i = 0; i < AWS_ARRAY_SIZE(s_illegal_utf8_examples); ++i) {
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(s_illegal_mqtt5_utf8_examples); ++i) {
         struct utf8_example example = s_illegal_mqtt5_utf8_examples[i];
         printf("illegal example [%zu]: %s\n", i, example.name);
         ASSERT_FALSE(aws_decode_utf8(example.text, &g_aws_mqtt5_utf8_decoder_options));
