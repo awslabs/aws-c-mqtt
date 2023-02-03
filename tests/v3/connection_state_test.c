@@ -2762,7 +2762,10 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /* Function called for testing the on_connection_closed callback */
-static void s_on_connection_closed_fn(struct aws_mqtt_client_connection *connection, struct on_connection_closed_data *data, void *userdata) {
+static void s_on_connection_closed_fn(
+    struct aws_mqtt_client_connection *connection,
+    struct on_connection_closed_data *data,
+    void *userdata) {
     (void)connection;
     (void)data;
 
