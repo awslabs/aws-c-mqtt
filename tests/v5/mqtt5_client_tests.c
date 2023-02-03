@@ -1043,7 +1043,8 @@ static int s_verify_ping_sequence_timing(struct aws_mqtt5_client_mock_test_fixtu
                 if (s_is_within_percentage_of(TEST_PING_INTERVAL_MS, time_delta_millis, .1) != AWS_OP_SUCCESS) {
                     AWS_LOGF_ERROR(
                         AWS_LS_MQTT5_CLIENT,
-                        "Test ping delta was larger than expected. Expected roughly (within 10 percent) %i, got %llu",
+                        "Test ping delta was larger than expected. Expected roughly (within 10 percent) %i, got "
+                        "%" PRIu64,
                         TEST_PING_INTERVAL_MS,
                         time_delta_millis);
                 }
@@ -1260,8 +1261,9 @@ static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixt
     if (s_is_within_percentage_of(expected_connected_time_ms, connected_interval_ms, .1) != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "Expected connected time delta was larger than expected. Expected roughly (within 10 percent) %llu, got "
-            "%llu",
+            "Expected connected time delta was larger than expected. Expected roughly (within 10 percent) %" PRIu64
+            ", got "
+            "%" PRIu64,
             expected_connected_time_ms,
             connected_interval_ms);
     }
@@ -1411,7 +1413,8 @@ static int s_verify_reconnection_exponential_backoff_timestamps(
                 if (!s_is_within_percentage_of(expected_backoff, time_diff, .1)) {
                     AWS_LOGF_ERROR(
                         AWS_LS_MQTT5_CLIENT,
-                        "Test backoff was larger than expected. Expected roughly (within 10 percent) %llu, got %llu",
+                        "Test backoff was larger than expected. Expected roughly (within 10 percent) %" PRIu64
+                        ", got %" PRIu64,
                         expected_backoff,
                         time_diff);
                 }
@@ -1633,7 +1636,8 @@ static int s_verify_reconnection_after_success_used_backoff(
     if (!s_is_within_percentage_of(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .1)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "Test reconnection was larger than expected. Expected roughly (within 10 percent) %llu, got %llu",
+            "Test reconnection was larger than expected. Expected roughly (within 10 percent) %" PRIu64
+            ", got %" PRIu64,
             expected_reconnect_delay_ms,
             post_success_reconnect_time_ms);
     }
