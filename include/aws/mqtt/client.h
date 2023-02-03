@@ -25,6 +25,12 @@ struct aws_http_proxy_options;
 struct aws_socket_options;
 struct aws_tls_connection_options;
 
+/**
+ * Empty struct that is passed when on_connection_closed is called.
+ * Currently holds nothing but will allow expanding in the future should it be needed.
+ */
+struct on_connection_closed_data;
+
 struct aws_mqtt_client {
     struct aws_allocator *allocator;
     struct aws_client_bootstrap *bootstrap;
@@ -63,8 +69,15 @@ typedef void(aws_mqtt_client_on_connection_interrupted_fn)(
     int error_code,
     void *userdata);
 
-/* Called if the connection to the server is closed by user request */
-typedef void(aws_mqtt_client_on_connection_closed_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+/**
+ * Called if the connection to the server is closed by user request
+ * Note: Currently the "data" argument is always NULL, but this may change in the future if additional data is needed to
+ * be sent.
+ */
+typedef void(aws_mqtt_client_on_connection_closed_fn)(
+    struct aws_mqtt_client_connection *connection,
+    struct on_connection_closed_data *data,
+    void *userdata);
 
 /**
  * Called when a connection to the server is resumed

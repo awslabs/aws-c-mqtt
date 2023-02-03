@@ -2761,8 +2761,11 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-static void s_on_connection_closed_fn(struct aws_mqtt_client_connection *connection, void *userdata) {
+/* Function called for testing the on_connection_closed callback */
+static void s_on_connection_closed_fn(struct aws_mqtt_client_connection *connection, struct on_connection_closed_data *data, void *userdata) {
     (void)connection;
+    (void)data;
+
     struct mqtt_connection_state_test *state_test_data = (struct mqtt_connection_state_test *)userdata;
 
     aws_mutex_lock(&state_test_data->lock);
