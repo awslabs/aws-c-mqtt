@@ -1260,7 +1260,8 @@ static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixt
     if (s_is_within_percentage_of(expected_connected_time_ms, connected_interval_ms, .1) != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
-            "Expected connected time delta was larger than expected. Expected roughly (within 10 percent) %llu, got %llu",
+            "Expected connected time delta was larger than expected. Expected roughly (within 10 percent) %llu, got "
+            "%llu",
             expected_connected_time_ms,
             connected_interval_ms);
     }
