@@ -63,6 +63,9 @@ typedef void(aws_mqtt_client_on_connection_interrupted_fn)(
     int error_code,
     void *userdata);
 
+/* Called if the connection to the server is closed by user request */
+typedef void(aws_mqtt_client_on_connection_closed_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+
 /**
  * Called when a connection to the server is resumed
  * (if clean_session is true, calling aws_mqtt_resubscribe_existing_topics is suggested)
@@ -402,6 +405,21 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     void *on_interrupted_ud,
     aws_mqtt_client_on_connection_resumed_fn *on_resumed,
     void *on_resumed_ud);
+
+/**
+ * Sets the callback to call when the connection is closed normally by user request.
+ * This is different than the connection interrupted or lost, this only covers successful
+ * closure.
+ *
+ * \param[in] connection        The connection object
+ * \param[in] on_closed         The function to call when a connection is closed
+ * \param[in] on_closed_ud      Userdata for on_closed
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_connection_closed_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_closed_fn *on_closed,
+    void *on_closed_ud);
 
 /**
  * Sets the callback to call whenever ANY publish packet is received. Only safe to set when connection is not connected.
