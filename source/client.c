@@ -60,6 +60,20 @@ void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *conne
     (void)err;
 }
 
+static void s_aws_mqtt_schedule_reconnect_task(struct aws_mqtt_client_connection *connection) {
+    uint64_t next_attempt_ns = 0;
+    aws_high_res_clock_get_ticks(&next_attempt_ns);
+    next_attempt_ns += aws_timestamp_convert(
+        connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    aws_event_loop_schedule_task_future(connection->loop, &connection->reconnect_task->task, next_attempt_ns);
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
+        (void *)connection,
+        next_attempt_ns,
+        (void *)connection->loop);
+}
+
 static void s_aws_mqtt_client_destroy(struct aws_mqtt_client *client) {
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p: Cleaning up MQTT client", (void *)client);
@@ -313,17 +327,7 @@ static void s_mqtt_client_shutdown(
         case AWS_MQTT_CLIENT_STATE_RECONNECTING: {
             /* If reconnect attempt failed, schedule the next attempt */
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Reconnect failed, retrying", (void *)connection);
-            aws_high_res_clock_get_ticks(&next_attempt_ns);
-            next_attempt_ns += aws_timestamp_convert(
-                connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-
-            aws_event_loop_schedule_task_future(connection->loop, &connection->reconnect_task->task, next_attempt_ns);
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
-                (void *)connection,
-                next_attempt_ns,
-                (void *)connection->loop);
+            s_aws_mqtt_schedule_reconnect_task(connection);
             break;
         }
         case AWS_MQTT_CLIENT_STATE_CONNECTED: {
@@ -349,17 +353,7 @@ static void s_mqtt_client_shutdown(
             } /* END CRITICAL SECTION */
 
             if (!stop_reconnect) {
-                aws_high_res_clock_get_ticks(&next_attempt_ns);
-                next_attempt_ns += aws_timestamp_convert(
-                    connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-                aws_event_loop_schedule_task_future(
-                    connection->loop, &connection->reconnect_task->task, next_attempt_ns);
-                AWS_LOGF_TRACE(
-                    AWS_LS_MQTT_CLIENT,
-                    "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
-                    (void *)connection,
-                    next_attempt_ns,
-                    (void *)connection->loop);
+                s_aws_mqtt_schedule_reconnect_task(connection);
             }
             break;
         }
@@ -657,17 +651,7 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
         if (s_mqtt_client_connect(
                 connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
             /* If reconnect attempt failed, schedule the next attempt */
-            uint64_t next_attempt_ns = 0;
-            aws_high_res_clock_get_ticks(&next_attempt_ns);
-            next_attempt_ns += aws_timestamp_convert(
-                connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-            aws_event_loop_schedule_task_future(connection->loop, &connection->reconnect_task->task, next_attempt_ns);
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
-                (void *)connection,
-                next_attempt_ns,
-                (void *)connection->loop);
+            s_aws_mqtt_schedule_reconnect_task(connection);
         } else {
             /* Ideally, it would be nice to move this inside the lock, but I'm unsure of the correctness */
             connection->reconnect_task->task.timestamp = 0;
