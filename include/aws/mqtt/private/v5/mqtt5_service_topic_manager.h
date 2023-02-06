@@ -10,7 +10,7 @@
 
 struct aws_mqtt5_service_topic_node {
 
-    /* This node's part of the topic filter. If in another node's subtopics, this is the key. */
+    /* The topic name, key of the node. */
     struct aws_byte_cursor topic;
 
     /* user defined data type */
@@ -18,7 +18,8 @@ struct aws_mqtt5_service_topic_node {
 };
 
 struct aws_mqtt5_service_topic_manager {
-    struct aws_mqtt5_service_topic_node *root;
+    // The topic map will be a hash map for <struct aws_byte_cursor,struct aws_mqtt5_service_topic_node*>
+    struct aws_hash_map *topic_map;
     struct aws_allocator *allocator;
 };
 
