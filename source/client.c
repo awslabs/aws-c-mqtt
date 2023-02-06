@@ -363,6 +363,7 @@ static void s_mqtt_client_shutdown(
                     "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
                     (void *)connection);
                 MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
                 break;
             case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
                 AWS_LOGF_DEBUG(
@@ -370,6 +371,7 @@ static void s_mqtt_client_shutdown(
                     "id=%p: Disconnect completed, clearing request queue and calling callback",
                     (void *)connection);
                 MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
                 break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
                 AWS_LOGF_TRACE(
@@ -1120,6 +1122,23 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     connection->on_interrupted_ud = on_interrupted_ud;
     connection->on_resumed = on_resumed;
     connection->on_resumed_ud = on_resumed_ud;
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_mqtt_client_connection_set_connection_closed_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_closed_fn *on_closed,
+    void *on_closed_ud) {
+
+    AWS_PRECONDITION(connection);
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection closed handler", (void *)connection);
+
+    connection->on_closed = on_closed;
+    connection->on_closed_ud = on_closed_ud;
 
     return AWS_OP_SUCCESS;
 }
