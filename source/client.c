@@ -647,6 +647,7 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             mqtt_connection_unlock_synced_data(connection);
             if (perform_full_destroy) {
                 MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
                 aws_mqtt_client_connection_release(connection);
             }
             return;
