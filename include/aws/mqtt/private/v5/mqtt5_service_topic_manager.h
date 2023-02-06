@@ -11,7 +11,7 @@
 struct aws_mqtt5_service_topic_node {
 
     /* The topic name, key of the node. */
-    struct aws_byte_cursor topic;
+    struct aws_byte_cursor *topic;
 
     /* user defined data type */
     void *userdata;
@@ -19,7 +19,7 @@ struct aws_mqtt5_service_topic_node {
 
 struct aws_mqtt5_service_topic_manager {
     // The topic map will be a hash map for <struct aws_byte_cursor,struct aws_mqtt5_service_topic_node*>
-    struct aws_hash_map *topic_map;
+    struct aws_hash_table *topic_map;
     struct aws_allocator *allocator;
 };
 
@@ -31,7 +31,7 @@ AWS_MQTT5_API int aws_mqtt5_service_topic_manager_init(struct aws_mqtt5_service_
 /**
  * Cleanup and deallocate an entire topic manager.
  */
-AWS_MQTT5_API void aws_mqtt5_service_topic_manager_destory(struct aws_mqtt5_service_topic_manager *manager);
+AWS_MQTT5_API int aws_mqtt5_service_topic_manager_destory(struct aws_mqtt5_service_topic_manager *manager);
 
 /**
  * Insert a new topic into the topic manager
@@ -41,10 +41,9 @@ AWS_MQTT5_API void aws_mqtt5_service_topic_manager_destory(struct aws_mqtt5_serv
  * \param[in]  userdata     The userdata to pass to callback.
  *
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
- *          If AWS_OP_ERR is returned, aws_mqtt5_topic_manager_transaction_rollback should be called to prevent leaks.
  */
-AWS_MQTT5_API int aws_mqtt5_topic_manager_insert(
-    struct aws_mqtt5_topic_manager *manager,
+AWS_MQTT5_API int aws_mqtt5_service_topic_manager_insert(
+    struct aws_mqtt5_service_topic_manager *manager,
     const struct aws_byte_cursor *topic_name,
     void *userdata);
 
@@ -55,10 +54,9 @@ AWS_MQTT5_API int aws_mqtt5_topic_manager_insert(
  * \param[in]  topic_name      The filter to remove (must be exactly the same as the topic_name passed to insert).
  *
  * \returns AWS_OP_SUCCESS on successful removal, AWS_OP_ERR with aws_last_error() populated on failure.
- *          If AWS_OP_ERR is returned, aws_mqtt5_topic_manager_transaction_rollback should be called to prevent leaks.
  */
-AWS_MQTT5_API int aws_mqtt5_topic_manager_remove(
-    struct aws_mqtt5_topic_manager *manager,
+AWS_MQTT5_API int aws_mqtt5_service_topic_manager_remove(
+    struct aws_mqtt5_service_topic_manager *manager,
     const struct aws_byte_cursor *topic_name);
 
 /**
@@ -66,16 +64,21 @@ AWS_MQTT5_API int aws_mqtt5_topic_manager_remove(
  *
  * \param[in]  manager         The manager to remove from.
  * \param[in]  topic_name      The filter to remove (must be exactly the same as the topic_name passed to insert).
+ * \param[out] topic_node      The topic node returned from the hash table
  *
- * \returns aws_mqtt5_service_topic_node Return the node with sepcified topic name
+ * \returns AWS_OP_SUCCESS on successful found, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-struct aws_mqtt5_service_topic_node* AWS_MQTT5_API
-    aws_mqtt5_topic_manager_find(const struct aws_mqtt5_topic_manager *manager, const struct aws_byte_cursor *topic_name);
+AWS_MQTT5_API int
+    aws_mqtt5_topic_manager_find(const struct aws_mqtt5_service_topic_manager *manager,
+    const struct aws_byte_cursor *topic_name,
+     struct aws_mqtt5_service_topic_node **topic_node);
+
 
 int aws_mqtt5_service_topic_node_init(aws_allocator * allocator,
-    struct aws_byte_cursor* topic
+    struct aws_mqtt5_service_topic_node** node,
+    struct aws_byte_cursor* topic,
     void* userdata);
 
-int aws_mqtt5_service_topic_node_destory(aws_mqtt5_topic_node* node);
+int aws_mqtt5_service_topic_node_destory(aws_mqtt5_service_topic_node* node);
 
 #endif /* AWS_MQTT5_PRIVATE_SERVICE_TOPIC_MANAGER_H */
