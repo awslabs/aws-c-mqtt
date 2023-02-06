@@ -308,13 +308,16 @@ static void s_mqtt_client_shutdown(
             error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
         }
     }
+    uint64_t next_attempt = 0;
     switch (prev_state) {
         case AWS_MQTT_CLIENT_STATE_RECONNECTING: {
             /* If reconnect attempt failed, schedule the next attempt */
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Reconnect failed, retrying", (void *)connection);
+            aws_high_res_clock_get_ticks(&next_attempt);
+            next_attempt += aws_timestamp_convert(
+                connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
-            aws_event_loop_schedule_task_future(
-                connection->loop, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt_ms);
+            aws_event_loop_schedule_task_future(connection->loop, &connection->reconnect_task->task, next_attempt);
             break;
         }
         case AWS_MQTT_CLIENT_STATE_CONNECTED: {
@@ -340,10 +343,10 @@ static void s_mqtt_client_shutdown(
             } /* END CRITICAL SECTION */
 
             if (!stop_reconnect) {
-                aws_event_loop_schedule_task_future(
-                    connection->loop,
-                    &connection->reconnect_task->task,
-                    connection->reconnect_timeouts.next_attempt_ms);
+                aws_high_res_clock_get_ticks(&next_attempt);
+                next_attempt += aws_timestamp_convert(
+                    connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+                aws_event_loop_schedule_task_future(connection->loop, &connection->reconnect_task->task, next_attempt);
             }
             break;
         }
@@ -614,10 +617,6 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
 
         mqtt_connection_lock_synced_data(connection);
 
-        aws_high_res_clock_get_ticks(&connection->reconnect_timeouts.next_attempt_ms);
-        connection->reconnect_timeouts.next_attempt_ms += aws_timestamp_convert(
-            connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
@@ -645,13 +644,16 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
         if (s_mqtt_client_connect(
                 connection, connection->on_connection_complete, connection->on_connection_complete_ud)) {
             /* If reconnect attempt failed, schedule the next attempt */
-            aws_event_loop_schedule_task_future(
-                connection->loop, &connection->reconnect_task->task, connection->reconnect_timeouts.next_attempt_ms);
+            uint64_t next_attempt = 0;
+            aws_high_res_clock_get_ticks(&next_attempt);
+            next_attempt += aws_timestamp_convert(
+                connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+            aws_event_loop_schedule_task_future(connection->loop, &connection->reconnect_task->task, next_attempt);
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
                 (void *)connection,
-                connection->reconnect_timeouts.next_attempt_ms,
+                next_attempt,
                 (void *)connection->loop);
         } else {
             /* Ideally, it would be nice to move this inside the lock, but I'm unsure of the correctness */
