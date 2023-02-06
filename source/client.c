@@ -322,7 +322,6 @@ static void s_mqtt_client_shutdown(
             error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
         }
     }
-    uint64_t next_attempt_ns = 0;
     switch (prev_state) {
         case AWS_MQTT_CLIENT_STATE_RECONNECTING: {
             /* If reconnect attempt failed, schedule the next attempt */
