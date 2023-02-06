@@ -352,7 +352,8 @@ static void s_mqtt_client_shutdown(
                 aws_high_res_clock_get_ticks(&next_attempt_ns);
                 next_attempt_ns += aws_timestamp_convert(
                     connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-                aws_event_loop_schedule_task_future(connection->loop, &connection->reconnect_task->task, next_attempt);
+                aws_event_loop_schedule_task_future(
+                    connection->loop, &connection->reconnect_task->task, next_attempt_ns);
                 AWS_LOGF_TRACE(
                     AWS_LS_MQTT_CLIENT,
                     "id=%p: Scheduling reconnect, for %" PRIu64 " on event-loop %p",
