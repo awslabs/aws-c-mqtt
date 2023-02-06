@@ -211,7 +211,6 @@ struct aws_mqtt_client_connection {
         uint64_t current_sec;                 /* seconds */
         uint64_t min_sec;                     /* seconds */
         uint64_t max_sec;                     /* seconds */
-        uint64_t next_attempt_ms;             /* milliseconds */
         uint64_t next_attempt_reset_timer_ns; /* nanoseconds */
     } reconnect_timeouts;
 
