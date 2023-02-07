@@ -12,7 +12,6 @@
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 struct aws_byte_buf;
-struct aws_utf8_decoder_options;
 struct aws_mqtt5_negotiated_settings;
 
 #define AWS_MQTT5_MAXIMUM_VARIABLE_LENGTH_INTEGER 268435455
@@ -98,10 +97,12 @@ AWS_EXTERN_C_BEGIN
 AWS_MQTT_API extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
 
 /**
- * utf8_decoder_options, used to setup the utf8_decoder
- * The option will setup the callback to validate the utf8 string following mqtt5 specs
+ * Validate utf-8 string under mqtt5 specs
+ *
+ * @param text
+ * @return AWS_OP_SUCCESS if the text is validate, otherwise AWS_OP_ERR
  */
-AWS_MQTT_API extern struct aws_utf8_decoder_options g_aws_mqtt5_utf8_decoder_options;
+AWS_MQTT_API int aws_mqtt5_validate_utf8_text(struct aws_byte_cursor text);
 
 /**
  * Simple helper function to compute the first byte of an MQTT packet encoding as a function of 4 bit flags

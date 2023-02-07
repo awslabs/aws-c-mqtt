@@ -568,3 +568,7 @@ static int aws_mqtt5_utf8_decoder(uint32_t codepoint, void *user_data) {
 struct aws_utf8_decoder_options g_aws_mqtt5_utf8_decoder_options = {
     .on_codepoint = aws_mqtt5_utf8_decoder,
 };
+
+int aws_mqtt5_validate_utf8_text(struct aws_byte_cursor text) {
+    return aws_decode_utf8(text, &g_aws_mqtt5_utf8_decoder_options);
+}
