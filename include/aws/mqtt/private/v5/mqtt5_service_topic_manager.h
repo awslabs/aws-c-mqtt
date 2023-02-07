@@ -5,8 +5,8 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-
 #include <aws/common/hash_table.h>
+#include <aws/mqtt/exports.h>
 
 struct aws_mqtt5_service_topic_node {
 
@@ -27,11 +27,13 @@ struct aws_mqtt5_service_topic_manager {
  * Initialize a topic manager with an allocator to later use.
  * Note that calling init allocates root.
  */
-AWS_MQTT5_API int aws_mqtt5_service_topic_manager_init(struct aws_mqtt5_service_topic_manager *manager, struct aws_allocator *allocator);
+AWS_MQTT_API int aws_mqtt5_service_topic_manager_init(
+    struct aws_mqtt5_service_topic_manager *manager,
+    struct aws_allocator *allocator);
 /**
  * Cleanup and deallocate an entire topic manager.
  */
-AWS_MQTT5_API int aws_mqtt5_service_topic_manager_destory(struct aws_mqtt5_service_topic_manager *manager);
+AWS_MQTT_API int aws_mqtt5_service_topic_manager_destory(struct aws_mqtt5_service_topic_manager *manager);
 
 /**
  * Insert a new topic into the topic manager
@@ -42,7 +44,7 @@ AWS_MQTT5_API int aws_mqtt5_service_topic_manager_destory(struct aws_mqtt5_servi
  *
  * \returns AWS_OP_SUCCESS on successful insertion, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-AWS_MQTT5_API int aws_mqtt5_service_topic_manager_insert(
+AWS_MQTT_API int aws_mqtt5_service_topic_manager_insert(
     struct aws_mqtt5_service_topic_manager *manager,
     const struct aws_byte_cursor *topic_name,
     void *userdata);
@@ -55,7 +57,7 @@ AWS_MQTT5_API int aws_mqtt5_service_topic_manager_insert(
  *
  * \returns AWS_OP_SUCCESS on successful removal, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-AWS_MQTT5_API int aws_mqtt5_service_topic_manager_remove(
+AWS_MQTT_API int aws_mqtt5_service_topic_manager_remove(
     struct aws_mqtt5_service_topic_manager *manager,
     const struct aws_byte_cursor *topic_name);
 
@@ -68,17 +70,17 @@ AWS_MQTT5_API int aws_mqtt5_service_topic_manager_remove(
  *
  * \returns AWS_OP_SUCCESS on successful found, AWS_OP_ERR with aws_last_error() populated on failure.
  */
-AWS_MQTT5_API int
-    aws_mqtt5_topic_manager_find(const struct aws_mqtt5_service_topic_manager *manager,
+AWS_MQTT_API int aws_mqtt5_topic_manager_find(
+    const struct aws_mqtt5_service_topic_manager *manager,
     const struct aws_byte_cursor *topic_name,
-     struct aws_mqtt5_service_topic_node **topic_node);
+    struct aws_mqtt5_service_topic_node **topic_node);
 
+int aws_mqtt5_service_topic_node_init(
+    struct aws_allocator *allocator,
+    struct aws_mqtt5_service_topic_node **node,
+    struct aws_byte_cursor *topic,
+    void *userdata);
 
-int aws_mqtt5_service_topic_node_init(aws_allocator * allocator,
-    struct aws_mqtt5_service_topic_node** node,
-    struct aws_byte_cursor* topic,
-    void* userdata);
-
-int aws_mqtt5_service_topic_node_destory(aws_mqtt5_service_topic_node* node);
+int aws_mqtt5_service_topic_node_destory(struct aws_mqtt5_service_topic_node *node);
 
 #endif /* AWS_MQTT5_PRIVATE_SERVICE_TOPIC_MANAGER_H */
