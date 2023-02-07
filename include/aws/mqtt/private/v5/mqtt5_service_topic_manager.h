@@ -11,9 +11,9 @@
 struct aws_mqtt5_service_topic_node {
 
     /* The topic name, key of the node. */
-    struct aws_byte_cursor *topic;
+    struct aws_string *topic;
 
-    /* user defined data type */
+    /* user defined data type, the topic node did not own the userdata */
     void *userdata;
 };
 
@@ -33,7 +33,7 @@ AWS_MQTT_API int aws_mqtt5_service_topic_manager_init(
 /**
  * Cleanup and deallocate an entire topic manager.
  */
-AWS_MQTT_API int aws_mqtt5_service_topic_manager_destory(struct aws_mqtt5_service_topic_manager *manager);
+AWS_MQTT_API int aws_mqtt5_service_topic_manager_clean_up(struct aws_mqtt5_service_topic_manager *manager);
 
 /**
  * Insert a new topic into the topic manager
@@ -77,10 +77,10 @@ AWS_MQTT_API int aws_mqtt5_topic_manager_find(
 
 int aws_mqtt5_service_topic_node_init(
     struct aws_allocator *allocator,
-    struct aws_mqtt5_service_topic_node **node,
+    struct aws_mqtt5_service_topic_node *node,
     struct aws_byte_cursor *topic,
     void *userdata);
 
-int aws_mqtt5_service_topic_node_destory(struct aws_mqtt5_service_topic_node *node);
+int aws_mqtt5_service_topic_node_clean_up(struct aws_mqtt5_service_topic_node *node);
 
 #endif /* AWS_MQTT5_PRIVATE_SERVICE_TOPIC_MANAGER_H */
