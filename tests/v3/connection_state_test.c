@@ -25,6 +25,9 @@
 static const int TEST_LOG_SUBJECT = 60000;
 static const int ONE_SEC = 1000000000;
 
+#define DEFAULT_TEST_PING_TIMEOUT_MS 1000
+#define DEFAULT_TEST_KEEP_ALIVE_S 2
+
 struct received_publish_packet {
     struct aws_byte_buf topic;
     struct aws_byte_buf payload;
@@ -827,8 +830,8 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .keep_alive_time_secs = 1,
-        .ping_timeout_ms = 100,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
     };
 
     mqtt_mock_server_set_max_ping_resp(state_test_data->mock_server, 0);
@@ -953,8 +956,8 @@ static int s_test_mqtt_connection_connack_timeout_fn(struct aws_allocator *alloc
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .keep_alive_time_secs = 1,
-        .ping_timeout_ms = 100,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
     };
 
     mqtt_mock_server_set_max_connack(state_test_data->mock_server, 0);
@@ -1766,8 +1769,8 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
-        .keep_alive_time_secs = 1,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1884,8 +1887,8 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
-        .keep_alive_time_secs = 1,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1960,8 +1963,8 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
-        .keep_alive_time_secs = 1,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
     };
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
@@ -2042,8 +2045,8 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
-        .keep_alive_time_secs = 1,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
     };
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
@@ -2107,7 +2110,7 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
@@ -2174,7 +2177,7 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
         .protocol_operation_timeout_ms = 3000,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
@@ -2274,8 +2277,8 @@ static int s_test_mqtt_connection_not_resend_packets_on_healthy_connection_fn(
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
-        .keep_alive_time_secs = 1,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
     };
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
@@ -2396,8 +2399,8 @@ static int s_test_mqtt_clean_session_not_retry_fn(struct aws_allocator *allocato
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
-        .keep_alive_time_secs = 1,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -2465,7 +2468,7 @@ static int s_test_mqtt_clean_session_discard_previous_fn(struct aws_allocator *a
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
@@ -2535,7 +2538,7 @@ static int s_test_mqtt_clean_session_keep_next_session_fn(struct aws_allocator *
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
 
@@ -2607,7 +2610,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
         .protocol_operation_timeout_ms = 3000,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
@@ -2667,7 +2670,7 @@ static int s_test_mqtt_connection_unsub_timeout_fn(struct aws_allocator *allocat
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
         .protocol_operation_timeout_ms = 3000,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
@@ -2723,7 +2726,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_connection_lost_reset_tim
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 10,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
         .protocol_operation_timeout_ms = 3000,
         .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
     };
