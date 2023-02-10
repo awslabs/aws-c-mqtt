@@ -13,12 +13,14 @@
 #include <aws/common/ref_count.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/io/channel.h>
+#include <aws/mqtt/v311/mqtt311_client.h>
 
 struct aws_event_loop;
 struct aws_http_message;
 struct aws_mqtt_request;
 struct aws_mqtt311_client;
 struct aws_mqtt311_client_config;
+struct aws_mqtt311_client_options;
 
 struct aws_websocket_client_connection_options;
 struct aws_socket_channel_bootstrap_options;
@@ -156,10 +158,7 @@ struct aws_mqtt311_client_vtable {
     void *vtable_user_data;
 };
 
-struct aws_mqtt311_client_options {
-    struct aws_byte_cursor host;
-    uint16_t port;
-};
+
 
 struct aws_mqtt311_client_operational_state {
 
@@ -178,7 +177,7 @@ struct aws_mqtt311_client_operational_state {
     /*
      * Is there an io message in transit (to the socket) that has not invoked its write completion callback yet?
      * The client implementation only allows one in-transit message at a time, and so if this is true, we don't
-     * send additional ones/
+     * send additional ones
      */
     bool pending_write_completion;
 };
