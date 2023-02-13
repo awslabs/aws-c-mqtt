@@ -161,24 +161,24 @@ static const struct aws_mqtt5_user_property s_user_properties[] = {
         .name =
             {
                 .ptr = (uint8_t *)s_user_prop1_name,
-                .len = AWS_ARRAY_SIZE(s_user_prop1_name),
+                .len = AWS_ARRAY_SIZE(s_user_prop1_name) - 1,
             },
         .value =
             {
                 .ptr = (uint8_t *)s_user_prop1_value,
-                .len = AWS_ARRAY_SIZE(s_user_prop1_value),
+                .len = AWS_ARRAY_SIZE(s_user_prop1_value) - 1,
             },
     },
     {
         .name =
             {
                 .ptr = (uint8_t *)s_user_prop2_name,
-                .len = AWS_ARRAY_SIZE(s_user_prop2_name),
+                .len = AWS_ARRAY_SIZE(s_user_prop2_name) - 1,
             },
         .value =
             {
                 .ptr = (uint8_t *)s_user_prop2_value,
-                .len = AWS_ARRAY_SIZE(s_user_prop2_value),
+                .len = AWS_ARRAY_SIZE(s_user_prop2_value) - 1,
             },
     },
 };
