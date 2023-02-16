@@ -26,8 +26,8 @@
  * exactly the scheduled time but there can be (it's not consistent) a slight delay.
  *
  * To account for this delay, we still send PINGs even if they are slightly off. For example, if the last packet
- * was sent at 0.999981 seconds ago and we send pings every 1.0 seconds, then we should still send it because it's literally
- * less than a hundredth of a second away.
+ * was sent at 0.999981 seconds ago and we send pings every 1.0 seconds, then we should still send it because it's
+ * literally less than a hundredth of a second away.
  */
 static const int PING_JITTER_OFFSET_NS = 1000000; // 0.001 seconds delta
 
@@ -863,7 +863,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
 
                 /* Cache the socket write time for ping scheduling purposes */
                 if (connection->slot != NULL && connection->slot->channel != NULL) {
-                    aws_channel_current_clock_time(connection->slot->channel, &connection->last_outbound_socket_write_time);
+                    aws_channel_current_clock_time(
+                        connection->slot->channel, &connection->last_outbound_socket_write_time);
                 }
 
                 aws_hash_table_remove(
