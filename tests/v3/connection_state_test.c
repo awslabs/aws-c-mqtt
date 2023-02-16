@@ -742,8 +742,12 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
+#define MIN_RECONNECT_DELAY_SECONDS 5
+#define MAX_RECONNECT_DELAY_SECONDS 120
+
 /*
  * Makes a CONNECT, then the server hangs up, tests that the client reconnects on its own, then sends a DISCONNECT.
+ * Also checks that the minimum reconnect time delay is honored.
  */
 static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
@@ -758,12 +762,27 @@ static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator
         .on_connection_complete = s_on_connection_complete_fn,
     };
 
+    aws_mqtt_client_connection_set_reconnect_timeout(
+        state_test_data->mqtt_connection, MIN_RECONNECT_DELAY_SECONDS, MAX_RECONNECT_DELAY_SECONDS);
+
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     s_wait_for_connection_to_complete(state_test_data);
 
     /* shut it down and make sure the client automatically reconnects.*/
+    uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&now);
+    uint64_t start_shutdown = now;
+
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
     s_wait_for_reconnect_to_complete(state_test_data);
+
+    aws_high_res_clock_get_ticks(&now);
+    uint64_t reconnect_complete = now;
+
+    uint64_t elapsed_time = reconnect_complete - start_shutdown;
+    ASSERT_TRUE(
+        aws_timestamp_convert(elapsed_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL) >=
+        MIN_RECONNECT_DELAY_SECONDS);
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
