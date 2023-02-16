@@ -54,7 +54,12 @@ static void s_schedule_ping_get_outbound_delta_data(
     uint64_t *result_ping_time_as_ns) {
     uint64_t now = 0;
     aws_channel_current_clock_time(connection->slot->channel, &now);
-    uint64_t outbound_delta = now - connection->last_outbound_socket_write_time;
+
+    uint64_t outbound_delta;
+    // We just need the delta, so biggest minus smallest. We do NOT want to overflow
+    if (aws_sub_u64_checked(now, connection->last_outbound_socket_write_time, &outbound_delta) != AWS_OP_SUCCESS) {
+        aws_sub_u64_checked(connection->last_outbound_socket_write_time, now, &outbound_delta);
+    }
 
     uint64_t ping_time_ns =
         aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
@@ -87,9 +92,15 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING task. current timestamp is %" PRIu64, (void *)connection, now);
 
+    uint64_t time_delta = 0;
+    aws_sub_u64_checked(ping_time_as_ns, outbound_delta, &time_delta);
     uint64_t schedule_time = 0;
     if (outbound_delta < ping_time_as_ns) {
-        schedule_time = now + outbound_delta;
+        /**
+         * If we made a wrote a control packet at 3 seconds with a timeout of 4, then the next PING
+         * should be at 3 seconds from now (because that's 4 from the last control packet)
+         */
+        schedule_time = now + time_delta;
     } else {
         schedule_time = now + ping_time_as_ns;
     }
