@@ -20,6 +20,17 @@
 #    pragma warning(disable : 4204)
 #endif
 
+/**
+ * The delta (in nano seconds) we should still send a PING packet out, even if it's slightly under the expected time.
+ * This is to account for a slight delay/jitter in the sending of packets, as they are not perfectly sent at
+ * exactly the scheduled time but there can be (it's not consistent) a slight delay.
+ *
+ * To account for this delay, we still send PINGs even if they are slightly off. For example, if the last packet
+ * was sent at 0.999981 seconds ago and we send pings every 1.0 seconds, then we should still send it because it's literally
+ * less than a hundredth of a second away.
+ */
+static const int PING_JITTER_OFFSET_NS = 1000000; // 0.001 seconds delta
+
 /*******************************************************************************
  * Packet State Machine
  ******************************************************************************/
@@ -40,12 +51,18 @@ static void s_schedule_ping_get_outbound_delta_data(
     struct aws_mqtt_client_connection *connection,
     uint64_t *result_now,
     uint64_t *result_outbound_delta,
-    uint64_t *result_ping_time_ns) {
+    uint64_t *result_ping_time_as_ns) {
     uint64_t now = 0;
     aws_channel_current_clock_time(connection->slot->channel, &now);
     uint64_t outbound_delta = now - connection->last_outbound_socket_write_time;
+
     uint64_t ping_time_ns =
         aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+    // If there has not been a socket write yet, then the delta should be the scheduled ping timeout.
+    if (connection->last_outbound_socket_write_time == 0) {
+        outbound_delta = ping_time_ns;
+    }
 
     if (result_now != NULL) {
         *result_now = now;
@@ -53,8 +70,8 @@ static void s_schedule_ping_get_outbound_delta_data(
     if (result_outbound_delta != NULL) {
         *result_outbound_delta = outbound_delta;
     }
-    if (result_ping_time_ns != NULL) {
-        *result_ping_time_ns = ping_time_ns;
+    if (result_ping_time_as_ns != NULL) {
+        *result_ping_time_as_ns = ping_time_ns;
     }
 }
 
@@ -64,17 +81,17 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
 
     uint64_t now = 0;
     uint64_t outbound_delta = 0;
-    uint64_t ping_time_ns = 0;
-    s_schedule_ping_get_outbound_delta_data(connection, &now, &outbound_delta, &ping_time_ns);
+    uint64_t ping_time_as_ns = 0;
+    s_schedule_ping_get_outbound_delta_data(connection, &now, &outbound_delta, &ping_time_as_ns);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING task. current timestamp is %" PRIu64, (void *)connection, now);
 
     uint64_t schedule_time = 0;
-    if (outbound_delta < ping_time_ns) {
-        schedule_time = now + ping_time_ns + outbound_delta;
+    if (outbound_delta < ping_time_as_ns) {
+        schedule_time = now + outbound_delta;
     } else {
-        schedule_time = now + ping_time_ns;
+        schedule_time = now + ping_time_as_ns;
     }
 
     AWS_LOGF_TRACE(
@@ -92,19 +109,21 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
         struct aws_mqtt_client_connection *connection = arg;
 
         uint64_t outbound_delta = 0;
-        uint64_t ping_time_ns = 0;
-        s_schedule_ping_get_outbound_delta_data(connection, NULL, &outbound_delta, &ping_time_ns);
-        if (outbound_delta >= ping_time_ns) {
+        uint64_t ping_time_as_ns = 0;
+        s_schedule_ping_get_outbound_delta_data(connection, NULL, &outbound_delta, &ping_time_as_ns);
+
+        /* Account for ping offset/jitter. See comment in PING_JITTER_OFFSET_NS for more info */
+        if (outbound_delta >= ping_time_as_ns - PING_JITTER_OFFSET_NS) {
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
             aws_mqtt_client_connection_ping(connection);
         } else {
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Skipped sending PING because last outbound packet %" PRIu64
-                "is less than ping timeout %" PRIu64,
+                " is less than ping timeout %" PRIu64,
                 (void *)connection,
                 outbound_delta,
-                ping_time_ns);
+                ping_time_as_ns);
         }
         s_schedule_ping(connection);
     }
@@ -842,13 +861,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
-                /**
-                 * Cache the time of the write on the socket so long as the packet was not a ping packet.
-                 * We do this to avoid the PING packet overriding the ping interval and can check if it's a ping based
-                 * on packet size
-                 */
-                if (request->packet_size > 0) {
-                    aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
+                /* Cache the socket write time for ping scheduling purposes */
+                if (connection->slot != NULL && connection->slot->channel != NULL) {
+                    aws_channel_current_clock_time(connection->slot->channel, &connection->last_outbound_socket_write_time);
                 }
 
                 aws_hash_table_remove(
@@ -875,12 +890,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
 
-            /**
-             * Cache the time of the write on the socket so long as the packet was not a ping packet.
-             * We do this to avoid the PING packet overriding the ping interval
-             */
-            if (request->packet_size > 0) {
-                aws_high_res_clock_get_ticks(&connection->last_outbound_socket_write_time);
+            /* Cache the socket write time for ping scheduling purposes */
+            if (connection->slot != NULL && connection->slot->channel != NULL) {
+                aws_channel_current_clock_time(connection->slot->channel, &connection->last_outbound_socket_write_time);
             }
 
             /* Put the request into the ongoing list */
