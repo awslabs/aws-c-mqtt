@@ -55,7 +55,7 @@ static void s_schedule_ping_get_outbound_delta_data(
     uint64_t now = 0;
     aws_channel_current_clock_time(connection->slot->channel, &now);
 
-    uint64_t outbound_delta;
+    uint64_t outbound_delta = 0;
     // We just need the delta, so biggest minus smallest. We do NOT want to overflow
     if (aws_sub_u64_checked(now, connection->last_outbound_socket_write_time, &outbound_delta) != AWS_OP_SUCCESS) {
         aws_sub_u64_checked(connection->last_outbound_socket_write_time, now, &outbound_delta);
