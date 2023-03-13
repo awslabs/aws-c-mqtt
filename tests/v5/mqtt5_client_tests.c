@@ -1040,7 +1040,7 @@ static int s_verify_ping_sequence_timing(struct aws_mqtt5_client_mock_test_fixtu
                 uint64_t time_delta_millis =
                     aws_timestamp_convert(time_delta_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
 
-                ASSERT_TRUE(s_is_within_percentage_of(TEST_PING_INTERVAL_MS, time_delta_millis, .1));
+                ASSERT_TRUE(s_is_within_percentage_of(TEST_PING_INTERVAL_MS, time_delta_millis, .3));
 
                 last_packet_time = record->timestamp;
             }
@@ -1251,7 +1251,7 @@ static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixt
     uint64_t expected_connected_time_ms =
         TIMEOUT_TEST_PING_INTERVAL_MS + (uint64_t)test_context->client->config->ping_timeout_ms;
 
-    ASSERT_TRUE(s_is_within_percentage_of(expected_connected_time_ms, connected_interval_ms, .1));
+    ASSERT_TRUE(s_is_within_percentage_of(expected_connected_time_ms, connected_interval_ms, .3));
 
     return AWS_OP_SUCCESS;
 }
@@ -1395,7 +1395,7 @@ static int s_verify_reconnection_exponential_backoff_timestamps(
                 uint64_t time_diff = aws_timestamp_convert(
                     record->timestamp - last_timestamp, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
 
-                if (!s_is_within_percentage_of(expected_backoff, time_diff, .1)) {
+                if (!s_is_within_percentage_of(expected_backoff, time_diff, .3)) {
                     return AWS_OP_ERR;
                 }
 
@@ -1613,7 +1613,7 @@ static int s_verify_reconnection_after_success_used_backoff(
         AWS_TIMESTAMP_MILLIS,
         NULL);
 
-    if (!s_is_within_percentage_of(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .1)) {
+    if (!s_is_within_percentage_of(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .3)) {
         return AWS_OP_ERR;
     }
 

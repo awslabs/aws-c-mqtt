@@ -211,7 +211,6 @@ struct aws_mqtt_client_connection {
         uint64_t current_sec;                 /* seconds */
         uint64_t min_sec;                     /* seconds */
         uint64_t max_sec;                     /* seconds */
-        uint64_t next_attempt_ms;             /* milliseconds */
         uint64_t next_attempt_reset_timer_ns; /* nanoseconds */
     } reconnect_timeouts;
 
@@ -222,6 +221,8 @@ struct aws_mqtt_client_connection {
     void *on_interrupted_ud;
     aws_mqtt_client_on_connection_resumed_fn *on_resumed;
     void *on_resumed_ud;
+    aws_mqtt_client_on_connection_closed_fn *on_closed;
+    void *on_closed_ud;
     aws_mqtt_client_publish_received_fn *on_any_publish;
     void *on_any_publish_ud;
     aws_mqtt_client_on_disconnect_fn *on_disconnect;

@@ -2257,6 +2257,7 @@ int aws_mqtt5_client_stop(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_disconnect_view *options,
     const struct aws_mqtt5_disconnect_completion_options *completion_options) {
+    AWS_FATAL_ASSERT(client != NULL);
     struct aws_mqtt5_operation_disconnect *disconnect_op = NULL;
     if (options != NULL) {
         struct aws_mqtt5_disconnect_completion_options internal_completion_options = {
