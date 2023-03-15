@@ -127,8 +127,6 @@ struct aws_mqtt_request {
     enum aws_mqtt_operation_statistic_state_flags statistic_state_flags;
     /* The encoded size of the packet - used for operation statistics tracking */
     uint64_t packet_size;
-    /* The type of the packet */
-    enum aws_mqtt_packet_type packet_type;
 
     uint16_t packet_id;
     bool retryable;

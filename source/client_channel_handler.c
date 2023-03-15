@@ -49,17 +49,14 @@ static int s_packet_handler_default(
 
 static void s_schedule_ping_get_outbound_delta_data(
     struct aws_mqtt_client_connection *connection,
-    uint64_t *result_now,
-    uint64_t *result_outbound_delta,
-    uint64_t *result_ping_time_as_ns) {
+    uint64_t *out_now,
+    uint64_t *out_outbound_delta,
+    uint64_t *out_ping_time_as_ns) {
+
     uint64_t now = 0;
     aws_channel_current_clock_time(connection->slot->channel, &now);
 
     uint64_t outbound_delta = 0;
-    // We just need the delta, so biggest minus smallest. We do NOT want to overflow
-    if (aws_sub_u64_checked(now, connection->last_outbound_socket_write_time, &outbound_delta) != AWS_OP_SUCCESS) {
-        aws_sub_u64_checked(connection->last_outbound_socket_write_time, now, &outbound_delta);
-    }
 
     uint64_t ping_time_ns =
         aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
@@ -67,16 +64,21 @@ static void s_schedule_ping_get_outbound_delta_data(
     // If there has not been a socket write yet, then the delta should be the scheduled ping timeout.
     if (connection->last_outbound_socket_write_time == 0) {
         outbound_delta = ping_time_ns;
+    } else {
+        // We just need the delta, so biggest minus smallest. We do NOT want to overflow
+        if (aws_sub_u64_checked(now, connection->last_outbound_socket_write_time, &outbound_delta) != AWS_OP_SUCCESS) {
+            aws_sub_u64_checked(connection->last_outbound_socket_write_time, now, &outbound_delta);
+        }
     }
 
-    if (result_now != NULL) {
-        *result_now = now;
+    if (out_now != NULL) {
+        *out_now = now;
     }
-    if (result_outbound_delta != NULL) {
-        *result_outbound_delta = outbound_delta;
+    if (out_outbound_delta != NULL) {
+        *out_outbound_delta = outbound_delta;
     }
-    if (result_ping_time_as_ns != NULL) {
-        *result_ping_time_as_ns = ping_time_ns;
+    if (out_ping_time_as_ns != NULL) {
+        *out_ping_time_as_ns = ping_time_ns;
     }
 }
 
