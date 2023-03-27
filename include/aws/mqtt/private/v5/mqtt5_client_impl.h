@@ -203,14 +203,14 @@ enum aws_mqtt5_lifecycle_state {
  * operation flow:
  *   (qos 0 publish, disconnect, connect)
  *      user (via cross thread task) ->
- *      queued_operations -> (on front of queue)
+ *      user_operations -> (on front of combined queue)
  *      current_operation -> (on completely encoded and passed to next handler)
  *      write_completion_operations -> (on socket write complete)
  *      release
  *
  *   (qos 1+ publish, sub/unsub)
  *      user (via cross thread task) ->
- *      queued_operations -> (on front of queue)
+ *      user_operations -> (on front of combined queue)
  *      current_operation (allocate packet id if necessary) -> (on completely encoded and passed to next handler)
  *      unacked_operations && unacked_operations_table -> (on ack received)
  *      release
@@ -219,27 +219,47 @@ enum aws_mqtt5_lifecycle_state {
  *      mqtt packet id and in-order re-queueing in the case of a disconnection (required by spec)
  *
  *   On Qos 1 PUBLISH completely received (and final callback invoked):
- *      Add PUBACK at head of queued_operations
+ *      Add PUBACK at tail of priority_operations
+ *
+ *   (Assuming offline queue policy check fails all non-{subscribe, publish, unsubscribe})
+ *
+ *   Define ProcessByOfflineQueuePolicy(operation):
+ *      if operation fails offline queue policy:
+ *          fail_and_remove(operation)
+ *
+ *   Define ProcessCurrentOperationOnDisconnect(operation):
+ *      if operation was retry (QoS 1+ dup):
+ *          add_tail(unacked_operations, operation)
+ *      else if operation fails offline queue policy:
+ *          fail_and_remove(operation)
+ *      else:
+ *          add_head(user_operations, operation)
+ *
+ *   Define ProcessUnackedOperationOnDisconnect(operation, rejoined_session):
+ *      if not operation is QoS 1+ publish:
+ *          if fails offline queue policy:
+ *              fail_and_remove(operation)
+ *
+ *   Define ProcessUnackedOperationOnReconnect(operation, rejoined_session):
+ *      if rejoined_session and operation is QoS 1+ publish:
+ *         mark as dup
+ *          add_head(retry_operations, operation)
+ *      else if fails offline queue policy:
+ *          fail_and_remove(operation)
+ *      else:
+ *          unbind_packet_id(operation)
+ *          add_head(user_operations, operation)
  *
  *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
- *      If current_operation, move current_operation to head of queued_operations
- *      Fail all operations in the pending write completion list
- *      Fail, remove, and release operations in queued_operations where
- *         (1) They fail the offline queue policy OR
- *         (2) They are a PUBACK, PINGREQ, or DISCONNECT
- *      Fail, remove, and release unacked_operations if:
- *         (1) They fail the offline queue policy AND
- *         (2) operation is not Qos 1+ publish
+ *      1. FailAll(write_completion_operations)
+ *      2. FailAll(priority_operations)
+ *      3. ProcessCurrentOperationOnDisconnect(current_operation)
+ *      4. ForAll(operation in unacked_operations, ProcessUnackedOperationOnDisconnect(operation))
+ *      5. ForAll(operation in user_operations, ProcessByOfflineQueuePolicy(operation))
+ *      6. Clear unacked_operations_table
  *
  *   On reconnect (post CONNACK):
- *      if rejoined_session:
- *          Move-and-append all non-qos1+-publishes in unacked_operations to the front of queued_operations
- *          Move-and-append remaining operations (qos1+ publishes) to the front of queued_operations
- *      else:
- *          Fail, remove, and release unacked_operations that fail the offline queue policy
- *          Move and append unacked operations to front of queued_operations
- *
- *      Clear unacked_operations_table
+ *      ForAllTailToHead(operation in unacked_operations, ProcessUnackedOperationOnReconnect(operation))
  */
 struct aws_mqtt5_client_operational_state {
 
@@ -252,8 +272,22 @@ struct aws_mqtt5_client_operational_state {
      */
     aws_mqtt5_packet_id_t next_mqtt_packet_id;
 
-    struct aws_linked_list queued_operations;
+    /*
+     * Combined queue, always processed in priority of:
+     *   priority_operations -> retry_operations -> user_operations
+     */
+
+    /* Yet-to-be-processed user-submitted PUBLISH, SUBSCRIBE, UNSUBSCRIBE */
+    struct aws_linked_list user_operations;
+
+    /* interrupted QoS1+ publishes on reconnect */
+    struct aws_linked_list retry_operations;
+
+    /* Client-internal operations: PINGREQ, DISCONNECT, and PUBACKs */
+    struct aws_linked_list priority_operations;
+
     struct aws_mqtt5_operation *current_operation;
+
     struct aws_hash_table unacked_operations_table;
     struct aws_linked_list unacked_operations;
     struct aws_linked_list write_completion_operations;
@@ -513,12 +547,7 @@ AWS_MQTT_API const struct aws_mqtt5_client_vtable *aws_mqtt5_client_get_default_
 
 /*
  * Sets the packet id, if necessary, on an operation based on the current pending acks table.  The caller is
- * responsible for adding the operation to the unacked table when the packet has been encoding in an io message.
- *
- * There is an argument that the operation should go into the table only on socket write completion, but that breaks
- * allocation unless an additional, independent table is added, which I'd prefer not to do presently.  Also, socket
- * write completion callbacks can be a bit delayed which could lead to a situation where the response from a local
- * server could arrive before the write completion runs which would be a disaster.
+ * responsible for adding the operation to the unacked table when the packet has been encoded into an io message.
  */
 AWS_MQTT_API int aws_mqtt5_operation_bind_packet_id(
     struct aws_mqtt5_operation *operation,
@@ -539,35 +568,19 @@ AWS_MQTT_API void aws_mqtt5_client_operational_state_clean_up(
 /*
  * Resets the client's operational state based on a disconnection (from above comment):
  *
- *      If current_operation
- *         move current_operation to head of queued_operations
- *      Fail all operations in the pending write completion list
- *      Fail, remove, and release operations in queued_operations where they fail the offline queue policy
- *      Iterate unacked_operations:
- *         If qos1+ publish
- *            set dup flag
- *         else
- *            unset/release packet id
- *      Fail, remove, and release unacked_operations if:
- *         (1) They fail the offline queue policy AND
- *         (2) the operation is not Qos 1+ publish
+ * TODO
  */
 AWS_MQTT_API void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5_client *client);
 
 /*
  * Updates the client's operational state based on a successfully established connection event:
  *
- *      if rejoined_session:
- *          Move-and-append all non-qos1+-publishes in unacked_operations to the front of queued_operations
- *          Move-and-append remaining operations (qos1+ publishes) to the front of queued_operations
- *      else:
- *          Fail, remove, and release unacked_operations that fail the offline queue policy
- *          Move and append unacked operations to front of queued_operations
+ * TODO
  */
 AWS_MQTT_API void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_client *client);
 
 /*
- * Processes the pending operation queue based on the current state of the associated client
+ * Processes the combined operation queue based on the current state of the associated client
  */
 AWS_MQTT_API int aws_mqtt5_client_service_operational_state(
     struct aws_mqtt5_client_operational_state *client_operational_state);

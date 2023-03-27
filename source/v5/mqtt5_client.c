@@ -81,8 +81,6 @@ static bool s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(
     struct aws_mqtt5_operation *operation,
     enum aws_mqtt5_client_operation_queue_behavior_type queue_behavior) {
     switch (aws_mqtt5_client_operation_queue_behavior_type_to_non_default(queue_behavior)) {
-        case AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT:
-            return false;
 
         case AWS_MQTT5_COQBT_FAIL_QOS0_PUBLISH_ON_DISCONNECT:
             if (!s_aws_mqtt5_operation_is_retainable(operation)) {
@@ -112,6 +110,7 @@ static bool s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(
 
             return false;
 
+        case AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT:
         default:
             return false;
     }
@@ -138,14 +137,14 @@ static void s_filter_operation_list(
 
 typedef void(mqtt5_operation_applicator)(struct aws_mqtt5_operation *operation, void *applicator_context);
 
-static void s_apply_to_operation_list(
+static void s_apply_to_operation_list_reverse(
     struct aws_linked_list *operations,
     mqtt5_operation_applicator *applicator_fn,
     void *applicator_context) {
-    struct aws_linked_list_node *node = aws_linked_list_begin(operations);
-    while (node != aws_linked_list_end(operations)) {
+    struct aws_linked_list_node *node = aws_linked_list_rbegin(operations);
+    while (node != aws_linked_list_rend(operations)) {
         struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
-        node = aws_linked_list_next(node);
+        node = aws_linked_list_prev(node);
 
         applicator_fn(operation, applicator_context);
     }
@@ -557,26 +556,74 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
     client->next_service_task_run_time = next_service_time;
 }
 
-static void s_enqueue_operation_back(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+static void s_enqueue_user_operation_back(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "id=%p: enqueuing %s operation to back",
+        "id=%p: enqueuing %s user operation to back",
         (void *)client,
         aws_mqtt5_packet_type_to_c_string(operation->packet_type));
 
-    aws_linked_list_push_back(&client->operational_state.queued_operations, &operation->node);
+    aws_linked_list_push_back(&client->operational_state.user_operations, &operation->node);
 
     s_reevaluate_service_task(client);
 }
 
-static void s_enqueue_operation_front(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+static void s_enqueue_user_operation_front(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT,
-        "id=%p: enqueuing %s operation to front",
+        "id=%p: enqueuing %s user operation to front",
         (void *)client,
         aws_mqtt5_packet_type_to_c_string(operation->packet_type));
 
-    aws_linked_list_push_front(&client->operational_state.queued_operations, &operation->node);
+    aws_linked_list_push_front(&client->operational_state.user_operations, &operation->node);
+
+    s_reevaluate_service_task(client);
+}
+
+static void s_enqueue_unacked_operation_back(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: enqueuing %s user operation to front",
+        (void *)client,
+        aws_mqtt5_packet_type_to_c_string(operation->packet_type));
+
+    aws_linked_list_push_front(&client->operational_state.unacked_operations, &operation->node);
+
+    s_reevaluate_service_task(client);
+}
+
+static void s_enqueue_retry_operation_front(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: enqueuing %s retry operation to front",
+        (void *)client,
+        aws_mqtt5_packet_type_to_c_string(operation->packet_type));
+
+    aws_linked_list_push_front(&client->operational_state.retry_operations, &operation->node);
+
+    s_reevaluate_service_task(client);
+}
+
+static void s_enqueue_priority_operation_front(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: enqueuing %s priority operation to front",
+        (void *)client,
+        aws_mqtt5_packet_type_to_c_string(operation->packet_type));
+
+    aws_linked_list_push_front(&client->operational_state.priority_operations, &operation->node);
+
+    s_reevaluate_service_task(client);
+}
+
+static void s_enqueue_priority_operation_back(struct aws_mqtt5_client *client, struct aws_mqtt5_operation *operation) {
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: enqueuing %s priority operation to back",
+        (void *)client,
+        aws_mqtt5_packet_type_to_c_string(operation->packet_type));
+
+    aws_linked_list_push_back(&client->operational_state.priority_operations, &operation->node);
 
     s_reevaluate_service_task(client);
 }
@@ -586,9 +633,12 @@ static void s_aws_mqtt5_client_operational_state_reset(
     int completion_error_code,
     bool is_final) {
 
+    AWS_FATAL_ASSERT(client_operational_state->current_operation == NULL);
     struct aws_mqtt5_client *client = client_operational_state->client;
 
-    s_complete_operation_list(client, &client_operational_state->queued_operations, completion_error_code);
+    s_complete_operation_list(client, &client_operational_state->user_operations, completion_error_code);
+    s_complete_operation_list(client, &client_operational_state->retry_operations, completion_error_code);
+    s_complete_operation_list(client, &client_operational_state->priority_operations, completion_error_code);
     s_complete_operation_list(client, &client_operational_state->write_completion_operations, completion_error_code);
     s_complete_operation_list(client, &client_operational_state->unacked_operations, completion_error_code);
 
@@ -648,7 +698,7 @@ static void s_aws_mqtt5_client_shutdown_channel_with_disconnect(
         return;
     }
 
-    aws_linked_list_push_front(&client->operational_state.queued_operations, &disconnect_op->base.node);
+    s_enqueue_priority_operation_front(client, &disconnect_op->base);
     aws_mqtt5_operation_disconnect_acquire(disconnect_op);
     client->clean_disconnect_error_code = error_code;
 
@@ -1199,7 +1249,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
         return;
     }
 
-    s_enqueue_operation_front(client, &connect_op->base);
+    s_enqueue_priority_operation_front(client, &connect_op->base);
 
     uint32_t timeout_ms = client->config->connack_timeout_ms;
     if (timeout_ms == 0) {
@@ -1439,7 +1489,7 @@ static int s_aws_mqtt5_client_queue_ping(struct aws_mqtt5_client *client) {
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_CLIENT, "id=%p: queuing PINGREQ", (void *)client);
 
     struct aws_mqtt5_operation_pingreq *pingreq_op = aws_mqtt5_operation_pingreq_new(client->allocator);
-    s_enqueue_operation_front(client, &pingreq_op->base);
+    s_enqueue_priority_operation_front(client, &pingreq_op->base);
 
     return AWS_OP_SUCCESS;
 }
@@ -1788,39 +1838,6 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
     }
 }
 
-typedef bool(aws_linked_list_node_predicate_fn)(struct aws_linked_list_node *);
-
-/*
- * This predicate finds the first (if any) operation in the queue that is not a PUBACK or a PINGREQ.
- */
-static bool s_is_ping_or_puback(struct aws_linked_list_node *operation_node) {
-    struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(operation_node, struct aws_mqtt5_operation, node);
-
-    return operation->packet_type == AWS_MQTT5_PT_PUBACK || operation->packet_type == AWS_MQTT5_PT_PINGREQ;
-}
-
-/*
- * Helper function to insert a node (operation) into a list (operation queue) in the correct spot.  Currently, this
- * is only used to enqueue PUBACKs after existing PUBACKs and PINGREQs.  This ensure that PUBACKs go out in the order
- * the corresponding PUBLISH was received, regardless of whether or not there was an intervening service call.
- */
-static void s_insert_node_before_predicate_failure(
-    struct aws_linked_list *list,
-    struct aws_linked_list_node *node,
-    aws_linked_list_node_predicate_fn predicate) {
-    struct aws_linked_list_node *current_node = NULL;
-    for (current_node = aws_linked_list_begin(list); current_node != aws_linked_list_end(list);
-         current_node = aws_linked_list_next(current_node)) {
-        if (!predicate(current_node)) {
-            break;
-        }
-    }
-
-    AWS_FATAL_ASSERT(current_node != NULL);
-
-    aws_linked_list_insert_before(current_node, node);
-}
-
 static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint16_t packet_id) {
     AWS_PRECONDITION(client != NULL);
 
@@ -1836,20 +1853,9 @@ static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint
     }
 
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT5_CLIENT,
-        "id=%p: enqueuing PUBACK operation to first position in queue that is not a PUBACK or PINGREQ",
-        (void *)client);
+        AWS_LS_MQTT5_CLIENT, "id=%p: adding PUBACK operation to tail of the high-priority queue", (void *)client);
 
-    /*
-     * Put the PUBACK ahead of all user-submitted operations (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT), but behind
-     * all pre-existing "internal" operations (PINGREQ, PUBACK).
-     *
-     * Qos 2 support will need to extend the predicate to include Qos 2 publish packets.
-     */
-    s_insert_node_before_predicate_failure(
-        &client->operational_state.queued_operations, &puback_op->base.node, s_is_ping_or_puback);
-
-    s_reevaluate_service_task(client);
+    s_enqueue_priority_operation_back(client, &puback_op->base);
 
     return AWS_OP_SUCCESS;
 }
@@ -2302,7 +2308,7 @@ static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, e
     /* newly-submitted operations must have a 0 packet id */
     aws_mqtt5_operation_set_packet_id(submit_operation_task->operation, 0);
 
-    s_enqueue_operation_back(submit_operation_task->client, submit_operation_task->operation);
+    s_enqueue_user_operation_back(submit_operation_task->client, submit_operation_task->operation);
     aws_mqtt5_client_statistics_change_operation_statistic_state(
         submit_operation_task->client, submit_operation_task->operation, AWS_MQTT5_OSS_INCOMPLETE);
 
@@ -2491,7 +2497,9 @@ int aws_mqtt5_client_operational_state_init(
     struct aws_allocator *allocator,
     struct aws_mqtt5_client *client) {
 
-    aws_linked_list_init(&client_operational_state->queued_operations);
+    aws_linked_list_init(&client_operational_state->user_operations);
+    aws_linked_list_init(&client_operational_state->retry_operations);
+    aws_linked_list_init(&client_operational_state->priority_operations);
     aws_linked_list_init(&client_operational_state->write_completion_operations);
     aws_linked_list_init(&client_operational_state->unacked_operations);
 
@@ -2519,106 +2527,157 @@ void aws_mqtt5_client_operational_state_clean_up(struct aws_mqtt5_client_operati
     s_aws_mqtt5_client_operational_state_reset(client_operational_state, AWS_ERROR_MQTT5_CLIENT_TERMINATED, true);
 }
 
-static bool s_filter_queued_operations_for_offline(struct aws_mqtt5_operation *operation, void *context) {
+static bool s_filter_user_operations_for_offline(struct aws_mqtt5_operation *operation, void *context) {
     struct aws_mqtt5_client *client = context;
     enum aws_mqtt5_client_operation_queue_behavior_type queue_behavior = client->config->offline_queue_behavior;
 
     return !s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(operation, queue_behavior);
 }
 
-static void s_process_unacked_operations_for_disconnect(struct aws_mqtt5_operation *operation, void *context) {
-    (void)context;
+static bool s_filter_unacked_operations_for_offline(struct aws_mqtt5_operation *operation, void *context) {
+    struct aws_mqtt5_client *client = context;
+    if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
+        struct aws_mqtt5_packet_publish_view *publish_view =
+            (struct aws_mqtt5_packet_publish_view *)operation->packet_view;
+        return publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE;
+    }
+
+    enum aws_mqtt5_client_operation_queue_behavior_type queue_behavior = client->config->offline_queue_behavior;
+
+    return !s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(operation, queue_behavior);
+}
+
+static void s_process_unacked_operation_on_reconnect(struct aws_mqtt5_operation *operation, void *context) {
+    struct aws_mqtt5_client *client = context;
+    enum aws_mqtt5_client_operation_queue_behavior_type queue_behavior = client->config->offline_queue_behavior;
+
+    aws_linked_list_remove(&operation->node);
 
     if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
         struct aws_mqtt5_packet_publish_view *publish_view =
             (struct aws_mqtt5_packet_publish_view *)operation->packet_view;
         if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
             publish_view->duplicate = true;
+            s_enqueue_retry_operation_front(client, operation);
             return;
         }
     }
 
-    aws_mqtt5_operation_set_packet_id(operation, 0);
-}
-
-static bool s_filter_unacked_operations_for_offline(struct aws_mqtt5_operation *operation, void *context) {
-    struct aws_mqtt5_client *client = context;
-    enum aws_mqtt5_client_operation_queue_behavior_type queue_behavior = client->config->offline_queue_behavior;
-
-    if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
-        const struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
-        if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
-            return false;
-        }
+    if (!s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(operation, queue_behavior)) {
+        s_complete_operation(
+            client, operation, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY, AWS_MQTT5_PT_NONE, NULL);
+        return;
     }
 
-    return !s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(operation, queue_behavior);
+    aws_mqtt5_operation_set_packet_id(operation, 0);
+    s_enqueue_user_operation_front(client, operation);
+}
+
+static bool s_is_retried_publish(struct aws_mqtt5_operation *operation) {
+    if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
+        struct aws_mqtt5_packet_publish_view *publish_view =
+            (struct aws_mqtt5_packet_publish_view *)operation->packet_view;
+        return publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE && publish_view->duplicate;
+    }
+
+    return false;
 }
 
 /*
- * Resets the client's operational state based on a disconnection (from above comment):
+ * Resets the client's operational state based on a disconnection:
  *
- *      If current_operation
- *         move current_operation to head of queued_operations
- *      Fail all operations in the pending write completion list
- *      Fail, remove, and release operations in queued_operations where they fail the offline queue policy
- *      Iterate unacked_operations:
- *         If qos1+ publish
- *            set dup flag
- *         else
- *            unset/release packet id
- *      Fail, remove, and release unacked_operations if:
- *         (1) They fail the offline queue policy AND
- *         (2) the operation is not Qos 1+ publish
+ *   Define ProcessByOfflineQueuePolicy(operation):
+ *      if operation fails offline queue policy:
+ *          fail_and_remove(operation)
  *
- *      Clears the unacked_operations table
+ *   Define ProcessCurrentOperationOnDisconnect(operation):
+ *      if operation was retry (QoS 1+ dup):
+ *          add_tail(unacked_operations, operation)
+ *      else if operation fails offline queue policy:
+ *          fail_and_remove(operation)
+ *      else:
+ *          add_head(user_operations, operation)
+ *
+ *   Define ProcessUnackedOperationOnDisconnect(operation, rejoined_session):
+ *      if not operation is QoS 1+ publish:
+ *          if fails offline queue policy:
+ *              fail_and_remove(operation)
+ *
+ *   Define ProcessUnackedOperationOnReconnect(operation, rejoined_session):
+ *      if rejoined_session and operation is QoS 1+ publish:
+ *         mark as dup
+ *          add_head(retry_operations, operation)
+ *      else if fails offline queue policy:
+ *          fail_and_remove(operation)
+ *      else:
+ *          unbind_packet_id(operation)
+ *          add_head(user_operations, operation)
+ *
+ *   On disconnect (on transition to PENDING_RECONNECT or STOPPED):
+ *      1. FailAll(write_completion_operations)
+ *      2. FailAll(priority_operations)
+ *      3. ProcessCurrentOperationOnDisconnect(current_operation)
+ *      4. ForAll(operation in unacked_operations, ProcessUnackedOperationOnDisconnect(operation))
+ *      5. ForAll(operation in user_operations, ProcessByOfflineQueuePolicy(operation))
+ *      6. Clear unacked_operations_table
+ *
+ *   On reconnect (post CONNACK):
+ *      ForAllTailToHead(operation in retry_operations, ProcessUnackedOperationOnReconnect(operation))
  */
 void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5_client *client) {
     struct aws_mqtt5_client_operational_state *client_operational_state = &client->operational_state;
 
-    /* move current operation to the head of the queue */
-    if (client_operational_state->current_operation != NULL) {
-        aws_linked_list_push_front(
-            &client_operational_state->queued_operations, &client_operational_state->current_operation->node);
-        client_operational_state->current_operation = NULL;
-    }
-
-    /* fail everything in pending write completion */
+    /* 1. fail everything in pending write completion */
     s_complete_operation_list(
         client,
         &client_operational_state->write_completion_operations,
         AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY);
 
+    /* 2. fail everything in the priority queue */
+    s_complete_operation_list(
+        client,
+        &client_operational_state->priority_operations,
+        AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY);
+
+    /* 3. process the interrupted current operation */
+    struct aws_mqtt5_operation *current_operation = client_operational_state->current_operation;
+    if (current_operation != NULL) {
+        if (s_is_retried_publish(current_operation)) {
+            s_enqueue_unacked_operation_back(client, current_operation);
+        } else if (!s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(
+                       current_operation, client->config->offline_queue_behavior)) {
+            s_complete_operation(
+                client,
+                current_operation,
+                AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY,
+                AWS_MQTT5_PT_NONE,
+                NULL);
+        } else {
+            s_enqueue_user_operation_front(client, current_operation);
+        }
+        client_operational_state->current_operation = NULL;
+    }
+
     struct aws_linked_list operations_to_fail;
     AWS_ZERO_STRUCT(operations_to_fail);
     aws_linked_list_init(&operations_to_fail);
 
-    /* fail everything in the pending queue that doesn't meet the offline queue behavior retention requirements */
+    /* 4. Fail unacked operations that should not be retried and do not meet the offline queue policy*/
     s_filter_operation_list(
-        &client_operational_state->queued_operations,
-        s_filter_queued_operations_for_offline,
-        &operations_to_fail,
-        client);
-    s_complete_operation_list(
-        client, &operations_to_fail, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY);
-
-    /* Mark unacked qos1+ publishes as duplicate and release packet ids for non qos1+ publish */
-    s_apply_to_operation_list(
-        &client_operational_state->unacked_operations, s_process_unacked_operations_for_disconnect, NULL);
-
-    /*
-     * fail everything in the pending queue that
-     *   (1) isn't a qos1+ publish AND
-     *   (2) doesn't meet the offline queue behavior retention requirements
-     */
-    s_filter_operation_list(
-        &client_operational_state->unacked_operations,
+        &client_operational_state->user_operations,
         s_filter_unacked_operations_for_offline,
         &operations_to_fail,
         client);
     s_complete_operation_list(
         client, &operations_to_fail, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY);
 
+    /* 5. Fail user operations that do not meet the offline queue policy */
+    s_filter_operation_list(
+        &client_operational_state->user_operations, s_filter_user_operations_for_offline, &operations_to_fail, client);
+    s_complete_operation_list(
+        client, &operations_to_fail, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY);
+
+    /* 6. Clear the unacked operations table */
     aws_hash_table_clear(&client->operational_state.unacked_operations_table);
 
     /*
@@ -2641,58 +2700,19 @@ static void s_set_operation_list_statistic_state(
     }
 }
 
-static bool s_filter_unacked_operations_for_session_rejoin(struct aws_mqtt5_operation *operation, void *context) {
-    (void)context;
-
-    if (operation->packet_type == AWS_MQTT5_PT_PUBLISH) {
-        const struct aws_mqtt5_packet_publish_view *publish_view = operation->packet_view;
-        if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 /*
  * Updates the client's operational state based on a successfully established connection event:
  *
- *      if rejoined_session:
- *          Move-and-append all non-qos1+-publishes in unacked_operations to the front of queued_operations
- *          Move-and-append remaining operations (qos1+ publishes) to the front of queued_operations
- *      else:
- *          Fail, remove, and release unacked_operations that fail the offline queue policy
- *          Move and append unacked operations to front of queued_operations
+ *      if !rejoined_session:
+ *          Fail, remove, and release retry_operations that fail the offline queue policy
  */
 void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_client *client) {
 
     struct aws_mqtt5_client_operational_state *client_operational_state = &client->operational_state;
 
     if (client->negotiated_settings.rejoined_session) {
-        struct aws_linked_list requeued_operations;
-        AWS_ZERO_STRUCT(requeued_operations);
-        aws_linked_list_init(&requeued_operations);
-
-        /*
-         * qos1+ publishes must go out first, so split the unacked operation list into two sets: qos1+ publishes and
-         * everything else.
-         */
-        s_filter_operation_list(
-            &client_operational_state->unacked_operations,
-            s_filter_unacked_operations_for_session_rejoin,
-            &requeued_operations,
-            client);
-
-        /*
-         * Put non-qos1+ publishes on the front of the pending queue
-         */
-        aws_linked_list_move_all_front(&client->operational_state.queued_operations, &requeued_operations);
-
-        /*
-         * Put qos1+ publishes on the front of the pending queue
-         */
-        aws_linked_list_move_all_front(
-            &client->operational_state.queued_operations, &client_operational_state->unacked_operations);
+        s_apply_to_operation_list_reverse(
+            &client_operational_state->unacked_operations, s_process_unacked_operation_on_reconnect, client);
     } else {
         struct aws_linked_list failed_operations;
         AWS_ZERO_STRUCT(failed_operations);
@@ -2700,7 +2720,7 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
 
         s_filter_operation_list(
             &client_operational_state->unacked_operations,
-            s_filter_queued_operations_for_offline,
+            s_filter_user_operations_for_offline,
             &failed_operations,
             client);
 
@@ -2710,15 +2730,11 @@ void aws_mqtt5_client_on_connection_update_operational_state(struct aws_mqtt5_cl
          */
         s_complete_operation_list(
             client, &failed_operations, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY);
-
-        /* requeue operations that we are going to perform again */
-        aws_linked_list_move_all_front(
-            &client->operational_state.queued_operations, &client->operational_state.unacked_operations);
     }
 
-    /* set everything remaining to incomplete */
-    s_set_operation_list_statistic_state(
-        client, &client->operational_state.queued_operations, AWS_MQTT5_OSS_INCOMPLETE);
+    /* set everything to incomplete */
+    s_set_operation_list_statistic_state(client, &client->operational_state.user_operations, AWS_MQTT5_OSS_INCOMPLETE);
+    s_set_operation_list_statistic_state(client, &client->operational_state.retry_operations, AWS_MQTT5_OSS_INCOMPLETE);
 
     aws_mqtt5_client_flow_control_state_reset(client);
 
@@ -2756,29 +2772,51 @@ on_error:
     s_aws_mqtt5_client_shutdown_channel(client, aws_last_error());
 }
 
+static struct aws_mqtt5_operation *s_aws_mqtt5_client_peek_next_operation(
+    const struct aws_mqtt5_client_operational_state *client_operational_state) {
+    if (!aws_linked_list_empty(&client_operational_state->priority_operations)) {
+        struct aws_linked_list_node *next_operation_node =
+            aws_linked_list_front(&client_operational_state->priority_operations);
+        struct aws_mqtt5_operation *next_operation =
+            AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
+        return next_operation;
+    }
+
+    if (!aws_linked_list_empty(&client_operational_state->retry_operations)) {
+        struct aws_linked_list_node *next_operation_node =
+            aws_linked_list_front(&client_operational_state->retry_operations);
+        struct aws_mqtt5_operation *next_operation =
+            AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
+        return next_operation;
+    }
+
+    if (!aws_linked_list_empty(&client_operational_state->user_operations)) {
+        struct aws_linked_list_node *next_operation_node =
+            aws_linked_list_front(&client_operational_state->user_operations);
+        struct aws_mqtt5_operation *next_operation =
+            AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
+        return next_operation;
+    }
+
+    return NULL;
+}
+
 static bool s_aws_mqtt5_client_has_pending_operational_work(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
     enum aws_mqtt5_client_state client_state) {
-    if (aws_linked_list_empty(&client_operational_state->queued_operations)) {
+
+    struct aws_mqtt5_operation *next_operation = s_aws_mqtt5_client_peek_next_operation(client_operational_state);
+    if (next_operation == NULL) {
         return false;
     }
 
-    struct aws_linked_list_node *next_operation_node =
-        aws_linked_list_front(&client_operational_state->queued_operations);
-    struct aws_mqtt5_operation *next_operation =
-        AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
-
     switch (client_state) {
         case AWS_MCS_MQTT_CONNECT:
-            /* Only allowed to send a CONNECT packet in this state */
-            return next_operation->packet_type == AWS_MQTT5_PT_CONNECT;
-
         case AWS_MCS_CLEAN_DISCONNECT:
-            /* Except for finishing the current operation, only allowed to send a DISCONNECT packet in this state */
-            return next_operation->packet_type == AWS_MQTT5_PT_DISCONNECT;
+            return !aws_linked_list_empty(&client_operational_state->priority_operations);
 
         case AWS_MCS_CONNECTED:
-            return true;
+            return s_aws_mqtt5_client_peek_next_operation(client_operational_state) != NULL;
 
         default:
             return false;
@@ -2800,7 +2838,7 @@ static uint64_t s_aws_mqtt5_client_compute_next_operation_flow_control_service_t
             return aws_mqtt5_client_flow_control_state_get_next_operation_service_time(client, operation, now);
 
         default:
-            /* no outbound traffic is allowed outside of the above states */
+            /* no outbound traffic is allowed outside the above states */
             return 0;
     }
 }
@@ -2875,13 +2913,7 @@ static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
         return 0;
     }
 
-    AWS_FATAL_ASSERT(!aws_linked_list_empty(&client_operational_state->queued_operations));
-
-    struct aws_linked_list_node *next_operation_node =
-        aws_linked_list_front(&client_operational_state->queued_operations);
-    struct aws_mqtt5_operation *next_operation =
-        AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
-
+    struct aws_mqtt5_operation *next_operation = s_aws_mqtt5_client_peek_next_operation(client_operational_state);
     AWS_FATAL_ASSERT(next_operation != NULL);
 
     /*
@@ -2983,30 +3015,31 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
              * a good one.  Failing validation against negotiated settings is expected to be a rare event.
              */
             struct aws_mqtt5_operation *next_operation = NULL;
-            while (!aws_linked_list_empty(&client_operational_state->queued_operations)) {
-                struct aws_linked_list_node *next_operation_node =
-                    aws_linked_list_pop_front(&client_operational_state->queued_operations);
-                struct aws_mqtt5_operation *operation =
-                    AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
-
-                if (s_apply_publish_tps_flow_control(client, operation)) {
+            struct aws_mqtt5_operation *checked_operation =
+                s_aws_mqtt5_client_peek_next_operation(client_operational_state);
+            while (checked_operation) {
+                if (s_apply_publish_tps_flow_control(client, checked_operation)) {
                     break;
                 }
 
-                if (!aws_mqtt5_operation_validate_vs_connection_settings(operation, client)) {
-                    next_operation = operation;
+                aws_linked_list_remove(&checked_operation->node);
+
+                if (!aws_mqtt5_operation_validate_vs_connection_settings(checked_operation, client)) {
+                    next_operation = checked_operation;
                     break;
                 }
 
-                enum aws_mqtt5_packet_type packet_type = operation->packet_type;
+                enum aws_mqtt5_packet_type packet_type = checked_operation->packet_type;
                 int validation_error_code = aws_last_error();
-                s_complete_operation(client, operation, validation_error_code, AWS_MQTT5_PT_NONE, NULL);
+                s_complete_operation(client, checked_operation, validation_error_code, AWS_MQTT5_PT_NONE, NULL);
 
                 /* A DISCONNECT packet failing dynamic validation should shut down the whole channel */
                 if (packet_type == AWS_MQTT5_PT_DISCONNECT) {
                     operational_error_code = AWS_ERROR_MQTT5_OPERATION_PROCESSING_FAILURE;
                     break;
                 }
+
+                checked_operation = s_aws_mqtt5_client_peek_next_operation(client_operational_state);
             }
 
             if (next_operation != NULL && s_aws_mqtt5_client_set_current_operation(client, next_operation)) {
