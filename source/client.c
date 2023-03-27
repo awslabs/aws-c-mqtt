@@ -908,8 +908,6 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
     connection->handler.impl = connection;
 
-    aws_mqtt_cache_socket_write_time(connection);
-
     return connection;
 
 failed_init_outstanding_requests_table:
@@ -1471,6 +1469,9 @@ int aws_mqtt_client_connection_connect(
     if (!connection->keep_alive_time_secs) {
         connection->keep_alive_time_secs = s_default_keep_alive_sec;
     }
+    connection->keep_alive_time_ns =
+        aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
     if (!connection_options->protocol_operation_timeout_ms) {
         connection->operation_timeout_ns = UINT64_MAX;
     } else {
@@ -1489,16 +1490,15 @@ int aws_mqtt_client_connection_connect(
     }
 
     /* Keep alive time should always be greater than the timeouts. */
-    if (AWS_UNLIKELY(connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->ping_timeout_ns)) {
+    if (AWS_UNLIKELY(connection->keep_alive_time_ns <= connection->ping_timeout_ns)) {
         AWS_LOGF_FATAL(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Illegal configuration, Connection keep alive %" PRIu64
             "ns must be greater than the request timeouts %" PRIu64 "ns.",
             (void *)connection,
-            (uint64_t)connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS,
+            connection->keep_alive_time_ns,
             connection->ping_timeout_ns);
-        AWS_FATAL_ASSERT(
-            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS > connection->ping_timeout_ns);
+        AWS_FATAL_ASSERT(connection->keep_alive_time_ns > connection->ping_timeout_ns);
     }
 
     AWS_LOGF_INFO(

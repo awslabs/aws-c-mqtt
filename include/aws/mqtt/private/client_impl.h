@@ -197,6 +197,7 @@ struct aws_mqtt_client_connection {
     struct aws_byte_buf client_id;
     bool clean_session;
     uint16_t keep_alive_time_secs;
+    uint64_t keep_alive_time_ns;
     uint64_t ping_timeout_ns;
     uint64_t operation_timeout_ns;
     struct aws_string *username;
@@ -304,10 +305,12 @@ struct aws_mqtt_client_connection {
     } websocket;
 
     /**
-     * Remember the time of the last outbound socket write time.
-     * This helps us schedule the ping task correctly on congested sockets
+     * The time that the next ping task should execute at. Note that this does not mean that
+     * this IS when the ping task will execute, but rather that this is when the next ping
+     * SHOULD execute. There may be an already scheduled PING task that will elapse sooner
+     * than this time that has to be rescheduled.
      */
-    uint64_t last_outbound_socket_write_time;
+    uint64_t next_ping_time;
 
     /**
      * Statistics tracking operational state
@@ -321,9 +324,6 @@ struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
 struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header);
-
-/* Caches the socket write time for ping scheduling purposes */
-void aws_mqtt_cache_socket_write_time(struct aws_mqtt_client_connection *connection);
 
 void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);

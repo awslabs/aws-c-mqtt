@@ -20,16 +20,17 @@
 #    pragma warning(disable : 4204)
 #endif
 
-/**
- * The delta (in nano seconds) we should still send a PING packet out, even if it's slightly under the expected time.
- * This is to account for a slight delay/jitter in the sending of packets, as they are not perfectly sent at
- * exactly the scheduled time but there can be (it's not consistent) a slight delay.
- *
- * To account for this delay, we still send PINGs even if they are slightly off. For example, if the last packet
- * was sent at 0.999981 seconds ago and we send pings every 1.0 seconds, then we should still send it because it's
- * literally less than a hundredth of a second away.
- */
-static const int PING_JITTER_OFFSET_NS = 1000000; // 0.001 seconds delta
+/*******************************************************************************
+ * Static Helper functions
+ ******************************************************************************/
+
+/* Caches the socket write time for ping scheduling purposes */
+static void s_update_next_ping_time(struct aws_mqtt_client_connection *connection) {
+    if (connection->slot != NULL && connection->slot->channel != NULL) {
+        aws_channel_current_clock_time(connection->slot->channel, &connection->next_ping_time);
+        aws_add_u64_checked(connection->next_ping_time, connection->keep_alive_time_ns, &connection->next_ping_time);
+    }
+}
 
 /*******************************************************************************
  * Packet State Machine
@@ -47,67 +48,23 @@ static int s_packet_handler_default(
     return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
 }
 
-static void s_schedule_ping_get_outbound_delta_data(
-    struct aws_mqtt_client_connection *connection,
-    uint64_t *out_now,
-    uint64_t *out_outbound_delta,
-    uint64_t *out_ping_time_as_ns) {
-
-    uint64_t now = 0;
-    aws_channel_current_clock_time(connection->slot->channel, &now);
-
-    uint64_t outbound_delta = 0;
-
-    uint64_t ping_time_ns =
-        aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-
-    // We just need the delta, so biggest minus smallest. We do NOT want to overflow
-    if (aws_sub_u64_checked(now, connection->last_outbound_socket_write_time, &outbound_delta) != AWS_OP_SUCCESS) {
-        aws_sub_u64_checked(connection->last_outbound_socket_write_time, now, &outbound_delta);
-    }
-
-    if (out_now != NULL) {
-        *out_now = now;
-    }
-    if (out_outbound_delta != NULL) {
-        *out_outbound_delta = outbound_delta;
-    }
-    if (out_ping_time_as_ns != NULL) {
-        *out_ping_time_as_ns = ping_time_ns;
-    }
-}
-
 static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
 static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
     aws_channel_task_init(&connection->ping_task, s_on_time_to_ping, connection, "mqtt_ping");
 
     uint64_t now = 0;
-    uint64_t outbound_delta = 0;
-    uint64_t ping_time_as_ns = 0;
-    s_schedule_ping_get_outbound_delta_data(connection, &now, &outbound_delta, &ping_time_as_ns);
+    aws_channel_current_clock_time(connection->slot->channel, &now);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING task. current timestamp is %" PRIu64, (void *)connection, now);
-
-    uint64_t time_delta = 0;
-    aws_sub_u64_checked(ping_time_as_ns, outbound_delta, &time_delta);
-    uint64_t schedule_time = 0;
-    if (outbound_delta < ping_time_as_ns) {
-        /**
-         * If we made a wrote a control packet at 3 seconds with a timeout of 4, then the next PING
-         * should be at 3 seconds from now (because that's 4 from the last control packet)
-         */
-        schedule_time = now + time_delta;
-    } else {
-        schedule_time = now + ping_time_as_ns;
-    }
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: The next PING task will be run at timestamp %" PRIu64,
         (void *)connection,
-        schedule_time);
-    aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, schedule_time);
+        connection->next_ping_time);
+
+    aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, connection->next_ping_time);
 }
 
 static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
@@ -116,22 +73,22 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_mqtt_client_connection *connection = arg;
 
-        uint64_t outbound_delta = 0;
-        uint64_t ping_time_as_ns = 0;
-        s_schedule_ping_get_outbound_delta_data(connection, NULL, &outbound_delta, &ping_time_as_ns);
-
-        /* Account for ping offset/jitter. See comment in PING_JITTER_OFFSET_NS for more info */
-        if (outbound_delta >= ping_time_as_ns - PING_JITTER_OFFSET_NS) {
+        uint64_t now = 0;
+        aws_channel_current_clock_time(connection->slot->channel, &now);
+        if (now >= connection->next_ping_time) {
+            s_update_next_ping_time(connection);
             AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
             aws_mqtt_client_connection_ping(connection);
         } else {
+
             AWS_LOGF_TRACE(
                 AWS_LS_MQTT_CLIENT,
-                "id=%p: Skipped sending PING because last outbound packet %" PRIu64
-                " is less than ping timeout %" PRIu64,
+                "id=%p: Skipped sending PING because scheduled ping time %" PRIu64
+                " has not elapsed yet. Current time is %" PRIu64
+                ". Rescheduling ping to run at the scheduled ping time...",
                 (void *)connection,
-                outbound_delta,
-                ping_time_as_ns);
+                connection->next_ping_time,
+                now);
         }
         s_schedule_ping(connection);
     }
@@ -251,6 +208,7 @@ static int s_packet_handler_connack(
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection callback completed", (void *)connection);
 
+    s_update_next_ping_time(connection);
     s_schedule_ping(connection);
     return AWS_OP_SUCCESS;
 }
@@ -772,14 +730,6 @@ struct aws_io_message *mqtt_get_message_for_packet(
     return message;
 }
 
-/* Caches the socket write time for ping scheduling purposes */
-void aws_mqtt_cache_socket_write_time(struct aws_mqtt_client_connection *connection) {
-    if (connection->slot != NULL && connection->slot->channel != NULL) {
-        aws_channel_current_clock_time(
-            connection->slot->channel, &connection->last_outbound_socket_write_time);
-    }
-}
-
 /*******************************************************************************
  * Requests
  ******************************************************************************/
@@ -876,7 +826,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 /* Set the request as complete in the operation statistics */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
-                aws_mqtt_cache_socket_write_time(connection);
+
+                /* Since a request has complete, update the next ping time */
+                s_update_next_ping_time(connection);
 
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
@@ -901,7 +853,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
 
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
-            aws_mqtt_cache_socket_write_time(connection);
+
+            /* Since a request has complete, update the next ping time */
+            s_update_next_ping_time(connection);
 
             /* Put the request into the ongoing list */
             aws_linked_list_push_back(&connection->thread_data.ongoing_requests_list, &request->list_node);
