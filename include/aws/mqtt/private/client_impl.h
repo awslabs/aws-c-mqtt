@@ -322,6 +322,9 @@ struct aws_io_message *mqtt_get_message_for_packet(
     struct aws_mqtt_client_connection *connection,
     struct aws_mqtt_fixed_header *header);
 
+/* Caches the socket write time for ping scheduling purposes */
+void aws_mqtt_cache_socket_write_time(struct aws_mqtt_client_connection *connection);
+
 void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
 void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
 

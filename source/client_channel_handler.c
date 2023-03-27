@@ -61,14 +61,9 @@ static void s_schedule_ping_get_outbound_delta_data(
     uint64_t ping_time_ns =
         aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
-    // If there has not been a socket write yet, then the delta should be the scheduled ping timeout.
-    if (connection->last_outbound_socket_write_time == 0) {
-        outbound_delta = ping_time_ns;
-    } else {
-        // We just need the delta, so biggest minus smallest. We do NOT want to overflow
-        if (aws_sub_u64_checked(now, connection->last_outbound_socket_write_time, &outbound_delta) != AWS_OP_SUCCESS) {
-            aws_sub_u64_checked(connection->last_outbound_socket_write_time, now, &outbound_delta);
-        }
+    // We just need the delta, so biggest minus smallest. We do NOT want to overflow
+    if (aws_sub_u64_checked(now, connection->last_outbound_socket_write_time, &outbound_delta) != AWS_OP_SUCCESS) {
+        aws_sub_u64_checked(connection->last_outbound_socket_write_time, now, &outbound_delta);
     }
 
     if (out_now != NULL) {
@@ -777,6 +772,14 @@ struct aws_io_message *mqtt_get_message_for_packet(
     return message;
 }
 
+/* Caches the socket write time for ping scheduling purposes */
+void aws_mqtt_cache_socket_write_time(struct aws_mqtt_client_connection *connection) {
+    if (connection->slot != NULL && connection->slot->channel != NULL) {
+        aws_channel_current_clock_time(
+            connection->slot->channel, &connection->last_outbound_socket_write_time);
+    }
+}
+
 /*******************************************************************************
  * Requests
  ******************************************************************************/
@@ -873,12 +876,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 /* Set the request as complete in the operation statistics */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
-
-                /* Cache the socket write time for ping scheduling purposes */
-                if (connection->slot != NULL && connection->slot->channel != NULL) {
-                    aws_channel_current_clock_time(
-                        connection->slot->channel, &connection->last_outbound_socket_write_time);
-                }
+                aws_mqtt_cache_socket_write_time(connection);
 
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
@@ -903,11 +901,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
 
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
-
-            /* Cache the socket write time for ping scheduling purposes */
-            if (connection->slot != NULL && connection->slot->channel != NULL) {
-                aws_channel_current_clock_time(connection->slot->channel, &connection->last_outbound_socket_write_time);
-            }
+            aws_mqtt_cache_socket_write_time(connection);
 
             /* Put the request into the ongoing list */
             aws_linked_list_push_back(&connection->thread_data.ongoing_requests_list, &request->list_node);

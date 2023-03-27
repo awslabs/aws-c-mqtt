@@ -648,7 +648,6 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
                 perform_full_destroy = true;
             }
 
-            connection->reconnect_task->task.timestamp = 0;
             aws_mem_release(reconnect->allocator, reconnect);
             connection->reconnect_task = NULL;
 
@@ -908,6 +907,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->handler.alloc = connection->allocator;
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
     connection->handler.impl = connection;
+
+    aws_mqtt_cache_socket_write_time(connection);
 
     return connection;
 
@@ -1486,9 +1487,6 @@ int aws_mqtt_client_connection_connect(
         connection->ping_timeout_ns = aws_timestamp_convert(
             (uint64_t)connection_options->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
-
-    /* Reset the last outbound socket write time since this will be a new connection */
-    connection->last_outbound_socket_write_time = 0;
 
     /* Keep alive time should always be greater than the timeouts. */
     if (AWS_UNLIKELY(connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->ping_timeout_ns)) {
