@@ -211,6 +211,11 @@ struct aws_mqtt_client_connection {
         uint64_t current_sec; /* seconds */
         uint64_t min_sec;     /* seconds */
         uint64_t max_sec;     /* seconds */
+
+        /*
+         * Invariant: this is always zero except when the current MQTT channel has received a successful connack
+         * and is not yet shutdown.  During that interval, it is the timestamp the connack was received.
+         */
         uint64_t channel_successful_connack_timestamp_ns;
     } reconnect_timeouts;
 
