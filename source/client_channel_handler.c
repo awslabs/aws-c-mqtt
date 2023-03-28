@@ -110,18 +110,7 @@ static int s_packet_handler_connack(
     uint64_t now = 0;
     aws_high_res_clock_get_ticks(&now);
 
-    /*
-     * Only reset the duration of the reconnect timer to min if this connect is happening past
-     * the previously set next_attempt_reset_timer value. The next reset value will be 10 seconds after the next
-     * connection attempt
-     */
-    if (connection->reconnect_timeouts.next_attempt_reset_timer_ns < now) {
-        connection->reconnect_timeouts.current_sec = connection->reconnect_timeouts.min_sec;
-    }
-    connection->reconnect_timeouts.next_attempt_reset_timer_ns =
-        now + 10000000000 +
-        aws_timestamp_convert(
-            connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    connection->reconnect_timeouts.channel_successful_connack_timestamp_ns = now;
 
     if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
         /* If successfully connected, schedule all pending tasks */

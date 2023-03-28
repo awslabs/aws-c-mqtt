@@ -222,6 +222,16 @@ static void s_mqtt_client_shutdown(
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
+
+    uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&now);
+    uint64_t time_diff = now - connection->reconnect_timeouts.channel_successful_connack_timestamp_ns;
+    if ((connection->reconnect_timeouts.channel_successful_connack_timestamp_ns != 0) &&
+        (time_diff >= aws_timestamp_convert(10, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL))) {
+        connection->reconnect_timeouts.current_sec = connection->reconnect_timeouts.min_sec;
+    }
+    connection->reconnect_timeouts.channel_successful_connack_timestamp_ns = 0;
+
     enum aws_mqtt_client_connection_state prev_state;
     struct aws_linked_list cancelling_requests;
     aws_linked_list_init(&cancelling_requests);
@@ -636,15 +646,6 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             connection->reconnect_timeouts.current_sec *= 2;
         }
 
-        /* Apply updated reconnect_timeout to next_attempt_reset_timer_ns to prevent premature reset to min
-         * of min reconnect on a successful connect after a prolonged period of failed connections */
-        uint64_t now = 0;
-        aws_high_res_clock_get_ticks(&now);
-        connection->reconnect_timeouts.next_attempt_reset_timer_ns =
-            now + 10000000000 +
-            aws_timestamp_convert(
-                connection->reconnect_timeouts.current_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-
         mqtt_connection_unlock_synced_data(connection);
 
         if (s_mqtt_client_connect(
@@ -807,6 +808,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     AWS_ZERO_STRUCT(connection->synced_data);
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min_sec = 1;
+    connection->reconnect_timeouts.current_sec = 1;
     connection->reconnect_timeouts.max_sec = 128;
     aws_linked_list_init(&connection->synced_data.pending_requests_list);
     aws_linked_list_init(&connection->thread_data.ongoing_requests_list);
@@ -1060,6 +1062,7 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
         max_timeout);
     connection->reconnect_timeouts.min_sec = min_timeout;
     connection->reconnect_timeouts.max_sec = max_timeout;
+    connection->reconnect_timeouts.current_sec = min_timeout;
 
     return AWS_OP_SUCCESS;
 }
@@ -1683,7 +1686,6 @@ int aws_mqtt_client_connection_disconnect(
             (void *)connection);
         connection->on_disconnect = on_disconnect;
         connection->on_disconnect_ud = userdata;
-        connection->reconnect_timeouts.next_attempt_reset_timer_ns = 0;
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
