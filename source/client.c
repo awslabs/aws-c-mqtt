@@ -208,6 +208,8 @@ void aws_mqtt_client_release(struct aws_mqtt_client *client) {
     }
 }
 
+#define AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS 10
+
 /* At this point, the channel for the MQTT connection has completed its shutdown */
 static void s_mqtt_client_shutdown(
     struct aws_client_bootstrap *bootstrap,
@@ -223,11 +225,18 @@ static void s_mqtt_client_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
 
+    /*
+     * On a channel that represents a valid connection (successful connack received),
+     * channel_successful_connack_timestamp_ns will be the time the connack was received.  Otherwise it will be zero.
+     *
+     * Use that fact to determine whether or not we should reset the current reconnect backoff delay.
+     */
     uint64_t now = 0;
     aws_high_res_clock_get_ticks(&now);
     uint64_t time_diff = now - connection->reconnect_timeouts.channel_successful_connack_timestamp_ns;
     if ((connection->reconnect_timeouts.channel_successful_connack_timestamp_ns != 0) &&
-        (time_diff >= aws_timestamp_convert(10, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL))) {
+        (time_diff >= aws_timestamp_convert(
+                          AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL))) {
         connection->reconnect_timeouts.current_sec = connection->reconnect_timeouts.min_sec;
     }
     connection->reconnect_timeouts.channel_successful_connack_timestamp_ns = 0;

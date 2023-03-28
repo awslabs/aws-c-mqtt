@@ -110,9 +110,14 @@ static int s_packet_handler_connack(
     uint64_t now = 0;
     aws_high_res_clock_get_ticks(&now);
 
-    connection->reconnect_timeouts.channel_successful_connack_timestamp_ns = now;
-
     if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
+
+        /*
+         * This was a successful MQTT connection establishment, record the time so that channel shutdown
+         * can make a good decision about reconnect backoff reset.
+         */
+        connection->reconnect_timeouts.channel_successful_connack_timestamp_ns = now;
+
         /* If successfully connected, schedule all pending tasks */
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted processing offline requests.", (void *)connection);
