@@ -28,6 +28,9 @@ static const int TEST_LOG_SUBJECT = 60000;
 static const int ONE_SEC = 1000000000;
 // The value is extract from aws-c-mqtt/source/client.c
 static const int AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS = 10;
+#define RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_SECONDS 0.5
+#define DEFAULT_MIN_RECONNECT_DELAY_SECONDS 1
+#define DEFAULT_MAX_RECONNECT_DELAY_SECONDS 10
 
 #define DEFAULT_TEST_PING_TIMEOUT_MS 1000
 #define DEFAULT_TEST_KEEP_ALIVE_S 2
@@ -53,7 +56,7 @@ struct mqtt_connection_state_test {
     struct aws_mqtt_client *mqtt_client;
     struct aws_mqtt_client_connection *mqtt_connection;
     struct aws_socket_options socket_options;
-    struct aws_logger test_logger;
+
     bool session_present;
     bool connection_completed;
     bool client_disconnect_completed;
@@ -222,18 +225,8 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
 
     AWS_ZERO_STRUCT(*state_test_data);
 
-
-    struct aws_logger_standard_options logger_options = {
-        .level = AWS_LL_TRACE,
-        .filename = "mqtt_connection.log",
-    };
-
     state_test_data->allocator = allocator;
     state_test_data->el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-
-    aws_logger_init_standard(&state_test_data->test_logger, state_test_data->allocator, &logger_options);
-    aws_logger_set(&state_test_data->test_logger);
-
 
     state_test_data->mock_server = new_mqtt_mock_server(allocator);
     ASSERT_NOT_NULL(state_test_data->mock_server);
@@ -337,11 +330,9 @@ static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_
         aws_server_bootstrap_release(state_test_data->server_bootstrap);
         aws_event_loop_group_release(state_test_data->el_group);
         destroy_mqtt_mock_server(state_test_data->mock_server);
-        aws_logger_clean_up(&state_test_data->test_logger);
     }
 
     aws_mqtt_library_clean_up();
-
     return AWS_OP_SUCCESS;
 }
 
@@ -2945,8 +2936,7 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-
-static int s_test_mqtt_connection_stable_reconnection(struct aws_allocator *allocator, void *ctx) {
+static int s_test_mqtt_connection_reconnection_backoff_stable(struct aws_allocator *allocator, void *ctx) {
 
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
@@ -2980,8 +2970,10 @@ static int s_test_mqtt_connection_stable_reconnection(struct aws_allocator *allo
         aws_high_res_clock_get_ticks(&time_after);
 
         uint64_t reconnection_backoff_time = time_after - time_before;
-        ASSERT_TRUE(aws_timestamp_convert(reconnection_backoff_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL) == 1);
-        fprintf(stderr, "\n RECONNECT DELTA %i: %llu \n", i, reconnection_backoff_time );
+        uint64_t remainder = 0;
+        ASSERT_TRUE(
+            aws_timestamp_convert(reconnection_backoff_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, &remainder) == 1);
+        ASSERT_TRUE(remainder <= RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_SECONDS * AWS_TIMESTAMP_NANOS);
     }
 
     /* Disconnect */
@@ -2993,15 +2985,13 @@ static int s_test_mqtt_connection_stable_reconnection(struct aws_allocator *allo
 }
 
 AWS_TEST_CASE_FIXTURE(
-    mqtt_connection_stable_reconnection,
+    mqtt_connection_reconnection_backoff_stable,
     s_setup_mqtt_server_fn,
-    s_test_mqtt_connection_stable_reconnection,
+    s_test_mqtt_connection_reconnection_backoff_stable,
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-
-
-static int s_test_mqtt_connection_unstable_reconnection(struct aws_allocator *allocator, void *ctx) {
+static int s_test_mqtt_connection_reconnection_backoff_unstable(struct aws_allocator *allocator, void *ctx) {
 
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
@@ -3033,13 +3023,15 @@ static int s_test_mqtt_connection_unstable_reconnection(struct aws_allocator *al
         aws_high_res_clock_get_ticks(&time_after);
 
         uint64_t reconnection_backoff = time_after - time_before;
+        uint64_t remainder = 0;
         ASSERT_TRUE(
-            aws_timestamp_convert(reconnection_backoff, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL) ==
+            aws_timestamp_convert(reconnection_backoff, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, &remainder) ==
             expected_reconnect_backoff);
+        ASSERT_TRUE(remainder <= RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_SECONDS * AWS_TIMESTAMP_NANOS);
 
-        expected_reconnect_backoff = aws_min_u64(expected_reconnect_backoff*2, 10);
+        // Increase the exponential backoff
+        expected_reconnect_backoff = aws_min_u64(expected_reconnect_backoff * 2, 10);
         state_test_data->connection_resumed = false;
-
     }
 
     /* Disconnect */
@@ -3051,14 +3043,13 @@ static int s_test_mqtt_connection_unstable_reconnection(struct aws_allocator *al
 }
 
 AWS_TEST_CASE_FIXTURE(
-    mqtt_connection_unstable_reconnection,
+    mqtt_connection_reconnection_backoff_unstable,
     s_setup_mqtt_server_fn,
-    s_test_mqtt_connection_unstable_reconnection,
+    s_test_mqtt_connection_reconnection_backoff_unstable,
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-
-static int s_mqtt_connection_reconnection_backoff_reset(struct aws_allocator *allocator, void *ctx) {
+static int s_test_mqtt_connection_reconnection_backoff_reset(struct aws_allocator *allocator, void *ctx) {
 
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
@@ -3088,12 +3079,10 @@ static int s_mqtt_connection_reconnection_backoff_reset(struct aws_allocator *al
 
         aws_high_res_clock_get_ticks(&time_after);
         state_test_data->connection_resumed = false;
-
     }
 
     uint64_t reconnection_backoff = time_after - time_before;
-    ASSERT_TRUE(
-    aws_timestamp_convert(reconnection_backoff, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL) > 4);
+    ASSERT_TRUE(aws_timestamp_convert(reconnection_backoff, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL) >= 4);
 
     /* sleep for AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS to make sure our connection is successful */
     aws_thread_current_sleep((uint64_t)ONE_SEC * AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS);
@@ -3106,8 +3095,9 @@ static int s_mqtt_connection_reconnection_backoff_reset(struct aws_allocator *al
 
     aws_high_res_clock_get_ticks(&time_after);
     reconnection_backoff = time_after - time_before;
-    ASSERT_TRUE(
-        aws_timestamp_convert(reconnection_backoff, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL) == 1);
+    uint64_t remainder = 0;
+    ASSERT_TRUE(aws_timestamp_convert(reconnection_backoff, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, &remainder) == 1);
+    ASSERT_TRUE(remainder <= RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_SECONDS * AWS_TIMESTAMP_NANOS);
 
     /* Disconnect */
     ASSERT_SUCCESS(
@@ -3120,6 +3110,83 @@ static int s_mqtt_connection_reconnection_backoff_reset(struct aws_allocator *al
 AWS_TEST_CASE_FIXTURE(
     mqtt_connection_reconnection_backoff_reset,
     s_setup_mqtt_server_fn,
-    s_mqtt_connection_reconnection_backoff_reset,
+    s_test_mqtt_connection_reconnection_backoff_reset,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+static int s_test_mqtt_connection_reconnection_backoff_reset_after_disconnection(
+    struct aws_allocator *allocator,
+    void *ctx) {
+
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    uint64_t time_before = 0;
+    uint64_t time_after = 0;
+    for (int i = 0; i < 3; i++) {
+
+        aws_high_res_clock_get_ticks(&time_before);
+
+        /* shut it down and make sure the client automatically reconnects.*/
+        aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
+        s_wait_for_reconnect_to_complete(state_test_data);
+
+        aws_high_res_clock_get_ticks(&time_after);
+        state_test_data->connection_resumed = false;
+    }
+
+    uint64_t reconnection_backoff = time_after - time_before;
+    ASSERT_TRUE(aws_timestamp_convert(reconnection_backoff, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL) >= 4);
+
+    /* Disconnect */
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    /* reset connect flag */
+    state_test_data->connection_completed = false;
+
+    /* connect back to the session */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    aws_high_res_clock_get_ticks(&time_before);
+
+    /* shut it down and make sure the client automatically reconnects.*/
+    aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
+    s_wait_for_reconnect_to_complete(state_test_data);
+
+    aws_high_res_clock_get_ticks(&time_after);
+    reconnection_backoff = time_after - time_before;
+    uint64_t remainder = 0;
+    ASSERT_TRUE(aws_timestamp_convert(reconnection_backoff, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, &remainder) == 1);
+    ASSERT_TRUE(remainder <= RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_SECONDS * AWS_TIMESTAMP_NANOS);
+
+    /* Disconnect */
+    /* Reset disconnect flag */
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_reconnection_backoff_reset_after_disconnection,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_reconnection_backoff_reset_after_disconnection,
     s_clean_up_mqtt_server_fn,
     &test_data)
