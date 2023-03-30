@@ -225,28 +225,40 @@ static void s_mqtt_client_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
 
-    /*
-     * On a channel that represents a valid connection (successful connack received),
-     * channel_successful_connack_timestamp_ns will be the time the connack was received.  Otherwise it will be zero.
-     *
-     * Use that fact to determine whether or not we should reset the current reconnect backoff delay.
-     */
-    uint64_t now = 0;
-    aws_high_res_clock_get_ticks(&now);
-    uint64_t time_diff = now - connection->reconnect_timeouts.channel_successful_connack_timestamp_ns;
-    if ((connection->reconnect_timeouts.channel_successful_connack_timestamp_ns != 0) &&
-        (time_diff >= aws_timestamp_convert(
-                          AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL))) {
-        connection->reconnect_timeouts.current_sec = connection->reconnect_timeouts.min_sec;
-    }
-    connection->reconnect_timeouts.channel_successful_connack_timestamp_ns = 0;
-
     enum aws_mqtt_client_connection_state prev_state;
     struct aws_linked_list cancelling_requests;
     aws_linked_list_init(&cancelling_requests);
     bool disconnected_state = false;
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
+
+        /*
+         * On a channel that represents a valid connection (successful connack received),
+         * channel_successful_connack_timestamp_ns will be the time the connack was received.  Otherwise it will be
+         * zero.
+         *
+         * Use that fact to determine whether or not we should reset the current reconnect backoff delay.
+         *
+         * We reset the reconnect backoff if either of:
+         *   1) the user called disconnect()
+         *   2) a successful connection had lasted longer than our minimum reset time (10s at the moment)
+         */
+        uint64_t now = 0;
+        aws_high_res_clock_get_ticks(&now);
+        uint64_t time_diff = now - connection->reconnect_timeouts.channel_successful_connack_timestamp_ns;
+
+        bool was_user_disconnect = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING;
+        bool was_sufficiently_long_connection =
+            (connection->reconnect_timeouts.channel_successful_connack_timestamp_ns != 0) &&
+            (time_diff >=
+             aws_timestamp_convert(
+                 AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+
+        if (was_user_disconnect || was_sufficiently_long_connection) {
+            connection->reconnect_timeouts.current_sec = connection->reconnect_timeouts.min_sec;
+        }
+        connection->reconnect_timeouts.channel_successful_connack_timestamp_ns = 0;
+
         /* Move all the ongoing requests to the pending requests list, because the response they are waiting for will
          * never arrives. Sad. But, we will retry. */
         if (connection->clean_session) {
