@@ -3031,7 +3031,6 @@ static int s_test_mqtt_connection_reconnection_backoff_unstable(struct aws_alloc
 
         // Increase the exponential backoff
         expected_reconnect_backoff = aws_min_u64(expected_reconnect_backoff * 2, 10);
-        state_test_data->connection_resumed = false;
     }
 
     /* Disconnect */
