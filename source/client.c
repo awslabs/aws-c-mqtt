@@ -654,18 +654,18 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
 
         mqtt_connection_lock_synced_data(connection);
 
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
-            (void *)connection,
-            connection->reconnect_timeouts.current_sec);
-
         /* Check before multiplying to avoid potential overflow */
         if (connection->reconnect_timeouts.current_sec > connection->reconnect_timeouts.max_sec / 2) {
             connection->reconnect_timeouts.current_sec = connection->reconnect_timeouts.max_sec;
         } else {
             connection->reconnect_timeouts.current_sec *= 2;
         }
+
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
+            (void *)connection,
+            connection->reconnect_timeouts.current_sec);
 
         mqtt_connection_unlock_synced_data(connection);
 
