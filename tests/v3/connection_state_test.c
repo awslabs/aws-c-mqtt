@@ -2958,7 +2958,9 @@ static int s_test_mqtt_connection_reconnection_backoff_stable(struct aws_allocat
     uint64_t time_after = 0;
     for (int i = 0; i < 3; i++) {
         /* sleep for AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS to make sure our connection is successful */
-        aws_thread_current_sleep((uint64_t)ONE_SEC * AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS);
+        aws_thread_current_sleep(
+            (uint64_t)ONE_SEC * AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS +
+            RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_NANO_SECONDS);
 
         aws_high_res_clock_get_ticks(&time_before);
 
@@ -3088,7 +3090,9 @@ static int s_test_mqtt_connection_reconnection_backoff_reset(struct aws_allocato
     }
 
     /* sleep for AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS to make sure our connection is successful */
-    aws_thread_current_sleep((uint64_t)ONE_SEC * AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS);
+    aws_thread_current_sleep(
+        (uint64_t)ONE_SEC * AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS +
+        RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_NANO_SECONDS);
 
     aws_high_res_clock_get_ticks(&time_before);
 
