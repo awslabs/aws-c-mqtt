@@ -888,6 +888,10 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
 
     connection->loop = aws_event_loop_group_get_next_loop(client->bootstrap->event_loop_group);
 
+    aws_host_resolver_init_default_resolution_config(&connection->host_resolution_config);
+    connection->host_resolution_config.resolve_frequency_ns =
+        aws_timestamp_convert(connection->reconnect_timeouts.max_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
     /* Initialize the handler */
     connection->handler.alloc = connection->allocator;
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
@@ -1193,6 +1197,15 @@ int aws_mqtt_client_connection_set_http_proxy_options(
         aws_http_proxy_config_new_tunneling_from_proxy_options(connection->allocator, proxy_options);
 
     return connection->http_proxy_config != NULL ? AWS_OP_SUCCESS : AWS_OP_ERR;
+}
+
+int aws_mqtt_client_connection_set_host_resolution_options(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_host_resolution_config *host_resolution_config) {
+
+    connection->host_resolution_config = *host_resolution_config;
+
+    return AWS_OP_SUCCESS;
 }
 
 static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {

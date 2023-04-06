@@ -939,7 +939,7 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
             .on_connection_setup = s_on_websocket_setup,
             .on_connection_shutdown = s_on_websocket_shutdown,
             .requested_event_loop = client->loop,
-        };
+            .host_resolution_config = &client->config->host_resolution_override};
 
         if (client->config->http_proxy_config != NULL) {
             websocket_options.proxy_options = &client->config->http_proxy_options;
