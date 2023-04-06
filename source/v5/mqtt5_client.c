@@ -1055,6 +1055,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
         channel_options.shutdown_callback = &s_mqtt5_client_shutdown;
         channel_options.user_data = client;
         channel_options.requested_event_loop = client->loop;
+        channel_options.host_resolution_override_config = &client->config->host_resolution_override;
 
         if (client->config->http_proxy_config == NULL) {
             result = (*client->vtable->client_bootstrap_new_socket_channel_fn)(&channel_options);

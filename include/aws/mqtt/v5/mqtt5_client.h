@@ -21,8 +21,8 @@
 
 struct aws_allocator;
 struct aws_client_bootstrap;
+struct aws_host_resolution_config;
 struct aws_http_message;
-struct aws_input_stream;
 struct aws_mqtt5_client;
 struct aws_mqtt5_client_lifecycle_event;
 struct aws_tls_connection_options;
@@ -655,6 +655,12 @@ struct aws_mqtt5_client_options {
      */
     aws_mqtt5_client_termination_completion_fn *client_termination_handler;
     void *client_termination_handler_user_data;
+
+    /**
+     * Options to override aspects of DNS resolution.  If unspecified, use a default that matches the regular
+     * configuration but changes the refresh frequency to a value that prevents DNS pinging.
+     */
+    struct aws_host_resolution_config *host_resolution_override;
 };
 
 AWS_EXTERN_C_BEGIN

@@ -12,6 +12,7 @@
 #include <aws/common/logging.h>
 #include <aws/common/ref_count.h>
 #include <aws/http/proxy.h>
+#include <aws/io/host_resolver.h>
 #include <aws/io/retry_strategy.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
@@ -176,6 +177,8 @@ struct aws_mqtt5_client_options_storage {
 
     aws_mqtt5_client_termination_completion_fn *client_termination_handler;
     void *client_termination_handler_user_data;
+
+    struct aws_host_resolution_config host_resolution_override;
 };
 
 AWS_EXTERN_C_BEGIN
