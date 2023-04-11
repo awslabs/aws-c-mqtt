@@ -1359,6 +1359,7 @@ static void s_websocket_handshake_transform_complete(
         .on_connection_setup = s_on_websocket_setup,
         .on_connection_shutdown = s_on_websocket_shutdown,
         .requested_event_loop = connection->loop,
+        .host_resolution_config = &connection->host_resolution_config,
     };
 
     struct aws_http_proxy_options proxy_options;
@@ -1648,6 +1649,7 @@ static int s_mqtt_client_connect(
         channel_options.shutdown_callback = &s_mqtt_client_shutdown;
         channel_options.user_data = connection;
         channel_options.requested_event_loop = connection->loop;
+        channel_options.host_resolution_override_config = &connection->host_resolution_config;
 
         if (connection->http_proxy_config == NULL) {
             result = aws_client_bootstrap_new_socket_channel(&channel_options);
