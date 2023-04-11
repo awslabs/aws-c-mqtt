@@ -3956,6 +3956,15 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
 
     s_apply_zero_valued_defaults_to_client_options_storage(options_storage);
 
+    /* must do this after zero-valued defaults are applied so that max reconnect is accurate */
+    if (options->host_resolution_override) {
+        options_storage->host_resolution_override = *options->host_resolution_override;
+    } else {
+        options_storage->host_resolution_override = aws_host_resolver_init_default_resolution_config();
+        options_storage->host_resolution_override.resolve_frequency_ns = aws_timestamp_convert(
+            options_storage->max_reconnect_delay_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    }
+
     return options_storage;
 
 error:
