@@ -888,7 +888,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
 
     connection->loop = aws_event_loop_group_get_next_loop(client->bootstrap->event_loop_group);
 
-    aws_host_resolver_init_default_resolution_config(&connection->host_resolution_config);
+    connection->host_resolution_config = aws_host_resolver_init_default_resolution_config();
     connection->host_resolution_config.resolve_frequency_ns =
         aws_timestamp_convert(connection->reconnect_timeouts.max_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 

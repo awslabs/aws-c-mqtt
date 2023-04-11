@@ -3960,7 +3960,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     if (options->host_resolution_override) {
         options_storage->host_resolution_override = *options->host_resolution_override;
     } else {
-        aws_host_resolver_init_default_resolution_config(&options_storage->host_resolution_override);
+        options_storage->host_resolution_override = aws_host_resolver_init_default_resolution_config();
         options_storage->host_resolution_override.resolve_frequency_ns = aws_timestamp_convert(
             options_storage->max_reconnect_delay_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
