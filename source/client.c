@@ -173,12 +173,11 @@ static void s_init_statistics(struct aws_mqtt_connection_operation_statistics_im
     aws_atomic_store_int(&stats->unacked_operation_size_atomic, 0);
 }
 
-static bool s_is_topic_shared_topic(struct aws_string *input) {
-    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_string(input);
+static bool s_is_topic_shared_topic(struct aws_byte_cursor *input) {
     struct aws_byte_cursor split_part;
     AWS_ZERO_STRUCT(split_part);
-    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part)) {
-        if (aws_byte_cursor_eq_c_str(&input_cursor, "$share")) {
+    if (aws_byte_cursor_next_split(input, '/', &split_part)) {
+        if (aws_byte_cursor_eq_c_str(input, "$share")) {
             return true;
         }
     }
@@ -1875,7 +1874,8 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
 
         if (!task_arg->tree_updated) {
 
-            if (s_is_topic_shared_topic(topic->filter)) {
+            struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_string(topic->filter);
+            if (s_is_topic_shared_topic(&filter_cursor)) {
                 struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
                 if (normal_topic == NULL) {
                     goto handle_error;
@@ -2292,7 +2292,8 @@ static enum aws_mqtt_client_request_state s_subscribe_local_send(
 
     struct subscribe_task_topic *topic = task_arg->task_topic;
 
-    if (s_is_topic_shared_topic(topic->filter)) {
+    struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_string(topic->filter);
+    if (s_is_topic_shared_topic(filter_cursor)) {
         struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
         if (normal_topic == NULL) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
@@ -2723,12 +2724,24 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
         struct subscribe_task_topic *topic;
 
         if (s_is_topic_shared_topic(&task_arg->filter)) {
-            struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(&task_arg->filter);
+            struct aws_string *shared_topic =
+                aws_string_new_from_cursor(task_arg->connection->allocator, &task_arg->filter);
+            struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(shared_topic);
+            if (normal_topic == NULL) {
+                aws_string_destroy(shared_topic);
+                goto handle_error;
+            }
+            struct aws_byte_cursor normal_topic_cursor = aws_byte_cursor_from_string(normal_topic);
             if (aws_mqtt_topic_tree_transaction_remove(
-                    &task_arg->connection->thread_data.subscriptions, &transaction, normal_topic, (void **)&topic)) {
+                    &task_arg->connection->thread_data.subscriptions,
+                    &transaction,
+                    &normal_topic_cursor,
+                    (void **)&topic)) {
+                aws_string_destroy(shared_topic);
                 aws_string_destroy(normal_topic);
                 goto handle_error;
             }
+            aws_string_destroy(shared_topic);
             aws_string_destroy(normal_topic);
         } else {
             if (aws_mqtt_topic_tree_transaction_remove(
