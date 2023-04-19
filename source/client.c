@@ -2293,7 +2293,7 @@ static enum aws_mqtt_client_request_state s_subscribe_local_send(
     struct subscribe_task_topic *topic = task_arg->task_topic;
 
     struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_string(topic->filter);
-    if (s_is_topic_shared_topic(filter_cursor)) {
+    if (s_is_topic_shared_topic(&filter_cursor)) {
         struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
         if (normal_topic == NULL) {
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
