@@ -174,12 +174,9 @@ static void s_init_statistics(struct aws_mqtt_connection_operation_statistics_im
 }
 
 static bool s_is_topic_shared_topic(struct aws_byte_cursor *input) {
-    struct aws_byte_cursor split_part;
-    AWS_ZERO_STRUCT(split_part);
-    if (aws_byte_cursor_next_split(input, '/', &split_part)) {
-        if (aws_byte_cursor_eq_c_str(input, "$share")) {
-            return true;
-        }
+    char *input_str = (char *)input->ptr;
+    if (strncmp("$share/", input_str, strlen("$share/")) == 0) {
+        return true;
     }
     return false;
 }
@@ -188,46 +185,23 @@ static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string
     struct aws_byte_cursor input_cursor = aws_byte_cursor_from_string(input);
     struct aws_byte_cursor split_part;
     AWS_ZERO_STRUCT(split_part);
-    bool add_dash = false;
-    struct aws_byte_cursor byte_cursor_slash = aws_byte_cursor_from_c_str("/");
-
-    struct aws_byte_buf result_buf;
-    AWS_ZERO_STRUCT(result_buf);
-    // We have no idea how long this might be, so we'll just append as we go
-    aws_byte_buf_init(&result_buf, input->allocator, 0);
 
     // The format of a valid shared subscription is ALWAYS going to be: "$share/<group identifier>/<topic>"
     // and therefore we must skip the first two '/' results
-    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) // "$share"
-    {
-        goto on_error;
+    // // First call always return the whole string...
+    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
+        return NULL;
     }
-    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) // "<group identifier>"
-    {
-        goto on_error;
+    // gets rid of "$share"
+    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
+        return NULL;
     }
-
-    // Make the topic from the next split(s)
-    while (aws_byte_cursor_next_split(&input_cursor, '/', &split_part)) {
-        if (add_dash) {
-            aws_byte_buf_append_dynamic(&result_buf, &byte_cursor_slash);
-        }
-        aws_byte_buf_append_dynamic(&result_buf, &split_part);
-        add_dash = true;
+    // gets rid of "<group identifier>"
+    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
+        return NULL;
     }
-
-    // Make sure we got something and if we do not, then return NULL
-    if (result_buf.len <= 0) {
-        goto on_error;
-    }
-
-    struct aws_string *result_string = aws_string_new_from_buf(input->allocator, &result_buf);
-    aws_byte_buf_clean_up(&result_buf);
+    struct aws_string *result_string = aws_string_new_from_c_str(input->allocator, (char *)split_part.ptr);
     return result_string;
-
-on_error:
-    aws_byte_buf_clean_up(&result_buf);
-    return NULL;
 }
 
 /*******************************************************************************
