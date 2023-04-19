@@ -173,6 +173,64 @@ static void s_init_statistics(struct aws_mqtt_connection_operation_statistics_im
     aws_atomic_store_int(&stats->unacked_operation_size_atomic, 0);
 }
 
+static bool s_is_topic_shared_topic(struct aws_string *input) {
+    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_string(input);
+    struct aws_byte_cursor split_part;
+    AWS_ZERO_STRUCT(split_part);
+    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part)) {
+        if (aws_byte_cursor_eq_c_str(&input_cursor, "$share")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string *input) {
+    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_string(input);
+    struct aws_byte_cursor split_part;
+    AWS_ZERO_STRUCT(split_part);
+    bool add_dash = false;
+    struct aws_byte_cursor byte_cursor_slash = aws_byte_cursor_from_c_str("/");
+
+    struct aws_byte_buf result_buf;
+    AWS_ZERO_STRUCT(result_buf);
+    // We have no idea how long this might be, so we'll just append as we go
+    aws_byte_buf_init(&result_buf, input->allocator, 0);
+
+    // The format of a valid shared subscription is ALWAYS going to be: "$share/<group identifier>/<topic>"
+    // and therefore we must skip the first two '/' results
+    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) // "$share"
+    {
+        goto on_error;
+    }
+    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) // "<group identifier>"
+    {
+        goto on_error;
+    }
+
+    // Make the topic from the next split(s)
+    while (aws_byte_cursor_next_split(&input_cursor, '/', &split_part)) {
+        if (add_dash) {
+            aws_byte_buf_append_dynamic(&result_buf, &byte_cursor_slash);
+        }
+        aws_byte_buf_append_dynamic(&result_buf, &split_part);
+        add_dash = true;
+    }
+
+    // Make sure we got something and if we do not, then return NULL
+    if (result_buf.len <= 0) {
+        goto on_error;
+    }
+
+    struct aws_string *result_string = aws_string_new_from_buf(input->allocator, &result_buf);
+    aws_byte_buf_clean_up(&result_buf);
+    return result_string;
+
+on_error:
+    aws_byte_buf_clean_up(&result_buf);
+    return NULL;
+}
+
 /*******************************************************************************
  * Client Init
  ******************************************************************************/
@@ -1816,16 +1874,35 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
         }
 
         if (!task_arg->tree_updated) {
-            if (aws_mqtt_topic_tree_transaction_insert(
-                    &task_arg->connection->thread_data.subscriptions,
-                    &transaction,
-                    topic->filter,
-                    topic->request.qos,
-                    s_on_publish_client_wrapper,
-                    s_task_topic_release,
-                    topic)) {
 
-                goto handle_error;
+            if (s_is_topic_shared_topic(topic->filter)) {
+                struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
+                if (normal_topic == NULL) {
+                    goto handle_error;
+                }
+                if (aws_mqtt_topic_tree_transaction_insert(
+                        &task_arg->connection->thread_data.subscriptions,
+                        &transaction,
+                        normal_topic,
+                        topic->request.qos,
+                        s_on_publish_client_wrapper,
+                        s_task_topic_release,
+                        topic)) {
+                    aws_string_destroy(normal_topic);
+                    goto handle_error;
+                }
+                aws_string_destroy(normal_topic);
+            } else {
+                if (aws_mqtt_topic_tree_transaction_insert(
+                        &task_arg->connection->thread_data.subscriptions,
+                        &transaction,
+                        topic->filter,
+                        topic->request.qos,
+                        s_on_publish_client_wrapper,
+                        s_task_topic_release,
+                        topic)) {
+                    goto handle_error;
+                }
             }
             /* If insert succeed, acquire the refcount */
             aws_ref_count_acquire(&topic->ref_count);
@@ -2214,15 +2291,33 @@ static enum aws_mqtt_client_request_state s_subscribe_local_send(
         is_first_attempt ? "first attempt" : "redo");
 
     struct subscribe_task_topic *topic = task_arg->task_topic;
-    if (aws_mqtt_topic_tree_insert(
-            &task_arg->connection->thread_data.subscriptions,
-            topic->filter,
-            topic->request.qos,
-            s_on_publish_client_wrapper,
-            s_task_topic_release,
-            topic)) {
 
-        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+    if (s_is_topic_shared_topic(topic->filter)) {
+        struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
+        if (normal_topic == NULL) {
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+        if (aws_mqtt_topic_tree_insert(
+                &task_arg->connection->thread_data.subscriptions,
+                normal_topic,
+                topic->request.qos,
+                s_on_publish_client_wrapper,
+                s_task_topic_release,
+                topic)) {
+            aws_string_destroy(normal_topic);
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+        aws_string_destroy(normal_topic);
+    } else {
+        if (aws_mqtt_topic_tree_insert(
+                &task_arg->connection->thread_data.subscriptions,
+                topic->filter,
+                topic->request.qos,
+                s_on_publish_client_wrapper,
+                s_task_topic_release,
+                topic)) {
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
     }
     aws_ref_count_acquire(&topic->ref_count);
 
@@ -2626,9 +2721,23 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     if (!task_arg->tree_updated) {
 
         struct subscribe_task_topic *topic;
-        if (aws_mqtt_topic_tree_transaction_remove(
-                &task_arg->connection->thread_data.subscriptions, &transaction, &task_arg->filter, (void **)&topic)) {
-            goto handle_error;
+
+        if (s_is_topic_shared_topic(&task_arg->filter)) {
+            struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(&task_arg->filter);
+            if (aws_mqtt_topic_tree_transaction_remove(
+                    &task_arg->connection->thread_data.subscriptions, &transaction, normal_topic, (void **)&topic)) {
+                aws_string_destroy(normal_topic);
+                goto handle_error;
+            }
+            aws_string_destroy(normal_topic);
+        } else {
+            if (aws_mqtt_topic_tree_transaction_remove(
+                    &task_arg->connection->thread_data.subscriptions,
+                    &transaction,
+                    &task_arg->filter,
+                    (void **)&topic)) {
+                goto handle_error;
+            }
         }
 
         task_arg->is_local = topic ? topic->is_local : false;
