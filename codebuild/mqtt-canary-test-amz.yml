@@ -19,15 +19,22 @@ env:
 phases:
   install:
     commands:
-      # install cmake for codebuild environment.
+      # install c++ dev libraries for codebuild environment.
       - sudo yum update -y
       - sudo yum groupinstall "Development Tools" -y
-      - sudo yum install cmake -y
       # Install necessary lib for canary wrapper
       - sudo yum install gcc python3-dev -y
       - sudo yum install pip -y
       - python3 -m pip install psutil
       - python3 -m pip install boto3
+      # Install Cmake3
+      - wget https://cmake.org/files/v3.18/cmake-3.18.0.tar.gz
+      - tar -xvzf cmake-3.18.0.tar.gz
+      - cd cmake-3.18.0
+      - ./bootstrap
+      - make
+      - sudo make install
+      - cd ..
 
   build:
     commands:
