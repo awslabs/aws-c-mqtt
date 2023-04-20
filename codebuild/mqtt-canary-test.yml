@@ -8,7 +8,7 @@ env:
     CANARY_CLIENT_COUNT: 10
     CANARY_LOG_FILE: 'canary_log.txt'
     CANARY_LOG_LEVEL: 'ERROR'
-    BUILDER_VERSION: v0.9.15
+    BUILDER_VERSION: v0.9.40
     BUILDER_SOURCE: releases
     BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
     PACKAGE_NAME: 'aws-c-mqtt'
@@ -19,16 +19,22 @@ env:
 phases:
   install:
     commands:
-      # install cmake for codebuild environment.
-      - apt-get install build-essential libssl-dev -y -f
-      - apt-get update -y
-      - apt-get install cmake -y -f
+      # install c++ dev libraries for codebuild environment.
+      - sudo yum update -y
+      - sudo yum groupinstall "Development Tools" -y
       # Install necessary lib for canary wrapper
-      - sudo apt-get install gcc python3-dev -y -f
-      - sudo apt-get install pip -y -f
+      - sudo yum install gcc python3-dev -y
+      - sudo yum install pip -y
       - python3 -m pip install psutil
       - python3 -m pip install boto3
-
+      # Install Cmake3
+      - wget https://cmake.org/files/v3.18/cmake-3.18.0.tar.gz
+      - tar -xvzf cmake-3.18.0.tar.gz
+      - cd cmake-3.18.0
+      - ./bootstrap
+      - make
+      - sudo make install
+      - cd ..
   build:
     commands:
       - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$CANARY_TEST_EXE_PATH
