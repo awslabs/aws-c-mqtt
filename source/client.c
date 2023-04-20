@@ -175,7 +175,7 @@ static void s_init_statistics(struct aws_mqtt_connection_operation_statistics_im
 
 static bool s_is_topic_shared_topic(struct aws_byte_cursor *input) {
     char *input_str = (char *)input->ptr;
-    if (strncmp("$share/", input_str, strlen("$share/")) == 0) {
+    if (strncmp("$share", input_str, strlen("$share")) == 0) {
         return true;
     }
     return false;
@@ -190,16 +190,33 @@ static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string
     // and therefore we must skip the first two '/' results
     // // First call always return the whole string...
     if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "Cannot parse shared subscription topic: There are no '/' in shared subscription topic filter");
         return NULL;
     }
     // gets rid of "$share"
     if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "Cannot parse shared subscription topic: There is no '$share/' in shared subscription topic filter");
         return NULL;
     }
     // gets rid of "<group identifier>"
     if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "Cannot parse shared subscription topic: There is no group identifier in shared subscription topic filter");
         return NULL;
     }
+    // Make sure there is something in <topic>, properly detecting "$share/<group identifier>/" as invalid
+    if (split_part.len <= 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "Cannot parse shared subscription topic: There is no topic in shared subscription topic filter");
+        return NULL;
+    }
+
     struct aws_string *result_string = aws_string_new_from_c_str(input->allocator, (char *)split_part.ptr);
     return result_string;
 }
@@ -1852,6 +1869,11 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
             if (s_is_topic_shared_topic(&filter_cursor)) {
                 struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
                 if (normal_topic == NULL) {
+                    AWS_LOGF_ERROR(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: Topic is shared subscription topic but topic could not be parsed from "
+                        "shared subscription topic.",
+                        (void *)task_arg->connection);
                     goto handle_error;
                 }
                 if (aws_mqtt_topic_tree_transaction_insert(
@@ -2270,6 +2292,11 @@ static enum aws_mqtt_client_request_state s_subscribe_local_send(
     if (s_is_topic_shared_topic(&filter_cursor)) {
         struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
         if (normal_topic == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Topic is shared subscription topic but topic could not be parsed from "
+                "shared subscription topic.",
+                (void *)task_arg->connection);
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
         if (aws_mqtt_topic_tree_insert(
@@ -2702,6 +2729,11 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
                 aws_string_new_from_cursor(task_arg->connection->allocator, &task_arg->filter);
             struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(shared_topic);
             if (normal_topic == NULL) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Topic is shared subscription topic but topic could not be parsed from "
+                    "shared subscription topic.",
+                    (void *)task_arg->connection);
                 aws_string_destroy(shared_topic);
                 goto handle_error;
             }
