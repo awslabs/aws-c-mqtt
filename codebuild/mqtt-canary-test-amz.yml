@@ -20,7 +20,7 @@ phases:
   install:
     commands:
       # install cmake for codebuild environment.
-      - sudo yum update
+      - sudo yum update -y
       - sudo yum groupinstall "Development Tools"
       - sudo yum install cmake -y
       # Install necessary lib for canary wrapper
