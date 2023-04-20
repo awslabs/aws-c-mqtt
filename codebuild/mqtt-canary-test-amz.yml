@@ -21,11 +21,11 @@ phases:
     commands:
       # install cmake for codebuild environment.
       - sudo yum update -y
-      - sudo yum groupinstall "Development Tools"
+      - sudo yum groupinstall "Development Tools" -y
       - sudo yum install cmake -y
       # Install necessary lib for canary wrapper
-      - sudo yum install gcc python3-dev -y -f
-      - sudo yum install pip -y -f
+      - sudo yum install gcc python3-dev -y
+      - sudo yum install pip -y
       - python3 -m pip install psutil
       - python3 -m pip install boto3
 
