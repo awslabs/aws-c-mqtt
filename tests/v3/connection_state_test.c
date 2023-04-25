@@ -27,8 +27,8 @@
 static const int TEST_LOG_SUBJECT = 60000;
 static const int ONE_SEC = 1000000000;
 static const int ONE_MILLISECOND = 1000000
-// The value is extract from aws-c-mqtt/source/client.c
-static const int AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS = 10;
+    // The value is extract from aws-c-mqtt/source/client.c
+    static const int AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS = 10;
 static const uint64_t RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_NANO_SECONDS = 500000000;
 #define DEFAULT_MIN_RECONNECT_DELAY_SECONDS 1
 
