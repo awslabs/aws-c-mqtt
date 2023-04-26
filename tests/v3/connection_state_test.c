@@ -26,6 +26,7 @@
 
 static const int TEST_LOG_SUBJECT = 60000;
 static const int ONE_SEC = 1000000000;
+static const int ONE_MILLISECOND = 1000000;
 // The value is extract from aws-c-mqtt/source/client.c
 static const int AWS_RESET_RECONNECT_BACKOFF_DELAY_SECONDS = 10;
 static const uint64_t RECONNECT_BACKOFF_DELAY_ERROR_MARGIN_NANO_SECONDS = 500000000;
@@ -243,6 +244,8 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_condition_variable_init(&state_test_data->cvar));
     ASSERT_SUCCESS(aws_mutex_init(&state_test_data->lock));
 
+    /* Sleep for one millisecond to insure timestamp doesn't repeat over tests */
+    aws_thread_current_sleep(ONE_MILLISECOND);
     uint64_t timestamp = 0;
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
 
