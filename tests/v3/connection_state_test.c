@@ -238,7 +238,8 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_condition_variable_init(&state_test_data->cvar));
     ASSERT_SUCCESS(aws_mutex_init(&state_test_data->lock));
 
-    struct aws_byte_buf endpoint_buf = aws_byte_buf_from_empty_array(state_test_data->endpoint.address, sizeof(state_test_data->endpoint.address));
+    struct aws_byte_buf endpoint_buf =
+        aws_byte_buf_from_empty_array(state_test_data->endpoint.address, sizeof(state_test_data->endpoint.address));
 #ifdef _WIN32
     AWS_FATAL_ASSERT(
         aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("\\\\.\\pipe\\testsock")));
