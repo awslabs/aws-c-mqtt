@@ -182,43 +182,29 @@ static bool s_is_topic_shared_topic(struct aws_byte_cursor *input) {
 }
 
 static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string *input) {
-    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_string(input);
-    struct aws_byte_cursor split_part;
-    AWS_ZERO_STRUCT(split_part);
-
-    // The format of a valid shared subscription is ALWAYS going to be: "$share/<group identifier>/<topic>"
-    // and therefore we must skip the first two '/' results
-    // // First call always return the whole string...
-    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "Cannot parse shared subscription topic: There are no '/' in shared subscription topic filter");
-        return NULL;
+    const char *input_char_str = aws_string_c_str(input);
+    int input_char_length = strlen(input_char_str);
+    int found_slashes = 0;
+    int split_position = 0;
+    while (split_position < input_char_length) {
+        split_position += 1;
+        if (input_char_str[split_position] == '/') {
+            found_slashes += 1;
+            if (found_slashes == 2) {
+                break;
+            }
+        }
     }
-    // gets rid of "$share"
-    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "Cannot parse shared subscription topic: There is no '$share/' in shared subscription topic filter");
-        return NULL;
+    // A properly formatted shared subscription topic will be "$share/<group id>/<topic>" and that means there needs
+    // to be 2 slashes at least. The loop above stops at 2, so if it is NOT 2 then the input was invalid
+    if (found_slashes == 2 && split_position + 1 <= input_char_length) {
+        char result_char[input_char_length - split_position];
+        strncpy(result_char, input_char_str + split_position + 1, input_char_length - split_position);
+        struct aws_string *result_string = aws_string_new_from_c_str(input->allocator, (const char *)&result_char);
+        return result_string;
     }
-    // gets rid of "<group identifier>"
-    if (aws_byte_cursor_next_split(&input_cursor, '/', &split_part) == false) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "Cannot parse shared subscription topic: There is no group identifier in shared subscription topic filter");
-        return NULL;
-    }
-    // Make sure there is something in <topic>, properly detecting "$share/<group identifier>/" as invalid
-    if (split_part.len <= 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "Cannot parse shared subscription topic: There is no topic in shared subscription topic filter");
-        return NULL;
-    }
-
-    struct aws_string *result_string = aws_string_new_from_c_str(input->allocator, (char *)split_part.ptr);
-    return result_string;
+    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Cannot parse shared subscription topic: Topic is not formatted correctly");
+    return NULL;
 }
 
 /*******************************************************************************
