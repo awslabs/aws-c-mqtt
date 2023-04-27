@@ -629,7 +629,7 @@ struct aws_mqtt5_client_options {
     /**
      * Controls how the client uses mqtt5 topic aliasing.  If NULL, zero-based defaults will be used.
      */
-    struct aws_mqtt5_client_topic_alias_options *topic_aliasing_options;
+    const struct aws_mqtt5_client_topic_alias_options *topic_aliasing_options;
 
     /**
      * Callback for received publish packets
