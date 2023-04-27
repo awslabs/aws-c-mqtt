@@ -192,6 +192,7 @@ struct aws_mqtt_client_connection {
     struct aws_socket_options socket_options;
     struct aws_http_proxy_config *http_proxy_config;
     struct aws_event_loop *loop;
+    struct aws_host_resolution_config host_resolution_config;
 
     /* Connect parameters */
     struct aws_byte_buf client_id;
