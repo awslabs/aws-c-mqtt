@@ -21,6 +21,18 @@
 #endif
 
 /*******************************************************************************
+ * Static Helper functions
+ ******************************************************************************/
+
+/* Caches the socket write time for ping scheduling purposes */
+static void s_update_next_ping_time(struct aws_mqtt_client_connection *connection) {
+    if (connection->slot != NULL && connection->slot->channel != NULL) {
+        aws_channel_current_clock_time(connection->slot->channel, &connection->next_ping_time);
+        aws_add_u64_checked(connection->next_ping_time, connection->keep_alive_time_ns, &connection->next_ping_time);
+    }
+}
+
+/*******************************************************************************
  * Packet State Machine
  ******************************************************************************/
 
@@ -42,18 +54,17 @@ static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
 
     uint64_t now = 0;
     aws_channel_current_clock_time(connection->slot->channel, &now);
-    AWS_LOGF_TRACE(
-        AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING. current timestamp is %" PRIu64, (void *)connection, now);
 
-    uint64_t schedule_time =
-        now + aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT, "id=%p: Scheduling PING task. current timestamp is %" PRIu64, (void *)connection, now);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
-        "id=%p: The next ping will be run at timestamp %" PRIu64,
+        "id=%p: The next PING task will be run at timestamp %" PRIu64,
         (void *)connection,
-        schedule_time);
-    aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, schedule_time);
+        connection->next_ping_time);
+
+    aws_channel_schedule_task_future(connection->slot->channel, &connection->ping_task, connection->next_ping_time);
 }
 
 static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
@@ -61,8 +72,24 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_mqtt_client_connection *connection = arg;
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
-        aws_mqtt_client_connection_ping(connection);
+
+        uint64_t now = 0;
+        aws_channel_current_clock_time(connection->slot->channel, &now);
+        if (now >= connection->next_ping_time) {
+            s_update_next_ping_time(connection);
+            AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Sending PING", (void *)connection);
+            aws_mqtt_client_connection_ping(connection);
+        } else {
+
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Skipped sending PING because scheduled ping time %" PRIu64
+                " has not elapsed yet. Current time is %" PRIu64
+                ". Rescheduling ping to run at the scheduled ping time...",
+                (void *)connection,
+                connection->next_ping_time,
+                now);
+        }
         s_schedule_ping(connection);
     }
 }
@@ -175,6 +202,7 @@ static int s_packet_handler_connack(
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection callback completed", (void *)connection);
 
+    s_update_next_ping_time(connection);
     s_schedule_ping(connection);
     return AWS_OP_SUCCESS;
 }
@@ -793,6 +821,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
+                /* Since a request has complete, update the next ping time */
+                s_update_next_ping_time(connection);
+
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
                 aws_memory_pool_release(&connection->synced_data.requests_pool, request);
@@ -813,6 +844,9 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 /* Set the request as incomplete and un-acked in the operation statistics */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
+
+                /* Since a request has complete, update the next ping time */
+                s_update_next_ping_time(connection);
 
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
@@ -1057,5 +1091,7 @@ void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int err
         shutdown_task->error_code = error_code;
         aws_channel_task_init(&shutdown_task->task, s_mqtt_disconnect_task, connection, "mqtt_disconnect");
         aws_channel_schedule_task_now(connection->slot->channel, &shutdown_task->task);
+    } else {
+        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Client currently has no slot to disconnect", (void *)connection);
     }
 }

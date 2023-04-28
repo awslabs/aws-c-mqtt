@@ -198,6 +198,7 @@ struct aws_mqtt_client_connection {
     struct aws_byte_buf client_id;
     bool clean_session;
     uint16_t keep_alive_time_secs;
+    uint64_t keep_alive_time_ns;
     uint64_t ping_timeout_ns;
     uint64_t operation_timeout_ns;
     struct aws_string *username;
@@ -308,6 +309,14 @@ struct aws_mqtt_client_connection {
 
         struct aws_http_message *handshake_request;
     } websocket;
+
+    /**
+     * The time that the next ping task should execute at. Note that this does not mean that
+     * this IS when the ping task will execute, but rather that this is when the next ping
+     * SHOULD execute. There may be an already scheduled PING task that will elapse sooner
+     * than this time that has to be rescheduled.
+     */
+    uint64_t next_ping_time;
 
     /**
      * Statistics tracking operational state

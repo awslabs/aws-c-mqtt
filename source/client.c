@@ -542,7 +542,7 @@ static void s_mqtt_client_init(
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
-    /* intall the slot and handler */
+    /* install the slot and handler */
     if (failed_create_slot) {
 
         AWS_LOGF_ERROR(
@@ -688,10 +688,54 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
     struct aws_mqtt_reconnect_task *reconnect = userdata;
     struct aws_mqtt_client_connection *connection = aws_atomic_load_ptr(&reconnect->connection_ptr);
 
+    /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
     if (status == AWS_TASK_STATUS_RUN_READY && connection) {
-        /* If the task is not cancelled and a connection has not succeeded, attempt reconnect */
-
         mqtt_connection_lock_synced_data(connection);
+
+        /**
+         * Check the state and if we are disconnecting (AWS_MQTT_CLIENT_STATE_DISCONNECTING) then we want to skip it
+         * and abort the reconnect task (or rather, just do not try to reconnect)
+         */
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTING) {
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT, "id=%p: Skipping reconnect: Client is trying to disconnect", (void *)connection);
+
+            /**
+             * There is the nasty world where the disconnect task/function is called right when we are "reconnecting" as
+             * our state but we have not reconnected. When this happens, the disconnect function doesn't do anything
+             * beyond setting the state to AWS_MQTT_CLIENT_STATE_DISCONNECTING (aws_mqtt_client_connection_disconnect),
+             * meaning the disconnect callback will NOT be called nor will we release memory.
+             * For this reason, we have to do the callback and release of the connection here otherwise the code
+             * will DEADLOCK forever and that is bad.
+             */
+            bool perform_full_destroy = false;
+            if (!connection->slot) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Reconnect task called but client is disconnecting and has no slot. Finishing disconnect",
+                    (void *)connection);
+                mqtt_connection_set_state(connection, AWS_MQTT_CLIENT_STATE_DISCONNECTED);
+                perform_full_destroy = true;
+            }
+
+            aws_mem_release(reconnect->allocator, reconnect);
+            connection->reconnect_task = NULL;
+
+            /* Unlock the synced data, then potentially call the disconnect callback and release the connection */
+            mqtt_connection_unlock_synced_data(connection);
+            if (perform_full_destroy) {
+                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
+                aws_mqtt_client_connection_release(connection);
+            }
+            return;
+        }
+
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Attempting reconnect, if it fails next attempt will be in %" PRIu64 " seconds",
+            (void *)connection,
+            connection->reconnect_timeouts.current_sec);
 
         /* Check before multiplying to avoid potential overflow */
         if (connection->reconnect_timeouts.current_sec > connection->reconnect_timeouts.max_sec / 2) {
@@ -1508,6 +1552,9 @@ int aws_mqtt_client_connection_connect(
     if (!connection->keep_alive_time_secs) {
         connection->keep_alive_time_secs = s_default_keep_alive_sec;
     }
+    connection->keep_alive_time_ns =
+        aws_timestamp_convert(connection->keep_alive_time_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
     if (!connection_options->protocol_operation_timeout_ms) {
         connection->operation_timeout_ns = UINT64_MAX;
     } else {
@@ -1526,16 +1573,15 @@ int aws_mqtt_client_connection_connect(
     }
 
     /* Keep alive time should always be greater than the timeouts. */
-    if (AWS_UNLIKELY(connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS <= connection->ping_timeout_ns)) {
+    if (AWS_UNLIKELY(connection->keep_alive_time_ns <= connection->ping_timeout_ns)) {
         AWS_LOGF_FATAL(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Illegal configuration, Connection keep alive %" PRIu64
             "ns must be greater than the request timeouts %" PRIu64 "ns.",
             (void *)connection,
-            (uint64_t)connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS,
+            connection->keep_alive_time_ns,
             connection->ping_timeout_ns);
-        AWS_FATAL_ASSERT(
-            connection->keep_alive_time_secs * (uint64_t)AWS_TIMESTAMP_NANOS > connection->ping_timeout_ns);
+        AWS_FATAL_ASSERT(connection->keep_alive_time_ns > connection->ping_timeout_ns);
     }
 
     AWS_LOGF_INFO(
