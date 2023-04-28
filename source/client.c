@@ -175,7 +175,7 @@ static void s_init_statistics(struct aws_mqtt_connection_operation_statistics_im
 
 static bool s_is_topic_shared_topic(struct aws_byte_cursor *input) {
     char *input_str = (char *)input->ptr;
-    if (strncmp("$share", input_str, strlen("$share")) == 0) {
+    if (strncmp("$share/", input_str, strlen("$share/")) == 0) {
         return true;
     }
     return false;
@@ -184,22 +184,24 @@ static bool s_is_topic_shared_topic(struct aws_byte_cursor *input) {
 static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string *input) {
     const char *input_char_str = aws_string_c_str(input);
     int input_char_length = strlen(input_char_str);
-    int found_slashes = 0;
-    int split_position = 0;
+    int split_position = 7; // Start at '$share/' since we know it has to exist
     while (split_position < input_char_length) {
         split_position += 1;
         if (input_char_str[split_position] == '/') {
-            found_slashes += 1;
-            if (found_slashes == 2) {
-                break;
-            }
+            break;
         }
     }
-    // A properly formatted shared subscription topic will be "$share/<group id>/<topic>" and that means there needs
-    // to be 2 slashes at least. The loop above stops at 2, so if it is NOT 2 then the input was invalid
-    if (found_slashes == 2 && split_position + 1 <= input_char_length) {
-        char result_char[input_char_length - split_position];
-        strncpy(result_char, input_char_str + split_position + 1, input_char_length - split_position);
+    // If we got all the way to the end, OR there is not at least a single character
+    // after the second /, then it's invalid input.
+    if (split_position + 1 >= input_char_length) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Cannot parse shared subscription topic: Topic is not formatted correctly");
+        return NULL;
+    }
+    // Needed to make Windows happy
+    const int split_delta = input_char_length - split_position;
+    if (split_delta > 0) {
+        char result_char[split_delta];
+        strncpy(result_char, input_char_str + split_position + 1, split_delta);
         struct aws_string *result_string = aws_string_new_from_c_str(input->allocator, (const char *)&result_char);
         return result_string;
     }
