@@ -30,6 +30,7 @@
 
 #ifdef _MSC_VER
 #    pragma warning(disable : 4204)
+#    pragma warning(disable : 4996) /* allow strncpy() */
 #endif
 
 /* 3 seconds */
@@ -171,6 +172,44 @@ static void s_init_statistics(struct aws_mqtt_connection_operation_statistics_im
     aws_atomic_store_int(&stats->incomplete_operation_size_atomic, 0);
     aws_atomic_store_int(&stats->unacked_operation_count_atomic, 0);
     aws_atomic_store_int(&stats->unacked_operation_size_atomic, 0);
+}
+
+static bool s_is_topic_shared_topic(struct aws_byte_cursor *input) {
+    char *input_str = (char *)input->ptr;
+    if (strncmp("$share/", input_str, strlen("$share/")) == 0) {
+        return true;
+    }
+    return false;
+}
+
+static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string *input) {
+    const char *input_char_str = aws_string_c_str(input);
+    size_t input_char_length = strlen(input_char_str);
+    size_t split_position = 7; // Start at '$share/' since we know it has to exist
+    while (split_position < input_char_length) {
+        split_position += 1;
+        if (input_char_str[split_position] == '/') {
+            break;
+        }
+    }
+    // If we got all the way to the end, OR there is not at least a single character
+    // after the second /, then it's invalid input.
+    if (split_position + 1 >= input_char_length) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Cannot parse shared subscription topic: Topic is not formatted correctly");
+        return NULL;
+    }
+    const size_t split_delta = input_char_length - split_position;
+    if (split_delta > 0) {
+        // Annoyingly, we cannot just use 'char result_char[split_delta];' because
+        // MSVC doesn't support it.
+        char *result_char = aws_mem_calloc(input->allocator, split_delta, sizeof(char));
+        strncpy(result_char, input_char_str + split_position + 1, split_delta);
+        struct aws_string *result_string = aws_string_new_from_c_str(input->allocator, (const char *)result_char);
+        aws_mem_release(input->allocator, result_char);
+        return result_string;
+    }
+    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Cannot parse shared subscription topic: Topic is not formatted correctly");
+    return NULL;
 }
 
 /*******************************************************************************
@@ -1862,16 +1901,41 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
         }
 
         if (!task_arg->tree_updated) {
-            if (aws_mqtt_topic_tree_transaction_insert(
-                    &task_arg->connection->thread_data.subscriptions,
-                    &transaction,
-                    topic->filter,
-                    topic->request.qos,
-                    s_on_publish_client_wrapper,
-                    s_task_topic_release,
-                    topic)) {
 
-                goto handle_error;
+            struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_string(topic->filter);
+            if (s_is_topic_shared_topic(&filter_cursor)) {
+                struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
+                if (normal_topic == NULL) {
+                    AWS_LOGF_ERROR(
+                        AWS_LS_MQTT_CLIENT,
+                        "id=%p: Topic is shared subscription topic but topic could not be parsed from "
+                        "shared subscription topic.",
+                        (void *)task_arg->connection);
+                    goto handle_error;
+                }
+                if (aws_mqtt_topic_tree_transaction_insert(
+                        &task_arg->connection->thread_data.subscriptions,
+                        &transaction,
+                        normal_topic,
+                        topic->request.qos,
+                        s_on_publish_client_wrapper,
+                        s_task_topic_release,
+                        topic)) {
+                    aws_string_destroy(normal_topic);
+                    goto handle_error;
+                }
+                aws_string_destroy(normal_topic);
+            } else {
+                if (aws_mqtt_topic_tree_transaction_insert(
+                        &task_arg->connection->thread_data.subscriptions,
+                        &transaction,
+                        topic->filter,
+                        topic->request.qos,
+                        s_on_publish_client_wrapper,
+                        s_task_topic_release,
+                        topic)) {
+                    goto handle_error;
+                }
             }
             /* If insert succeed, acquire the refcount */
             aws_ref_count_acquire(&topic->ref_count);
@@ -2260,15 +2324,39 @@ static enum aws_mqtt_client_request_state s_subscribe_local_send(
         is_first_attempt ? "first attempt" : "redo");
 
     struct subscribe_task_topic *topic = task_arg->task_topic;
-    if (aws_mqtt_topic_tree_insert(
-            &task_arg->connection->thread_data.subscriptions,
-            topic->filter,
-            topic->request.qos,
-            s_on_publish_client_wrapper,
-            s_task_topic_release,
-            topic)) {
 
-        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+    struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_string(topic->filter);
+    if (s_is_topic_shared_topic(&filter_cursor)) {
+        struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
+        if (normal_topic == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Topic is shared subscription topic but topic could not be parsed from "
+                "shared subscription topic.",
+                (void *)task_arg->connection);
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+        if (aws_mqtt_topic_tree_insert(
+                &task_arg->connection->thread_data.subscriptions,
+                normal_topic,
+                topic->request.qos,
+                s_on_publish_client_wrapper,
+                s_task_topic_release,
+                topic)) {
+            aws_string_destroy(normal_topic);
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
+        aws_string_destroy(normal_topic);
+    } else {
+        if (aws_mqtt_topic_tree_insert(
+                &task_arg->connection->thread_data.subscriptions,
+                topic->filter,
+                topic->request.qos,
+                s_on_publish_client_wrapper,
+                s_task_topic_release,
+                topic)) {
+            return AWS_MQTT_CLIENT_REQUEST_ERROR;
+        }
     }
     aws_ref_count_acquire(&topic->ref_count);
 
@@ -2672,9 +2760,40 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     if (!task_arg->tree_updated) {
 
         struct subscribe_task_topic *topic;
-        if (aws_mqtt_topic_tree_transaction_remove(
-                &task_arg->connection->thread_data.subscriptions, &transaction, &task_arg->filter, (void **)&topic)) {
-            goto handle_error;
+
+        if (s_is_topic_shared_topic(&task_arg->filter)) {
+            struct aws_string *shared_topic =
+                aws_string_new_from_cursor(task_arg->connection->allocator, &task_arg->filter);
+            struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(shared_topic);
+            if (normal_topic == NULL) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Topic is shared subscription topic but topic could not be parsed from "
+                    "shared subscription topic.",
+                    (void *)task_arg->connection);
+                aws_string_destroy(shared_topic);
+                goto handle_error;
+            }
+            struct aws_byte_cursor normal_topic_cursor = aws_byte_cursor_from_string(normal_topic);
+            if (aws_mqtt_topic_tree_transaction_remove(
+                    &task_arg->connection->thread_data.subscriptions,
+                    &transaction,
+                    &normal_topic_cursor,
+                    (void **)&topic)) {
+                aws_string_destroy(shared_topic);
+                aws_string_destroy(normal_topic);
+                goto handle_error;
+            }
+            aws_string_destroy(shared_topic);
+            aws_string_destroy(normal_topic);
+        } else {
+            if (aws_mqtt_topic_tree_transaction_remove(
+                    &task_arg->connection->thread_data.subscriptions,
+                    &transaction,
+                    &task_arg->filter,
+                    (void **)&topic)) {
+                goto handle_error;
+            }
         }
 
         task_arg->is_local = topic ? topic->is_local : false;
