@@ -30,6 +30,7 @@
 
 #ifdef _MSC_VER
 #    pragma warning(disable : 4204)
+#    pragma warning(disable : 4996) /* allow strncpy() */
 #endif
 
 /* 3 seconds */
@@ -197,12 +198,14 @@ static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Cannot parse shared subscription topic: Topic is not formatted correctly");
         return NULL;
     }
-    // Needed to make Windows happy
     const int split_delta = input_char_length - split_position;
     if (split_delta > 0) {
-        char result_char[split_delta];
+        // Annoyingly, we cannot just use 'char result_char[split_delta];' because
+        // MSVC doesn't support it.
+        char *result_char = aws_mem_calloc(input->allocator, split_delta, sizeof(char));
         strncpy(result_char, input_char_str + split_position + 1, split_delta);
-        struct aws_string *result_string = aws_string_new_from_c_str(input->allocator, (const char *)&result_char);
+        struct aws_string *result_string = aws_string_new_from_c_str(input->allocator, (const char *)result_char);
+        aws_mem_release(input->allocator, result_char);
         return result_string;
     }
     AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Cannot parse shared subscription topic: Topic is not formatted correctly");
