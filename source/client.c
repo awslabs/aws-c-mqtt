@@ -184,8 +184,8 @@ static bool s_is_topic_shared_topic(struct aws_byte_cursor *input) {
 
 static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string *input) {
     const char *input_char_str = aws_string_c_str(input);
-    int input_char_length = strlen(input_char_str);
-    int split_position = 7; // Start at '$share/' since we know it has to exist
+    size_t input_char_length = strlen(input_char_str);
+    size_t split_position = 7; // Start at '$share/' since we know it has to exist
     while (split_position < input_char_length) {
         split_position += 1;
         if (input_char_str[split_position] == '/') {
@@ -198,7 +198,7 @@ static struct aws_string *s_get_normal_topic_from_shared_topic(struct aws_string
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Cannot parse shared subscription topic: Topic is not formatted correctly");
         return NULL;
     }
-    const int split_delta = input_char_length - split_position;
+    const size_t split_delta = input_char_length - split_position;
     if (split_delta > 0) {
         // Annoyingly, we cannot just use 'char result_char[split_delta];' because
         // MSVC doesn't support it.
