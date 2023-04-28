@@ -845,11 +845,11 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
 
+                /* Since a request has complete, update the next ping time */
+                s_update_next_ping_time(connection);
+
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
-
-            /* Since a request has complete, update the next ping time */
-            s_update_next_ping_time(connection);
 
             /* Put the request into the ongoing list */
             aws_linked_list_push_back(&connection->thread_data.ongoing_requests_list, &request->list_node);
