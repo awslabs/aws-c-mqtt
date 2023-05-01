@@ -369,7 +369,7 @@ def application_thread():
             finished_email_body += "Failure due to unknown reason! This shouldn't happen and means something has gone wrong!"
     except Exception as e:
         print ("ERROR: Could not (possibly) cut ticket due to exception!")
-        print ("Exception: " + str(e), flush=True)
+        print (f"Exception: {repr(e)}", flush=True)
 
     # Clean everything up and stop
     snapshot_monitor.cleanup_monitor(error_occurred=wrapper_error_occurred)
