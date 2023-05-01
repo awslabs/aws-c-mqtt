@@ -830,8 +830,7 @@ class SnapshotMonitor():
         except Exception as e:
             self.print_message("[SnaptshotMonitor] ERROR - exception occurred checking metric alarms!")
             self.print_message("[SnaptshotMonitor] (Likely session credentials expired)")
-            self.had_internal_error = True
-            self.internal_error_reason = "Exception occurred checking metric alarms! Likely session credentials expired"
+            self.print_message("[SnaptshotMonitor] Not going to crash - just going to try again later")
             return
 
         if (self.metric_post_timer <= 0):
@@ -842,6 +841,8 @@ class SnapshotMonitor():
                     self.print_message("[SnaptshotMonitor] ERROR - exception occurred posting metrics!")
                     self.print_message("[SnaptshotMonitor] (Likely session credentials expired)")
                     self.print_message("[SnaptshotMonitor] Not going to crash - just going to try again later")
+                    # reset the timer
+                    self.metric_post_timer += self.metric_post_timer_time
                     return
 
             # reset the timer
