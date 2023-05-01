@@ -829,7 +829,6 @@ class SnapshotMonitor():
                 self.check_alarms_for_new_alarms(triggered_alarms)
         except Exception as e:
             self.print_message("[SnaptshotMonitor] ERROR - exception occurred checking metric alarms!")
-            self.print_message("[SnaptshotMonitor] (Likely session credentials expired)")
             self.print_message("[SnaptshotMonitor] Not going to crash - just going to try again later")
             return
 
@@ -839,7 +838,6 @@ class SnapshotMonitor():
                     self.data_snapshot.post_metrics(psutil_process)
                 except Exception as e:
                     self.print_message("[SnaptshotMonitor] ERROR - exception occurred posting metrics!")
-                    self.print_message("[SnaptshotMonitor] (Likely session credentials expired)")
                     self.print_message("[SnaptshotMonitor] Not going to crash - just going to try again later")
                     # reset the timer
                     self.metric_post_timer += self.metric_post_timer_time
