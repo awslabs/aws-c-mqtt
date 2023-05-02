@@ -1,7 +1,7 @@
 /**
-* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-* SPDX-License-Identifier: Apache-2.0.
-*/
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
 
 #include <aws/mqtt/client.h>
 #include <aws/mqtt/private/client_impl_shared.h>
@@ -45,7 +45,8 @@ int aws_mqtt_client_connection_use_websockets(
     aws_mqtt_validate_websocket_handshake_fn *validator,
     void *validator_ud) {
 
-    return (*connection->vtable->use_websockets_fn)(connection->impl, transformer, transformer_ud, validator, validator_ud);
+    return (*connection->vtable->use_websockets_fn)(
+        connection->impl, transformer, transformer_ud, validator, validator_ud);
 }
 
 int aws_mqtt_client_connection_set_http_proxy_options(
@@ -77,7 +78,8 @@ int aws_mqtt_client_connection_set_connection_interruption_handlers(
     aws_mqtt_client_on_connection_resumed_fn *on_resumed,
     void *on_resumed_ud) {
 
-    return (*connection->vtable->set_connection_interruption_handlers_fn)(connection->impl, on_interrupted, on_interrupted_ud, on_resumed, on_resumed_ud);
+    return (*connection->vtable->set_connection_interruption_handlers_fn)(
+        connection->impl, on_interrupted, on_interrupted_ud, on_resumed, on_resumed_ud);
 }
 
 int aws_mqtt_client_connection_set_connection_closed_handler(
@@ -138,7 +140,8 @@ uint16_t aws_mqtt_client_connection_subscribe(
     aws_mqtt_suback_fn *on_suback,
     void *on_suback_ud) {
 
-    return (*connection->vtable->subscribe_fn)(connection->impl, topic_filter, qos, on_publish, on_publish_ud, on_ud_cleanup, on_suback, on_suback_ud);
+    return (*connection->vtable->subscribe_fn)(
+        connection->impl, topic_filter, qos, on_publish, on_publish_ud, on_ud_cleanup, on_suback, on_suback_ud);
 }
 
 uint16_t aws_mqtt_client_connection_subscribe_local(
@@ -150,7 +153,8 @@ uint16_t aws_mqtt_client_connection_subscribe_local(
     aws_mqtt_suback_fn *on_suback,
     void *on_suback_ud) {
 
-    return (*connection->vtable->subscribe_local_fn)(connection->impl, topic_filter, on_publish, on_publish_ud, on_ud_cleanup, on_suback, on_suback_ud);
+    return (*connection->vtable->subscribe_local_fn)(
+        connection->impl, topic_filter, on_publish, on_publish_ud, on_ud_cleanup, on_suback, on_suback_ud);
 }
 
 uint16_t aws_mqtt_resubscribe_existing_topics(

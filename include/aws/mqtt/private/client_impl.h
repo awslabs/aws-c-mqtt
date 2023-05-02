@@ -27,13 +27,13 @@ struct aws_mqtt_client_connection_311_impl;
 #define MQTT_CLIENT_CALL_CALLBACK(client_ptr, callback)                                                                \
     do {                                                                                                               \
         if ((client_ptr)->callback) {                                                                                  \
-            (client_ptr)->callback((&client_ptr->base), (client_ptr)->callback##_ud);                                         \
+            (client_ptr)->callback((&client_ptr->base), (client_ptr)->callback##_ud);                                  \
         }                                                                                                              \
     } while (false)
 #define MQTT_CLIENT_CALL_CALLBACK_ARGS(client_ptr, callback, ...)                                                      \
     do {                                                                                                               \
         if ((client_ptr)->callback) {                                                                                  \
-            (client_ptr)->callback((&client_ptr->base), __VA_ARGS__, (client_ptr)->callback##_ud);                            \
+            (client_ptr)->callback((&client_ptr->base), __VA_ARGS__, (client_ptr)->callback##_ud);                     \
         }                                                                                                              \
     } while (false)
 
@@ -104,7 +104,8 @@ typedef enum aws_mqtt_client_request_state(
 /**
  * Called when the operation statistics change.
  */
-typedef void(aws_mqtt_on_operation_statistics_fn)(struct aws_mqtt_client_connection_311_impl *connection, void *userdata);
+typedef void(
+    aws_mqtt_on_operation_statistics_fn)(struct aws_mqtt_client_connection_311_impl *connection, void *userdata);
 
 /* Flags that indicate the way in which way an operation is currently affecting the statistics of the connection */
 enum aws_mqtt_operation_statistic_state_flags {

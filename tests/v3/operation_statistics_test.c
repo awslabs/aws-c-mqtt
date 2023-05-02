@@ -1223,7 +1223,9 @@ AWS_TEST_CASE_FIXTURE(
 
 /* ========== OTHER TESTS ========== */
 
-static void s_test_operation_statistics_simple_callback(struct aws_mqtt_client_connection_311_impl *connection, void *userdata) {
+static void s_test_operation_statistics_simple_callback(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    void *userdata) {
     struct aws_atomic_var *statistics_count = (struct aws_atomic_var *)userdata;
     aws_atomic_fetch_add(statistics_count, 1);
 

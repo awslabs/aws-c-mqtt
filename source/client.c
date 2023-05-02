@@ -1923,7 +1923,12 @@ static void s_subscribe_complete(
         aws_array_list_clean_up(&cb_list);
     } else if (task_arg->on_suback.single) {
         task_arg->on_suback.single(
-            &connection->base, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
+            &connection->base,
+            packet_id,
+            &topic->request.topic,
+            topic->request.qos,
+            error_code,
+            task_arg->on_suback_ud);
     }
     for (size_t i = 0; i < list_len; i++) {
         aws_array_list_get_at(&task_arg->topics, &topic, i);
@@ -2082,7 +2087,13 @@ static void s_subscribe_single_complete(
     if (task_arg->on_suback.single) {
         AWS_ASSUME(aws_string_is_valid(topic->filter));
         aws_mqtt_suback_fn *suback = task_arg->on_suback.single;
-        suback(&connection->base, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
+        suback(
+            &connection->base,
+            packet_id,
+            &topic->request.topic,
+            topic->request.qos,
+            error_code,
+            task_arg->on_suback_ud);
     }
     s_task_topic_release(topic);
     aws_array_list_clean_up(&task_arg->topics);
@@ -2295,7 +2306,13 @@ static void s_subscribe_local_complete(
     struct subscribe_task_topic *topic = task_arg->task_topic;
     if (task_arg->on_suback) {
         aws_mqtt_suback_fn *suback = task_arg->on_suback;
-        suback(&connection->base, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
+        suback(
+            &connection->base,
+            packet_id,
+            &topic->request.topic,
+            topic->request.qos,
+            error_code,
+            task_arg->on_suback_ud);
     }
     s_task_topic_release(topic);
 
@@ -2558,7 +2575,12 @@ static void s_resubscribe_complete(
         aws_array_list_clean_up(&cb_list);
     } else if (task_arg->on_suback.single) {
         task_arg->on_suback.single(
-            &connection->base, packet_id, &topic->request.topic, topic->request.qos, error_code, task_arg->on_suback_ud);
+            &connection->base,
+            packet_id,
+            &topic->request.topic,
+            topic->request.qos,
+            error_code,
+            task_arg->on_suback_ud);
     }
 
 clean_up:
@@ -3365,7 +3387,8 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .get_stats_fn = s_aws_mqtt_client_connection_311_get_stats,
 };
 
-static struct aws_mqtt_client_connection_vtable *s_aws_mqtt_client_connection_311_vtable_ptr = &s_aws_mqtt_client_connection_311_vtable;
+static struct aws_mqtt_client_connection_vtable *s_aws_mqtt_client_connection_311_vtable_ptr =
+    &s_aws_mqtt_client_connection_311_vtable;
 
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client) {
     AWS_PRECONDITION(client);
@@ -3383,7 +3406,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->base.vtable = s_aws_mqtt_client_connection_311_vtable_ptr;
     connection->base.impl = connection;
     aws_ref_count_init(
-        &connection->base.ref_count, connection, (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
+        &connection->base.ref_count,
+        connection,
+        (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
     connection->client = aws_mqtt_client_acquire(client);
     AWS_ZERO_STRUCT(connection->synced_data);
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;

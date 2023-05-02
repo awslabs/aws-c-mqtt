@@ -36,7 +36,8 @@ static void s_update_next_ping_time(struct aws_mqtt_client_connection_311_impl *
  * Packet State Machine
  ******************************************************************************/
 
-typedef int(packet_handler_fn)(struct aws_mqtt_client_connection_311_impl *connection, struct aws_byte_cursor message_cursor);
+typedef int(
+    packet_handler_fn)(struct aws_mqtt_client_connection_311_impl *connection, struct aws_byte_cursor message_cursor);
 
 static int s_packet_handler_default(
     struct aws_mqtt_client_connection_311_impl *connection,
@@ -279,7 +280,9 @@ static int s_packet_handler_publish(
     return AWS_OP_SUCCESS;
 }
 
-static int s_packet_handler_ack(struct aws_mqtt_client_connection_311_impl *connection, struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_ack(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    struct aws_byte_cursor message_cursor) {
     struct aws_mqtt_packet_ack ack;
     if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
         return AWS_OP_ERR;
