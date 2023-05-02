@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 /* Caches the socket write time for ping scheduling purposes */
-static void s_update_next_ping_time(struct aws_mqtt_client_connection *connection) {
+static void s_update_next_ping_time(struct aws_mqtt_client_connection_311_impl *connection) {
     if (connection->slot != NULL && connection->slot->channel != NULL) {
         aws_channel_current_clock_time(connection->slot->channel, &connection->next_ping_time);
         aws_add_u64_checked(connection->next_ping_time, connection->keep_alive_time_ns, &connection->next_ping_time);
@@ -36,10 +36,10 @@ static void s_update_next_ping_time(struct aws_mqtt_client_connection *connectio
  * Packet State Machine
  ******************************************************************************/
 
-typedef int(packet_handler_fn)(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor);
+typedef int(packet_handler_fn)(struct aws_mqtt_client_connection_311_impl *connection, struct aws_byte_cursor message_cursor);
 
 static int s_packet_handler_default(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_byte_cursor message_cursor) {
     (void)connection;
     (void)message_cursor;
@@ -49,7 +49,7 @@ static int s_packet_handler_default(
 }
 
 static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
-static void s_schedule_ping(struct aws_mqtt_client_connection *connection) {
+static void s_schedule_ping(struct aws_mqtt_client_connection_311_impl *connection) {
     aws_channel_task_init(&connection->ping_task, s_on_time_to_ping, connection, "mqtt_ping");
 
     uint64_t now = 0;
@@ -71,7 +71,7 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
     (void)channel_task;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_mqtt_client_connection *connection = arg;
+        struct aws_mqtt_client_connection_311_impl *connection = arg;
 
         uint64_t now = 0;
         aws_channel_current_clock_time(connection->slot->channel, &now);
@@ -94,7 +94,7 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
     }
 }
 static int s_packet_handler_connack(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_byte_cursor message_cursor) {
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: CONNACK received", (void *)connection);
@@ -208,7 +208,7 @@ static int s_packet_handler_connack(
 }
 
 static int s_packet_handler_publish(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_byte_cursor message_cursor) {
 
     /* TODO: need to handle the QoS 2 message to avoid processing the message a second time */
@@ -279,7 +279,7 @@ static int s_packet_handler_publish(
     return AWS_OP_SUCCESS;
 }
 
-static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_ack(struct aws_mqtt_client_connection_311_impl *connection, struct aws_byte_cursor message_cursor) {
     struct aws_mqtt_packet_ack ack;
     if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
         return AWS_OP_ERR;
@@ -294,7 +294,7 @@ static int s_packet_handler_ack(struct aws_mqtt_client_connection *connection, s
 }
 
 static int s_packet_handler_suback(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_byte_cursor message_cursor) {
     struct aws_mqtt_packet_suback suback;
     if (aws_mqtt_packet_suback_init(&suback, connection->allocator, 0 /* fake packet_id */)) {
@@ -354,7 +354,7 @@ error:
 }
 
 static int s_packet_handler_pubrec(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_byte_cursor message_cursor) {
 
     struct aws_mqtt_packet_ack ack;
@@ -392,7 +392,7 @@ on_error:
 }
 
 static int s_packet_handler_pubrel(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_byte_cursor message_cursor) {
 
     struct aws_mqtt_packet_ack ack;
@@ -427,7 +427,7 @@ on_error:
 }
 
 static int s_packet_handler_pingresp(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_byte_cursor message_cursor) {
 
     (void)message_cursor;
@@ -462,7 +462,7 @@ static packet_handler_fn *s_packet_handlers[] = {
  ******************************************************************************/
 
 static int s_process_mqtt_packet(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     enum aws_mqtt_packet_type packet_type,
     struct aws_byte_cursor packet) {
     { /* BEGIN CRITICAL SECTION */
@@ -502,7 +502,7 @@ static int s_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    struct aws_mqtt_client_connection *connection = handler->impl;
+    struct aws_mqtt_client_connection_311_impl *connection = handler->impl;
 
     if (message->message_type != AWS_IO_MESSAGE_APPLICATION_DATA || message->message_data.len < 1) {
         return AWS_OP_ERR;
@@ -623,7 +623,7 @@ static int s_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    struct aws_mqtt_client_connection *connection = handler->impl;
+    struct aws_mqtt_client_connection_311_impl *connection = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         /* On closing write direction, send out disconnect packet before closing connection. */
@@ -678,7 +678,7 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 
 static void s_destroy(struct aws_channel_handler *handler) {
 
-    struct aws_mqtt_client_connection *connection = handler->impl;
+    struct aws_mqtt_client_connection_311_impl *connection = handler->impl;
     (void)connection;
 }
 
@@ -707,7 +707,7 @@ struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void) {
  ******************************************************************************/
 
 struct aws_io_message *mqtt_get_message_for_packet(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_mqtt_fixed_header *header) {
 
     const size_t required_length = 3 + header->remaining_length;
@@ -732,7 +732,7 @@ struct aws_io_message *mqtt_get_message_for_packet(
 static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
     struct aws_mqtt_request *request = arg;
-    struct aws_mqtt_client_connection *connection = request->connection;
+    struct aws_mqtt_client_connection_311_impl *connection = request->connection;
 
     if (status == AWS_TASK_STATUS_CANCELED) {
         /* Connection lost before the request ever get send, check the request needs to be retried or not */
@@ -767,7 +767,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             /* Fire the callback and clean up the memory, as the connection get destroyed. */
             if (request->on_complete) {
                 request->on_complete(
-                    connection, request->packet_id, AWS_ERROR_MQTT_NOT_CONNECTED, request->on_complete_ud);
+                    &connection->base, request->packet_id, AWS_ERROR_MQTT_NOT_CONNECTED, request->on_complete_ud);
             }
 
             { /* BEGIN CRITICAL SECTION */
@@ -811,7 +811,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
             /* If the send_request function reports the request is complete,
              * remove from the hash table and call the callback. */
             if (request->on_complete) {
-                request->on_complete(connection, request->packet_id, error_code, request->on_complete_ud);
+                request->on_complete(&connection->base, request->packet_id, error_code, request->on_complete_ud);
             }
 
             { /* BEGIN CRITICAL SECTION */
@@ -858,7 +858,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
 }
 
 uint16_t mqtt_create_request(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
     aws_mqtt_op_complete_fn *on_complete,
@@ -996,7 +996,7 @@ uint16_t mqtt_create_request(
     return next_request->packet_id;
 }
 
-void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int error_code, uint16_t packet_id) {
+void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connection, int error_code, uint16_t packet_id) {
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
@@ -1046,7 +1046,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection *connection, int er
 
     /* Invoke the complete callback. */
     if (on_complete) {
-        on_complete(connection, packet_id, error_code, on_complete_ud);
+        on_complete(&connection->base, packet_id, error_code, on_complete_ud);
     }
 }
 
@@ -1060,7 +1060,7 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     (void)status;
 
     struct mqtt_shutdown_task *task = AWS_CONTAINER_OF(channel_task, struct mqtt_shutdown_task, task);
-    struct aws_mqtt_client_connection *connection = arg;
+    struct aws_mqtt_client_connection_311_impl *connection = arg;
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Doing disconnect", (void *)connection);
     { /* BEGIN CRITICAL SECTION */
@@ -1084,7 +1084,7 @@ static void s_mqtt_disconnect_task(struct aws_channel_task *channel_task, void *
     aws_mem_release(connection->allocator, task);
 }
 
-void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code) {
+void mqtt_disconnect_impl(struct aws_mqtt_client_connection_311_impl *connection, int error_code) {
     if (connection->slot) {
         struct mqtt_shutdown_task *shutdown_task =
             aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_shutdown_task));

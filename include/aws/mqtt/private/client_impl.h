@@ -8,6 +8,7 @@
 
 #include <aws/mqtt/client.h>
 
+#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/fixed_header.h>
 #include <aws/mqtt/private/topic_tree.h>
 
@@ -21,16 +22,18 @@
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 
+struct aws_mqtt_client_connection_311_impl;
+
 #define MQTT_CLIENT_CALL_CALLBACK(client_ptr, callback)                                                                \
     do {                                                                                                               \
         if ((client_ptr)->callback) {                                                                                  \
-            (client_ptr)->callback((client_ptr), (client_ptr)->callback##_ud);                                         \
+            (client_ptr)->callback((&client_ptr->base), (client_ptr)->callback##_ud);                                         \
         }                                                                                                              \
     } while (false)
 #define MQTT_CLIENT_CALL_CALLBACK_ARGS(client_ptr, callback, ...)                                                      \
     do {                                                                                                               \
         if ((client_ptr)->callback) {                                                                                  \
-            (client_ptr)->callback((client_ptr), __VA_ARGS__, (client_ptr)->callback##_ud);                            \
+            (client_ptr)->callback((&client_ptr->base), __VA_ARGS__, (client_ptr)->callback##_ud);                            \
         }                                                                                                              \
     } while (false)
 
@@ -101,7 +104,7 @@ typedef enum aws_mqtt_client_request_state(
 /**
  * Called when the operation statistics change.
  */
-typedef void(aws_mqtt_on_operation_statistics_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+typedef void(aws_mqtt_on_operation_statistics_fn)(struct aws_mqtt_client_connection_311_impl *connection, void *userdata);
 
 /* Flags that indicate the way in which way an operation is currently affecting the statistics of the connection */
 enum aws_mqtt_operation_statistic_state_flags {
@@ -119,7 +122,7 @@ struct aws_mqtt_request {
     struct aws_linked_list_node list_node;
 
     struct aws_allocator *allocator;
-    struct aws_mqtt_client_connection *connection;
+    struct aws_mqtt_client_connection_311_impl *connection;
 
     struct aws_channel_task outgoing_task;
 
@@ -146,7 +149,7 @@ struct aws_mqtt_reconnect_task {
 /* The lifetime of this struct is from subscribe -> suback */
 struct subscribe_task_arg {
 
-    struct aws_mqtt_client_connection *connection;
+    struct aws_mqtt_client_connection_311_impl *connection;
 
     /* list of pointer of subscribe_task_topics */
     struct aws_array_list topics;
@@ -166,7 +169,7 @@ struct subscribe_task_arg {
 
 /* The lifetime of this struct is the same as the lifetime of the subscription */
 struct subscribe_task_topic {
-    struct aws_mqtt_client_connection *connection;
+    struct aws_mqtt_client_connection_311_impl *connection;
 
     struct aws_mqtt_topic_subscription request;
     struct aws_string *filter;
@@ -175,10 +178,11 @@ struct subscribe_task_topic {
     struct aws_ref_count ref_count;
 };
 
-struct aws_mqtt_client_connection {
-
+struct aws_mqtt_client_connection_311_impl {
     struct aws_allocator *allocator;
-    struct aws_ref_count ref_count;
+
+    struct aws_mqtt_client_connection base;
+
     struct aws_mqtt_client *client;
 
     /* Channel handler information */
@@ -328,15 +332,15 @@ struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
 
 /* Helper for getting a message object for a packet */
 struct aws_io_message *mqtt_get_message_for_packet(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_mqtt_fixed_header *header);
 
-void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection *connection);
-void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection *connection);
+void mqtt_connection_lock_synced_data(struct aws_mqtt_client_connection_311_impl *connection);
+void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection_311_impl *connection);
 
 /* Note: needs to be called with lock held. */
 void mqtt_connection_set_state(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     enum aws_mqtt_client_connection_state state);
 
 /**
@@ -346,7 +350,7 @@ void mqtt_connection_set_state(
  * noRetry is true for the packets will never be retried or offline queued.
  */
 AWS_MQTT_API uint16_t mqtt_create_request(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
     aws_mqtt_op_complete_fn *on_complete,
@@ -356,15 +360,15 @@ AWS_MQTT_API uint16_t mqtt_create_request(
 
 /* Call when an ack packet comes back from the server. */
 AWS_MQTT_API void mqtt_request_complete(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     int error_code,
     uint16_t packet_id);
 
 /* Call to close the connection with an error code */
-AWS_MQTT_API void mqtt_disconnect_impl(struct aws_mqtt_client_connection *connection, int error_code);
+AWS_MQTT_API void mqtt_disconnect_impl(struct aws_mqtt_client_connection_311_impl *connection, int error_code);
 
 /* Creates the task used to reestablish a broken connection */
-AWS_MQTT_API void aws_create_reconnect_task(struct aws_mqtt_client_connection *connection);
+AWS_MQTT_API void aws_create_reconnect_task(struct aws_mqtt_client_connection_311_impl *connection);
 
 /**
  * Sets the callback to call whenever the operation statistics change.
@@ -374,7 +378,7 @@ AWS_MQTT_API void aws_create_reconnect_task(struct aws_mqtt_client_connection *c
  * \param[in] on_operation_statistics_ud  Userdata for on_operation_statistics
  */
 AWS_MQTT_API int aws_mqtt_client_connection_set_on_operation_statistics_handler(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     aws_mqtt_on_operation_statistics_fn *on_operation_statistics,
     void *on_operation_statistics_ud);
 
@@ -388,7 +392,7 @@ AWS_MQTT_API int aws_mqtt_client_connection_set_on_operation_statistics_handler(
  * \returns AWS_OP_SUCCESS if the connection is open and the PINGREQ is sent or queued to send,
  *              otherwise AWS_OP_ERR and aws_last_error() is set.
  */
-int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
+int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection_311_impl *connection);
 
 /**
  * Changes the operation statistics for the passed-in aws_mqtt_request. Used for tracking
@@ -402,7 +406,7 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connectio
  * @param new_state_flags The new state to use
  */
 void aws_mqtt_connection_statistics_change_operation_statistic_state(
-    struct aws_mqtt_client_connection *connection,
+    struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_mqtt_request *request,
     enum aws_mqtt_operation_statistic_state_flags new_state_flags);
 
