@@ -2955,24 +2955,24 @@ static int s_get_stuff_from_outstanding_requests_table(
 
 /* should only be called by tests */
 int aws_mqtt_client_get_payload_for_outstanding_publish_packet(
-    struct aws_mqtt_client_connection_311_impl *connection,
+    struct aws_mqtt_client_connection *connection_base,
     uint16_t packet_id,
     struct aws_allocator *allocator,
     struct aws_byte_buf *result) {
 
     AWS_ZERO_STRUCT(*result);
-    return s_get_stuff_from_outstanding_requests_table(connection, packet_id, allocator, result, NULL);
+    return s_get_stuff_from_outstanding_requests_table(connection_base->impl, packet_id, allocator, result, NULL);
 }
 
 /* should only be called by tests */
 int aws_mqtt_client_get_topic_for_outstanding_publish_packet(
-    struct aws_mqtt_client_connection_311_impl *connection,
+    struct aws_mqtt_client_connection *connection_base,
     uint16_t packet_id,
     struct aws_allocator *allocator,
     struct aws_string **result) {
 
     *result = NULL;
-    return s_get_stuff_from_outstanding_requests_table(connection, packet_id, allocator, NULL, result);
+    return s_get_stuff_from_outstanding_requests_table(connection_base->impl, packet_id, allocator, NULL, result);
 }
 
 static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, bool is_first_attempt, void *userdata) {
