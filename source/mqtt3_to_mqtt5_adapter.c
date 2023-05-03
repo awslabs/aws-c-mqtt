@@ -54,8 +54,9 @@ static void s_disable_adapter(struct aws_mqtt_client_connection_5_impl *adapter)
      *
      * Dependent on the memory model of the CPU architecture, changes to shared state, even if "safe" from data
      * races across threads, may not become visible to other cores on the same CPU unless some kind of synchronization
-     * primitive is invoked.  So in this extremely unlikely case, we use try-lock to guarantee that a synchronization
-     * primitive is invoked when disable is coming through a callback from something else on the same event loop.
+     * primitive (memory barrier) is invoked.  So in this extremely unlikely case, we use try-lock to guarantee that a
+     * synchronization primitive is invoked when disable is coming through a callback from something else on the same
+     * event loop.
      *
      * In the case that we're in our mqtt5 client's callback, the lock is already held, try fails, and the unlock at
      * the end of the callback will suffice for cache flush and synchronization.
