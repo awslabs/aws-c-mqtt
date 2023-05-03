@@ -37,6 +37,32 @@ static bool s_aws_mqtt5_listener_publish_received_adapter(
 }
 
 static void s_disable_adapter(struct aws_mqtt_client_connection_5_impl *adapter) {
+    /*
+     * The lock is held during callbacks to prevent invoking into something that is in the process of
+     * destruction.  In general this isn't a performance worry since callbacks are invoked from a single
+     * thread: the event loop that the client and adapter are seated on.
+     *
+     * But since we don't have recursive mutexes on all platforms, we need to be careful about the disable
+     * API since if we naively always locked, then an adapter release inside a callback would deadlock.
+     *
+     * On the surface, it seems reasonable that if we're in the event loop thread we could just skip
+     * locking entirely (because we've already locked it at the start of the callback).  Unfortunately, this isn't safe
+     * because we don't actually truly know we're in our mqtt5 client's callback; we could be in some other
+     * client/connection's callback that happens to be seated on the same event loop.  And while it's true that because
+     * of the thread seating, nothing will be interfering with our shared state manipulation, there's one final
+     * consideration which forces us to *try* to lock:
+     *
+     * Dependent on the memory model of the CPU architecture, changes to shared state, even if "safe" from data
+     * races across threads, may not become visible to other cores on the same CPU unless some kind of synchronization
+     * primitive is invoked.  So in this extremely unlikely case, we use try-lock to guarantee that a synchronization
+     * primitive is invoked when disable is coming through a callback from something else on the same event loop.
+     *
+     * In the case that we're in our mqtt5 client's callback, the lock is already held, try fails, and the unlock at
+     * the end of the callback will suffice for cache flush and synchronization.
+     *
+     * In the case that we're in something else's callback on the same thread, the try succeeds and its followup
+     * unlock here will suffice for cache flush and synchronization.
+     */
     if (aws_event_loop_thread_is_callers_thread(adapter->loop)) {
         bool lock_succeeded = aws_mutex_try_lock(&adapter->state_lock) == AWS_OP_SUCCESS;
         adapter->state = AWS_MQTT5_AS_DISABLED;
@@ -51,20 +77,20 @@ static void s_disable_adapter(struct aws_mqtt_client_connection_5_impl *adapter)
 }
 
 static void s_mqtt_client_connection_5_impl_finish_destroy(void *context) {
-    struct aws_mqtt_client_connection_5_impl *impl = context;
+    struct aws_mqtt_client_connection_5_impl *adapter = context;
 
-    impl->client = aws_mqtt5_client_release(impl->client);
-    aws_mutex_clean_up(&impl->state_lock);
+    adapter->client = aws_mqtt5_client_release(adapter->client);
+    aws_mutex_clean_up(&adapter->state_lock);
 
-    aws_mem_release(impl->allocator, impl);
+    aws_mem_release(adapter->allocator, adapter);
 }
 
 static void s_mqtt_client_connection_5_impl_start_destroy(void *context) {
-    struct aws_mqtt_client_connection_5_impl *impl = context;
+    struct aws_mqtt_client_connection_5_impl *adapter = context;
 
-    s_disable_adapter(impl);
+    s_disable_adapter(adapter);
 
-    aws_mqtt5_listener_release(impl->listener);
+    aws_mqtt5_listener_release(adapter->listener);
 }
 
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_vtable = {
@@ -94,37 +120,37 @@ static struct aws_mqtt_client_connection_vtable *s_aws_mqtt_client_connection_5_
 
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_client(struct aws_mqtt5_client *client) {
     struct aws_allocator *allocator = client->allocator;
-    struct aws_mqtt_client_connection_5_impl *mqtt5_impl =
+    struct aws_mqtt_client_connection_5_impl *adapter =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_client_connection_5_impl));
 
-    mqtt5_impl->allocator = allocator;
+    adapter->allocator = allocator;
 
-    mqtt5_impl->base.vtable = s_aws_mqtt_client_connection_5_vtable_ptr;
-    mqtt5_impl->base.impl = mqtt5_impl;
+    adapter->base.vtable = s_aws_mqtt_client_connection_5_vtable_ptr;
+    adapter->base.impl = adapter;
     aws_ref_count_init(
-        &mqtt5_impl->base.ref_count,
-        mqtt5_impl,
+        &adapter->base.ref_count,
+        adapter,
         (aws_simple_completion_callback *)s_mqtt_client_connection_5_impl_start_destroy);
 
-    mqtt5_impl->client = aws_mqtt5_client_acquire(client);
-    mqtt5_impl->loop = client->loop;
+    adapter->client = aws_mqtt5_client_acquire(client);
+    adapter->loop = client->loop;
 
     struct aws_mqtt5_listener_config listener_config = {
         .client = client,
         .listener_callbacks =
             {
                 .listener_publish_received_handler = s_aws_mqtt5_listener_publish_received_adapter,
-                .listener_publish_received_handler_user_data = mqtt5_impl,
+                .listener_publish_received_handler_user_data = adapter,
                 .lifecycle_event_handler = s_aws_mqtt5_client_connection_event_callback_adapter,
-                .lifecycle_event_handler_user_data = mqtt5_impl,
+                .lifecycle_event_handler_user_data = adapter,
             },
         .termination_callback = s_mqtt_client_connection_5_impl_finish_destroy,
-        .termination_callback_user_data = mqtt5_impl,
+        .termination_callback_user_data = adapter,
     };
-    mqtt5_impl->listener = aws_mqtt5_listener_new(allocator, &listener_config);
+    adapter->listener = aws_mqtt5_listener_new(allocator, &listener_config);
 
-    aws_mutex_init(&mqtt5_impl->state_lock);
-    mqtt5_impl->state = AWS_MQTT5_AS_ENABLED;
+    aws_mutex_init(&adapter->state_lock);
+    adapter->state = AWS_MQTT5_AS_ENABLED;
 
-    return &mqtt5_impl->base;
+    return &adapter->base;
 }
