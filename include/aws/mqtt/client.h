@@ -313,7 +313,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
  *
  * \param[in] client    The mqtt5 client to create the connection from
  *
- * \returns a new mqtt connection on success, NULL otherwise
+ * \returns a new mqtt (311) connection on success, NULL otherwise
  */
 AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_client(struct aws_mqtt5_client *client);

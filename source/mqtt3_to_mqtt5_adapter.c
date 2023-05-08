@@ -8,7 +8,10 @@
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
-enum aws_mqtt5_adapter_state { AWS_MQTT5_AS_ENABLED, AWS_MQTT5_AS_DISABLED };
+enum aws_mqtt5_adapter_state {
+    AWS_MQTT5_AS_ENABLED,
+    AWS_MQTT5_AS_DISABLED,
+};
 
 struct aws_mqtt_client_connection_5_impl {
     struct aws_allocator *allocator;
@@ -86,6 +89,19 @@ static void s_mqtt_client_connection_5_impl_finish_destroy(void *context) {
     aws_mem_release(adapter->allocator, adapter);
 }
 
+/*
+ * When the adapter's ref count goes to zero, here's what we want to do:
+ *
+ *  (1) Put the adapter into the disabled mode, which tells it to stop processing callbacks from the mqtt5 client
+ *  (2) Release the client listener, starting its asynchronous shutdown process (since we're the only user of it)
+ *  (3) Wait for the client listener to notify us that asynchronous shutdown is over.  At this point we are
+ *      guaranteed that no more callbacks from the mqtt5 client will reach us.  We can safely release the mqtt5
+ *      client.
+ *  (4) Synchronously clean up all further resources.
+ *
+ *  This function does steps (1) and (2).  (3) and (4) are accomplished via
+ *  s_mqtt_client_connection_5_impl_finish_destroy above.
+ */
 static void s_mqtt_client_connection_5_impl_start_destroy(void *context) {
     struct aws_mqtt_client_connection_5_impl *adapter = context;
 
@@ -151,7 +167,13 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     adapter->listener = aws_mqtt5_listener_new(allocator, &listener_config);
 
     aws_mutex_init(&adapter->state_lock);
-    adapter->state = AWS_MQTT5_AS_ENABLED;
+
+    /*
+     * We start disabled to handle the case where someone passes in an mqtt5 client that is already "live."
+     * In that case, we don't want callbacks coming back before construction is even over, so instead we "cork"
+     * things by starting in the disabled state.  We'll enable the adapter as soon as they try to connect.
+     */
+    adapter->state = AWS_MQTT5_AS_DISABLED;
 
     return &adapter->base;
 }
