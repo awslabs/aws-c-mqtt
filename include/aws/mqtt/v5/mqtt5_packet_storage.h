@@ -18,6 +18,8 @@
 
 #include <aws/mqtt/v5/mqtt5_types.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 struct aws_mqtt5_user_property_set {
     struct aws_array_list properties;
 };
@@ -332,5 +334,6 @@ AWS_MQTT_API void aws_mqtt5_packet_unsuback_storage_clean_up(
     struct aws_mqtt5_packet_unsuback_storage *unsuback_storage);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_MQTT_MQTT5_PACKET_STORAGE_H */

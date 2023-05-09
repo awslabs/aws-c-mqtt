@@ -19,6 +19,8 @@
 #include <aws/common/array_list.h>
 #include <aws/common/byte_buf.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 /**
  * Some artificial (non-MQTT spec specified) limits that we place on input packets (publish, subscribe, unsubscibe)
  * which lets us safely do the various packet size calculations with a bare minimum of checked arithmetic.
@@ -482,5 +484,6 @@ struct aws_mqtt5_packet_unsuback_view {
     size_t reason_code_count;
     const enum aws_mqtt5_unsuback_reason_code *reason_codes;
 };
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_MQTT_MQTT5_TYPES_H */
