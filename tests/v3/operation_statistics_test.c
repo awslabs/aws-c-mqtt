@@ -1223,13 +1223,15 @@ AWS_TEST_CASE_FIXTURE(
 
 /* ========== OTHER TESTS ========== */
 
-static void s_test_operation_statistics_simple_callback(struct aws_mqtt_client_connection *connection, void *userdata) {
+static void s_test_operation_statistics_simple_callback(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    void *userdata) {
     struct aws_atomic_var *statistics_count = (struct aws_atomic_var *)userdata;
     aws_atomic_fetch_add(statistics_count, 1);
 
     // Confirm we can get the operation statistics from the callback
     struct aws_mqtt_connection_operation_statistics operation_statistics;
-    aws_mqtt_client_connection_get_stats(connection, &operation_statistics);
+    aws_mqtt_client_connection_get_stats(&connection->base, &operation_statistics);
     (void)operation_statistics;
 }
 
@@ -1262,7 +1264,7 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
     struct aws_atomic_var statistics_count;
     aws_atomic_store_int(&statistics_count, 0);
     aws_mqtt_client_connection_set_on_operation_statistics_handler(
-        state_test_data->mqtt_connection, s_test_operation_statistics_simple_callback, &statistics_count);
+        state_test_data->mqtt_connection->impl, s_test_operation_statistics_simple_callback, &statistics_count);
 
     // /* Stop ACKS so we make sure the operation statistics has time to allow us to identify we sent a packet */
     mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
