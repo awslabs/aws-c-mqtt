@@ -24,6 +24,19 @@ struct aws_mqtt_client_connection_5_impl {
 
     struct aws_mutex state_lock;
     enum aws_mqtt5_adapter_state state;
+
+    /* 311 interface callbacks */
+    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
+    void *on_interrupted_ud;
+
+    aws_mqtt_client_on_connection_resumed_fn *on_resumed;
+    void *on_resumed_ud;
+
+    aws_mqtt_client_on_connection_closed_fn *on_closed;
+    void *on_closed_ud;
+
+    aws_mqtt_client_publish_received_fn *on_any_publish;
+    void *on_any_publish_ud;
 };
 
 static void s_aws_mqtt5_client_connection_event_callback_adapter(const struct aws_mqtt5_client_lifecycle_event *event) {
@@ -110,6 +123,223 @@ static void s_mqtt_client_connection_5_impl_start_destroy(void *context) {
     aws_mqtt5_listener_release(adapter->listener);
 }
 
+struct aws_mqtt_set_interruption_handlers_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection *connection;
+
+    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
+    void *on_interrupted_ud;
+    aws_mqtt_client_on_connection_resumed_fn *on_resumed;
+    void *on_resumed_ud;
+};
+
+static void s_set_interruption_handlers_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_set_interruption_handlers_task *set_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    struct aws_mqtt_client_connection_5_impl *connection = set_task->connection->impl;
+
+    connection->on_interrupted = set_task->on_interrupted;
+    connection->on_interrupted_ud = set_task->on_interrupted_ud;
+    connection->on_resumed = set_task->on_resumed;
+    connection->on_resumed_ud = set_task->on_resumed_ud;
+
+done:
+
+    aws_mqtt_client_connection_release(set_task->connection);
+
+    aws_mem_release(set_task->allocator, set_task);
+}
+
+static struct aws_mqtt_set_interruption_handlers_task *s_aws_mqtt_set_interruption_handlers_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *connection,
+    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted,
+    void *on_interrupted_ud,
+    aws_mqtt_client_on_connection_resumed_fn *on_resumed,
+    void *on_resumed_ud) {
+
+    struct aws_mqtt_set_interruption_handlers_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_interruption_handlers_task));
+    if (set_task == NULL) {
+        return NULL;
+    }
+
+    aws_task_init(
+        &set_task->task, s_set_interruption_handlers_task_fn, (void *)set_task, "SetInterruptionHandlersTask");
+    set_task->allocator = connection->allocator;
+    set_task->connection = aws_mqtt_client_connection_acquire(&connection->base);
+    set_task->on_interrupted = on_interrupted;
+    set_task->on_interrupted_ud = on_interrupted_ud;
+    set_task->on_resumed = on_resumed;
+    set_task->on_resumed_ud = on_resumed_ud;
+
+    return set_task;
+}
+
+static int s_aws_mqtt_client_connection_5_set_interruption_handlers(
+    void *impl,
+    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted,
+    void *on_interrupted_ud,
+    aws_mqtt_client_on_connection_resumed_fn *on_resumed,
+    void *on_resumed_ud) {
+    struct aws_mqtt_client_connection_5_impl *connection = impl;
+
+    struct aws_mqtt_set_interruption_handlers_task *task = s_aws_mqtt_set_interruption_handlers_task_new(
+        connection->allocator, connection, on_interrupted, on_interrupted_ud, on_resumed, on_resumed_ud);
+    if (task == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: failed to create set interruption handlers task", (void *)connection);
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(connection->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
+struct aws_mqtt_set_on_closed_handler_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection *connection;
+
+    aws_mqtt_client_on_connection_closed_fn *on_closed;
+    void *on_closed_ud;
+};
+
+static void s_set_on_closed_handler_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_set_on_closed_handler_task *set_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    struct aws_mqtt_client_connection_5_impl *connection = set_task->connection->impl;
+
+    connection->on_closed = set_task->on_closed;
+    connection->on_closed_ud = set_task->on_closed_ud;
+
+done:
+
+    aws_mqtt_client_connection_release(set_task->connection);
+
+    aws_mem_release(set_task->allocator, set_task);
+}
+
+static struct aws_mqtt_set_on_closed_handler_task *s_aws_mqtt_set_on_closed_handler_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *connection,
+    aws_mqtt_client_on_connection_closed_fn *on_closed,
+    void *on_closed_ud) {
+
+    struct aws_mqtt_set_on_closed_handler_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_on_closed_handler_task));
+    if (set_task == NULL) {
+        return NULL;
+    }
+
+    aws_task_init(&set_task->task, s_set_on_closed_handler_task_fn, (void *)set_task, "SetOnClosedHandlerTask");
+    set_task->allocator = connection->allocator;
+    set_task->connection = aws_mqtt_client_connection_acquire(&connection->base);
+    set_task->on_closed = on_closed;
+    set_task->on_closed_ud = on_closed_ud;
+
+    return set_task;
+}
+
+static int s_aws_mqtt_client_connection_5_set_on_closed_handler(
+    void *impl,
+    aws_mqtt_client_on_connection_closed_fn *on_closed,
+    void *on_closed_ud) {
+    struct aws_mqtt_client_connection_5_impl *connection = impl;
+
+    struct aws_mqtt_set_on_closed_handler_task *task =
+        s_aws_mqtt_set_on_closed_handler_task_new(connection->allocator, connection, on_closed, on_closed_ud);
+    if (task == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set on closed handler task", (void *)connection);
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(connection->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
+struct aws_mqtt_set_on_any_publish_handler_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection *connection;
+
+    aws_mqtt_client_publish_received_fn *on_any_publish;
+    void *on_any_publish_ud;
+};
+
+static void s_set_on_any_publish_handler_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_set_on_any_publish_handler_task *set_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    struct aws_mqtt_client_connection_5_impl *connection = set_task->connection->impl;
+
+    connection->on_any_publish = set_task->on_any_publish;
+    connection->on_any_publish_ud = set_task->on_any_publish_ud;
+
+done:
+
+    aws_mqtt_client_connection_release(set_task->connection);
+
+    aws_mem_release(set_task->allocator, set_task);
+}
+
+static struct aws_mqtt_set_on_any_publish_handler_task *s_aws_mqtt_set_on_any_publish_handler_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *connection,
+    aws_mqtt_client_publish_received_fn *on_any_publish,
+    void *on_any_publish_ud) {
+
+    struct aws_mqtt_set_on_any_publish_handler_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_on_any_publish_handler_task));
+    if (set_task == NULL) {
+        return NULL;
+    }
+
+    aws_task_init(
+        &set_task->task, s_set_on_any_publish_handler_task_fn, (void *)set_task, "SetOnAnyPublishHandlerTask");
+    set_task->allocator = connection->allocator;
+    set_task->connection = aws_mqtt_client_connection_acquire(&connection->base);
+    set_task->on_any_publish = on_any_publish;
+    set_task->on_any_publish_ud = on_any_publish_ud;
+
+    return set_task;
+}
+
+static int s_aws_mqtt_client_connection_5_set_on_any_publish_handler(
+    void *impl,
+    aws_mqtt_client_publish_received_fn *on_any_publish,
+    void *on_any_publish_ud) {
+    struct aws_mqtt_client_connection_5_impl *connection = impl;
+
+    struct aws_mqtt_set_on_any_publish_handler_task *task = s_aws_mqtt_set_on_any_publish_handler_task_new(
+        connection->allocator, connection, on_any_publish, on_any_publish_ud);
+    if (task == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set on any publish task", (void *)connection);
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(connection->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_vtable = {
     .set_will_fn = NULL,
     .set_login_fn = NULL,
@@ -117,9 +347,9 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_http_proxy_options_fn = NULL,
     .set_host_resolution_options_fn = NULL,
     .set_reconnect_timeout_fn = NULL,
-    .set_connection_interruption_handlers_fn = NULL,
-    .set_connection_closed_handler_fn = NULL,
-    .set_on_any_publish_handler_fn = NULL,
+    .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_5_set_interruption_handlers,
+    .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_5_set_on_closed_handler,
+    .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_5_set_on_any_publish_handler,
     .connect_fn = NULL,
     .reconnect_fn = NULL,
     .disconnect_fn = NULL,
