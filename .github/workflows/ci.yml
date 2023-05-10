@@ -6,8 +6,8 @@ on:
       - 'main'
 
 env:
-  BUILDER_VERSION: header-warnings
-  BUILDER_SOURCE: channels
+  BUILDER_VERSION: v0.9.43
+  BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-mqtt
   LINUX_BASE_IMAGE: ubuntu-18-x64
@@ -36,6 +36,7 @@ jobs:
       run: |
         aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DASSERT_LOCK_HELD=ON
+
   linux-compiler-compat:
     runs-on: ubuntu-20.04 # latest
     strategy:
@@ -58,6 +59,7 @@ jobs:
         run: |
           aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
           ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=${{ matrix.compiler }} --cmake-extra=-DASSERT_LOCK_HELD=ON
+
   clang-sanitizers:
     runs-on: ubuntu-20.04 # latest
     strategy:
@@ -69,6 +71,7 @@ jobs:
         run: |
           aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
           ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-11 --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DASSERT_LOCK_HELD=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
+
   linux-shared-libs:
     runs-on: ubuntu-20.04 # latest
     steps:
@@ -77,6 +80,7 @@ jobs:
         run: |
           aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
           ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON --cmake-extra=-DASSERT_LOCK_HELD=ON
+
   windows:
     runs-on: windows-2022 # latest
     steps:
@@ -84,6 +88,7 @@ jobs:
       run: |
         python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
         python builder.pyz build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DASSERT_LOCK_HELD=ON
+
   windows-vc14:
     runs-on: windows-2019 # windows-2019 is last env with Visual Studio 2015 (v14.0)
     strategy:
@@ -94,6 +99,7 @@ jobs:
       run: |
         python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
         python builder.pyz build -p ${{ env.PACKAGE_NAME }} --target windows-${{ matrix.arch }} --compiler msvc-14 --cmake-extra=-DASSERT_LOCK_HELD=ON
+
   windows-shared-libs:
     runs-on: windows-2022 # latest
     steps:
@@ -101,6 +107,7 @@ jobs:
       run: |
         python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
         python builder.pyz build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON --cmake-extra=-DASSERT_LOCK_HELD=ON
+
   windows-app-verifier:
     runs-on: windows-2022 # latest
     steps:
@@ -111,6 +118,7 @@ jobs:
     - name: Run and check AppVerifier
       run: |
         python .\aws-c-mqtt\build\deps\aws-c-common\scripts\appverifier_ctest.py --build_directory .\aws-c-mqtt\build\aws-c-mqtt
+
   osx:
     runs-on: macos-12 # latest
     steps:
@@ -119,6 +127,7 @@ jobs:
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
         ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DASSERT_LOCK_HELD=ON
+
   # Test downstream repos.
   # This should not be required because we can run into a chicken and egg problem if there is a change that needs some fix in a downstream repo.
   downstream:
