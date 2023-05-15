@@ -19,6 +19,8 @@
 #include <aws/io/retry_strategy.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 struct aws_allocator;
 struct aws_client_bootstrap;
 struct aws_host_resolution_config;
@@ -811,5 +813,6 @@ AWS_MQTT_API int aws_mqtt5_negotiated_settings_copy(
 AWS_MQTT_API void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_MQTT_MQTT5_CLIENT_H */

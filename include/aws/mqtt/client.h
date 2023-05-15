@@ -17,6 +17,8 @@
 
 #include <aws/mqtt/mqtt.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 /* forward declares */
 struct aws_client_bootstrap;
 struct aws_http_header;
@@ -651,5 +653,6 @@ int aws_mqtt_client_connection_get_stats(
     struct aws_mqtt_connection_operation_statistics *stats);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_MQTT_CLIENT_H */

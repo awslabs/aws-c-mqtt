@@ -77,7 +77,7 @@ file(GLOB MQTT_SRC
 add_library(${PROJECT_NAME} ${MQTT_HEADERS} ${MQTT_SRC})
 aws_set_common_properties(${PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_MQTT")
-aws_check_headers(${PROJECT_NAME} ${MQTT_HEADERS})
+aws_check_headers(${PROJECT_NAME} ${AWS_MQTT_HEADERS} ${AWS_MQTT5_HEADERS})
 
 aws_add_sanitizers(${PROJECT_NAME})
 
