@@ -24,6 +24,7 @@ struct aws_client_bootstrap;
 struct aws_http_header;
 struct aws_http_message;
 struct aws_http_proxy_options;
+struct aws_mqtt5_client;
 struct aws_socket_options;
 struct aws_tls_connection_options;
 
@@ -308,6 +309,16 @@ void aws_mqtt_client_release(struct aws_mqtt_client *client);
  */
 AWS_MQTT_API
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqtt_client *client);
+
+/**
+ * Creates a new MQTT311 connection object that uses an MQTT5 client under the hood
+ *
+ * \param[in] client    The mqtt5 client to create the connection from
+ *
+ * \returns a new mqtt (311) connection on success, NULL otherwise
+ */
+AWS_MQTT_API
+struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_client(struct aws_mqtt5_client *client);
 
 /**
  * Increments the ref count to an mqtt client connection, allowing the caller to take a reference to it

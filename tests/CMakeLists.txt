@@ -352,6 +352,11 @@ add_test_case(rate_limiter_token_bucket_large_fractional_iteration)
 add_test_case(rate_limiter_token_bucket_real_iteration)
 add_test_case(rate_limiter_token_bucket_reset)
 
+# mqtt3 to 5 adapter tests
+
+add_test_case(mqtt3to5_adapter_create_destroy)
+add_test_case(mqtt3to5_adapter_create_destroy_delayed)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)
