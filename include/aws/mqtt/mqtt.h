@@ -11,6 +11,8 @@
 
 #include <aws/mqtt/exports.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 #define AWS_C_MQTT_PACKAGE_ID 5
 
 /* Quality of Service associated with a publish action or subscription [MQTT-4.3]. */
@@ -116,5 +118,6 @@ AWS_MQTT_API
 void aws_mqtt_fatal_assert_library_initialized(void);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_MQTT_MQTT_H */
