@@ -79,6 +79,10 @@ static void s_disable_adapter(struct aws_mqtt_client_connection_5_impl *adapter)
      *
      * In the case that we're in something else's callback on the same thread, the try succeeds and its followup
      * unlock here will suffice for cache flush and synchronization.
+     *
+     * Some after-the-fact analysis hints that this extra step (in the case where we are in the event loop) may
+     * be unnecessary because the only reader of the state change is the event loop thread itself.  I don't feel
+     * confident enough in the memory semantics of thread<->core bindings to relax this though.
      */
     if (aws_event_loop_thread_is_callers_thread(adapter->loop)) {
         bool lock_succeeded = aws_mutex_try_lock(&adapter->state_lock) == AWS_OP_SUCCESS;
