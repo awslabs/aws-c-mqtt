@@ -13,14 +13,9 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
+#include <aws/common/uuid.h>
 
 #include <aws/testing/aws_test_harness.h>
-
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
 
 static const int TEST_LOG_SUBJECT = 60000;
 static const int ONE_SEC = 1000000000;
@@ -211,14 +206,22 @@ static int s_operation_statistics_setup_mqtt_server_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_condition_variable_init(&state_test_data->cvar));
     ASSERT_SUCCESS(aws_mutex_init(&state_test_data->lock));
 
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
+    struct aws_byte_buf endpoint_buf =
+        aws_byte_buf_from_empty_array(state_test_data->endpoint.address, sizeof(state_test_data->endpoint.address));
+#ifdef _WIN32
+    AWS_FATAL_ASSERT(
+        aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("\\\\.\\pipe\\testsock")));
+#else
+    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("testsock")));
+#endif
+    /* Use UUID to generate a random endpoint for the socket */
+    struct aws_uuid uuid;
+    ASSERT_SUCCESS(aws_uuid_init(&uuid));
+    ASSERT_SUCCESS(aws_uuid_to_str(&uuid, &endpoint_buf));
 
-    snprintf(
-        state_test_data->endpoint.address,
-        sizeof(state_test_data->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)timestamp);
+#ifndef _WIN32
+    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str(".sock")));
+#endif
 
     struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
         .bootstrap = state_test_data->server_bootstrap,

@@ -6,6 +6,7 @@
 #include "mqtt5_testing_utils.h"
 
 #include <aws/common/clock.h>
+#include <aws/common/uuid.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/host_resolver.h>
@@ -1019,12 +1020,6 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
     return result;
 }
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
-
 static int s_process_read_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -1360,14 +1355,22 @@ int aws_mqtt5_client_mock_test_fixture_init(
 
     test_fixture->client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
+    struct aws_byte_buf endpoint_buf =
+        aws_byte_buf_from_empty_array(test_fixture->endpoint.address, sizeof(test_fixture->endpoint.address));
+#ifdef _WIN32
+    AWS_FATAL_ASSERT(
+        aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("\\\\.\\pipe\\testsock")));
+#else
+    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("testsock")));
+#endif
+    /* Use UUID to generate a random endpoint for the socket */
+    struct aws_uuid uuid;
+    ASSERT_SUCCESS(aws_uuid_init(&uuid));
+    ASSERT_SUCCESS(aws_uuid_to_str(&uuid, &endpoint_buf));
 
-    snprintf(
-        test_fixture->endpoint.address,
-        sizeof(test_fixture->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)timestamp);
+#ifndef _WIN32
+    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str(".sock")));
+#endif
 
     struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
         .bootstrap = test_fixture->server_bootstrap,
