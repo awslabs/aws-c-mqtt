@@ -13,15 +13,8 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
-#include <aws/common/uuid.h>
 
 #include <aws/testing/aws_test_harness.h>
-
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock" PRInSTR
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock" PRInSTR ".sock"
-#endif
 
 static const int TEST_LOG_SUBJECT = 60000;
 static const int ONE_SEC = 1000000000;
@@ -212,17 +205,7 @@ static int s_operation_statistics_setup_mqtt_server_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_condition_variable_init(&state_test_data->cvar));
     ASSERT_SUCCESS(aws_mutex_init(&state_test_data->lock));
 
-    struct aws_uuid uuid;
-    ASSERT_SUCCESS(aws_uuid_init(&uuid));
-    char uuid_str[AWS_UUID_STR_LEN] = {0};
-    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
-    uuid_buf.len = 0;
-    aws_uuid_to_str(&uuid, &uuid_buf);
-    snprintf(
-        state_test_data->endpoint.address,
-        sizeof(state_test_data->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        AWS_BYTE_BUF_PRI(uuid_buf));
+    aws_socket_endpoint_init_local_address_for_test(&state_test_data->endpoint);
 
     struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
         .bootstrap = state_test_data->server_bootstrap,
