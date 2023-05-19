@@ -46,15 +46,6 @@ static bool s_aws_mqtt5_listener_publish_received_adapter(
 static void s_mqtt_client_connection_5_impl_finish_destroy(void *context) {
     struct aws_mqtt_client_connection_5_impl *adapter = context;
 
-    if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
-        /*
-         * If the mqtt5 client is pointing to us for websocket transform, then erase that.  The callback
-         * is invoked from our pinned event loop so this is safe.
-         */
-        adapter->client->config->websocket_handshake_transform = NULL;
-        adapter->client->config->websocket_handshake_transform_user_data = NULL;
-    }
-
     adapter->client = aws_mqtt5_client_release(adapter->client);
     aws_mutex_clean_up(&adapter->lock);
 
