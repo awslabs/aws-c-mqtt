@@ -342,7 +342,7 @@ struct aws_mqtt5_client {
     /*
      * Client configuration
      */
-    const struct aws_mqtt5_client_options_storage *config;
+    struct aws_mqtt5_client_options_storage *config;
 
     /*
      * The recurrent task that runs all client logic outside of external event callbacks.  Bound to the client's

@@ -1550,7 +1550,7 @@ static int mqtt5_operation_disconnect_connection_settings_validation_failure_pro
     ASSERT_SUCCESS(aws_mqtt5_operation_validate_vs_connection_settings(&operation->base, &dummy_client));
 
     ((struct aws_mqtt5_client_options_storage *)dummy_client.config)
-        ->connect.storage_view.session_expiry_interval_seconds = NULL;
+        ->connect->storage_view.session_expiry_interval_seconds = NULL;
 
     ASSERT_FAILS(aws_mqtt5_operation_validate_vs_connection_settings(&operation->base, &dummy_client));
 
