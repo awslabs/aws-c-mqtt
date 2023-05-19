@@ -17,7 +17,6 @@
 #include <aws/testing/aws_test_harness.h>
 
 #include <aws/common/math.h>
-#include <aws/common/uuid.h>
 
 static const int TEST_LOG_SUBJECT = 60000;
 static const int ONE_SEC = 1000000000;
@@ -238,22 +237,7 @@ static int s_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_condition_variable_init(&state_test_data->cvar));
     ASSERT_SUCCESS(aws_mutex_init(&state_test_data->lock));
 
-    struct aws_byte_buf endpoint_buf =
-        aws_byte_buf_from_empty_array(state_test_data->endpoint.address, sizeof(state_test_data->endpoint.address));
-#ifdef _WIN32
-    AWS_FATAL_ASSERT(
-        aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("\\\\.\\pipe\\testsock")));
-#else
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("testsock")));
-#endif
-    /* Use UUID to generate a random endpoint for the socket */
-    struct aws_uuid uuid;
-    ASSERT_SUCCESS(aws_uuid_init(&uuid));
-    ASSERT_SUCCESS(aws_uuid_to_str(&uuid, &endpoint_buf));
-
-#ifndef _WIN32
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str(".sock")));
-#endif
+    aws_socket_endpoint_init_local_address_for_test(&state_test_data->endpoint);
 
     struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
         .bootstrap = state_test_data->server_bootstrap,

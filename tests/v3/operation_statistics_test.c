@@ -16,12 +16,6 @@
 
 #include <aws/testing/aws_test_harness.h>
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
-
 static const int TEST_LOG_SUBJECT = 60000;
 static const int ONE_SEC = 1000000000;
 
@@ -211,14 +205,7 @@ static int s_operation_statistics_setup_mqtt_server_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_condition_variable_init(&state_test_data->cvar));
     ASSERT_SUCCESS(aws_mutex_init(&state_test_data->lock));
 
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
-
-    snprintf(
-        state_test_data->endpoint.address,
-        sizeof(state_test_data->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&state_test_data->endpoint);
 
     struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
         .bootstrap = state_test_data->server_bootstrap,

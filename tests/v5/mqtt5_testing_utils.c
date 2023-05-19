@@ -1019,12 +1019,6 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
     return result;
 }
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
-
 static int s_process_read_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -1360,14 +1354,7 @@ int aws_mqtt5_client_mock_test_fixture_init(
 
     test_fixture->client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
-
-    snprintf(
-        test_fixture->endpoint.address,
-        sizeof(test_fixture->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&test_fixture->endpoint);
 
     struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
         .bootstrap = test_fixture->server_bootstrap,
