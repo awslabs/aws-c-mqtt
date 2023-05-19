@@ -991,8 +991,6 @@ static void s_websocket_handshake_transform_complete(
     task->handshake = handshake_request;
 
     aws_event_loop_schedule_task_now(client->loop, &task->task);
-
-    aws_mqtt5_client_release(client);
 }
 
 static int s_websocket_connect(struct aws_mqtt5_client *client) {
@@ -1016,7 +1014,11 @@ static int s_websocket_connect(struct aws_mqtt5_client *client) {
 
     AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: Transforming websocket handshake request.", (void *)client);
 
-    aws_mqtt5_client_acquire(client);
+    /*
+     * There is no need to inc the client's ref count here since this state (AWS_MCS_CONNECTING) is uninterruptible by
+     * the async destruction process.  Only a completion of the chain of connection establishment callbacks can cause
+     * this state to be left by the client.
+     */
     client->config->websocket_handshake_transform(
         handshake,
         client->config->websocket_handshake_transform_user_data,
@@ -1204,7 +1206,7 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     aws_mqtt5_decoder_reset(&client->decoder);
 
     bool resume_session = s_should_resume_session(client);
-    struct aws_mqtt5_packet_connect_view connect_view = client->config->connect.storage_view;
+    struct aws_mqtt5_packet_connect_view connect_view = client->config->connect->storage_view;
     connect_view.clean_start = !resume_session;
 
     if (aws_mqtt5_inbound_topic_alias_behavior_type_to_non_default(

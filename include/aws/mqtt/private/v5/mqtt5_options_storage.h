@@ -170,7 +170,7 @@ struct aws_mqtt5_client_options_storage {
 
     struct aws_mqtt5_client_topic_alias_options topic_aliasing_options;
 
-    struct aws_mqtt5_packet_connect_storage connect;
+    struct aws_mqtt5_packet_connect_storage *connect;
 
     aws_mqtt5_client_connection_event_callback_fn *lifecycle_event_handler;
     void *lifecycle_event_handler_user_data;

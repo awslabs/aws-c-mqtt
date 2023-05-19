@@ -1313,7 +1313,7 @@ static int s_aws_mqtt5_packet_disconnect_view_validate_vs_connection_settings(
          * cannot set a non-zero value here if you sent a 0-value or no value in the CONNECT (presumably allows
          * the server to skip tracking session state, and we can't undo that now)
          */
-        const uint32_t *session_expiry_ptr = client->config->connect.storage_view.session_expiry_interval_seconds;
+        const uint32_t *session_expiry_ptr = client->config->connect->storage_view.session_expiry_interval_seconds;
         if (*disconnect_view->session_expiry_interval_seconds > 0 &&
             (session_expiry_ptr == NULL || *session_expiry_ptr == 0)) {
             AWS_LOGF_ERROR(
@@ -3794,7 +3794,7 @@ void aws_mqtt5_client_options_storage_log(
         "id=%p: aws_mqtt5_client_options_storage connect options:",
         (void *)options_storage);
 
-    aws_mqtt5_packet_connect_view_log(&options_storage->connect.storage_view, level);
+    aws_mqtt5_packet_connect_view_log(&options_storage->connect->storage_view, level);
 
     AWS_LOGUF(
         log_handle,
@@ -3816,7 +3816,8 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
     aws_tls_connection_options_clean_up(&options_storage->tls_options);
     aws_http_proxy_config_destroy(options_storage->http_proxy_config);
 
-    aws_mqtt5_packet_connect_storage_clean_up(&options_storage->connect);
+    aws_mqtt5_packet_connect_storage_clean_up(options_storage->connect);
+    aws_mem_release(options_storage->connect->allocator, options_storage->connect);
 
     aws_mem_release(options_storage->allocator, options_storage);
 }
@@ -3944,7 +3945,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         options_storage->topic_aliasing_options = *options->topic_aliasing_options;
     }
 
-    if (aws_mqtt5_packet_connect_storage_init(&options_storage->connect, allocator, options->connect_options)) {
+    options_storage->connect = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
+    if (aws_mqtt5_packet_connect_storage_init(options_storage->connect, allocator, options->connect_options)) {
         goto error;
     }
 
