@@ -8,15 +8,15 @@
 
 struct aws_mqtt_client_connection *aws_mqtt_client_connection_acquire(struct aws_mqtt_client_connection *connection) {
     if (connection != NULL) {
-        aws_ref_count_acquire(&connection->ref_count);
+        return (*connection->vtable->acquire_fn)(connection->impl);
     }
 
-    return connection;
+    return NULL;
 }
 
 void aws_mqtt_client_connection_release(struct aws_mqtt_client_connection *connection) {
     if (connection != NULL) {
-        aws_ref_count_release(&connection->ref_count);
+        (*connection->vtable->release_fn)(connection->impl);
     }
 }
 

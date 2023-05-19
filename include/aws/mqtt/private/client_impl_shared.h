@@ -12,6 +12,10 @@ struct aws_mqtt_client_connection;
 
 struct aws_mqtt_client_connection_vtable {
 
+    struct aws_mqtt_client_connection *(*acquire_fn)(void *impl);
+
+    void (*release_fn)(void *impl);
+
     int (*set_will_fn)(
         void *impl,
         const struct aws_byte_cursor *topic,
@@ -105,7 +109,6 @@ struct aws_mqtt_client_connection_vtable {
 struct aws_mqtt_client_connection {
     struct aws_mqtt_client_connection_vtable *vtable;
     void *impl;
-    struct aws_ref_count ref_count;
 };
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */
