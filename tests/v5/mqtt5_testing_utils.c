@@ -1533,6 +1533,35 @@ void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_te
         return false;                                                                                                  \
     }
 
+static bool s_aws_publish_packets_equal(
+    const struct aws_mqtt5_packet_publish_view *lhs,
+    const struct aws_mqtt5_packet_publish_view *rhs) {
+
+    // Don't check packet id intentionally
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->payload, rhs->payload);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->qos, rhs->qos);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->duplicate, rhs->duplicate);
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->retain, rhs->retain);
+    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->topic, rhs->topic);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->payload_format, rhs->payload_format);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(
+        lhs->message_expiry_interval_seconds, rhs->message_expiry_interval_seconds);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->topic_alias, rhs->topic_alias);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->response_topic, rhs->response_topic);
+    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->correlation_data, rhs->correlation_data);
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->subscription_identifier_count, rhs->subscription_identifier_count);
+    for (size_t i = 0; i < lhs->subscription_identifier_count; ++i) {
+        AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->subscription_identifiers[i], rhs->subscription_identifiers[i]);
+    }
+
+    AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
+        lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
+
+    return true;
+}
+
 static bool s_aws_connect_packets_equal(
     const struct aws_mqtt5_packet_connect_view *lhs,
     const struct aws_mqtt5_packet_connect_view *rhs) {
@@ -1551,7 +1580,15 @@ static bool s_aws_connect_packets_equal(
     AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->maximum_packet_size_bytes, rhs->maximum_packet_size_bytes);
     AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->will_delay_interval_seconds, rhs->will_delay_interval_seconds);
 
-    /* TODO: Check Will */
+    if ((lhs->will != NULL) != (rhs->will != NULL)) {
+        return false;
+    }
+
+    if (lhs->will) {
+        if (!s_aws_publish_packets_equal(lhs->will, rhs->will)) {
+            return false;
+        }
+    }
 
     AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
         lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
@@ -1626,35 +1663,6 @@ static bool s_aws_unsubscribe_packets_equal(
         struct aws_byte_cursor rhs_topic_filter = rhs->topic_filters[i];
 
         AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs_topic_filter, rhs_topic_filter);
-    }
-
-    AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(
-        lhs->user_properties, lhs->user_property_count, rhs->user_properties, rhs->user_property_count);
-
-    return true;
-}
-
-static bool s_aws_publish_packets_equal(
-    const struct aws_mqtt5_packet_publish_view *lhs,
-    const struct aws_mqtt5_packet_publish_view *rhs) {
-
-    // Don't check packet id intentionally
-
-    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->payload, rhs->payload);
-    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->qos, rhs->qos);
-    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->duplicate, rhs->duplicate);
-    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->retain, rhs->retain);
-    AWS_MQTT5_CLIENT_TEST_CHECK_CURSOR_EQUALS(lhs->topic, rhs->topic);
-    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->payload_format, rhs->payload_format);
-    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(
-        lhs->message_expiry_interval_seconds, rhs->message_expiry_interval_seconds);
-    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_INT_EQUALS(lhs->topic_alias, rhs->topic_alias);
-    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->response_topic, rhs->response_topic);
-    AWS_MQTT5_CLIENT_TEST_CHECK_OPTIONAL_CURSOR_EQUALS(lhs->correlation_data, rhs->correlation_data);
-
-    AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->subscription_identifier_count, rhs->subscription_identifier_count);
-    for (size_t i = 0; i < lhs->subscription_identifier_count; ++i) {
-        AWS_MQTT5_CLIENT_TEST_CHECK_INT_EQUALS(lhs->subscription_identifiers[i], rhs->subscription_identifiers[i]);
     }
 
     AWS_MQTT5_CLIENT_TEST_CHECK_USER_PROPERTIES(

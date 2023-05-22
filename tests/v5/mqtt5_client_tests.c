@@ -10,6 +10,7 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/mqtt/client.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
@@ -6090,3 +6091,287 @@ static int s_mqtt5_client_outbound_alias_lru_success_a_b_c_br_cr_a_fn(struct aws
 AWS_TEST_CASE(
     mqtt5_client_outbound_alias_lru_success_a_b_c_br_cr_a,
     s_mqtt5_client_outbound_alias_lru_success_a_b_c_br_cr_a_fn)
+
+void s_mqtt3to5_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
+    (void)event;
+}
+
+void s_mqtt3to5_publish_received_callback(const struct aws_mqtt5_packet_publish_view *publish, void *user_data) {
+    (void)publish;
+    (void)user_data;
+}
+
+static int s_do_mqtt3to5_adapter_create_destroy(struct aws_allocator *allocator, uint64_t sleep_nanos) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt5_packet_connect_view local_connect_options = {
+        .keep_alive_interval_seconds = 30,
+        .clean_start = true,
+    };
+
+    struct aws_mqtt5_client_options client_options = {
+        .connect_options = &local_connect_options,
+        .lifecycle_event_handler = s_mqtt3to5_lifecycle_event_callback,
+        .lifecycle_event_handler_user_data = NULL,
+        .publish_received_handler = s_mqtt3to5_publish_received_callback,
+        .publish_received_handler_user_data = NULL,
+        .ping_timeout_ms = 10000,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_config = {
+        .client_options = &client_options,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_fixture;
+    AWS_ZERO_STRUCT(test_fixture);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_fixture, allocator, &test_fixture_config));
+
+    struct aws_mqtt_client_connection *connection =
+        aws_mqtt_client_connection_new_from_mqtt5_client(test_fixture.client);
+
+    if (sleep_nanos > 0) {
+        /* sleep a little just to let the listener attachment resolve */
+        aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+    }
+
+    aws_mqtt_client_connection_release(connection);
+
+    if (sleep_nanos > 0) {
+        /* sleep a little just to let the listener detachment resolve */
+        aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+    }
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt3to5_adapter_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt3to5_adapter_create_destroy(allocator, 0));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_create_destroy, s_mqtt3to5_adapter_create_destroy_fn)
+
+static int s_mqtt3to5_adapter_create_destroy_delayed_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt3to5_adapter_create_destroy(
+        allocator, aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL)));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_create_destroy_delayed, s_mqtt3to5_adapter_create_destroy_delayed_fn)
+
+typedef int (*mqtt3to5_adapter_config_test_setup_fn)(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection *adapter,
+    struct aws_mqtt5_packet_connect_storage *expected_connect);
+
+static int s_do_mqtt3to5_adapter_config_test(
+    struct aws_allocator *allocator,
+    mqtt3to5_adapter_config_test_setup_fn setup_fn) {
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    s_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    struct aws_mqtt_client_connection *adapter = aws_mqtt_client_connection_new_from_mqtt5_client(client);
+
+    struct aws_mqtt5_packet_connect_storage expected_connect_storage;
+    ASSERT_SUCCESS((*setup_fn)(allocator, adapter, &expected_connect_storage));
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connected_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {
+        {
+            .packet_type = AWS_MQTT5_PT_CONNECT,
+            .packet_storage = &expected_connect_storage,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_received_packet_sequence(&test_context, expected_packets, AWS_ARRAY_SIZE(expected_packets)));
+
+    aws_mqtt5_packet_connect_storage_clean_up(&expected_connect_storage);
+
+    aws_mqtt_client_connection_release(adapter);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt3to5_adapter_set_will_setup(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection *adapter,
+    struct aws_mqtt5_packet_connect_storage *expected_connect) {
+
+    struct aws_byte_cursor topic_cursor = {
+        .ptr = s_alias_topic1,
+        .len = AWS_ARRAY_SIZE(s_alias_topic1) - 1,
+    };
+
+    struct aws_byte_cursor payload_cursor = {
+        .ptr = s_sub_pub_unsub_publish_payload,
+        .len = AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_payload) - 1,
+    };
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_set_will(adapter, &topic_cursor, AWS_MQTT_QOS_AT_LEAST_ONCE, true, &payload_cursor));
+
+    struct aws_mqtt5_packet_publish_view expected_will = {
+        .payload = payload_cursor,
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .retain = true,
+        .topic = topic_cursor,
+    };
+
+    struct aws_mqtt5_packet_connect_view expected_connect_view = {
+        .client_id = aws_byte_cursor_from_string(s_client_id),
+        .keep_alive_interval_seconds = 30,
+        .clean_start = true,
+        .will = &expected_will,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(expected_connect, allocator, &expected_connect_view));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt3to5_adapter_set_will_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt3to5_adapter_config_test(allocator, s_mqtt3to5_adapter_set_will_setup));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_set_will, s_mqtt3to5_adapter_set_will_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_username, "MyUsername");
+AWS_STATIC_STRING_FROM_LITERAL(s_password, "TopTopSecret");
+
+static int s_mqtt3to5_adapter_set_login_setup(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection *adapter,
+    struct aws_mqtt5_packet_connect_storage *expected_connect) {
+
+    struct aws_byte_cursor username_cursor = aws_byte_cursor_from_string(s_username);
+    struct aws_byte_cursor password_cursor = aws_byte_cursor_from_string(s_password);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(adapter, &username_cursor, &password_cursor));
+
+    struct aws_mqtt5_packet_connect_view expected_connect_view = {
+        .client_id = aws_byte_cursor_from_string(s_client_id),
+        .keep_alive_interval_seconds = 30,
+        .clean_start = true,
+        .username = &username_cursor,
+        .password = &password_cursor,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(expected_connect, allocator, &expected_connect_view));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt3to5_adapter_set_login_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_mqtt3to5_adapter_config_test(allocator, s_mqtt3to5_adapter_set_login_setup));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_set_login, s_mqtt3to5_adapter_set_login_fn)
+
+static int s_mqtt3to5_adapter_set_reconnect_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    /*
+     * This is a variant of the mqtt5_client_reconnect_failure_backoff test.
+     *
+     * The primary change is that we configure the mqtt5 client with "wrong" (fast) reconnect delays and then use
+     * the adapter API to configure with the "right" ones that will let the test pass.
+     */
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    s_mqtt5_client_test_init_default_options(&test_options);
+
+    /* backoff delay sequence: 500, 1000, 2000, 4000, 5000, ... */
+    test_options.client_options.retry_jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE;
+    test_options.client_options.min_reconnect_delay_ms = 10;
+    test_options.client_options.max_reconnect_delay_ms = 50;
+    test_options.client_options.min_connected_time_to_reset_reconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY;
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_aws_mqtt5_mock_server_handle_connect_always_fail;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    struct aws_mqtt_client_connection *adapter = aws_mqtt_client_connection_new_from_mqtt5_client(client);
+
+    aws_mqtt_client_connection_set_reconnect_timeout(adapter, RECONNECT_TEST_MIN_BACKOFF, RECONNECT_TEST_MAX_BACKOFF);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_n_connection_failure_lifecycle_events(&test_context, 6);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    s_wait_for_stopped_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(s_verify_reconnection_exponential_backoff_timestamps(&test_context));
+
+    /* 6 (connecting, mqtt_connect, channel_shutdown, pending_reconnect) tuples (minus the final pending_reconnect) */
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN, AWS_MCS_PENDING_RECONNECT,
+        AWS_MCS_CONNECTING, AWS_MCS_MQTT_CONNECT, AWS_MCS_CHANNEL_SHUTDOWN,
+    };
+    ASSERT_SUCCESS(s_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt_client_connection_release(adapter);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_set_reconnect_timeout, s_mqtt3to5_adapter_set_reconnect_timeout_fn)

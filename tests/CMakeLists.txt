@@ -356,6 +356,9 @@ add_test_case(rate_limiter_token_bucket_reset)
 
 add_test_case(mqtt3to5_adapter_create_destroy)
 add_test_case(mqtt3to5_adapter_create_destroy_delayed)
+add_test_case(mqtt3to5_adapter_set_will)
+add_test_case(mqtt3to5_adapter_set_login)
+add_test_case(mqtt3to5_adapter_set_reconnect_timeout)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

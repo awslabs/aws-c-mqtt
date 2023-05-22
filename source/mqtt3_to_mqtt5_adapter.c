@@ -387,6 +387,8 @@ static void s_set_http_proxy_options_task_fn(struct aws_task *task, void *arg, e
 
     /* we're in the mqtt5 client's event loop; it's safe to access internal state */
     aws_http_proxy_config_destroy(connection->client->config->http_proxy_config);
+
+    /* move the proxy config from the set task to the client's config */
     connection->client->config->http_proxy_config = set_task->proxy_config;
     if (connection->client->config->http_proxy_config != NULL) {
         aws_http_proxy_options_init_from_config(
@@ -615,6 +617,8 @@ static void s_set_will_task_fn(struct aws_task *task, void *arg, enum aws_task_s
 
     /* we're in the mqtt5 client's event loop; it's safe to access internal state */
     struct aws_mqtt5_packet_connect_storage *connect = connection->client->config->connect;
+
+    /* clean up the old will if necessary */
     if (connect->will != NULL) {
         aws_mqtt5_packet_publish_storage_clean_up(connect->will);
         aws_mem_release(connect->allocator, connect->will);
@@ -628,8 +632,12 @@ static void s_set_will_task_fn(struct aws_task *task, void *arg, enum aws_task_s
         .payload = aws_byte_cursor_from_buf(&set_task->payload_buffer),
     };
 
+    /* make a new will */
     connect->will = aws_mem_calloc(connect->allocator, 1, sizeof(struct aws_mqtt5_packet_publish_storage));
     aws_mqtt5_packet_publish_storage_init(connect->will, connect->allocator, &will);
+
+    /* manually update the storage view's will reference */
+    connect->storage_view.will = &connect->will->storage_view;
 
 done:
 
@@ -871,10 +879,12 @@ static void s_aws_mqtt_client_connection_5_release(void *impl) {
          * When the adapter's ref count goes to zero, here's what we want to do:
          *
          *  (1) Put the adapter into the disabled mode, which tells it to stop processing callbacks from the mqtt5
-         * client (2) Release the client listener, starting its asynchronous shutdown process (since we're the only user
-         * of it) (3) Wait for the client listener to notify us that asynchronous shutdown is over.  At this point we
-         * are guaranteed that no more callbacks from the mqtt5 client will reach us.  We can safely release the mqtt5
-         *      client.
+         *      client
+         *  (2) Release the client listener, starting its asynchronous shutdown process (since we're the only user
+         *      of it)
+         *  (3) Wait for the client listener to notify us that asynchronous shutdown is over.  At this point we
+         *      are guaranteed that no more callbacks from the mqtt5 client will reach us.  We can safely release the
+         *      mqtt5 client.
          *  (4) Synchronously clean up all further resources.
          *
          *  Step (1) was done within the lock above.
