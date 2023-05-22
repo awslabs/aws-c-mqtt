@@ -938,11 +938,10 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     aws_mutex_init(&adapter->lock);
 
     /*
-     * We start disabled to handle the case where someone passes in an mqtt5 client that is already "live."
-     * In that case, we don't want callbacks coming back before construction is even over, so instead we "cork"
-     * things by starting in the disabled state.  We'll enable the adapter as soon as they try to connect.
+     * It's safe to start in the enabled state since the callbacks we receive have nowhere to go until the user
+     * configures callbacks using the config API.
      */
-    adapter->synced_data.state = AWS_MQTT5_AS_DISABLED;
+    adapter->synced_data.state = AWS_MQTT5_AS_ENABLED;
     adapter->synced_data.ref_count = 1;
 
     struct aws_mqtt5_listener_config listener_config = {
