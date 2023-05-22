@@ -938,10 +938,13 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     aws_mutex_init(&adapter->lock);
 
     /*
-     * It's safe to start in the enabled state since the callbacks we receive have nowhere to go until the user
-     * configures callbacks using the config API.
+     * We start disabled to handle the case where someone passes in an mqtt5 client that is already "live."
+     * We'll enable the adapter as soon as they try to connect via the 311 interface.  This
+     * also ties in to how we simulate the 311 implementation's don't-reconnect-if-initial-connect-fails logic.
+     * The 5 client will continue to try and reconnect, but the adapter will go disabled making it seem to the 311
+     * user that is is offline.
      */
-    adapter->synced_data.state = AWS_MQTT5_AS_ENABLED;
+    adapter->synced_data.state = AWS_MQTT5_AS_DISABLED;
     adapter->synced_data.ref_count = 1;
 
     struct aws_mqtt5_listener_config listener_config = {
