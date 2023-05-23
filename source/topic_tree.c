@@ -360,7 +360,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
             }
             if (action->topic_filter) {
                 if (action->node_to_update->owns_topic_filter && action->node_to_update->topic_filter) {
-                    /* The topic filer is already there, destory the new filter to keep all the byte cursor valid */
+                    /* The topic filer is already there, destroy the new filter to keep all the byte cursor valid */
                     aws_string_destroy((void *)action->topic_filter);
                 } else {
                     action->node_to_update->topic_filter = action->topic_filter;
@@ -497,8 +497,10 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                                 AWS_ASSERT(new_topic_filter != old_topic_filter);
 
                                 /* Now that the new string has been found, the old one can be destroyed. */
-                                aws_string_destroy((void *)current->topic_filter);
-                                current->owns_topic_filter = false;
+                                if (current->owns_topic_filter == true) {
+                                    aws_string_destroy((void *)current->topic_filter);
+                                    current->owns_topic_filter = false;
+                                }
                             }
 
                             /* Update the pointers. */
