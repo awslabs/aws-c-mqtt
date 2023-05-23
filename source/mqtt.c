@@ -216,6 +216,13 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_INVALID_OUTBOUND_TOPIC_ALIAS,
                 "Outgoing publish contained an invalid (too large or unknown) topic alias"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_INVALID_UTF8_STRING,
+                "Outbound packet contains invalid utf-8 data in a field that must be utf-8"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT,
+                "Mqtt5 connection was reset by the Mqtt3 adapter in order to guarantee correct connection configuration")
+
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
