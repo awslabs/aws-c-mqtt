@@ -34,7 +34,7 @@ struct aws_mqtt_client_connection_vtable {
 
     int (*set_http_proxy_options_fn)(void *impl, struct aws_http_proxy_options *proxy_options);
 
-    int (*set_host_resolution_options_fn)(void *impl, struct aws_host_resolution_config *host_resolution_config);
+    int (*set_host_resolution_options_fn)(void *impl, const struct aws_host_resolution_config *host_resolution_config);
 
     int (*set_reconnect_timeout_fn)(void *impl, uint64_t min_timeout, uint64_t max_timeout);
 

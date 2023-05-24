@@ -562,15 +562,66 @@ static int s_aws_mqtt_client_connection_5_use_websockets(
     return AWS_OP_SUCCESS;
 }
 
+struct aws_mqtt_set_host_resolution_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection *connection;
+
+    struct aws_host_resolution_config host_resolution_config;
+};
+
+static void s_set_host_resolution_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_set_host_resolution_task *set_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    struct aws_mqtt_client_connection_5_impl *adapter = set_task->connection->impl;
+
+    /* we're in the mqtt5 client's event loop; it's safe to access internal state */
+    adapter->client->config->host_resolution_override = set_task->host_resolution_config;
+
+done:
+
+    aws_mqtt_client_connection_release(set_task->connection);
+
+    aws_mem_release(set_task->allocator, set_task);
+}
+
+static struct aws_mqtt_set_host_resolution_task *s_aws_mqtt_set_host_resolution_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    const struct aws_host_resolution_config *host_resolution_config) {
+
+    struct aws_mqtt_set_host_resolution_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_host_resolution_task));
+
+    aws_task_init(&set_task->task, s_set_host_resolution_task_fn, (void *)set_task, "SetHostResolutionTask");
+    set_task->allocator = adapter->allocator;
+    set_task->connection = aws_mqtt_client_connection_acquire(&adapter->base);
+    set_task->host_resolution_config = *host_resolution_config;
+
+    return set_task;
+}
+
 static int s_aws_mqtt_client_connection_5_set_host_resolution_options(
     void *impl,
-    struct aws_host_resolution_config *host_resolution_config) {
+    const struct aws_host_resolution_config *host_resolution_config) {
 
-    (void)impl;
-    (void)host_resolution_config;
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
-    /* No CRTs use this function */
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    struct aws_mqtt_set_host_resolution_task *task =
+        s_aws_mqtt_set_host_resolution_task_new(adapter->allocator, adapter, host_resolution_config);
+    if (task == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set reconnect timeout task", (void *)adapter);
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
 }
 
 struct aws_mqtt_set_will_task {
