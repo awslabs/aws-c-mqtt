@@ -11,6 +11,8 @@
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/http/proxy.h>
+#include <aws/http/request_response.h>
+#include <aws/http/websocket.h>
 
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
@@ -22,11 +24,6 @@
 #include <aws/common/task_scheduler.h>
 
 #include <inttypes.h>
-
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
-#    include <aws/http/request_response.h>
-#    include <aws/http/websocket.h>
-#endif
 
 #ifdef _MSC_VER
 #    pragma warning(disable : 4204)
@@ -1142,7 +1139,6 @@ static int s_aws_mqtt_client_connection_311_set_on_any_publish_handler(
 /*******************************************************************************
  * Websockets
  ******************************************************************************/
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
 
 static int s_aws_mqtt_client_connection_311_use_websockets(
     void *impl,
@@ -1369,44 +1365,6 @@ error:;
     s_on_websocket_setup(&websocket_setup, connection);
 }
 
-#else  /* AWS_MQTT_WITH_WEBSOCKETS */
-int aws_mqtt_client_connection_use_websockets(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    aws_mqtt_transform_websocket_handshake_fn *transformer,
-    void *transformer_user_data,
-    aws_mqtt_validate_websocket_handshake_fn *validator,
-    void *validator_ud) {
-
-    (void)connection;
-    (void)transformer;
-    (void)transformer_user_data;
-    (void)validator;
-    (void)validator_ud;
-
-    AWS_LOGF_ERROR(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Cannot use websockets unless library is built with MQTT_WITH_WEBSOCKETS option.",
-        (void *)connection);
-
-    return aws_raise_error(AWS_ERROR_MQTT_BUILT_WITHOUT_WEBSOCKETS);
-}
-
-int aws_mqtt_client_connection_set_websocket_proxy_options(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_http_proxy_options *proxy_options) {
-
-    (void)connection;
-    (void)proxy_options;
-
-    AWS_LOGF_ERROR(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Cannot use websockets unless library is built with MQTT_WITH_WEBSOCKETS option.",
-        (void *)connection);
-
-    return aws_raise_error(AWS_ERROR_MQTT_BUILT_WITHOUT_WEBSOCKETS);
-}
-#endif /* AWS_MQTT_WITH_WEBSOCKETS */
-
 /*******************************************************************************
  * Connect
  ******************************************************************************/
@@ -1621,12 +1579,9 @@ static int s_mqtt_client_connect(
     connection->on_connection_complete_ud = userdata;
 
     int result = 0;
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
     if (connection->websocket.enabled) {
         result = s_websocket_connect(connection);
-    } else
-#endif /* AWS_MQTT_WITH_WEBSOCKETS */
-    {
+    } else {
         struct aws_socket_channel_bootstrap_options channel_options;
         AWS_ZERO_STRUCT(channel_options);
         channel_options.bootstrap = connection->client->bootstrap;
@@ -2216,209 +2171,6 @@ handle_error:
 }
 
 /*******************************************************************************
- * Subscribe Local
- ******************************************************************************/
-
-/* The lifetime of this struct is from subscribe -> suback */
-struct subscribe_local_task_arg {
-
-    struct aws_mqtt_client_connection_311_impl *connection;
-
-    struct subscribe_task_topic *task_topic;
-
-    aws_mqtt_suback_fn *on_suback;
-    void *on_suback_ud;
-};
-
-static enum aws_mqtt_client_request_state s_subscribe_local_send(
-    uint16_t packet_id,
-    bool is_first_attempt,
-    void *userdata) {
-
-    (void)is_first_attempt;
-
-    struct subscribe_local_task_arg *task_arg = userdata;
-
-    AWS_LOGF_TRACE(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Attempting save of local subscribe %" PRIu16 " (%s)",
-        (void *)task_arg->connection,
-        packet_id,
-        is_first_attempt ? "first attempt" : "redo");
-
-    struct subscribe_task_topic *topic = task_arg->task_topic;
-
-    struct aws_byte_cursor filter_cursor = aws_byte_cursor_from_string(topic->filter);
-    if (s_is_topic_shared_topic(&filter_cursor)) {
-        struct aws_string *normal_topic = s_get_normal_topic_from_shared_topic(topic->filter);
-        if (normal_topic == NULL) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Topic is shared subscription topic but topic could not be parsed from "
-                "shared subscription topic.",
-                (void *)task_arg->connection);
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-        if (aws_mqtt_topic_tree_insert(
-                &task_arg->connection->thread_data.subscriptions,
-                normal_topic,
-                topic->request.qos,
-                s_on_publish_client_wrapper,
-                s_task_topic_release,
-                topic)) {
-            aws_string_destroy(normal_topic);
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-        aws_string_destroy(normal_topic);
-    } else {
-        if (aws_mqtt_topic_tree_insert(
-                &task_arg->connection->thread_data.subscriptions,
-                topic->filter,
-                topic->request.qos,
-                s_on_publish_client_wrapper,
-                s_task_topic_release,
-                topic)) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-    }
-    aws_ref_count_acquire(&topic->ref_count);
-
-    return AWS_MQTT_CLIENT_REQUEST_COMPLETE;
-}
-
-static void s_subscribe_local_complete(
-    struct aws_mqtt_client_connection *connection_base,
-    uint16_t packet_id,
-    int error_code,
-    void *userdata) {
-
-    struct aws_mqtt_client_connection_311_impl *connection = connection_base->impl;
-
-    struct subscribe_local_task_arg *task_arg = userdata;
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Local subscribe %" PRIu16 " completed with error code %d",
-        (void *)connection,
-        packet_id,
-        error_code);
-
-    struct subscribe_task_topic *topic = task_arg->task_topic;
-    if (task_arg->on_suback) {
-        aws_mqtt_suback_fn *suback = task_arg->on_suback;
-        suback(
-            &connection->base,
-            packet_id,
-            &topic->request.topic,
-            topic->request.qos,
-            error_code,
-            task_arg->on_suback_ud);
-    }
-    s_task_topic_release(topic);
-
-    aws_mem_release(task_arg->connection->allocator, task_arg);
-}
-
-static uint16_t s_aws_mqtt_client_connection_311_subscribe_local(
-    void *impl,
-    const struct aws_byte_cursor *topic_filter,
-    aws_mqtt_client_publish_received_fn *on_publish,
-    void *on_publish_ud,
-    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
-    aws_mqtt_suback_fn *on_suback,
-    void *on_suback_ud) {
-
-    struct aws_mqtt_client_connection_311_impl *connection = impl;
-
-    AWS_PRECONDITION(connection);
-
-    if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
-        aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
-        return 0;
-    }
-
-    struct subscribe_task_topic *task_topic = NULL;
-
-    struct subscribe_local_task_arg *task_arg =
-        aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_local_task_arg));
-
-    if (!task_arg) {
-        goto handle_error;
-    }
-    AWS_ZERO_STRUCT(*task_arg);
-
-    task_arg->connection = connection;
-    task_arg->on_suback = on_suback;
-    task_arg->on_suback_ud = on_suback_ud;
-    task_topic = aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_topic));
-    if (!task_topic) {
-        goto handle_error;
-    }
-    aws_ref_count_init(&task_topic->ref_count, task_topic, (aws_simple_completion_callback *)s_task_topic_clean_up);
-    task_arg->task_topic = task_topic;
-
-    task_topic->filter = aws_string_new_from_array(connection->allocator, topic_filter->ptr, topic_filter->len);
-    if (!task_topic->filter) {
-        goto handle_error;
-    }
-
-    task_topic->connection = connection;
-    task_topic->is_local = true;
-    task_topic->request.topic = aws_byte_cursor_from_string(task_topic->filter);
-    task_topic->request.on_publish = on_publish;
-    task_topic->request.on_cleanup = on_ud_cleanup;
-    task_topic->request.on_publish_ud = on_publish_ud;
-
-    /* Calculate the size of the (local) subscribe packet
-     * The fixed header is 2 bytes, the packet ID is 2 bytes
-     * the topic filter is always 3 bytes (1 for QoS, 2 for Length MSB/LSB)
-     * - plus the size of the topic filter */
-    uint64_t subscribe_packet_size = 7 + topic_filter->len;
-
-    uint16_t packet_id = mqtt_create_request(
-        task_arg->connection,
-        s_subscribe_local_send,
-        task_arg,
-        &s_subscribe_local_complete,
-        task_arg,
-        false, /* noRetry */
-        subscribe_packet_size);
-
-    if (packet_id == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Failed to start local subscribe on topic " PRInSTR " with error %s",
-            (void *)connection,
-            AWS_BYTE_CURSOR_PRI(task_topic->request.topic),
-            aws_error_debug_str(aws_last_error()));
-        goto handle_error;
-    }
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_CLIENT,
-        "id=%p: Starting local subscribe %" PRIu16 " on topic " PRInSTR,
-        (void *)connection,
-        packet_id,
-        AWS_BYTE_CURSOR_PRI(task_topic->request.topic));
-    return packet_id;
-
-handle_error:
-
-    if (task_topic) {
-        if (task_topic->filter) {
-            aws_string_destroy(task_topic->filter);
-        }
-        aws_mem_release(connection->allocator, task_topic);
-    }
-
-    if (task_arg) {
-        aws_mem_release(connection->allocator, task_arg);
-    }
-
-    return 0;
-}
-
-/*******************************************************************************
  * Resubscribe
  ******************************************************************************/
 
@@ -2663,7 +2415,7 @@ struct unsubscribe_task_arg {
     struct aws_mqtt_client_connection_311_impl *connection;
     struct aws_string *filter_string;
     struct aws_byte_cursor filter;
-    bool is_local;
+
     /* Packet to populate */
     struct aws_mqtt_packet_unsubscribe unsubscribe;
 
@@ -2737,49 +2489,45 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
                 goto handle_error;
             }
         }
-
-        task_arg->is_local = topic ? topic->is_local : false;
     }
 
-    if (!task_arg->is_local) {
-        if (task_arg->unsubscribe.fixed_header.packet_type == 0) {
-            /* If unsubscribe packet is uninitialized, init it */
-            if (aws_mqtt_packet_unsubscribe_init(&task_arg->unsubscribe, task_arg->connection->allocator, packet_id)) {
-                goto handle_error;
-            }
-            if (aws_mqtt_packet_unsubscribe_add_topic(&task_arg->unsubscribe, task_arg->filter)) {
-                goto handle_error;
-            }
-        }
-
-        message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->unsubscribe.fixed_header);
-        if (!message) {
+    if (task_arg->unsubscribe.fixed_header.packet_type == 0) {
+        /* If unsubscribe packet is uninitialized, init it */
+        if (aws_mqtt_packet_unsubscribe_init(&task_arg->unsubscribe, task_arg->connection->allocator, packet_id)) {
             goto handle_error;
         }
-
-        if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &task_arg->unsubscribe)) {
+        if (aws_mqtt_packet_unsubscribe_add_topic(&task_arg->unsubscribe, task_arg->filter)) {
             goto handle_error;
         }
-
-        if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-            goto handle_error;
-        }
-
-        /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
-         * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
-         * fire the on_completion callbacks. */
-        struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(task_arg->connection, packet_id);
-        if (!timeout_task_arg) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
-
-        /*
-         * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
-         * "wins", does its logic, and then breaks the connection between the two.
-         */
-        task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
-        timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
     }
+
+    message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->unsubscribe.fixed_header);
+    if (!message) {
+        goto handle_error;
+    }
+
+    if (aws_mqtt_packet_unsubscribe_encode(&message->message_data, &task_arg->unsubscribe)) {
+        goto handle_error;
+    }
+
+    if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        goto handle_error;
+    }
+
+    /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
+     * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
+     * fire the on_completion callbacks. */
+    struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(task_arg->connection, packet_id);
+    if (!timeout_task_arg) {
+        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+    }
+
+    /*
+     * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
+     * "wins", does its logic, and then breaks the connection between the two.
+     */
+    task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
+    timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
 
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->thread_data.subscriptions, &transaction);
@@ -2787,8 +2535,8 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     }
 
     aws_array_list_clean_up(&transaction);
-    /* If the subscribe is local-only, don't wait for a SUBACK to come back. */
-    return task_arg->is_local ? AWS_MQTT_CLIENT_REQUEST_COMPLETE : AWS_MQTT_CLIENT_REQUEST_ONGOING;
+
+    return AWS_MQTT_CLIENT_REQUEST_ONGOING;
 
 handle_error:
 
@@ -3396,7 +3144,6 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .disconnect_fn = s_aws_mqtt_client_connection_311_disconnect,
     .subscribe_multiple_fn = s_aws_mqtt_client_connection_311_subscribe_multiple,
     .subscribe_fn = s_aws_mqtt_client_connection_311_subscribe,
-    .subscribe_local_fn = s_aws_mqtt_client_connection_311_subscribe_local,
     .resubscribe_existing_topics_fn = s_aws_mqtt_311_resubscribe_existing_topics,
     .unsubscribe_fn = s_aws_mqtt_client_connection_311_unsubscribe,
     .publish_fn = s_aws_mqtt_client_connection_311_publish,
