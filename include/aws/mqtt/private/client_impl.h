@@ -174,7 +174,6 @@ struct subscribe_task_topic {
 
     struct aws_mqtt_topic_subscription request;
     struct aws_string *filter;
-    bool is_local;
 
     struct aws_ref_count ref_count;
 };

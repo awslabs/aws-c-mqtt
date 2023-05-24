@@ -5,11 +5,9 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/http/http.h>
 #include <aws/io/logging.h>
 
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
-#    include <aws/http/http.h>
-#endif
 
 /*******************************************************************************
  * Topic Validation
@@ -257,9 +255,8 @@ void aws_mqtt_library_init(struct aws_allocator *allocator) {
     if (!s_mqtt_library_initialized) {
         s_mqtt_library_initialized = true;
         aws_io_library_init(allocator);
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
         aws_http_library_init(allocator);
-#endif
+
         aws_register_error_info(&s_error_list);
         aws_register_log_subject_info_list(&s_logging_subjects_list);
     }
@@ -271,9 +268,7 @@ void aws_mqtt_library_clean_up(void) {
         aws_thread_join_all_managed();
         aws_unregister_error_info(&s_error_list);
         aws_unregister_log_subject_info_list(&s_logging_subjects_list);
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
         aws_http_library_clean_up();
-#endif
         aws_io_library_clean_up();
     }
 }

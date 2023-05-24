@@ -144,19 +144,6 @@ uint16_t aws_mqtt_client_connection_subscribe(
         connection->impl, topic_filter, qos, on_publish, on_publish_ud, on_ud_cleanup, on_suback, on_suback_ud);
 }
 
-uint16_t aws_mqtt_client_connection_subscribe_local(
-    struct aws_mqtt_client_connection *connection,
-    const struct aws_byte_cursor *topic_filter,
-    aws_mqtt_client_publish_received_fn *on_publish,
-    void *on_publish_ud,
-    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
-    aws_mqtt_suback_fn *on_suback,
-    void *on_suback_ud) {
-
-    return (*connection->vtable->subscribe_local_fn)(
-        connection->impl, topic_filter, on_publish, on_publish_ud, on_ud_cleanup, on_suback, on_suback_ud);
-}
-
 uint16_t aws_mqtt_resubscribe_existing_topics(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_suback_multi_fn *on_suback,

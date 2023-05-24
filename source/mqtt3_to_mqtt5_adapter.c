@@ -896,7 +896,6 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .disconnect_fn = NULL,
     .subscribe_multiple_fn = NULL,
     .subscribe_fn = NULL,
-    .subscribe_local_fn = NULL,
     .resubscribe_existing_topics_fn = NULL,
     .unsubscribe_fn = NULL,
     .publish_fn = NULL,
