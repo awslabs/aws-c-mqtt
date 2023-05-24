@@ -32,19 +32,19 @@ struct aws_mqtt_client_connection_5_impl {
 
     /* 311 interface callbacks */
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
-    void *on_interrupted_ud;
+    void *on_interrupted_user_data;
 
     aws_mqtt_client_on_connection_resumed_fn *on_resumed;
-    void *on_resumed_ud;
+    void *on_resumed_user_data;
 
     aws_mqtt_client_on_connection_closed_fn *on_closed;
-    void *on_closed_ud;
+    void *on_closed_user_data;
 
     aws_mqtt_client_publish_received_fn *on_any_publish;
-    void *on_any_publish_ud;
+    void *on_any_publish_user_data;
 
     aws_mqtt_transform_websocket_handshake_fn *websocket_handshake_transformer;
-    void *websocket_handshake_transformer_ud;
+    void *websocket_handshake_transformer_user_data;
 
     aws_mqtt5_transform_websocket_handshake_complete_fn *mqtt5_websocket_handshake_completion_function;
     void *mqtt5_websocket_handshake_completion_user_data;
@@ -87,9 +87,10 @@ struct aws_mqtt_set_interruption_handlers_task {
     struct aws_mqtt_client_connection *connection;
 
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
-    void *on_interrupted_ud;
+    void *on_interrupted_user_data;
+
     aws_mqtt_client_on_connection_resumed_fn *on_resumed;
-    void *on_resumed_ud;
+    void *on_resumed_user_data;
 };
 
 static void s_set_interruption_handlers_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -103,9 +104,9 @@ static void s_set_interruption_handlers_task_fn(struct aws_task *task, void *arg
     struct aws_mqtt_client_connection_5_impl *adapter = set_task->connection->impl;
 
     adapter->on_interrupted = set_task->on_interrupted;
-    adapter->on_interrupted_ud = set_task->on_interrupted_ud;
+    adapter->on_interrupted_user_data = set_task->on_interrupted_user_data;
     adapter->on_resumed = set_task->on_resumed;
-    adapter->on_resumed_ud = set_task->on_resumed_ud;
+    adapter->on_resumed_user_data = set_task->on_resumed_user_data;
 
 done:
 
@@ -118,24 +119,21 @@ static struct aws_mqtt_set_interruption_handlers_task *s_aws_mqtt_set_interrupti
     struct aws_allocator *allocator,
     struct aws_mqtt_client_connection_5_impl *adapter,
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted,
-    void *on_interrupted_ud,
+    void *on_interrupted_user_data,
     aws_mqtt_client_on_connection_resumed_fn *on_resumed,
-    void *on_resumed_ud) {
+    void *on_resumed_user_data) {
 
     struct aws_mqtt_set_interruption_handlers_task *set_task =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_interruption_handlers_task));
-    if (set_task == NULL) {
-        return NULL;
-    }
 
     aws_task_init(
         &set_task->task, s_set_interruption_handlers_task_fn, (void *)set_task, "SetInterruptionHandlersTask");
     set_task->allocator = adapter->allocator;
     set_task->connection = aws_mqtt_client_connection_acquire(&adapter->base);
     set_task->on_interrupted = on_interrupted;
-    set_task->on_interrupted_ud = on_interrupted_ud;
+    set_task->on_interrupted_user_data = on_interrupted_user_data;
     set_task->on_resumed = on_resumed;
-    set_task->on_resumed_ud = on_resumed_ud;
+    set_task->on_resumed_user_data = on_resumed_user_data;
 
     return set_task;
 }
@@ -143,13 +141,13 @@ static struct aws_mqtt_set_interruption_handlers_task *s_aws_mqtt_set_interrupti
 static int s_aws_mqtt_client_connection_5_set_interruption_handlers(
     void *impl,
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted,
-    void *on_interrupted_ud,
+    void *on_interrupted_user_data,
     aws_mqtt_client_on_connection_resumed_fn *on_resumed,
-    void *on_resumed_ud) {
+    void *on_resumed_user_data) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     struct aws_mqtt_set_interruption_handlers_task *task = s_aws_mqtt_set_interruption_handlers_task_new(
-        adapter->allocator, adapter, on_interrupted, on_interrupted_ud, on_resumed, on_resumed_ud);
+        adapter->allocator, adapter, on_interrupted, on_interrupted_user_data, on_resumed, on_resumed_user_data);
     if (task == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set interruption handlers task", (void *)adapter);
         return AWS_OP_ERR;
@@ -166,7 +164,7 @@ struct aws_mqtt_set_on_closed_handler_task {
     struct aws_mqtt_client_connection *connection;
 
     aws_mqtt_client_on_connection_closed_fn *on_closed;
-    void *on_closed_ud;
+    void *on_closed_user_data;
 };
 
 static void s_set_on_closed_handler_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -180,7 +178,7 @@ static void s_set_on_closed_handler_task_fn(struct aws_task *task, void *arg, en
     struct aws_mqtt_client_connection_5_impl *adapter = set_task->connection->impl;
 
     adapter->on_closed = set_task->on_closed;
-    adapter->on_closed_ud = set_task->on_closed_ud;
+    adapter->on_closed_user_data = set_task->on_closed_user_data;
 
 done:
 
@@ -193,19 +191,16 @@ static struct aws_mqtt_set_on_closed_handler_task *s_aws_mqtt_set_on_closed_hand
     struct aws_allocator *allocator,
     struct aws_mqtt_client_connection_5_impl *adapter,
     aws_mqtt_client_on_connection_closed_fn *on_closed,
-    void *on_closed_ud) {
+    void *on_closed_user_data) {
 
     struct aws_mqtt_set_on_closed_handler_task *set_task =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_on_closed_handler_task));
-    if (set_task == NULL) {
-        return NULL;
-    }
 
     aws_task_init(&set_task->task, s_set_on_closed_handler_task_fn, (void *)set_task, "SetOnClosedHandlerTask");
     set_task->allocator = adapter->allocator;
     set_task->connection = aws_mqtt_client_connection_acquire(&adapter->base);
     set_task->on_closed = on_closed;
-    set_task->on_closed_ud = on_closed_ud;
+    set_task->on_closed_user_data = on_closed_user_data;
 
     return set_task;
 }
@@ -213,11 +208,11 @@ static struct aws_mqtt_set_on_closed_handler_task *s_aws_mqtt_set_on_closed_hand
 static int s_aws_mqtt_client_connection_5_set_on_closed_handler(
     void *impl,
     aws_mqtt_client_on_connection_closed_fn *on_closed,
-    void *on_closed_ud) {
+    void *on_closed_user_data) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     struct aws_mqtt_set_on_closed_handler_task *task =
-        s_aws_mqtt_set_on_closed_handler_task_new(adapter->allocator, adapter, on_closed, on_closed_ud);
+        s_aws_mqtt_set_on_closed_handler_task_new(adapter->allocator, adapter, on_closed, on_closed_user_data);
     if (task == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set on closed handler task", (void *)adapter);
         return AWS_OP_ERR;
@@ -234,7 +229,7 @@ struct aws_mqtt_set_on_any_publish_handler_task {
     struct aws_mqtt_client_connection *connection;
 
     aws_mqtt_client_publish_received_fn *on_any_publish;
-    void *on_any_publish_ud;
+    void *on_any_publish_user_data;
 };
 
 static void s_set_on_any_publish_handler_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -248,7 +243,7 @@ static void s_set_on_any_publish_handler_task_fn(struct aws_task *task, void *ar
     struct aws_mqtt_client_connection_5_impl *adapter = set_task->connection->impl;
 
     adapter->on_any_publish = set_task->on_any_publish;
-    adapter->on_any_publish_ud = set_task->on_any_publish_ud;
+    adapter->on_any_publish_user_data = set_task->on_any_publish_user_data;
 
 done:
 
@@ -261,20 +256,17 @@ static struct aws_mqtt_set_on_any_publish_handler_task *s_aws_mqtt_set_on_any_pu
     struct aws_allocator *allocator,
     struct aws_mqtt_client_connection_5_impl *adapter,
     aws_mqtt_client_publish_received_fn *on_any_publish,
-    void *on_any_publish_ud) {
+    void *on_any_publish_user_data) {
 
     struct aws_mqtt_set_on_any_publish_handler_task *set_task =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_on_any_publish_handler_task));
-    if (set_task == NULL) {
-        return NULL;
-    }
 
     aws_task_init(
         &set_task->task, s_set_on_any_publish_handler_task_fn, (void *)set_task, "SetOnAnyPublishHandlerTask");
     set_task->allocator = adapter->allocator;
     set_task->connection = aws_mqtt_client_connection_acquire(&adapter->base);
     set_task->on_any_publish = on_any_publish;
-    set_task->on_any_publish_ud = on_any_publish_ud;
+    set_task->on_any_publish_user_data = on_any_publish_user_data;
 
     return set_task;
 }
@@ -282,11 +274,11 @@ static struct aws_mqtt_set_on_any_publish_handler_task *s_aws_mqtt_set_on_any_pu
 static int s_aws_mqtt_client_connection_5_set_on_any_publish_handler(
     void *impl,
     aws_mqtt_client_publish_received_fn *on_any_publish,
-    void *on_any_publish_ud) {
+    void *on_any_publish_user_data) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
-    struct aws_mqtt_set_on_any_publish_handler_task *task =
-        s_aws_mqtt_set_on_any_publish_handler_task_new(adapter->allocator, adapter, on_any_publish, on_any_publish_ud);
+    struct aws_mqtt_set_on_any_publish_handler_task *task = s_aws_mqtt_set_on_any_publish_handler_task_new(
+        adapter->allocator, adapter, on_any_publish, on_any_publish_user_data);
     if (task == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set on any publish task", (void *)adapter);
         return AWS_OP_ERR;
@@ -336,9 +328,6 @@ static struct aws_mqtt_set_reconnect_timeout_task *s_aws_mqtt_set_reconnect_time
 
     struct aws_mqtt_set_reconnect_timeout_task *set_task =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_reconnect_timeout_task));
-    if (set_task == NULL) {
-        return NULL;
-    }
 
     aws_task_init(&set_task->task, s_set_reconnect_timeout_task_fn, (void *)set_task, "SetReconnectTimeoutTask");
     set_task->allocator = adapter->allocator;
@@ -413,16 +402,20 @@ static struct aws_mqtt_set_http_proxy_options_task *s_aws_mqtt_set_http_proxy_op
     struct aws_mqtt_client_connection_5_impl *adapter,
     struct aws_http_proxy_options *proxy_options) {
 
-    struct aws_mqtt_set_http_proxy_options_task *set_task =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_http_proxy_options_task));
-    if (set_task == NULL) {
+    struct aws_http_proxy_config *proxy_config =
+        aws_http_proxy_config_new_tunneling_from_proxy_options(allocator, proxy_options);
+    if (proxy_config == NULL) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
     }
+
+    struct aws_mqtt_set_http_proxy_options_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_http_proxy_options_task));
 
     aws_task_init(&set_task->task, s_set_http_proxy_options_task_fn, (void *)set_task, "SetHttpProxyOptionsTask");
     set_task->allocator = adapter->allocator;
     set_task->connection = aws_mqtt_client_connection_acquire(&adapter->base);
-    set_task->proxy_config = aws_http_proxy_config_new_tunneling_from_proxy_options(allocator, proxy_options);
+    set_task->proxy_config = proxy_config;
 
     return set_task;
 }
@@ -451,7 +444,7 @@ struct aws_mqtt_set_use_websockets_task {
     struct aws_mqtt_client_connection *connection;
 
     aws_mqtt_transform_websocket_handshake_fn *transformer;
-    void *transformer_ud;
+    void *transformer_user_data;
 };
 
 static void s_aws_mqtt5_adapter_websocket_handshake_completion_fn(
@@ -513,7 +506,7 @@ static void s_set_use_websockets_task_fn(struct aws_task *task, void *arg, enum 
     struct aws_mqtt_client_connection_5_impl *adapter = set_task->connection->impl;
 
     adapter->websocket_handshake_transformer = set_task->transformer;
-    adapter->websocket_handshake_transformer_ud = set_task->transformer_ud;
+    adapter->websocket_handshake_transformer_user_data = set_task->transformer_user_data;
 
     /* we're in the mqtt5 client's event loop; it's safe to access its internal state */
     adapter->client->config->websocket_handshake_transform = s_aws_mqtt5_adapter_transform_websocket_handshake_fn;
@@ -530,19 +523,16 @@ static struct aws_mqtt_set_use_websockets_task *s_aws_mqtt_set_use_websockets_ta
     struct aws_allocator *allocator,
     struct aws_mqtt_client_connection_5_impl *adapter,
     aws_mqtt_transform_websocket_handshake_fn *transformer,
-    void *transformer_ud) {
+    void *transformer_user_data) {
 
     struct aws_mqtt_set_use_websockets_task *set_task =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_use_websockets_task));
-    if (set_task == NULL) {
-        return NULL;
-    }
 
     aws_task_init(&set_task->task, s_set_use_websockets_task_fn, (void *)set_task, "SetUseWebsocketsTask");
     set_task->allocator = adapter->allocator;
     set_task->connection = aws_mqtt_client_connection_acquire(&adapter->base);
     set_task->transformer = transformer;
-    set_task->transformer_ud = transformer_ud;
+    set_task->transformer_user_data = transformer_user_data;
 
     return set_task;
 }
@@ -550,18 +540,18 @@ static struct aws_mqtt_set_use_websockets_task *s_aws_mqtt_set_use_websockets_ta
 static int s_aws_mqtt_client_connection_5_use_websockets(
     void *impl,
     aws_mqtt_transform_websocket_handshake_fn *transformer,
-    void *transformer_ud,
+    void *transformer_user_data,
     aws_mqtt_validate_websocket_handshake_fn *validator,
-    void *validator_ud) {
+    void *validator_user_data) {
 
     /* mqtt5 doesn't use these */
     (void)validator;
-    (void)validator_ud;
+    (void)validator_user_data;
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     struct aws_mqtt_set_use_websockets_task *task =
-        s_aws_mqtt_set_use_websockets_task_new(adapter->allocator, adapter, transformer, transformer_ud);
+        s_aws_mqtt_set_use_websockets_task_new(adapter->allocator, adapter, transformer, transformer_user_data);
     if (task == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set use websockets task", (void *)adapter);
         return AWS_OP_ERR;
@@ -659,9 +649,6 @@ static struct aws_mqtt_set_will_task *s_aws_mqtt_set_will_task_new(
     }
 
     struct aws_mqtt_set_will_task *set_task = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_will_task));
-    if (set_task == NULL) {
-        return NULL;
-    }
 
     aws_task_init(&set_task->task, s_set_will_task_fn, (void *)set_task, "SetWillTask");
     set_task->allocator = adapter->allocator;
@@ -777,9 +764,6 @@ static struct aws_mqtt_set_login_task *s_aws_mqtt_set_login_task_new(
     const struct aws_byte_cursor *password) {
 
     struct aws_mqtt_set_login_task *set_task = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_login_task));
-    if (set_task == NULL) {
-        return NULL;
-    }
 
     aws_task_init(&set_task->task, s_set_login_task_fn, (void *)set_task, "SetLoginTask");
     set_task->allocator = adapter->allocator;
