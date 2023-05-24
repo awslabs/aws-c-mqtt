@@ -405,7 +405,7 @@ int aws_mqtt_client_connection_set_http_proxy_options(
 AWS_MQTT_API
 int aws_mqtt_client_connection_set_host_resolution_options(
     struct aws_mqtt_client_connection *connection,
-    struct aws_host_resolution_config *host_resolution_config);
+    const struct aws_host_resolution_config *host_resolution_config);
 
 /**
  * Sets the minimum and maximum reconnect timeouts.
