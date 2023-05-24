@@ -77,15 +77,6 @@ struct aws_mqtt_client_connection_vtable {
         aws_mqtt_suback_fn *on_suback,
         void *on_suback_ud);
 
-    uint16_t (*subscribe_local_fn)(
-        void *impl,
-        const struct aws_byte_cursor *topic_filter,
-        aws_mqtt_client_publish_received_fn *on_publish,
-        void *on_publish_ud,
-        aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
-        aws_mqtt_suback_fn *on_suback,
-        void *on_suback_ud);
-
     uint16_t (*resubscribe_existing_topics_fn)(void *impl, aws_mqtt_suback_multi_fn *on_suback, void *on_suback_ud);
 
     uint16_t (*unsubscribe_fn)(
