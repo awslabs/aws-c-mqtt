@@ -1184,7 +1184,7 @@ static int s_aws_mqtt_client_connection_311_set_http_proxy_options(
 
 static int s_aws_mqtt_client_connection_311_set_host_resolution_options(
     void *impl,
-    struct aws_host_resolution_config *host_resolution_config) {
+    const struct aws_host_resolution_config *host_resolution_config) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
@@ -1373,13 +1373,13 @@ error:;
 int aws_mqtt_client_connection_use_websockets(
     struct aws_mqtt_client_connection_311_impl *connection,
     aws_mqtt_transform_websocket_handshake_fn *transformer,
-    void *transformer_ud,
+    void *transformer_user_data,
     aws_mqtt_validate_websocket_handshake_fn *validator,
     void *validator_ud) {
 
     (void)connection;
     (void)transformer;
-    (void)transformer_ud;
+    (void)transformer_user_data;
     (void)validator;
     (void)validator_ud;
 
