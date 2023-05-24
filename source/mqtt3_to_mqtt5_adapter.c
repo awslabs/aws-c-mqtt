@@ -11,6 +11,7 @@
 enum aws_mqtt5_adapter_state {
     AWS_MQTT5_AS_ENABLED,
     AWS_MQTT5_AS_DISABLED,
+    AWS_MQTT5_AS_TERMINATED,
 };
 
 struct aws_mqtt_client_connection_5_impl {
@@ -900,7 +901,7 @@ static void s_aws_mqtt_client_connection_5_release(void *impl) {
     AWS_FATAL_ASSERT(adapter->synced_data.ref_count > 0);
     --adapter->synced_data.ref_count;
     if (adapter->synced_data.ref_count == 0) {
-        adapter->synced_data.state = AWS_MQTT5_AS_DISABLED;
+        adapter->synced_data.state = AWS_MQTT5_AS_TERMINATED;
         start_shutdown = true;
     }
 
