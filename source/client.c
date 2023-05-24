@@ -2529,7 +2529,6 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
     timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
 
-
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->thread_data.subscriptions, &transaction);
         task_arg->tree_updated = true;
