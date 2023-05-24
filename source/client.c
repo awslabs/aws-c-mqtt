@@ -1373,13 +1373,13 @@ error:;
 int aws_mqtt_client_connection_use_websockets(
     struct aws_mqtt_client_connection_311_impl *connection,
     aws_mqtt_transform_websocket_handshake_fn *transformer,
-    void *transformer_ud,
+    void *transformer_user_data,
     aws_mqtt_validate_websocket_handshake_fn *validator,
     void *validator_ud) {
 
     (void)connection;
     (void)transformer;
-    (void)transformer_ud;
+    (void)transformer_user_data;
     (void)validator;
     (void)validator_ud;
 
