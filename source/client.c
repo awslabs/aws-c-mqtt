@@ -3365,7 +3365,23 @@ int aws_mqtt_client_connection_set_on_operation_statistics_handler(
     return AWS_OP_SUCCESS;
 }
 
+static struct aws_mqtt_client_connection *s_aws_mqtt_client_connection_311_acquire(void *impl) {
+    struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    aws_ref_count_acquire(&connection->ref_count);
+
+    return &connection->base;
+}
+
+static void s_aws_mqtt_client_connection_311_release(void *impl) {
+    struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    aws_ref_count_release(&connection->ref_count);
+}
+
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311_vtable = {
+    .acquire_fn = s_aws_mqtt_client_connection_311_acquire,
+    .release_fn = s_aws_mqtt_client_connection_311_release,
     .set_will_fn = s_aws_mqtt_client_connection_311_set_will,
     .set_login_fn = s_aws_mqtt_client_connection_311_set_login,
     .use_websockets_fn = s_aws_mqtt_client_connection_311_use_websockets,
@@ -3406,9 +3422,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->base.vtable = s_aws_mqtt_client_connection_311_vtable_ptr;
     connection->base.impl = connection;
     aws_ref_count_init(
-        &connection->base.ref_count,
-        connection,
-        (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
+        &connection->ref_count, connection, (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
     connection->client = aws_mqtt_client_acquire(client);
     AWS_ZERO_STRUCT(connection->synced_data);
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;

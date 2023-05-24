@@ -184,6 +184,8 @@ struct aws_mqtt_client_connection_311_impl {
 
     struct aws_mqtt_client_connection base;
 
+    struct aws_ref_count ref_count;
+
     struct aws_mqtt_client *client;
 
     /* Channel handler information */
