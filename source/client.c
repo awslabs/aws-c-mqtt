@@ -1184,7 +1184,7 @@ static int s_aws_mqtt_client_connection_311_set_http_proxy_options(
 
 static int s_aws_mqtt_client_connection_311_set_host_resolution_options(
     void *impl,
-    struct aws_host_resolution_config *host_resolution_config) {
+    const struct aws_host_resolution_config *host_resolution_config) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
