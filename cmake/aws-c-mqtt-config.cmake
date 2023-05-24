@@ -1,6 +1,5 @@
 include(CMakeFindDependencyMacro)
 
-find_dependency(aws-c-io)
 find_dependency(aws-c-http)
 
 macro(aws_load_targets type)
