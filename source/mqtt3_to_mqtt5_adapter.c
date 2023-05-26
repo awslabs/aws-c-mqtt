@@ -30,6 +30,8 @@ struct aws_mqtt_client_connection_5_impl {
         uint64_t ref_count;
     } synced_data;
 
+    bool in_synchronous_callback;
+
     /* 311 interface callbacks */
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
     void *on_interrupted_user_data;
@@ -49,6 +51,58 @@ struct aws_mqtt_client_connection_5_impl {
     aws_mqtt5_transform_websocket_handshake_complete_fn *mqtt5_websocket_handshake_completion_function;
     void *mqtt5_websocket_handshake_completion_user_data;
 };
+
+typedef int (*adapter_callback_fn)(struct aws_mqtt_client_connection_5_impl *adapter, void *context);
+
+/*
+ * The state/ref-count lock is held during synchronous callbacks to prevent invoking into something that is in the
+ * process of destruction.  In general this isn't a performance worry since callbacks are invoked from a single thread:
+ * the event loop that the client and adapter are seated on.
+ *
+ * But since we don't have recursive mutexes on all platforms, we need to be careful about the shutdown
+ * process since if we naively always locked, then an adapter release from within a callback would deadlock.
+ *
+ * We need a way to tell if locking will result in a deadlock.  The specific case is invoking a synchronous
+ * callback from the event loop that re-enters the adapter logic via releasing the connection.  We can recognize
+ * this scenario by setting/clearing an internal flag (in_synchronous_callback) and checking it only if we're
+ * in the event loop thread.  If it's true, we know we've already locked at the beginning of the synchronous callback
+ * and we can safely skip locking, otherwise we must lock.
+ *
+ * This function gives us a helper for making these kinds of safe callbacks.  We use it in:
+ *   (1) Releasing the connection
+ *   (2) Websocket handshake transform
+ *   (3) Making lifecycle and operation callbacks on the mqtt311 interface
+ */
+static int s_aws_mqtt5_adapter_perform_safe_callback(
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    adapter_callback_fn callback_fn,
+    void *callback_user_data) {
+    bool should_unlock = true;
+    bool clear_synchronous_callback_flag = false;
+    if (aws_event_loop_thread_is_callers_thread(adapter->loop)) {
+        if (adapter->in_synchronous_callback) {
+            should_unlock = false;
+        } else {
+            adapter->in_synchronous_callback = true;
+            clear_synchronous_callback_flag = true;
+            aws_mutex_lock(&adapter->lock);
+        }
+    } else {
+        aws_mutex_lock(&adapter->lock);
+    }
+
+    int result = (*callback_fn)(adapter, callback_user_data);
+
+    if (should_unlock) {
+        aws_mutex_unlock(&adapter->lock);
+    }
+
+    if (clear_synchronous_callback_flag) {
+        adapter->in_synchronous_callback = false;
+    }
+
+    return result;
+}
 
 static void s_aws_mqtt5_client_connection_event_callback_adapter(const struct aws_mqtt5_client_lifecycle_event *event) {
     (void)event;
@@ -70,6 +124,9 @@ static void s_mqtt_client_connection_5_impl_finish_destroy(void *context) {
         /*
          * If the mqtt5 client is pointing to us for websocket transform, then erase that.  The callback
          * is invoked from our pinned event loop so this is safe.
+         *
+         * TODO: It is possible that multiple adapters may have sequentially side-affected the websocket handshake.
+         * For now, in that case, subsequent connection attempts will probably not succeed.
          */
         adapter->client->config->websocket_handshake_transform = NULL;
         adapter->client->config->websocket_handshake_transform_user_data = NULL;
@@ -460,6 +517,28 @@ static void s_aws_mqtt5_adapter_websocket_handshake_completion_fn(
     aws_mqtt_client_connection_release(&adapter->base);
 }
 
+struct aws_mqtt5_adapter_websocket_handshake_args {
+    bool chain_callback;
+    struct aws_http_message *input_request;
+    struct aws_http_message *output_request;
+    int completion_error_code;
+};
+
+static int s_safe_websocket_handshake_fn(struct aws_mqtt_client_connection_5_impl *adapter, void *context) {
+    struct aws_mqtt5_adapter_websocket_handshake_args *args = context;
+
+    if (adapter->synced_data.state != AWS_MQTT5_AS_ENABLED) {
+        args->completion_error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP;
+    } else if (adapter->websocket_handshake_transformer == NULL) {
+        args->output_request = args->input_request;
+    } else {
+        ++adapter->synced_data.ref_count;
+        args->chain_callback = true;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static void s_aws_mqtt5_adapter_transform_websocket_handshake_fn(
     struct aws_http_message *request,
     void *user_data,
@@ -468,30 +547,20 @@ static void s_aws_mqtt5_adapter_transform_websocket_handshake_fn(
 
     struct aws_mqtt_client_connection_5_impl *adapter = user_data;
 
-    bool chain_callback = false;
-    struct aws_http_message *completion_request = NULL;
-    int completion_error_code = AWS_ERROR_SUCCESS;
-    aws_mutex_lock(&adapter->lock);
+    struct aws_mqtt5_adapter_websocket_handshake_args args = {
+        .input_request = request,
+    };
 
-    if (adapter->synced_data.state != AWS_MQTT5_AS_ENABLED) {
-        completion_error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP;
-    } else if (adapter->websocket_handshake_transformer == NULL) {
-        completion_request = request;
-    } else {
-        ++adapter->synced_data.ref_count;
-        chain_callback = true;
-    }
+    s_aws_mqtt5_adapter_perform_safe_callback(adapter, s_safe_websocket_handshake_fn, &args);
 
-    aws_mutex_unlock(&adapter->lock);
-
-    if (chain_callback) {
+    if (args.chain_callback) {
         adapter->mqtt5_websocket_handshake_completion_function = complete_fn;
         adapter->mqtt5_websocket_handshake_completion_user_data = complete_ctx;
 
         (*adapter->websocket_handshake_transformer)(
             request, user_data, s_aws_mqtt5_adapter_websocket_handshake_completion_fn, adapter);
     } else {
-        (*complete_fn)(completion_request, completion_error_code, complete_ctx);
+        (*complete_fn)(args.output_request, args.completion_error_code, complete_ctx);
     }
 }
 
@@ -861,53 +930,24 @@ static struct aws_mqtt_client_connection *s_aws_mqtt_client_connection_5_acquire
     return &adapter->base;
 }
 
-/*
- * The lock is held during callbacks to prevent invoking into something that is in the process of
- * destruction.  In general this isn't a performance worry since callbacks are invoked from a single
- * thread: the event loop that the client and adapter are seated on.
- *
- * But since we don't have recursive mutexes on all platforms, we need to be careful about the shutdown
- * process since if we naively always locked, then an adapter release inside a callback would deadlock.
- *
- * On the surface, it seems reasonable that if we're in the event loop thread we could just skip
- * locking entirely (because we've already locked it at the start of the callback).  Unfortunately, this isn't safe
- * because we don't actually truly know we're in our mqtt5 client's callback; we could be in some other
- * client/connection's callback that happens to be seated on the same event loop.  And while it's true that because
- * of the thread seating, nothing will be interfering with our shared state manipulation, there's one final
- * consideration which forces us to *try* to lock:
- *
- * Dependent on the memory model of the CPU architecture, changes to shared state, even if "safe" from data
- * races across threads, may not become visible to other cores on the same CPU unless some kind of synchronization
- * primitive (memory barrier) is invoked.  So in this extremely unlikely case, we use try-lock to guarantee that a
- * synchronization primitive is invoked when disable is coming through a callback from something else on the same
- * event loop.
- *
- * In the case that we're in our mqtt5 client's callback, the lock is already held, try fails, and the unlock at
- * the end of the callback will suffice for cache flush and synchronization.
- *
- * In the case that we're in something else's callback on the same thread, the try succeeds and its followup
- * unlock here will suffice for cache flush and synchronization.
- *
- * Some after-the-fact analysis hints that this extra step (in the case where we are in the event loop) may
- * be unnecessary because the only reader of the state change is the event loop thread itself.  I don't feel
- * confident enough in the memory semantics of thread<->CPU core bindings to relax this though.
- */
-static void s_aws_mqtt_client_connection_5_release(void *impl) {
-    struct aws_mqtt_client_connection_5_impl *adapter = impl;
-
-    bool start_shutdown = false;
-    bool lock_succeeded = aws_mutex_try_lock(&adapter->lock) == AWS_OP_SUCCESS;
+static int s_decref_for_shutdown(struct aws_mqtt_client_connection_5_impl *adapter, void *context) {
+    bool *start_shutdown = context;
 
     AWS_FATAL_ASSERT(adapter->synced_data.ref_count > 0);
     --adapter->synced_data.ref_count;
     if (adapter->synced_data.ref_count == 0) {
         adapter->synced_data.state = AWS_MQTT5_AS_TERMINATED;
-        start_shutdown = true;
+        *start_shutdown = true;
     }
 
-    if (lock_succeeded) {
-        aws_mutex_unlock(&adapter->lock);
-    }
+    return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt_client_connection_5_release(void *impl) {
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    bool start_shutdown = false;
+    s_aws_mqtt5_adapter_perform_safe_callback(adapter, s_decref_for_shutdown, &start_shutdown);
 
     if (start_shutdown) {
         /*
@@ -922,7 +962,7 @@ static void s_aws_mqtt_client_connection_5_release(void *impl) {
          *      mqtt5 client.
          *  (4) Synchronously clean up all further resources.
          *
-         *  Step (1) was done within the lock above.
+         *  Step (1) was done within the lock-guarded safe callback above.
          *  Step (2) is done here.
          *  Steps (3) and (4) are accomplished via s_mqtt_client_connection_5_impl_finish_destroy.
          */
