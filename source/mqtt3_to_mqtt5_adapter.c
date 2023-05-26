@@ -15,6 +15,7 @@ enum aws_mqtt5_adapter_state {
 };
 
 struct aws_mqtt_client_connection_5_impl {
+
     struct aws_allocator *allocator;
 
     struct aws_mqtt_client_connection base;
@@ -23,14 +24,31 @@ struct aws_mqtt_client_connection_5_impl {
     struct aws_mqtt5_listener *listener;
     struct aws_event_loop *loop;
 
+    /*
+     * We use the adapter lock to guarantee that we can synchronously sever all callbacks from the mqtt5 client even
+     * though shutdown is an asynchronous process.  This means the lock is held during callbacks which is a departure
+     * from our normal mutex-usage patterns.  We prevent deadlock due to logical re-entry by using the
+     * in_synchronous_callback flag.
+     */
     struct aws_mutex lock;
 
+    /*
+     * An event loop internal flag that we can read to check to see if we're in the scope of a callback
+     * that has already locked the adapter's mutex.  Can only be used from the event loop thread.
+     *
+     * We use the flag to avoid deadlock in a few cases where we can re-enter the adapter logic from within a callback.
+     */
+    bool in_synchronous_callback;
+
+    /*
+     * Synchronized data protected by the adapter lock.
+     */
     struct {
         enum aws_mqtt5_adapter_state state;
         uint64_t ref_count;
     } synced_data;
 
-    bool in_synchronous_callback;
+    /* All fields after here are internal to the adapter event loop thread */
 
     /* 311 interface callbacks */
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
