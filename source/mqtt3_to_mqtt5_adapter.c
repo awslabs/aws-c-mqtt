@@ -90,11 +90,21 @@ typedef int (*adapter_callback_fn)(struct aws_mqtt_client_connection_5_impl *ada
  *   (1) Releasing the connection
  *   (2) Websocket handshake transform
  *   (3) Making lifecycle and operation callbacks on the mqtt311 interface
+ *
+ * It works by
+ *   (1) Correctly determining if locking would deadlock and skipping lock only in that case, otherwise locking
+ *   (2) Invoke the callback
+ *   (3) Unlock if we locked in step (1)
+ *
+ * It also properly sets/clears the in_synchronous_callback flag if we're in the event loop and are not in
+ * a callback already.
  */
 static int s_aws_mqtt5_adapter_perform_safe_callback(
     struct aws_mqtt_client_connection_5_impl *adapter,
     adapter_callback_fn callback_fn,
     void *callback_user_data) {
+
+    /* Step (1) - conditionally lock and manipulate the in_synchronous_callback flag */
     bool should_unlock = true;
     bool clear_synchronous_callback_flag = false;
     if (aws_event_loop_thread_is_callers_thread(adapter->loop)) {
@@ -109,8 +119,10 @@ static int s_aws_mqtt5_adapter_perform_safe_callback(
         aws_mutex_lock(&adapter->lock);
     }
 
+    // Step (2) - do the callback
     int result = (*callback_fn)(adapter, callback_user_data);
 
+    // Step (3) - undo anything we did in step (1)
     if (should_unlock) {
         aws_mutex_unlock(&adapter->lock);
     }
