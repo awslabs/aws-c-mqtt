@@ -26,8 +26,8 @@ struct aws_mqtt_client_connection_5_impl {
 
     /*
      * We use the adapter lock to guarantee that we can synchronously sever all callbacks from the mqtt5 client even
-     * though shutdown is an asynchronous process.  This means the lock is held during callbacks which is a departure
-     * from our normal mutex-usage patterns.  We prevent deadlock due to logical re-entry by using the
+     * though adapter shutdown is an asynchronous process.  This means the lock is held during callbacks which is a
+     * departure from our normal mutex-usage patterns.  We prevent deadlock (due to logical re-entry) by using the
      * in_synchronous_callback flag.
      */
     struct aws_mutex lock;
