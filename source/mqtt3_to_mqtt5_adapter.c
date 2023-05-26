@@ -30,7 +30,7 @@ struct aws_mqtt_client_connection_5_impl {
         uint64_t ref_count;
     } synced_data;
 
-    /* 311 interface callbacks */
+    /* 311 interface permanent callbacks */
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
     void *on_interrupted_user_data;
 
@@ -48,10 +48,299 @@ struct aws_mqtt_client_connection_5_impl {
 
     aws_mqtt5_transform_websocket_handshake_complete_fn *mqtt5_websocket_handshake_completion_function;
     void *mqtt5_websocket_handshake_completion_user_data;
+
+    /* (mutually exclusive) 311 interface one-time transient callbacks */
+    aws_mqtt_client_on_disconnect_fn *on_disconnect;
+    void *on_disconnect_user_data;
+
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
+    void *on_connection_complete_user_data;
 };
 
+struct aws_mqtt_adapter_disconnect_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection *connection;
+
+    aws_mqtt_client_on_disconnect_fn *on_disconnect;
+    void *on_disconnect_user_data;
+};
+
+static void s_adapter_disconnect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status);
+
+static struct aws_mqtt_adapter_disconnect_task *s_aws_mqtt_adapter_disconnect_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    aws_mqtt_client_on_disconnect_fn *on_disconnect,
+    void *on_disconnect_user_data) {
+
+    struct aws_mqtt_adapter_disconnect_task *disconnect_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_adapter_disconnect_task));
+
+    aws_task_init(
+        &disconnect_task->task, s_adapter_disconnect_task_fn, (void *)disconnect_task, "AdapterDisconnectTask");
+    disconnect_task->allocator = adapter->allocator;
+    disconnect_task->connection = aws_mqtt_client_connection_acquire(&adapter->base);
+
+    disconnect_task->on_disconnect = on_disconnect;
+    disconnect_task->on_disconnect_user_data = on_disconnect_user_data;
+
+    return disconnect_task;
+}
+
+static int s_aws_mqtt_client_connection_5_disconnect(
+    void *impl,
+    aws_mqtt_client_on_disconnect_fn *on_disconnect,
+    void *on_disconnect_user_data) {
+
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_mqtt_adapter_disconnect_task *task =
+        s_aws_mqtt_adapter_disconnect_task_new(adapter->allocator, adapter, on_disconnect, on_disconnect_user_data);
+    if (task == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create adapter disconnect task", (void *)adapter);
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
+struct aws_mqtt_adapter_connect_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection *connection;
+
+    struct aws_byte_buf host_name;
+    uint16_t port;
+    struct aws_socket_options socket_options;
+    struct aws_tls_connection_options *tls_options_ptr;
+    struct aws_tls_connection_options tls_options;
+
+    struct aws_byte_buf client_id;
+    uint16_t keep_alive_time_secs;
+    uint32_t ping_timeout_ms;
+    uint32_t protocol_operation_timeout_ms;
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
+    void *on_connection_complete_user_data;
+    bool clean_session;
+};
+
+static void s_aws_mqtt_adapter_connect_task_destroy(struct aws_mqtt_adapter_connect_task *task) {
+    if (task == NULL) {
+        return;
+    }
+
+    aws_byte_buf_clean_up(&task->host_name);
+    aws_byte_buf_clean_up(&task->client_id);
+
+    if (task->tls_options_ptr) {
+        aws_tls_connection_options_clean_up(task->tls_options_ptr);
+    }
+
+    aws_mem_release(task->allocator, task);
+}
+
+static void s_adapter_connect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status);
+
+static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    const struct aws_mqtt_connection_options *connection_options) {
+
+    struct aws_mqtt_adapter_connect_task *connect_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_adapter_connect_task));
+
+    aws_task_init(&connect_task->task, s_adapter_connect_task_fn, (void *)connect_task, "AdapterConnectTask");
+    connect_task->allocator = adapter->allocator;
+    connect_task->connection = aws_mqtt_client_connection_acquire(&adapter->base);
+
+    aws_byte_buf_init_copy_from_cursor(&connect_task->host_name, allocator, connection_options->host_name);
+    connect_task->port = connection_options->port;
+    connect_task->socket_options = *connection_options->socket_options;
+    if (connection_options->tls_options) {
+        aws_tls_connection_options_copy(&connect_task->tls_options, connection_options->tls_options);
+        connect_task->tls_options_ptr = &connect_task->tls_options;
+    }
+
+    aws_byte_buf_init_copy_from_cursor(&connect_task->client_id, allocator, connection_options->client_id);
+
+    connect_task->keep_alive_time_secs = connection_options->keep_alive_time_secs;
+    connect_task->ping_timeout_ms = connection_options->ping_timeout_ms;
+    connect_task->protocol_operation_timeout_ms = connection_options->protocol_operation_timeout_ms;
+    connect_task->on_connection_complete = connection_options->on_connection_complete;
+    connect_task->on_connection_complete_user_data = connection_options->user_data;
+    connect_task->clean_session = connection_options->clean_session;
+
+    return connect_task;
+}
+
+static int s_aws_mqtt_client_connection_5_connect(
+    void *impl,
+    const struct aws_mqtt_connection_options *connection_options) {
+
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_mqtt_adapter_connect_task *task =
+        s_aws_mqtt_adapter_connect_task_new(adapter->allocator, adapter, connection_options);
+    if (task == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create adapter connect task", (void *)adapter);
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt3_to_mqtt5_adapter_invoke_connect_callback(
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    int error_code,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present) {
+
+    if (adapter->on_connection_complete == NULL) {
+        return;
+    }
+
+    bool must_unlock = aws_mutex_try_lock(&adapter->lock);
+    if (adapter->synced_data.state == AWS_MQTT5_AS_ENABLED) {
+        (*adapter->on_connection_complete)(
+            &adapter->base, error_code, return_code, session_present, adapter->on_connection_complete_user_data);
+    }
+
+    if (must_unlock) {
+        aws_mutex_unlock(&adapter->lock);
+    }
+
+    adapter->on_connection_complete = NULL;
+    adapter->on_connection_complete_user_data = NULL;
+}
+
+static void s_aws_mqtt3_to_mqtt5_adapter_invoke_disconnect_callback(struct aws_mqtt_client_connection_5_impl *adapter) {
+    if (adapter->on_disconnect == NULL) {
+        return;
+    }
+
+    bool must_unlock = aws_mutex_try_lock(&adapter->lock);
+    if (adapter->synced_data.state != AWS_MQTT5_AS_TERMINATED) {
+        (*adapter->on_disconnect)(&adapter->base, adapter->on_disconnect_user_data);
+    }
+
+    if (must_unlock) {
+        aws_mutex_unlock(&adapter->lock);
+    }
+
+    adapter->on_disconnect = NULL;
+    adapter->on_disconnect_user_data = NULL;
+}
+
 static void s_aws_mqtt5_client_connection_event_callback_adapter(const struct aws_mqtt5_client_lifecycle_event *event) {
-    (void)event;
+    struct aws_mqtt_client_connection_5_impl *adapter = event->user_data;
+
+    switch(event->event_type) {
+        case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
+            if (adapter->on_connection_complete != NULL) {
+                s_aws_mqtt3_to_mqtt5_adapter_invoke_connect_callback(adapter, event->error_code, AWS_MQTT_CONNECT_ACCEPTED, event->settings->rejoined_session);
+            } else {
+                ??;
+            }
+            break;
+    }
+    /*
+        On Connection Success:
+            if pending connect callback
+                resolve successfully
+                clear callback
+            else
+                connection resumed callback
+
+
+        On Connection Failure:
+            if pending connect callback and not a reset (error code)
+                resolve unsuccessfully
+                clear callback
+                disable adapter?
+
+
+        On disconnection:
+            if desired state is connected and not a reset (error code)
+                connection interrupted callback
+
+
+        On stopped:
+            If pending disconnect
+                invoke-and-clear pending disconnect
+                disable adapter
+     */
+}
+
+static void s_adapter_disconnect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_adapter_disconnect_task *disconnect_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    struct aws_mqtt_client_connection_5_impl *adapter = disconnect_task->connection->impl;
+    (void)adapter;
+    /*
+        if existing pending disconnect
+            complete immediately with failure (already disconnecting)
+        if pending connect
+            fail-and-clear pending connect (disconnect supercede)
+        if state == stopped
+            complete-and-disable-and-return
+
+        Set existing pending disconnect
+        if desired state == connected
+            Stop client in-thread
+     */
+
+done:
+
+    aws_mqtt_client_connection_release(disconnect_task->connection);
+
+    aws_mem_release(disconnect_task->allocator, disconnect_task);
+}
+
+static void s_adapter_connect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_adapter_connect_task *connect_task = arg;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    struct aws_mqtt_client_connection_5_impl *adapter = connect_task->connection->impl;
+    (void)adapter;
+    /*
+        If existing pending connect
+            fail immediately (already connecting)
+
+        Enable adapter
+        if pending disconnect
+            fail-and-clear pending disconnect (reconnecting supercede)
+
+        if current state is connecting
+            set shutdown-on-complete flag + impl (on success callback shutdown channel instead), all paths out of state must clear flag (this is internal only and has no affect on the adapter's listener callbacks)
+        else if current state is mqtt connect or connected
+            shutdown channel and force state transition to channel shutdown
+
+        Update relevant config settings
+        Set existing pending connect
+
+        if desired state != connected
+            Start client in-thread
+     */
+
+done:
+
+    aws_mqtt_client_connection_release(connect_task->connection);
+
+    s_aws_mqtt_adapter_connect_task_destroy(connect_task);
 }
 
 static bool s_aws_mqtt5_listener_publish_received_adapter(
@@ -942,9 +1231,9 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_5_set_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_5_set_on_closed_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_5_set_on_any_publish_handler,
-    .connect_fn = NULL,
+    .connect_fn = s_aws_mqtt_client_connection_5_connect,
     .reconnect_fn = NULL,
-    .disconnect_fn = NULL,
+    .disconnect_fn = s_aws_mqtt_client_connection_5_disconnect,
     .subscribe_multiple_fn = NULL,
     .subscribe_fn = NULL,
     .resubscribe_existing_topics_fn = NULL,
