@@ -4,14 +4,17 @@
  */
 
 #include <aws/mqtt/mqtt.h>
+
+#include <aws/common/clock.h>
+
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
-enum aws_mqtt5_adapter_state {
-    AWS_MQTT5_AS_ENABLED,
-    AWS_MQTT5_AS_DISABLED,
-    AWS_MQTT5_AS_TERMINATED,
+enum aws_mqtt_adapter_state {
+    AWS_MQTT_AS_FIRST_CONNECT,
+    AWS_MQTT_AS_STAY_CONNECTED,
+    AWS_MQTT_AS_STAY_DISCONNECTED,
 };
 
 struct aws_mqtt_client_connection_5_impl {
@@ -41,10 +44,17 @@ struct aws_mqtt_client_connection_5_impl {
     bool in_synchronous_callback;
 
     /*
+     * What state the mqtt311 interface wants to be in.  Always either AWS_MCS_CONNECTED or AWS_MCS_STOPPED.
+     * Tracked separately from the underlying mqtt5 client state in order to provide a coherent view that is
+     * narrowed solely to the adapter interface.
+     */
+    enum aws_mqtt_adapter_state adapter_state;
+
+    /*
      * Synchronized data protected by the adapter lock.
      */
     struct {
-        enum aws_mqtt5_adapter_state state;
+        bool terminated;
         uint64_t ref_count;
     } synced_data;
 
@@ -126,7 +136,7 @@ static int s_aws_mqtt5_adapter_perform_safe_callback(
         aws_mutex_lock(&adapter->lock);
     }
 
-    // Step (2) - do the callback
+    // Step (2) - safely perform the callback
     int result = (*callback_fn)(adapter, callback_user_data);
 
     // Step (3) - undo anything we did in step (1)
@@ -278,86 +288,165 @@ static int s_aws_mqtt_client_connection_5_connect(
     return AWS_OP_SUCCESS;
 }
 
-static void s_aws_mqtt3_to_mqtt5_adapter_invoke_connect_callback(
+static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
     struct aws_mqtt_client_connection_5_impl *adapter,
-    int error_code,
-    enum aws_mqtt_connect_return_code return_code,
-    bool session_present) {
+    void *context) {
+    const struct aws_mqtt5_client_lifecycle_event *event = context;
 
-    if (adapter->on_connection_complete == NULL) {
-        return;
+    /*
+     * Never invoke a callback after termination
+     */
+    if (adapter->synced_data.terminated) {
+        return AWS_OP_SUCCESS;
     }
 
-    bool must_unlock = aws_mutex_try_lock(&adapter->lock);
-    if (adapter->synced_data.state == AWS_MQTT5_AS_ENABLED) {
-        (*adapter->on_connection_complete)(
-            &adapter->base, error_code, return_code, session_present, adapter->on_connection_complete_user_data);
-    }
+    switch (event->event_type) {
 
-    if (must_unlock) {
-        aws_mutex_unlock(&adapter->lock);
-    }
-
-    adapter->on_connection_complete = NULL;
-    adapter->on_connection_complete_user_data = NULL;
-}
-
-static void s_aws_mqtt3_to_mqtt5_adapter_invoke_disconnect_callback(struct aws_mqtt_client_connection_5_impl *adapter) {
-    if (adapter->on_disconnect == NULL) {
-        return;
-    }
-
-    bool must_unlock = aws_mutex_try_lock(&adapter->lock);
-    if (adapter->synced_data.state != AWS_MQTT5_AS_TERMINATED) {
-        (*adapter->on_disconnect)(&adapter->base, adapter->on_disconnect_user_data);
-    }
-
-    if (must_unlock) {
-        aws_mutex_unlock(&adapter->lock);
-    }
-
-    adapter->on_disconnect = NULL;
-    adapter->on_disconnect_user_data = NULL;
-}
-
-static void s_aws_mqtt5_client_connection_event_callback_adapter(const struct aws_mqtt5_client_lifecycle_event *event) {
-    struct aws_mqtt_client_connection_5_impl *adapter = event->user_data;
-
-    switch(event->event_type) {
         case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
-            if (adapter->on_connection_complete != NULL) {
-                s_aws_mqtt3_to_mqtt5_adapter_invoke_connect_callback(adapter, event->error_code, AWS_MQTT_CONNECT_ACCEPTED, event->settings->rejoined_session);
-            } else {
-                ??;
+            if (adapter->adapter_state == AWS_MQTT_AS_FIRST_CONNECT) {
+                /*
+                 * If the 311 view is that this is an initial connection attempt, then invoke the completion callback
+                 * and move to the stay-connected state.
+                 */
+                if (adapter->on_connection_complete != NULL) {
+                    (*adapter->on_connection_complete)(
+                        &adapter->base,
+                        event->error_code,
+                        0,
+                        event->settings->rejoined_session,
+                        adapter->on_connection_complete_user_data);
+
+                    adapter->on_connection_complete = NULL;
+                    adapter->on_connection_complete_user_data = NULL;
+                }
+                adapter->adapter_state = AWS_MQTT_AS_STAY_CONNECTED;
+            } else if (adapter->adapter_state == AWS_MQTT_AS_STAY_CONNECTED) {
+                /*
+                 * If the 311 view is that we're in the stay-connected state (ie we've successfully done or simulated
+                 * an initial connection), then invoke the connection resumption callback.
+                 */
+                if (adapter->on_resumed != NULL) {
+                    (*adapter->on_resumed)(
+                        &adapter->base, 0, event->settings->rejoined_session, adapter->on_resumed_user_data);
+                }
             }
             break;
+
+        case AWS_MQTT5_CLET_CONNECTION_FAILURE:
+            /*
+             * The MQTT311 interface only cares about connection failures when it's the initial connection attempt
+             * after a call to connect().  Since an adapter connect() can sever an existing connection (with an
+             * error code of AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT) we only react to connection failures
+             * if
+             *   (1) the error code is not AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT and
+             *   (2) we're in the FIRST_CONNECT state
+             *
+             * Only if both of these are true shoudl we invoke the connection completion callback with a failure and
+             * put the adapter into the "disconnected" state, simulating the way the 311 client stops after an
+             * initial connection failure.
+             */
+            if (event->error_code != AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT &&
+                adapter->adapter_state == AWS_MQTT_AS_FIRST_CONNECT) {
+
+                if (adapter->on_connection_complete != NULL) {
+                    (*adapter->on_connection_complete)(
+                        &adapter->base, event->error_code, 0, false, adapter->on_connection_complete_user_data);
+
+                    adapter->on_connection_complete = NULL;
+                    adapter->on_connection_complete_user_data = NULL;
+                }
+
+                adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
+            }
+            break;
+
+        case AWS_MQTT5_CLET_DISCONNECTION:
+            /*
+             * If the 311 view is that we're in the stay-connected state (ie we've successfully done or simulated
+             * an initial connection), then invoke the connection interrupted callback.
+             */
+            if (adapter->on_interrupted != NULL && adapter->adapter_state == AWS_MQTT_AS_STAY_CONNECTED &&
+                event->error_code != AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT) {
+
+                (*adapter->on_interrupted)(&adapter->base, event->error_code, adapter->on_interrupted_user_data);
+            }
+            break;
+
+        case AWS_MQTT5_CLET_STOPPED:
+            /* If an MQTT311-view user is waiting on a disconnect callback, invoke it */
+            if (adapter->on_disconnect) {
+                (*adapter->on_disconnect)(&adapter->base, adapter->on_disconnect_user_data);
+
+                adapter->on_disconnect = NULL;
+                adapter->on_disconnect_user_data = NULL;
+            }
+            break;
+
+        default:
+            break;
     }
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt5_client_lifecycle_event_callback_adapter(const struct aws_mqtt5_client_lifecycle_event *event) {
+    struct aws_mqtt_client_connection_5_impl *adapter = event->user_data;
+
+    s_aws_mqtt5_adapter_perform_safe_callback(
+        adapter, s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler, (void *)event);
+}
+
+static int s_aws_mqtt3_to_mqtt5_adapter_safe_disconnect_handler(
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    void *context) {
+    struct aws_mqtt_adapter_disconnect_task *disconnect_task = context;
+
+    AWS_FATAL_ASSERT(!adapter->synced_data.terminated);
+
     /*
-        On Connection Success:
-            if pending connect callback
-                resolve successfully
-                clear callback
-            else
-                connection resumed callback
-
-
-        On Connection Failure:
-            if pending connect callback and not a reset (error code)
-                resolve unsuccessfully
-                clear callback
-                disable adapter?
-
-
-        On disconnection:
-            if desired state is connected and not a reset (error code)
-                connection interrupted callback
-
-
-        On stopped:
-            If pending disconnect
-                invoke-and-clear pending disconnect
-                disable adapter
+     * If we're already disconnected (from the 311 perspective only), then invoke the callback and return
      */
+    if (adapter->adapter_state == AWS_MQTT_AS_STAY_DISCONNECTED) {
+        if (disconnect_task->on_disconnect) {
+            (*disconnect_task->on_disconnect)(&adapter->base, disconnect_task->on_disconnect_user_data);
+        }
+
+        return AWS_OP_SUCCESS;
+    }
+
+    /*
+     * If we had a pending first connect, then notify failure
+     */
+    if (adapter->adapter_state == AWS_MQTT_AS_FIRST_CONNECT) {
+        if (adapter->on_connection_complete != NULL) {
+            (*adapter->on_connection_complete)(
+                &adapter->base,
+                AWS_ERROR_MQTT_CONNECTION_SHUTDOWN,
+                0,
+                false,
+                adapter->on_connection_complete_user_data);
+
+            adapter->on_connection_complete = NULL;
+            adapter->on_connection_complete_user_data = NULL;
+        }
+    }
+
+    adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
+
+    bool invoke_disconnect_callback = disconnect_task->on_disconnect != NULL;
+    if (adapter->client->desired_state != AWS_MCS_STOPPED &&
+        aws_mqtt5_client_stop(adapter->client, NULL, NULL) == AWS_OP_SUCCESS) {
+
+        adapter->on_disconnect = disconnect_task->on_disconnect;
+        adapter->on_disconnect_user_data = disconnect_task->on_disconnect_user_data;
+        invoke_disconnect_callback = false;
+    }
+
+    if (invoke_disconnect_callback) {
+        (*disconnect_task->on_disconnect)(&adapter->base, disconnect_task->on_disconnect_user_data);
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 static void s_adapter_disconnect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -369,19 +458,9 @@ static void s_adapter_disconnect_task_fn(struct aws_task *task, void *arg, enum 
     }
 
     struct aws_mqtt_client_connection_5_impl *adapter = disconnect_task->connection->impl;
-    (void)adapter;
-    /*
-        if existing pending disconnect
-            complete immediately with failure (already disconnecting)
-        if pending connect
-            fail-and-clear pending connect (disconnect supercede)
-        if state == stopped
-            complete-and-disable-and-return
 
-        Set existing pending disconnect
-        if desired state == connected
-            Stop client in-thread
-     */
+    s_aws_mqtt5_adapter_perform_safe_callback(
+        adapter, s_aws_mqtt3_to_mqtt5_adapter_safe_disconnect_handler, disconnect_task);
 
 done:
 
@@ -390,6 +469,103 @@ done:
     aws_mem_release(disconnect_task->allocator, disconnect_task);
 }
 
+static void s_aws_mqtt3_to_mqtt5_adapter_update_config_on_connect(
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    struct aws_mqtt_adapter_connect_task *connect_task) {
+    struct aws_mqtt5_client_options_storage *config = adapter->client->config;
+
+    aws_string_destroy(config->host_name);
+    config->host_name = aws_string_new_from_buf(adapter->allocator, &connect_task->host_name);
+    config->port = connect_task->port;
+    config->socket_options = connect_task->socket_options;
+
+    if (config->tls_options_ptr) {
+        aws_tls_connection_options_clean_up(&config->tls_options);
+        config->tls_options_ptr = NULL;
+    }
+
+    if (connect_task->tls_options_ptr) {
+        aws_tls_connection_options_copy(&config->tls_options, connect_task->tls_options_ptr);
+        config->tls_options_ptr = &config->tls_options;
+    }
+
+    aws_byte_buf_clean_up(&adapter->client->negotiated_settings.client_id_storage);
+    aws_byte_buf_init_copy_from_cursor(
+        &adapter->client->negotiated_settings.client_id_storage,
+        adapter->allocator,
+        aws_byte_cursor_from_buf(&connect_task->client_id));
+
+    config->connect->storage_view.keep_alive_interval_seconds = connect_task->keep_alive_time_secs;
+    config->ping_timeout_ms = connect_task->ping_timeout_ms;
+    config->ack_timeout_seconds = aws_max_u64(
+        1,
+        aws_timestamp_convert(
+            connect_task->protocol_operation_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL));
+    if (connect_task->clean_session) {
+        config->session_behavior = AWS_MQTT5_CSBT_CLEAN;
+        config->connect->storage_view.session_expiry_interval_seconds = NULL;
+    } else {
+        config->session_behavior = AWS_MQTT5_CSBT_REJOIN_ALWAYS;
+        /* This is a judgement call to translate session expiry to the maximum possible allowed by AWS IoT Core */
+        config->connect->session_expiry_interval_seconds = 7 * 24 * 60 * 60;
+        config->connect->storage_view.session_expiry_interval_seconds =
+            &config->connect->session_expiry_interval_seconds;
+    }
+}
+
+static int s_aws_mqtt3_to_mqtt5_adapter_safe_connect_handler(
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    void *context) {
+    struct aws_mqtt_adapter_connect_task *connect_task = context;
+
+    AWS_FATAL_ASSERT(!adapter->synced_data.terminated);
+
+    if (adapter->adapter_state != AWS_MQTT_AS_STAY_DISCONNECTED) {
+        if (connect_task->on_connection_complete) {
+            (*connect_task->on_connection_complete)(
+                &adapter->base,
+                AWS_ERROR_MQTT_ALREADY_CONNECTED,
+                0,
+                false,
+                connect_task->on_connection_complete_user_data);
+        }
+        return AWS_OP_SUCCESS;
+    }
+
+    if (adapter->on_disconnect) {
+        (*adapter->on_disconnect)(&adapter->base, adapter->on_disconnect_user_data);
+
+        adapter->on_disconnect = NULL;
+        adapter->on_disconnect_user_data = NULL;
+    }
+
+    adapter->adapter_state = AWS_MQTT_AS_FIRST_CONNECT;
+
+    /* Update mqtt5 config */
+    s_aws_mqtt3_to_mqtt5_adapter_update_config_on_connect(adapter, connect_task);
+
+    aws_mqtt5_client_reset_connection(adapter->client);
+
+    if (adapter->client->desired_state != AWS_MCS_CONNECTED) {
+        if (aws_mqtt5_client_start(adapter->client)) {
+            if (connect_task->on_connection_complete) {
+                int error_code = aws_last_error();
+                if (error_code == AWS_ERROR_SUCCESS) {
+                    error_code = AWS_ERROR_UNKNOWN;
+                }
+                (*connect_task->on_connection_complete)(
+                    &adapter->base, error_code, 0, false, connect_task->on_connection_complete_user_data);
+            }
+
+            return AWS_OP_SUCCESS;
+        }
+    }
+
+    adapter->on_connection_complete = connect_task->on_connection_complete;
+    adapter->on_connection_complete_user_data = connect_task->on_connection_complete_user_data;
+
+    return AWS_OP_SUCCESS;
+}
 static void s_adapter_connect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
@@ -399,26 +575,8 @@ static void s_adapter_connect_task_fn(struct aws_task *task, void *arg, enum aws
     }
 
     struct aws_mqtt_client_connection_5_impl *adapter = connect_task->connection->impl;
-    (void)adapter;
-    /*
-        If existing pending connect
-            fail immediately (already connecting)
 
-        Enable adapter
-        if pending disconnect
-            fail-and-clear pending disconnect (reconnecting supercede)
-
-        if current state is connecting
-            set shutdown-on-complete flag + impl (on success callback shutdown channel instead), all paths out of state must clear flag (this is internal only and has no affect on the adapter's listener callbacks)
-        else if current state is mqtt connect or connected
-            shutdown channel and force state transition to channel shutdown
-
-        Update relevant config settings
-        Set existing pending connect
-
-        if desired state != connected
-            Start client in-thread
-     */
+    s_aws_mqtt5_adapter_perform_safe_callback(adapter, s_aws_mqtt3_to_mqtt5_adapter_safe_connect_handler, connect_task);
 
 done:
 
@@ -846,7 +1004,7 @@ struct aws_mqtt5_adapter_websocket_handshake_args {
 static int s_safe_websocket_handshake_fn(struct aws_mqtt_client_connection_5_impl *adapter, void *context) {
     struct aws_mqtt5_adapter_websocket_handshake_args *args = context;
 
-    if (adapter->synced_data.state != AWS_MQTT5_AS_ENABLED) {
+    if (adapter->synced_data.terminated || adapter->adapter_state == AWS_MQTT_AS_STAY_DISCONNECTED) {
         args->completion_error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP;
     } else if (adapter->websocket_handshake_transformer == NULL) {
         args->output_request = args->input_request;
@@ -1255,7 +1413,7 @@ static int s_decref_for_shutdown(struct aws_mqtt_client_connection_5_impl *adapt
     AWS_FATAL_ASSERT(adapter->synced_data.ref_count > 0);
     --adapter->synced_data.ref_count;
     if (adapter->synced_data.ref_count == 0) {
-        adapter->synced_data.state = AWS_MQTT5_AS_TERMINATED;
+        adapter->synced_data.terminated = true;
         *start_shutdown = true;
     }
 
@@ -1328,6 +1486,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     adapter->client = aws_mqtt5_client_acquire(client);
     adapter->loop = client->loop;
 
+    adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
+
     aws_mutex_init(&adapter->lock);
 
     /*
@@ -1335,9 +1495,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
      * We'll enable the adapter as soon as they try to connect via the 311 interface.  This
      * also ties in to how we simulate the 311 implementation's don't-reconnect-if-initial-connect-fails logic.
      * The 5 client will continue to try and reconnect, but the adapter will go disabled making it seem to the 311
-     * user that is is offline.
+     * user that is offline.
      */
-    adapter->synced_data.state = AWS_MQTT5_AS_DISABLED;
+    adapter->synced_data.terminated = false;
     adapter->synced_data.ref_count = 1;
 
     struct aws_mqtt5_listener_config listener_config = {
@@ -1346,7 +1506,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
             {
                 .listener_publish_received_handler = s_aws_mqtt5_listener_publish_received_adapter,
                 .listener_publish_received_handler_user_data = adapter,
-                .lifecycle_event_handler = s_aws_mqtt5_client_connection_event_callback_adapter,
+                .lifecycle_event_handler = s_aws_mqtt5_client_lifecycle_event_callback_adapter,
                 .lifecycle_event_handler_user_data = adapter,
             },
         .termination_callback = s_mqtt_client_connection_5_impl_finish_destroy,

@@ -3352,22 +3352,24 @@ void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt
         (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.unacked_operation_size_atomic);
 }
 
-int aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client) {
+bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client) {
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     switch (client->current_state) {
         case AWS_MCS_MQTT_CONNECT:
         case AWS_MCS_CONNECTED:
             s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT);
+            return true;
             break;
 
         case AWS_MCS_CONNECTING:
             client->should_reset_connection = true;
+            return true;
             break;
 
         default:
             break;
     }
 
-    return AWS_OP_SUCCESS;
+    return false;
 }

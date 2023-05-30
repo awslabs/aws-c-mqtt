@@ -669,9 +669,9 @@ AWS_MQTT_API const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_clien
  * client is being driven entirely by the MQTT3 adapter, this case never actually happens.
  *
  * @param client client to reset an existing or in-progress connection for
- * @return success/failure indicator
+ * @return true if a connection reset was triggered, false if there was nothing to do
  */
-AWS_MQTT_API int aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client);
+AWS_MQTT_API bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client);
 
 AWS_EXTERN_C_END
 
