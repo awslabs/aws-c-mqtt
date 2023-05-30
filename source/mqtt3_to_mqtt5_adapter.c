@@ -10,9 +10,34 @@
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
+/*
+ * The adapter maintains a notion of state based on how its 311 API has been used.  This state guides how it handles
+ * external lifecycle events.
+ *
+ * Operational events are always relayed unless the adapter has been terminated.
+ */
 enum aws_mqtt_adapter_state {
+
+    /*
+     * The 311 API has had connect() called but that connect has not yet resolved.
+     *
+     * If it resolves successfully we will move to the STAY_CONNECTED state which will relay lifecycle callbacks
+     * transparently.
+     *
+     * If it resolves unsuccessfully, we will move to the STAY_DISCONNECTED state where we will ignore lifecycle
+     * events because, from the 311 API's perspective, nothing should be getting emitted.
+     */
     AWS_MQTT_AS_FIRST_CONNECT,
+
+    /*
+     * A call to the 311 connect API has resolved successfully.  Relay all lifecycle events until told otherwise.
+     */
     AWS_MQTT_AS_STAY_CONNECTED,
+
+    /*
+     * We have not observed a successful initial connection attempt via the 311 API (or disconnect has been
+     * invoked afterwards).  Ignore all lifecycle events.
+     */
     AWS_MQTT_AS_STAY_DISCONNECTED,
 };
 
