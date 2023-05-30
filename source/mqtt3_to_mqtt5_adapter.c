@@ -4,6 +4,8 @@
  */
 
 #include <aws/mqtt/mqtt.h>
+
+#include <aws/common/rw_lock.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
@@ -25,18 +27,11 @@ struct aws_mqtt_client_connection_5_impl {
     struct aws_event_loop *loop;
 
     /*
-     * We use the adapter lock to guarantee that we can synchronously sever all callbacks from the mqtt5 client even
-     * though adapter shutdown is an asynchronous process.  This means the lock is held during callbacks which is a
-     * departure from our normal mutex-usage patterns.  We prevent deadlock (due to logical re-entry) by using the
-     * in_synchronous_callback flag.
-     */
-    struct aws_mutex lock;
-
-    /*
-     * An event loop internal flag that we can read to check to see if we're in the scope of a callback
-     * that has already locked the adapter's mutex.  Can only be used from the event loop thread.
+     * An event-loop-internal flag that we can read to check to see if we're in the scope of a callback
+     * that has already locked the adapter's lock.  Can only be referenced from the event loop thread.
      *
      * We use the flag to avoid deadlock in a few cases where we can re-enter the adapter logic from within a callback.
+     * It also provides a nice solution for the fact that we cannot safely upgrade a read lock to a write lock.
      */
     bool in_synchronous_callback;
 
@@ -47,8 +42,35 @@ struct aws_mqtt_client_connection_5_impl {
      */
     enum aws_mqtt_adapter_state adapter_state;
 
+    /*
+     * Tracks all references from external sources (ie users).  Incremented and decremented by the public
+     * acquire/release APIs of the 311 connection.
+     *
+     * When this value drops to zero, the terminated flag is set and no further callbacks will be invoked.  This
+     * also starts the asynchronous destruction process for the adapter.
+     */
     struct aws_ref_count external_refs;
+
+    /*
+     * Tracks all references to the adapter from internal sources (temporary async processes that need the
+     * adapter to stay alive for an interval of time, like sending tasks across thread boundaries).
+     *
+     * Starts with a single reference that is held until the adapter's listener has fully detached from the mqtt5
+     * client.
+     *
+     * Once the internal ref count drops to zero, the adapter may be destroyed synchronously.
+     */
     struct aws_ref_count internal_refs;
+
+    /*
+     * We use the adapter lock to guarantee that we can synchronously sever all callbacks from the mqtt5 client even
+     * though adapter shutdown is an asynchronous process.  This means the lock is held during callbacks which is a
+     * departure from our normal usage patterns.  We prevent deadlock (due to logical re-entry) by using the
+     * in_synchronous_callback flag.
+     *
+     * We hold a read lock when invoking callbacks and a write lock when setting terminated from false to true.
+     */
+    struct aws_rw_lock lock;
 
     /*
      * Synchronized data protected by the adapter lock.
@@ -105,7 +127,7 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
     }
 
     adapter->client = aws_mqtt5_client_release(adapter->client);
-    aws_mutex_clean_up(&adapter->lock);
+    aws_rw_lock_clean_up(&adapter->lock);
 
     aws_mem_release(adapter->allocator, adapter);
 
@@ -170,6 +192,7 @@ typedef int (*adapter_callback_fn)(struct aws_mqtt_client_connection_5_impl *ada
  */
 static int s_aws_mqtt5_adapter_perform_safe_callback(
     struct aws_mqtt_client_connection_5_impl *adapter,
+    bool use_write_lock,
     adapter_callback_fn callback_fn,
     void *callback_user_data) {
 
@@ -182,10 +205,15 @@ static int s_aws_mqtt5_adapter_perform_safe_callback(
         } else {
             adapter->in_synchronous_callback = true;
             clear_synchronous_callback_flag = true;
-            aws_mutex_lock(&adapter->lock);
         }
-    } else {
-        aws_mutex_lock(&adapter->lock);
+    }
+
+    if (should_unlock) {
+        if (use_write_lock) {
+            aws_rw_lock_wlock(&adapter->lock);
+        } else {
+            aws_rw_lock_rlock(&adapter->lock);
+        }
     }
 
     // Step (2) - perform the callback
@@ -193,7 +221,11 @@ static int s_aws_mqtt5_adapter_perform_safe_callback(
 
     // Step (3) - undo anything we did in step (1)
     if (should_unlock) {
-        aws_mutex_unlock(&adapter->lock);
+        if (use_write_lock) {
+            aws_rw_lock_wunlock(&adapter->lock);
+        } else {
+            aws_rw_lock_runlock(&adapter->lock);
+        }
     }
 
     if (clear_synchronous_callback_flag) {
@@ -625,7 +657,7 @@ static void s_aws_mqtt5_adapter_transform_websocket_handshake_fn(
         .input_request = request,
     };
 
-    s_aws_mqtt5_adapter_perform_safe_callback(adapter, s_safe_websocket_handshake_fn, &args);
+    s_aws_mqtt5_adapter_perform_safe_callback(adapter, false, s_safe_websocket_handshake_fn, &args);
 
     if (args.chain_callback) {
         adapter->mqtt5_websocket_handshake_completion_function = complete_fn;
@@ -999,6 +1031,10 @@ static void s_aws_mqtt3_to_mqtt5_adapter_on_zero_internal_refs(void *context) {
 static void s_aws_mqtt3_to_mqtt5_adapter_on_listener_detached(void *context) {
     struct aws_mqtt_client_connection_5_impl *adapter = context;
 
+    /*
+     * Release the single internal reference that we started with.  Only ephemeral references for cross-thread
+     * tasks might remain, and they will disappear quickly.
+     */
     aws_ref_count_release(&adapter->internal_refs);
 }
 
@@ -1021,7 +1057,7 @@ static int s_decref_for_shutdown(struct aws_mqtt_client_connection_5_impl *adapt
 static void s_aws_mqtt3_to_mqtt5_adapter_on_zero_external_refs(void *impl) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
-    s_aws_mqtt5_adapter_perform_safe_callback(adapter, s_decref_for_shutdown, NULL);
+    s_aws_mqtt5_adapter_perform_safe_callback(adapter, true, s_decref_for_shutdown, NULL);
 
     /*
      * When the adapter's exernal ref count goes to zero, here's what we want to do:
@@ -1032,13 +1068,14 @@ static void s_aws_mqtt3_to_mqtt5_adapter_on_zero_external_refs(void *impl) {
      *      of it)
      *  (3) Wait for the client listener to notify us that asynchronous shutdown is over.  At this point we
      *      are guaranteed that no more callbacks from the mqtt5 client will reach us.
-     *  (4) Release the internal ref we have from creation time.
+     *  (4) Release the single internal ref we started with when the adapter was created.
      *  (5) On last internal ref, we can safely release the mqtt5 client and synchronously clean up all other
      *      resources
      *
      *  Step (1) was done within the lock-guarded safe callback above.
      *  Step (2) is done here.
-     *  Steps (3) and (4) are accomplished via s_mqtt_client_connection_5_impl_finish_destroy.
+     *  Steps (3) and (4) are accomplished by s_aws_mqtt3_to_mqtt5_adapter_on_listener_detached
+     *  Step (5) is completed by s_aws_mqtt3_to_mqtt5_adapter_on_zero_internal_refs
      */
     aws_mqtt5_listener_release(adapter->listener);
 }
@@ -1092,14 +1129,14 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     aws_ref_count_init(&adapter->external_refs, adapter, s_aws_mqtt3_to_mqtt5_adapter_on_zero_external_refs);
     aws_ref_count_init(&adapter->internal_refs, adapter, s_aws_mqtt3_to_mqtt5_adapter_on_zero_internal_refs);
 
-    aws_mutex_init(&adapter->lock);
+    aws_rw_lock_init(&adapter->lock);
 
     /*
      * We start disabled to handle the case where someone passes in an mqtt5 client that is already "live."
      * We'll enable the adapter as soon as they try to connect via the 311 interface.  This
      * also ties in to how we simulate the 311 implementation's don't-reconnect-if-initial-connect-fails logic.
      * The 5 client will continue to try and reconnect, but the adapter will go disabled making it seem to the 311
-     * user that is offline.
+     * user that it is offline.
      */
     adapter->synced_data.terminated = false;
 
