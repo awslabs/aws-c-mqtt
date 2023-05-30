@@ -8,10 +8,10 @@
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
-enum aws_mqtt5_adapter_state {
-    AWS_MQTT5_AS_ENABLED,
-    AWS_MQTT5_AS_DISABLED,
-    AWS_MQTT5_AS_TERMINATED,
+enum aws_mqtt_adapter_state {
+    AWS_MQTT_AS_FIRST_CONNECT,
+    AWS_MQTT_AS_STAY_CONNECTED,
+    AWS_MQTT_AS_STAY_DISCONNECTED,
 };
 
 struct aws_mqtt_client_connection_5_impl {
@@ -41,11 +41,20 @@ struct aws_mqtt_client_connection_5_impl {
     bool in_synchronous_callback;
 
     /*
+     * What state the mqtt311 interface wants to be in.  Always either AWS_MCS_CONNECTED or AWS_MCS_STOPPED.
+     * Tracked separately from the underlying mqtt5 client state in order to provide a coherent view that is
+     * narrowed solely to the adapter interface.
+     */
+    enum aws_mqtt_adapter_state adapter_state;
+
+    struct aws_ref_count external_refs;
+    struct aws_ref_count internal_refs;
+
+    /*
      * Synchronized data protected by the adapter lock.
      */
     struct {
-        enum aws_mqtt5_adapter_state state;
-        uint64_t ref_count;
+        bool terminated;
     } synced_data;
 
     /* All fields after here are internal to the adapter event loop thread */
@@ -69,6 +78,66 @@ struct aws_mqtt_client_connection_5_impl {
     aws_mqtt5_transform_websocket_handshake_complete_fn *mqtt5_websocket_handshake_completion_function;
     void *mqtt5_websocket_handshake_completion_user_data;
 };
+
+struct aws_mqtt_adapter_final_destroy_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection *connection;
+};
+
+static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct aws_mqtt_adapter_final_destroy_task *destroy_task = arg;
+    struct aws_mqtt_client_connection_5_impl *adapter = destroy_task->connection->impl;
+
+    if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
+        /*
+         * If the mqtt5 client is pointing to us for websocket transform, then erase that.  The callback
+         * is invoked from our pinned event loop so this is safe.
+         *
+         * TODO: It is possible that multiple adapters may have sequentially side-affected the websocket handshake.
+         * For now, in that case, subsequent connection attempts will probably not succeed.
+         */
+        adapter->client->config->websocket_handshake_transform = NULL;
+        adapter->client->config->websocket_handshake_transform_user_data = NULL;
+    }
+
+    adapter->client = aws_mqtt5_client_release(adapter->client);
+    aws_mutex_clean_up(&adapter->lock);
+
+    aws_mem_release(adapter->allocator, adapter);
+
+    aws_mem_release(destroy_task->allocator, destroy_task);
+}
+
+static struct aws_mqtt_adapter_final_destroy_task *s_aws_mqtt_adapter_final_destroy_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter) {
+
+    struct aws_mqtt_adapter_final_destroy_task *destroy_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_adapter_final_destroy_task));
+
+    aws_task_init(
+        &destroy_task->task, s_mqtt_adapter_final_destroy_task_fn, (void *)destroy_task, "MqttAdapterFinalDestroy");
+    destroy_task->allocator = adapter->allocator;
+    destroy_task->connection = &adapter->base; /* Do not acquire, we're at zero external and internal ref counts */
+
+    return destroy_task;
+}
+
+static void s_aws_mqtt_adapter_final_destroy(struct aws_mqtt_client_connection_5_impl *adapter) {
+
+    struct aws_mqtt_adapter_final_destroy_task *task =
+        s_aws_mqtt_adapter_final_destroy_task_new(adapter->allocator, adapter);
+    if (task == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create adapter final destroy task", (void *)adapter);
+        return;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+}
 
 typedef int (*adapter_callback_fn)(struct aws_mqtt_client_connection_5_impl *adapter, void *context);
 
@@ -119,7 +188,7 @@ static int s_aws_mqtt5_adapter_perform_safe_callback(
         aws_mutex_lock(&adapter->lock);
     }
 
-    // Step (2) - do the callback
+    // Step (2) - perform the callback
     int result = (*callback_fn)(adapter, callback_user_data);
 
     // Step (3) - undo anything we did in step (1)
@@ -145,27 +214,6 @@ static bool s_aws_mqtt5_listener_publish_received_adapter(
     (void)user_data;
 
     return false;
-}
-
-static void s_mqtt_client_connection_5_impl_finish_destroy(void *context) {
-    struct aws_mqtt_client_connection_5_impl *adapter = context;
-
-    if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
-        /*
-         * If the mqtt5 client is pointing to us for websocket transform, then erase that.  The callback
-         * is invoked from our pinned event loop so this is safe.
-         *
-         * TODO: It is possible that multiple adapters may have sequentially side-affected the websocket handshake.
-         * For now, in that case, subsequent connection attempts will probably not succeed.
-         */
-        adapter->client->config->websocket_handshake_transform = NULL;
-        adapter->client->config->websocket_handshake_transform_user_data = NULL;
-    }
-
-    adapter->client = aws_mqtt5_client_release(adapter->client);
-    aws_mutex_clean_up(&adapter->lock);
-
-    aws_mem_release(adapter->allocator, adapter);
 }
 
 struct aws_mqtt_set_interruption_handlers_task {
@@ -544,7 +592,7 @@ static void s_aws_mqtt5_adapter_websocket_handshake_completion_fn(
     (*adapter->mqtt5_websocket_handshake_completion_function)(
         request, error_code, adapter->mqtt5_websocket_handshake_completion_user_data);
 
-    aws_mqtt_client_connection_release(&adapter->base);
+    aws_ref_count_release(&adapter->internal_refs);
 }
 
 struct aws_mqtt5_adapter_websocket_handshake_args {
@@ -557,12 +605,12 @@ struct aws_mqtt5_adapter_websocket_handshake_args {
 static int s_safe_websocket_handshake_fn(struct aws_mqtt_client_connection_5_impl *adapter, void *context) {
     struct aws_mqtt5_adapter_websocket_handshake_args *args = context;
 
-    if (adapter->synced_data.state != AWS_MQTT5_AS_ENABLED) {
+    if (adapter->synced_data.terminated) {
         args->completion_error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP;
     } else if (adapter->websocket_handshake_transformer == NULL) {
         args->output_request = args->input_request;
     } else {
-        ++adapter->synced_data.ref_count;
+        aws_ref_count_acquire(&adapter->internal_refs);
         args->chain_callback = true;
     }
 
@@ -949,55 +997,63 @@ static int s_aws_mqtt_client_connection_5_set_login(
     return AWS_OP_SUCCESS;
 }
 
+static void s_aws_mqtt3_to_mqtt5_adapter_on_zero_internal_refs(void *context) {
+    struct aws_mqtt_client_connection_5_impl *adapter = context;
+
+    s_aws_mqtt_adapter_final_destroy(adapter);
+}
+
+static void s_aws_mqtt3_to_mqtt5_adapter_on_listener_detached(void *context) {
+    struct aws_mqtt_client_connection_5_impl *adapter = context;
+
+    aws_ref_count_release(&adapter->internal_refs);
+}
+
 static struct aws_mqtt_client_connection *s_aws_mqtt_client_connection_5_acquire(void *impl) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
-    aws_mutex_lock(&adapter->lock);
-    AWS_FATAL_ASSERT(adapter->synced_data.ref_count > 0);
-    ++adapter->synced_data.ref_count;
-    aws_mutex_unlock(&adapter->lock);
+    aws_ref_count_acquire(&adapter->external_refs);
 
     return &adapter->base;
 }
 
 static int s_decref_for_shutdown(struct aws_mqtt_client_connection_5_impl *adapter, void *context) {
-    bool *start_shutdown = context;
+    (void)context;
 
-    AWS_FATAL_ASSERT(adapter->synced_data.ref_count > 0);
-    --adapter->synced_data.ref_count;
-    if (adapter->synced_data.ref_count == 0) {
-        adapter->synced_data.state = AWS_MQTT5_AS_TERMINATED;
-        *start_shutdown = true;
-    }
+    adapter->synced_data.terminated = true;
 
     return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt3_to_mqtt5_adapter_on_zero_external_refs(void *impl) {
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    s_aws_mqtt5_adapter_perform_safe_callback(adapter, s_decref_for_shutdown, NULL);
+
+    /*
+     * When the adapter's exernal ref count goes to zero, here's what we want to do:
+     *
+     *  (1) Put the adapter into the terminated state, which tells it to stop processing callbacks from the mqtt5
+     *      client
+     *  (2) Release the client listener, starting its asynchronous shutdown process (since we're the only user
+     *      of it)
+     *  (3) Wait for the client listener to notify us that asynchronous shutdown is over.  At this point we
+     *      are guaranteed that no more callbacks from the mqtt5 client will reach us.
+     *  (4) Release the internal ref we have from creation time.
+     *  (5) On last internal ref, we can safely release the mqtt5 client and synchronously clean up all other
+     *      resources
+     *
+     *  Step (1) was done within the lock-guarded safe callback above.
+     *  Step (2) is done here.
+     *  Steps (3) and (4) are accomplished via s_mqtt_client_connection_5_impl_finish_destroy.
+     */
+    aws_mqtt5_listener_release(adapter->listener);
 }
 
 static void s_aws_mqtt_client_connection_5_release(void *impl) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
-    bool start_shutdown = false;
-    s_aws_mqtt5_adapter_perform_safe_callback(adapter, s_decref_for_shutdown, &start_shutdown);
-
-    if (start_shutdown) {
-        /*
-         * When the adapter's ref count goes to zero, here's what we want to do:
-         *
-         *  (1) Put the adapter into the disabled mode, which tells it to stop processing callbacks from the mqtt5
-         *      client
-         *  (2) Release the client listener, starting its asynchronous shutdown process (since we're the only user
-         *      of it)
-         *  (3) Wait for the client listener to notify us that asynchronous shutdown is over.  At this point we
-         *      are guaranteed that no more callbacks from the mqtt5 client will reach us.  We can safely release the
-         *      mqtt5 client.
-         *  (4) Synchronously clean up all further resources.
-         *
-         *  Step (1) was done within the lock-guarded safe callback above.
-         *  Step (2) is done here.
-         *  Steps (3) and (4) are accomplished via s_mqtt_client_connection_5_impl_finish_destroy.
-         */
-        aws_mqtt5_listener_release(adapter->listener);
-    }
+    aws_ref_count_release(&adapter->external_refs);
 }
 
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_vtable = {
@@ -1038,6 +1094,10 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
 
     adapter->client = aws_mqtt5_client_acquire(client);
     adapter->loop = client->loop;
+    adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
+
+    aws_ref_count_init(&adapter->external_refs, adapter, s_aws_mqtt3_to_mqtt5_adapter_on_zero_external_refs);
+    aws_ref_count_init(&adapter->internal_refs, adapter, s_aws_mqtt3_to_mqtt5_adapter_on_zero_internal_refs);
 
     aws_mutex_init(&adapter->lock);
 
@@ -1046,10 +1106,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
      * We'll enable the adapter as soon as they try to connect via the 311 interface.  This
      * also ties in to how we simulate the 311 implementation's don't-reconnect-if-initial-connect-fails logic.
      * The 5 client will continue to try and reconnect, but the adapter will go disabled making it seem to the 311
-     * user that is is offline.
+     * user that is offline.
      */
-    adapter->synced_data.state = AWS_MQTT5_AS_DISABLED;
-    adapter->synced_data.ref_count = 1;
+    adapter->synced_data.terminated = false;
 
     struct aws_mqtt5_listener_config listener_config = {
         .client = client,
@@ -1060,7 +1119,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
                 .lifecycle_event_handler = s_aws_mqtt5_client_connection_event_callback_adapter,
                 .lifecycle_event_handler_user_data = adapter,
             },
-        .termination_callback = s_mqtt_client_connection_5_impl_finish_destroy,
+        .termination_callback = s_aws_mqtt3_to_mqtt5_adapter_on_listener_detached,
         .termination_callback_user_data = adapter,
     };
     adapter->listener = aws_mqtt5_listener_new(allocator, &listener_config);
