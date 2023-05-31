@@ -6701,6 +6701,10 @@ static int s_mqtt3to5_adapter_connect_success_fn(struct aws_allocator *allocator
 
 AWS_TEST_CASE(mqtt3to5_adapter_connect_success, s_mqtt3to5_adapter_connect_success_fn)
 
+static int s_do_mqtt3to5_adapter_connect_success_disconnect_success_cycle(struct aws_allocator *allocator, size_t iterations) {
+
+}
+
 static int s_mqtt3to5_adapter_connect_success_disconnect_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -6758,3 +6762,7 @@ static int s_mqtt3to5_adapter_connect_success_disconnect_success_fn(struct aws_a
 AWS_TEST_CASE(
     mqtt3to5_adapter_connect_success_disconnect_success,
     s_mqtt3to5_adapter_connect_success_disconnect_success_fn)
+
+
+add_test_case(mqtt3to5_adapter_connect_success_disconnect_success_twice)
+add_test_case(mqtt3to5_adapter_connect_success_connect_failure)

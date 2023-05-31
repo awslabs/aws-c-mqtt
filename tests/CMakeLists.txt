@@ -362,6 +362,8 @@ add_test_case(mqtt3to5_adapter_set_reconnect_timeout)
 
 add_test_case(mqtt3to5_adapter_connect_success)
 add_test_case(mqtt3to5_adapter_connect_success_disconnect_success)
+add_test_case(mqtt3to5_adapter_connect_success_disconnect_success_twice)
+add_test_case(mqtt3to5_adapter_connect_success_connect_failure)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
