@@ -460,7 +460,7 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
              *   (1) the error code is not AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT and
              *   (2) we're in the FIRST_CONNECT state
              *
-             * Only if both of these are true shoudl we invoke the connection completion callback with a failure and
+             * Only if both of these are true should we invoke the connection completion callback with a failure and
              * put the adapter into the "disconnected" state, simulating the way the 311 client stops after an
              * initial connection failure.
              */
@@ -499,6 +499,20 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
                 adapter->on_disconnect = NULL;
                 adapter->on_disconnect_user_data = NULL;
             }
+
+            if (adapter->on_closed) {
+                (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
+            }
+
+            /*
+             * Judgement call: If the mqtt5 client is stopped behind our back, it seems better to transition to the
+             * disconnected state (which only requires a connect() to restart) then stay in the STAY_CONNECTED state
+             * which currently requires a disconnect() and then a connect() to restore connectivity.
+             *
+             * ToDo: what if we disabled mqtt5 client start/stop somehow while the adapter is attached, preventing
+             * the potential to backstab each other?
+             */
+            adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
             break;
 
         default:
