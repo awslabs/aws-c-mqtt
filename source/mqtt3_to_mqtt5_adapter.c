@@ -63,9 +63,9 @@ struct aws_mqtt_client_connection_5_impl {
     bool in_synchronous_callback;
 
     /*
-     * What state the mqtt311 interface wants to be in.  Always either AWS_MCS_CONNECTED or AWS_MCS_STOPPED.
-     * Tracked separately from the underlying mqtt5 client state in order to provide a coherent view that is
-     * narrowed solely to the adapter interface.
+     * The current adapter state based on the sequence of connect(), disconnect(), and connection completion events.
+     * This affects how the adapter reacts to incoming mqtt5 events.  Under certain conditiobns, we may change
+     * this state value based on unexpected events (stopping the mqtt5 client underneath the adapter, for example)
      */
     enum aws_mqtt_adapter_state adapter_state;
 
@@ -510,7 +510,8 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
              * which currently requires a disconnect() and then a connect() to restore connectivity.
              *
              * ToDo: what if we disabled mqtt5 client start/stop somehow while the adapter is attached, preventing
-             * the potential to backstab each other?
+             * the potential to backstab each other?  Unfortunately neither start() nor stop() have an error reporting
+             * mechanism.
              */
             adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
             break;

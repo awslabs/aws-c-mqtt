@@ -360,6 +360,9 @@ add_test_case(mqtt3to5_adapter_set_will)
 add_test_case(mqtt3to5_adapter_set_login)
 add_test_case(mqtt3to5_adapter_set_reconnect_timeout)
 
+add_test_case(mqtt3to5_adapter_connect_success)
+add_test_case(mqtt3to5_adapter_connect_success_disconnect_success)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)

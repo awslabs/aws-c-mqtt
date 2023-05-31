@@ -6097,6 +6097,7 @@ enum aws_mqtt3_lifecycle_event_type {
     AWS_MQTT3_LET_INTERRUPTED,
     AWS_MQTT3_LET_RESUMED,
     AWS_MQTT3_LET_CLOSED,
+    AWS_MQTT3_LET_DISCONNECTION_COMPLETE,
 };
 
 struct aws_mqtt3_lifecycle_event {
@@ -6128,6 +6129,84 @@ struct aws_mqtt3_to_mqtt5_adapter_test_fixture {
 
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture_config config;
 };
+
+static void s_init_adapter_connection_options_from_fixture(
+    struct aws_mqtt_connection_options *connection_options,
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture) {
+    AWS_ZERO_STRUCT(*connection_options);
+
+    connection_options->host_name = aws_byte_cursor_from_c_str(fixture->mqtt5_fixture.endpoint.address);
+    connection_options->port = fixture->mqtt5_fixture.endpoint.port;
+    connection_options->socket_options = &fixture->mqtt5_fixture.socket_options;
+    connection_options->keep_alive_time_secs = 30;
+    connection_options->ping_timeout_ms = 10000;
+    connection_options->clean_session = true;
+}
+
+struct n_lifeycle_event_wait_context {
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture;
+    enum aws_mqtt3_lifecycle_event_type type;
+    size_t count;
+};
+
+static bool s_wait_for_n_adapter_lifecycle_events_predicate(void *context) {
+    struct n_lifeycle_event_wait_context *wait_context = context;
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = wait_context->fixture;
+
+    size_t actual_count = 0;
+    size_t event_count = aws_array_list_length(&fixture->lifecycle_events);
+    for (size_t i = 0; i < event_count; ++i) {
+        struct aws_mqtt3_lifecycle_event *actual_event = NULL;
+        aws_array_list_get_at_ptr(&fixture->lifecycle_events, (void **)(&actual_event), i);
+        if (actual_event->type == wait_context->type) {
+            ++actual_count;
+        }
+    }
+
+    return actual_count >= wait_context->count;
+}
+
+static void s_wait_for_n_adapter_lifecycle_events(
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
+    enum aws_mqtt3_lifecycle_event_type type,
+    size_t count) {
+    struct n_lifeycle_event_wait_context wait_context = {
+        .fixture = fixture,
+        .type = type,
+        .count = count,
+    };
+
+    aws_mutex_lock(&fixture->lock);
+    aws_condition_variable_wait_pred(
+        &fixture->signal, &fixture->lock, s_wait_for_n_adapter_lifecycle_events_predicate, &wait_context);
+    aws_mutex_unlock(&fixture->lock);
+}
+
+static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
+    size_t event_count,
+    struct aws_mqtt3_lifecycle_event *expected_events) {
+
+    aws_mutex_lock(&fixture->lock);
+
+    size_t actual_event_count = aws_array_list_length(&fixture->lifecycle_events);
+    ASSERT_TRUE(actual_event_count <= event_count);
+
+    for (size_t i = 0; i < event_count; ++i) {
+        struct aws_mqtt3_lifecycle_event *expected_event = expected_events + i;
+        struct aws_mqtt3_lifecycle_event *actual_event = NULL;
+        aws_array_list_get_at_ptr(&fixture->lifecycle_events, (void **)(&actual_event), i);
+
+        ASSERT_INT_EQUALS(actual_event->type, expected_event->type);
+        ASSERT_INT_EQUALS(actual_event->error_code, expected_event->error_code);
+        ASSERT_INT_EQUALS(actual_event->return_code, expected_event->return_code);
+        ASSERT_TRUE(actual_event->session_present == expected_event->session_present);
+    }
+
+    aws_mutex_unlock(&fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
 
 static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_closed_handler(
     struct aws_mqtt_client_connection *connection,
@@ -6206,10 +6285,14 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_resumed_handler(
 }
 
 static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete(
-    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
+    struct aws_mqtt_client_connection *connection,
     int error_code,
     enum aws_mqtt_connect_return_code return_code,
-    bool session_present) {
+    bool session_present,
+    void *user_data) {
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = user_data;
+
     struct aws_mqtt3_lifecycle_event event;
     AWS_ZERO_STRUCT(event);
 
@@ -6218,6 +6301,24 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete
     event.error_code = error_code;
     event.return_code = return_code;
     event.session_present = session_present;
+
+    aws_mutex_lock(&fixture->lock);
+    aws_array_list_push_back(&fixture->lifecycle_events, &event);
+    aws_mutex_unlock(&fixture->lock);
+    aws_condition_variable_notify_all(&fixture->signal);
+}
+
+static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_disconnection_complete(
+    struct aws_mqtt_client_connection *connection,
+    void *user_data) {
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = user_data;
+
+    struct aws_mqtt3_lifecycle_event event;
+    AWS_ZERO_STRUCT(event);
+
+    event.type = AWS_MQTT3_LET_DISCONNECTION_COMPLETE;
+    aws_high_res_clock_get_ticks(&event.timestamp);
 
     aws_mutex_lock(&fixture->lock);
     aws_array_list_push_back(&fixture->lifecycle_events, &event);
@@ -6555,3 +6656,105 @@ static int s_mqtt3to5_adapter_set_reconnect_timeout_fn(struct aws_allocator *all
 }
 
 AWS_TEST_CASE(mqtt3to5_adapter_set_reconnect_timeout, s_mqtt3to5_adapter_set_reconnect_timeout_fn)
+
+static int s_mqtt3to5_adapter_connect_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    s_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *adapter = fixture.connection;
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(adapter, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_mqtt3_lifecycle_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
+        },
+    };
+    s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
+        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events);
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_connect_success, s_mqtt3to5_adapter_connect_success_fn)
+
+static int s_mqtt3to5_adapter_connect_success_disconnect_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    s_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *adapter = fixture.connection;
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(adapter, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    aws_mqtt_client_connection_disconnect(
+        adapter, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_disconnection_complete, &fixture);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_DISCONNECTION_COMPLETE, 1);
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CLOSED, 1);
+
+    struct aws_mqtt3_lifecycle_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
+        },
+        {
+            .type = AWS_MQTT3_LET_DISCONNECTION_COMPLETE,
+        },
+        {
+            .type = AWS_MQTT3_LET_CLOSED,
+        },
+    };
+    s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
+        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events);
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt3to5_adapter_connect_success_disconnect_success,
+    s_mqtt3to5_adapter_connect_success_disconnect_success_fn)
