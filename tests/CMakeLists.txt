@@ -366,6 +366,7 @@ add_test_case(mqtt3to5_adapter_connect_success_disconnect_success_thrice)
 add_test_case(mqtt3to5_adapter_connect_success_connect_failure)
 add_test_case(mqtt3to5_adapter_connect_success_sloppy_shutdown)
 add_test_case(mqtt3to5_adapter_connect_bad_connectivity)
+add_test_case(mqtt3to5_adapter_connect_bad_connectivity_with_mqtt5_restart)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
