@@ -121,7 +121,7 @@ static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
 
     size_t actual_event_count = aws_array_list_length(&fixture->lifecycle_events);
     ASSERT_TRUE(expected_event_count <= actual_event_count);
-    //    ASSERT_TRUE(actual_event_count <= maximum_event_count);
+    ASSERT_TRUE(actual_event_count <= maximum_event_count);
 
     for (size_t i = 0; i < expected_event_count; ++i) {
         struct aws_mqtt3_lifecycle_event *expected_event = expected_events + i;
@@ -221,6 +221,7 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *user_data) {
+    (void)connection;
 
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = user_data;
 
@@ -242,6 +243,7 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete
 static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_disconnection_complete(
     struct aws_mqtt_client_connection *connection,
     void *user_data) {
+    (void)connection;
 
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = user_data;
 
@@ -858,9 +860,7 @@ static int s_verify_bad_connectivity_callbacks(struct aws_mqtt3_to_mqtt5_adapter
     return AWS_OP_SUCCESS;
 }
 
-static int s_do_bad_connectivity_basic_test(
-    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
-    struct aws_allocator *allocator) {
+static int s_do_bad_connectivity_basic_test(struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture) {
     struct aws_mqtt_client_connection *adapter = fixture->connection;
 
     struct aws_mqtt_connection_options connection_options;
@@ -906,7 +906,7 @@ static int s_mqtt3to5_adapter_connect_bad_connectivity_fn(struct aws_allocator *
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
     ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
 
-    ASSERT_SUCCESS(s_do_bad_connectivity_basic_test(&fixture, allocator));
+    ASSERT_SUCCESS(s_do_bad_connectivity_basic_test(&fixture));
 
     aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
@@ -941,7 +941,7 @@ static int s_mqtt3to5_adapter_connect_bad_connectivity_with_mqtt5_restart_fn(
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
     ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
 
-    ASSERT_SUCCESS(s_do_bad_connectivity_basic_test(&fixture, allocator));
+    ASSERT_SUCCESS(s_do_bad_connectivity_basic_test(&fixture));
 
     /*
      * Now restart the 5 client, wait for a few more connection success/disconnect cycles, and then verify that no
