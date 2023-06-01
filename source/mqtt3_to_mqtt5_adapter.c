@@ -569,17 +569,23 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_disconnect_handler(
 
     adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
 
-    bool invoke_disconnect_callback = disconnect_task->on_disconnect != NULL;
+    bool invoke_callbacks = true;
     if (adapter->client->desired_state != AWS_MCS_STOPPED &&
         aws_mqtt5_client_stop(adapter->client, NULL, NULL) == AWS_OP_SUCCESS) {
 
         adapter->on_disconnect = disconnect_task->on_disconnect;
         adapter->on_disconnect_user_data = disconnect_task->on_disconnect_user_data;
-        invoke_disconnect_callback = false;
+        invoke_callbacks = false;
     }
 
-    if (invoke_disconnect_callback) {
-        (*disconnect_task->on_disconnect)(&adapter->base, disconnect_task->on_disconnect_user_data);
+    if (invoke_callbacks) {
+        if (disconnect_task->on_disconnect != NULL) {
+            (*disconnect_task->on_disconnect)(&adapter->base, disconnect_task->on_disconnect_user_data);
+        }
+
+        if (adapter->on_closed) {
+            (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
+        }
     }
 
     return AWS_OP_SUCCESS;
