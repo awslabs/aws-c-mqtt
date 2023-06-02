@@ -467,7 +467,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                         parent->topic.ptr - aws_string_bytes(parent->topic_filter) + parent->topic.len + 1;
 
                     /* -1 to avoid touching current */
-                    for (size_t i = nodes_left - 1; i > 0; --i) {
+                    for (size_t i = nodes_left; i > 0; --i) {
                         aws_array_list_get_at(&action->to_remove, &parent, i);
                         AWS_ASSUME(parent); /* Must be in bounds */
 
