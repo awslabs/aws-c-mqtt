@@ -433,6 +433,8 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                             /* Clean up and delete */
                             s_topic_node_destroy(node, tree->allocator);
                         } else {
+                            // We do not delete the current node immediately as we would like to use
+                            // it to update the topic filter of the remaining nodes
                             destroy_current = true;
                         }
                     } else {
@@ -450,7 +452,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                     }
                 }
 
-                /* If at least one node is destroyed and there is node left in the branch,
+                /* If at least one node is destroyed and there is node(s) remaining in the branch,
                  * go fixup the topic filter reference . */
                 if (nodes_left > 0 && destroy_current) {
 
@@ -466,7 +468,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                     size_t topic_offset =
                         parent->topic.ptr - aws_string_bytes(parent->topic_filter) + parent->topic.len + 1;
 
-                    /* -1 to avoid touching current */
+                    /* Loop through all remaining nodes to update the topic filters */
                     for (size_t i = nodes_left; i > 0; --i) {
                         aws_array_list_get_at(&action->to_remove, &parent, i);
                         AWS_ASSUME(parent); /* Must be in bounds */
