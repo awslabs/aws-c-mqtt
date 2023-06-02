@@ -450,8 +450,9 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                     }
                 }
 
-                /* If current owns the full string, go fixup the pointer references. */
-                if (nodes_left > 0) {
+                /* If at least one node is destroyed and there is node left in the branch,
+                 * go fixup the topic filter reference . */
+                if (nodes_left > 0 && destroy_current) {
 
                     /* If a new viable topic filter is found once, it can be used for all parents. */
                     const struct aws_string *new_topic_filter = NULL;
@@ -466,7 +467,7 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                         parent->topic.ptr - aws_string_bytes(parent->topic_filter) + parent->topic.len + 1;
 
                     /* -1 to avoid touching current */
-                    for (size_t i = nodes_left; i > 0; --i) {
+                    for (size_t i = nodes_left - 1; i > 0; --i) {
                         aws_array_list_get_at(&action->to_remove, &parent, i);
                         AWS_ASSUME(parent); /* Must be in bounds */
 
@@ -493,7 +494,8 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                                     &parent->subtopics, s_topic_node_string_finder, (void *)&new_topic_filter);
 
                                 /* This would only happen if there is only one topic in subtopics (current's) and
-                                 * it has no children (in which case it should have been removed above). */
+                                 * it has no children (in which case it should have been removed above as `destroy_current`
+                                 is set to true). */
                                 AWS_ASSERT(new_topic_filter != old_topic_filter);
 
                                 /* Now that the new string has been found, the old one can be destroyed. */
