@@ -494,8 +494,8 @@ static void s_topic_tree_action_commit(struct topic_tree_action *action, struct 
                                     &parent->subtopics, s_topic_node_string_finder, (void *)&new_topic_filter);
 
                                 /* This would only happen if there is only one topic in subtopics (current's) and
-                                 * it has no children (in which case it should have been removed above as `destroy_current`
-                                 is set to true). */
+                                 * it has no children (in which case it should have been removed above as
+                                 `destroy_current` is set to true). */
                                 AWS_ASSERT(new_topic_filter != old_topic_filter);
 
                                 /* Now that the new string has been found, the old one can be destroyed. */
