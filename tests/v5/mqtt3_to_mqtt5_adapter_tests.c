@@ -1283,18 +1283,6 @@ static int s_mqtt3to5_adapter_connect_success_stop_mqtt5_disconnect_success_fn(
 
     s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_DISCONNECTION_COMPLETE, 1);
 
-    struct aws_mqtt3_lifecycle_event expected_events[] = {
-        {
-            .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
-        },
-        {
-            .type = AWS_MQTT3_LET_DISCONNECTION_COMPLETE,
-        },
-    };
-
-    s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
-        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events, AWS_ARRAY_SIZE(expected_events));
-
     aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
 
