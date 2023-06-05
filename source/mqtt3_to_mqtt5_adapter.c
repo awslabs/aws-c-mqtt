@@ -570,8 +570,8 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_disconnect_handler(
     adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
 
     bool invoke_callbacks = true;
-    if (adapter->client->desired_state != AWS_MCS_STOPPED &&
-        aws_mqtt5_client_stop(adapter->client, NULL, NULL) == AWS_OP_SUCCESS) {
+    if (adapter->client->desired_state != AWS_MCS_STOPPED) {
+        aws_mqtt5_client_change_desired_state(adapter->client, AWS_MCS_STOPPED, NULL);
 
         adapter->on_disconnect = disconnect_task->on_disconnect;
         adapter->on_disconnect_user_data = disconnect_task->on_disconnect_user_data;
@@ -689,20 +689,7 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_connect_handler(
 
     aws_mqtt5_client_reset_connection(adapter->client);
 
-    if (adapter->client->desired_state != AWS_MCS_CONNECTED) {
-        if (aws_mqtt5_client_start(adapter->client)) {
-            if (connect_task->on_connection_complete) {
-                int error_code = aws_last_error();
-                if (error_code == AWS_ERROR_SUCCESS) {
-                    error_code = AWS_ERROR_UNKNOWN;
-                }
-                (*connect_task->on_connection_complete)(
-                    &adapter->base, error_code, 0, false, connect_task->on_connection_complete_user_data);
-            }
-
-            return AWS_OP_SUCCESS;
-        }
-    }
+    aws_mqtt5_client_change_desired_state(adapter->client, AWS_MCS_CONNECTED, NULL);
 
     adapter->on_connection_complete = connect_task->on_connection_complete;
     adapter->on_connection_complete_user_data = connect_task->on_connection_complete_user_data;
