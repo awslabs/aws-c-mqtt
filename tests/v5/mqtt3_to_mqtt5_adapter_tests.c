@@ -113,6 +113,23 @@ static void s_wait_for_n_adapter_lifecycle_events(
     aws_mutex_unlock(&fixture->lock);
 }
 
+static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_event(
+    struct aws_mqtt3_lifecycle_event *expected_event,
+    struct aws_mqtt3_lifecycle_event *actual_event) {
+    ASSERT_INT_EQUALS(actual_event->type, expected_event->type);
+    if (expected_event->skip_error_code_equality) {
+        /* some error scenarios lead to different values cross-platform, so just verify yes/no in that case */
+        ASSERT_TRUE((actual_event->error_code != 0) == (expected_event->error_code != 0));
+    } else {
+        ASSERT_INT_EQUALS(actual_event->error_code, expected_event->error_code);
+    }
+
+    ASSERT_INT_EQUALS(actual_event->return_code, expected_event->return_code);
+    ASSERT_TRUE(actual_event->session_present == expected_event->session_present);
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
     size_t expected_event_count,
@@ -130,16 +147,55 @@ static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
         struct aws_mqtt3_lifecycle_event *actual_event = NULL;
         aws_array_list_get_at_ptr(&fixture->lifecycle_events, (void **)(&actual_event), i);
 
-        ASSERT_INT_EQUALS(actual_event->type, expected_event->type);
-        if (expected_event->skip_error_code_equality) {
-            /* some error scenarios lead to different values cross-platform, so just verify yes/no in that case */
-            ASSERT_TRUE((actual_event->error_code != 0) == (expected_event->error_code != 0));
-        } else {
-            ASSERT_INT_EQUALS(actual_event->error_code, expected_event->error_code);
-        }
+        ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_event(expected_event, actual_event));
+    }
 
-        ASSERT_INT_EQUALS(actual_event->return_code, expected_event->return_code);
-        ASSERT_TRUE(actual_event->session_present == expected_event->session_present);
+    aws_mutex_unlock(&fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence_starts_with(
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
+    size_t expected_event_count,
+    struct aws_mqtt3_lifecycle_event *expected_events) {
+
+    aws_mutex_lock(&fixture->lock);
+
+    size_t actual_event_count = aws_array_list_length(&fixture->lifecycle_events);
+    ASSERT_TRUE(expected_event_count <= actual_event_count);
+
+    for (size_t i = 0; i < expected_event_count; ++i) {
+        struct aws_mqtt3_lifecycle_event *expected_event = expected_events + i;
+        struct aws_mqtt3_lifecycle_event *actual_event = NULL;
+        aws_array_list_get_at_ptr(&fixture->lifecycle_events, (void **)(&actual_event), i);
+
+        ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_event(expected_event, actual_event));
+    }
+
+    aws_mutex_unlock(&fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence_ends_with(
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
+    size_t expected_event_count,
+    struct aws_mqtt3_lifecycle_event *expected_events) {
+
+    aws_mutex_lock(&fixture->lock);
+
+    size_t actual_event_count = aws_array_list_length(&fixture->lifecycle_events);
+    ASSERT_TRUE(expected_event_count <= actual_event_count);
+
+    for (size_t i = 0; i < expected_event_count; ++i) {
+        struct aws_mqtt3_lifecycle_event *expected_event = expected_events + i;
+
+        size_t actual_index = i + (actual_event_count - expected_event_count);
+        struct aws_mqtt3_lifecycle_event *actual_event = NULL;
+        aws_array_list_get_at_ptr(&fixture->lifecycle_events, (void **)(&actual_event), actual_index);
+
+        ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_event(expected_event, actual_event));
     }
 
     aws_mutex_unlock(&fixture->lock);
@@ -1225,20 +1281,26 @@ static int s_mqtt3to5_adapter_connect_success_disconnect_connect_fn(struct aws_a
     s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_DISCONNECTION_COMPLETE, 1);
     s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 2);
 
-    struct aws_mqtt3_lifecycle_event expected_events[] = {
+    struct aws_mqtt3_lifecycle_event expected_sequence_beginning[] = {
         {
             .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
         },
         {
             .type = AWS_MQTT3_LET_DISCONNECTION_COMPLETE,
         },
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence_starts_with(
+        &fixture, AWS_ARRAY_SIZE(expected_sequence_beginning), expected_sequence_beginning));
+
+    struct aws_mqtt3_lifecycle_event expected_sequence_ending[] = {
         {
             .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
         },
     };
 
-    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
-        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events, AWS_ARRAY_SIZE(expected_events)));
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence_ends_with(
+        &fixture, AWS_ARRAY_SIZE(expected_sequence_ending), expected_sequence_ending));
 
     aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
