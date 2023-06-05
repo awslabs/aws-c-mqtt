@@ -141,9 +141,11 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
 
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(
         &tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_a_a_a));
-    /* The topic a/a was not inserted. Though the remove returns success, the topic_a_a_a should still remained in the
-     * tree. The test is inspired the ticket: https://github.com/awslabs/aws-crt-nodejs/issues/405 The ticked reported
-     * an issue: when we unsubscribe from an unsubscribed parent topic, the topic tree will crash. */
+    /* At this moment, the topic_a_a was not inserted. Though the remove returns a success, the topic_a_a_a should still
+     * remained in the tree.
+     * The test is inspired by the ticket: https://github.com/awslabs/aws-crt-nodejs/issues/405. There was a crash when
+     * we unsubscribe from an unsubscribed parent topic.
+     * We fixed the issue in https://github.com/awslabs/aws-c-mqtt/pull/297 */
     ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
     /* Re-create, it was nuked by remove. */
