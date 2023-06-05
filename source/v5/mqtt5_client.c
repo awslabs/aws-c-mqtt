@@ -1039,6 +1039,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
 
     client->current_state = AWS_MCS_CONNECTING;
     client->clean_disconnect_error_code = AWS_ERROR_SUCCESS;
+    client->should_reset_connection = false;
 
     s_aws_mqtt5_client_emit_connecting_lifecycle_event(client);
 
@@ -1200,6 +1201,11 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     AWS_FATAL_ASSERT(client->operational_state.current_operation == NULL);
 
     client->current_state = AWS_MCS_MQTT_CONNECT;
+    if (client->should_reset_connection) {
+        s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT);
+        return;
+    }
+
     client->operational_state.pending_write_completion = false;
 
     aws_mqtt5_encoder_reset(&client->encoder);
@@ -3344,4 +3350,24 @@ void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt
         (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.unacked_operation_count_atomic);
     stats->unacked_operation_size =
         (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.unacked_operation_size_atomic);
+}
+
+bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client) {
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
+
+    switch (client->current_state) {
+        case AWS_MCS_MQTT_CONNECT:
+        case AWS_MCS_CONNECTED:
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT);
+            return true;
+
+        case AWS_MCS_CONNECTING:
+            client->should_reset_connection = true;
+            return true;
+
+        default:
+            break;
+    }
+
+    return false;
 }
