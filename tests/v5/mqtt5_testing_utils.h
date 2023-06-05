@@ -128,6 +128,15 @@ struct mqtt5_client_test_options {
     struct aws_mqtt5_mock_server_vtable server_function_table;
 };
 
+struct aws_mqtt5_mock_server_reconnect_state {
+    size_t required_connection_failure_count;
+
+    size_t connection_attempts;
+    uint64_t connect_timestamp;
+
+    uint64_t successful_connection_disconnect_delay_ms;
+};
+
 int aws_mqtt5_test_verify_user_properties_raw(
     size_t property_count,
     const struct aws_mqtt5_user_property *properties,
@@ -188,6 +197,11 @@ int aws_mqtt5_mock_server_send_packet(
     struct aws_mqtt5_server_mock_connection_context *connection,
     enum aws_mqtt5_packet_type packet_type,
     void *packet);
+
+int aws_mqtt5_mock_server_handle_connect_succeed_on_nth(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
 
 extern const struct aws_string *g_default_client_id;
 

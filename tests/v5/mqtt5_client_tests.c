@@ -1509,16 +1509,7 @@ static int s_mqtt5_client_reconnect_failure_backoff_fn(struct aws_allocator *all
 
 AWS_TEST_CASE(mqtt5_client_reconnect_failure_backoff, s_mqtt5_client_reconnect_failure_backoff_fn)
 
-struct aws_mqtt5_mock_server_reconnect_state {
-    size_t required_connection_failure_count;
-
-    size_t connection_attempts;
-    uint64_t connect_timestamp;
-
-    uint64_t successful_connection_disconnect_delay_ms;
-};
-
-static int s_aws_mqtt5_mock_server_handle_connect_succeed_on_nth(
+int aws_mqtt5_mock_server_handle_connect_succeed_on_nth(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -1637,7 +1628,7 @@ static int s_mqtt5_client_reconnect_backoff_insufficient_reset_fn(struct aws_all
     test_options.client_options.min_connected_time_to_reset_reconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY;
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
-        s_aws_mqtt5_mock_server_handle_connect_succeed_on_nth;
+        aws_mqtt5_mock_server_handle_connect_succeed_on_nth;
     test_options.server_function_table.service_task_fn = s_aws_mqtt5_mock_server_disconnect_after_n_ms;
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
@@ -1757,7 +1748,7 @@ static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_alloc
     test_options.client_options.min_connected_time_to_reset_reconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY;
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
-        s_aws_mqtt5_mock_server_handle_connect_succeed_on_nth;
+        aws_mqtt5_mock_server_handle_connect_succeed_on_nth;
     test_options.server_function_table.service_task_fn = s_aws_mqtt5_mock_server_disconnect_after_n_ms;
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {

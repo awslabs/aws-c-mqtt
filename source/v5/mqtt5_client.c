@@ -3355,6 +3355,8 @@ void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt
 bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client) {
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
+    client->current_reconnect_delay_ms = client->config->min_reconnect_delay_ms;
+
     switch (client->current_state) {
         case AWS_MCS_MQTT_CONNECT:
         case AWS_MCS_CONNECTED:

@@ -709,6 +709,7 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_connect_handler(
 
     return AWS_OP_SUCCESS;
 }
+
 static void s_adapter_connect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
