@@ -64,7 +64,7 @@ struct aws_mqtt_client_connection_5_impl {
 
     /*
      * The current adapter state based on the sequence of connect(), disconnect(), and connection completion events.
-     * This affects how the adapter reacts to incoming mqtt5 events.  Under certain conditiobns, we may change
+     * This affects how the adapter reacts to incoming mqtt5 events.  Under certain conditions, we may change
      * this state value based on unexpected events (stopping the mqtt5 client underneath the adapter, for example)
      */
     enum aws_mqtt_adapter_state adapter_state;
