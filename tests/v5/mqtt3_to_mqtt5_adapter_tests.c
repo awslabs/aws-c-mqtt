@@ -1281,6 +1281,11 @@ static int s_mqtt3to5_adapter_connect_success_disconnect_connect_fn(struct aws_a
     s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_DISCONNECTION_COMPLETE, 1);
     s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 2);
 
+    /*
+     * depending on timing there may or may not be a closed event in between, so just check beginning and end for
+     * expected events
+     */
+
     struct aws_mqtt3_lifecycle_event expected_sequence_beginning[] = {
         {
             .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
