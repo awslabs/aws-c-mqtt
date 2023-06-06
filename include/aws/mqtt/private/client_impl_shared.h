@@ -102,4 +102,8 @@ struct aws_mqtt_client_connection {
     void *impl;
 };
 
+AWS_MQTT_API uint64_t aws_mqtt_hash_uint16_t(const void *item);
+
+AWS_MQTT_API bool aws_mqtt_compare_uint16_t_eq(const void *a, const void *b);
+
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */

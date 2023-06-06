@@ -179,3 +179,11 @@ int aws_mqtt_client_connection_get_stats(
 
     return (*connection->vtable->get_stats_fn)(connection->impl, stats);
 }
+
+uint64_t aws_mqtt_hash_uint16_t(const void *item) {
+    return *(uint16_t *)item;
+}
+
+bool aws_mqtt_compare_uint16_t_eq(const void *a, const void *b) {
+    return *(uint16_t *)a == *(uint16_t *)b;
+}

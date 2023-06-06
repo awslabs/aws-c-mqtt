@@ -12,6 +12,7 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/shared_constants.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
@@ -26,6 +27,7 @@
 
 #define AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH 4096
 #define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
+#define DEFAULT_MQTT5_OPERATION_TABLE_SIZE 200
 
 const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_client_state state) {
     switch (state) {
@@ -155,14 +157,6 @@ static int s_aws_mqtt5_client_change_desired_state(
     struct aws_mqtt5_client *client,
     enum aws_mqtt5_client_state desired_state,
     struct aws_mqtt5_operation_disconnect *disconnect_operation);
-
-static uint64_t s_hash_uint16_t(const void *item) {
-    return *(uint16_t *)item;
-}
-
-static bool s_uint16_t_eq(const void *a, const void *b) {
-    return *(uint16_t *)a == *(uint16_t *)b;
-}
 
 static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
@@ -2561,9 +2555,9 @@ int aws_mqtt5_client_operational_state_init(
     if (aws_hash_table_init(
             &client_operational_state->unacked_operations_table,
             allocator,
-            sizeof(struct aws_mqtt5_operation *),
-            s_hash_uint16_t,
-            s_uint16_t_eq,
+            DEFAULT_MQTT5_OPERATION_TABLE_SIZE,
+            aws_mqtt_hash_uint16_t,
+            aws_mqtt_compare_uint16_t_eq,
             NULL,
             NULL)) {
         return AWS_OP_ERR;

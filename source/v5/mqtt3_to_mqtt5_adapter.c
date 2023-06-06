@@ -9,6 +9,7 @@
 #include <aws/common/rw_lock.h>
 
 #include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/private/v5/mqtt3_to_mqtt5_adapter_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
@@ -1632,4 +1633,43 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     adapter->listener = aws_mqtt5_listener_new(allocator, &listener_config);
 
     return &adapter->base;
+}
+
+#define DEFAULT_MQTT_ADAPTER_OPERATION_TABLE_SIZE 100
+
+void aws_mqtt3_to_mqtt5_adapter_operation_table_init(struct aws_mqtt3_to_mqtt5_adapter_operation_table *table, struct aws_allocator *allocator) {
+    aws_mutex_init(&table->lock);
+    aws_hash_table_init(&table->operations, allocator, DEFAULT_MQTT_ADAPTER_OPERATION_TABLE_SIZE, aws_mqtt_hash_uint16_t, aws_mqtt_compare_uint16_t_eq, NULL, NULL);
+    table->next_id = 1;
+}
+
+void aws_mqtt3_to_mqtt5_adapter_operation_table_clean_up(struct aws_mqtt3_to_mqtt5_adapter_operation_table *table) {
+    (void)table;
+    // TODO
+}
+
+int aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(struct aws_mqtt3_to_mqtt5_adapter_operation_table *table, struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
+    (void)table;
+    (void)operation;
+    //TODO
+
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+void aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(struct aws_mqtt3_to_mqtt5_adapter_operation_table *table, uint16_t operation_id) {
+    aws_mutex_lock(&table->lock);
+    aws_hash_table_remove(&table->operations, &operation_id, NULL, NULL);
+    aws_mutex_unlock(&table->lock);
+}
+
+struct aws_mqtt3_to_mqtt5_adapter_operation_publish *aws_mqtt3_to_mqtt5_adapter_operation_new_publish(struct aws_allocator *allocator, struct aws_mqtt3_to_mqtt5_adapter_publish_options *options) {
+    (void)allocator;
+    (void)options;
+    // TODO
+
+    return NULL;
+}
+
+void aws_mqtt3_to_mqtt5_adapter_operation_destroy(struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
+    (*operation->vtable->destroy_fn)(operation);
 }

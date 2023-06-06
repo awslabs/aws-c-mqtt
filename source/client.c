@@ -36,6 +36,8 @@ static const uint64_t s_default_ping_timeout_ns = 3000000000;
 /* 20 minutes - This is the default (and max) for AWS IoT as of 2020.02.18 */
 static const uint16_t s_default_keep_alive_sec = 1200;
 
+#define DEFAULT_MQTT311_OPERATION_TABLE_SIZE 100
+
 static int s_mqtt_client_connect(
     struct aws_mqtt_client_connection_311_impl *connection,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
@@ -772,14 +774,6 @@ void aws_create_reconnect_task(struct aws_mqtt_client_connection_311_impl *conne
         aws_task_init(
             &connection->reconnect_task->task, s_attempt_reconnect, connection->reconnect_task, "mqtt_reconnect");
     }
-}
-
-static uint64_t s_hash_uint16_t(const void *item) {
-    return *(uint16_t *)item;
-}
-
-static bool s_uint16_t_eq(const void *a, const void *b) {
-    return *(uint16_t *)a == *(uint16_t *)b;
 }
 
 static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connection *base_connection) {
@@ -3216,9 +3210,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     if (aws_hash_table_init(
             &connection->synced_data.outstanding_requests_table,
             connection->allocator,
-            sizeof(struct aws_mqtt_request *),
-            s_hash_uint16_t,
-            s_uint16_t_eq,
+            DEFAULT_MQTT311_OPERATION_TABLE_SIZE,
+            aws_mqtt_hash_uint16_t,
+            aws_mqtt_compare_uint16_t_eq,
             NULL,
             NULL)) {
 
