@@ -2190,24 +2190,7 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
         goto done;
     }
 
-    if (client->desired_state != desired_state) {
-        AWS_LOGF_INFO(
-            AWS_LS_MQTT5_CLIENT,
-            "id=%p: changing desired client state from %s to %s",
-            (void *)client,
-            aws_mqtt5_client_state_to_c_string(client->desired_state),
-            aws_mqtt5_client_state_to_c_string(desired_state));
-
-        client->desired_state = desired_state;
-
-        struct aws_mqtt5_operation_disconnect *disconnect_op = change_state_task->disconnect_operation;
-        if (desired_state == AWS_MCS_STOPPED && disconnect_op != NULL) {
-            s_aws_mqtt5_client_shutdown_channel_with_disconnect(
-                client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, disconnect_op);
-        }
-
-        s_reevaluate_service_task(client);
-    }
+    aws_mqtt5_client_change_desired_state(client, desired_state, change_state_task->disconnect_operation);
 
 done:
 
