@@ -373,6 +373,10 @@ add_test_case(mqtt3to5_adapter_connect_success_stop_mqtt5_disconnect_success)
 add_test_case(mqtt3to5_adapter_disconnect_success)
 add_test_case(mqtt3to5_adapter_connect_success_disconnect_success_disconnect_success)
 
+add_test_case(mqtt3to5_adapter_operation_allocation_simple)
+add_test_case(mqtt3to5_adapter_operation_allocation_wraparound)
+add_test_case(mqtt3to5_adapter_operation_allocation_exhaustion)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)

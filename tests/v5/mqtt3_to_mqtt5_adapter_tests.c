@@ -12,6 +12,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/mqtt/client.h>
 #include <aws/mqtt/mqtt.h>
+#include <aws/mqtt/private/v5/mqtt3_to_mqtt5_adapter_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
@@ -1474,3 +1475,155 @@ static int s_mqtt3to5_adapter_connect_success_disconnect_success_disconnect_succ
 AWS_TEST_CASE(
     mqtt3to5_adapter_connect_success_disconnect_success_disconnect_success,
     s_mqtt3to5_adapter_connect_success_disconnect_success_disconnect_success_fn)
+
+#define SIMPLE_ALLOCATION_COUNT 10
+
+static int s_mqtt3to5_adapter_operation_allocation_simple_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+    struct aws_mqtt_client_connection_5_impl *adapter = connection->impl;
+    struct aws_mqtt3_to_mqtt5_adapter_operation_table *operational_state = &adapter->operational_state;
+
+    for (size_t i = 0; i < SIMPLE_ALLOCATION_COUNT; ++i) {
+        struct aws_mqtt3_to_mqtt5_adapter_publish_options publish_options = {
+            .adapter = adapter,
+            .topic = aws_byte_cursor_from_c_str("derp"),
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        };
+
+        struct aws_mqtt3_to_mqtt5_adapter_operation_publish *publish =
+            aws_mqtt3_to_mqtt5_adapter_operation_new_publish(allocator, &publish_options);
+        ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(operational_state, &publish->base));
+
+        ASSERT_INT_EQUALS(i + 1, (size_t)(publish->base.id));
+    }
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_operation_allocation_simple, s_mqtt3to5_adapter_operation_allocation_simple_fn)
+
+#define ALLOCATION_WRAP_AROUND_ID_START 100
+
+static int s_mqtt3to5_adapter_operation_allocation_wraparound_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+    struct aws_mqtt_client_connection_5_impl *adapter = connection->impl;
+    struct aws_mqtt3_to_mqtt5_adapter_operation_table *operational_state = &adapter->operational_state;
+
+    operational_state->next_id = ALLOCATION_WRAP_AROUND_ID_START;
+
+    for (size_t i = 0; i < UINT16_MAX + 50; ++i) {
+        struct aws_mqtt3_to_mqtt5_adapter_publish_options publish_options = {
+            .adapter = adapter,
+            .topic = aws_byte_cursor_from_c_str("derp"),
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        };
+
+        struct aws_mqtt3_to_mqtt5_adapter_operation_publish *publish =
+            aws_mqtt3_to_mqtt5_adapter_operation_new_publish(allocator, &publish_options);
+        ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(operational_state, &publish->base));
+
+        size_t expected_id = (i + ALLOCATION_WRAP_AROUND_ID_START) % 65536;
+        if (i > UINT16_MAX - ALLOCATION_WRAP_AROUND_ID_START) {
+            ++expected_id;
+        }
+
+        ASSERT_INT_EQUALS(expected_id, (size_t)(publish->base.id));
+
+        aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(operational_state, expected_id);
+    }
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_operation_allocation_wraparound, s_mqtt3to5_adapter_operation_allocation_wraparound_fn)
+
+static int s_mqtt3to5_adapter_operation_allocation_exhaustion_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+    struct aws_mqtt_client_connection_5_impl *adapter = connection->impl;
+    struct aws_mqtt3_to_mqtt5_adapter_operation_table *operational_state = &adapter->operational_state;
+
+    operational_state->next_id = ALLOCATION_WRAP_AROUND_ID_START;
+
+    for (size_t i = 0; i < UINT16_MAX + 50; ++i) {
+        struct aws_mqtt3_to_mqtt5_adapter_publish_options publish_options = {
+            .adapter = adapter,
+            .topic = aws_byte_cursor_from_c_str("derp"),
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        };
+
+        struct aws_mqtt3_to_mqtt5_adapter_operation_publish *publish =
+            aws_mqtt3_to_mqtt5_adapter_operation_new_publish(allocator, &publish_options);
+        if (i >= UINT16_MAX) {
+            ASSERT_FAILS(aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(operational_state, &publish->base));
+            aws_mqtt3_to_mqtt5_adapter_operation_destroy(&publish->base);
+            continue;
+        }
+
+        ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(operational_state, &publish->base));
+
+        size_t expected_id = (i + ALLOCATION_WRAP_AROUND_ID_START) % 65536;
+        if (i > UINT16_MAX - ALLOCATION_WRAP_AROUND_ID_START) {
+            ++expected_id;
+        }
+
+        ASSERT_INT_EQUALS(expected_id, (size_t)(publish->base.id));
+    }
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_operation_allocation_exhaustion, s_mqtt3to5_adapter_operation_allocation_exhaustion_fn)

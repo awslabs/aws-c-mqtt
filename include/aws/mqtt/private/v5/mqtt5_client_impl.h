@@ -686,6 +686,11 @@ AWS_MQTT_API void aws_mqtt5_client_change_desired_state(
     enum aws_mqtt5_client_state desired_state,
     struct aws_mqtt5_operation_disconnect *disconnect_op);
 
+AWS_MQTT_API void aws_mqtt5_client_submit_operation_internal(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation,
+    bool is_terminated);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT5_CLIENT_IMPL_H */

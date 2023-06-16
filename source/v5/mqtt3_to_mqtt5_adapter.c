@@ -13,129 +13,6 @@
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
-/*
- * The adapter maintains a notion of state based on how its 311 API has been used.  This state guides how it handles
- * external lifecycle events.
- *
- * Operational events are always relayed unless the adapter has been terminated.
- */
-enum aws_mqtt_adapter_state {
-
-    /*
-     * The 311 API has had connect() called but that connect has not yet resolved.
-     *
-     * If it resolves successfully we will move to the STAY_CONNECTED state which will relay lifecycle callbacks
-     * transparently.
-     *
-     * If it resolves unsuccessfully, we will move to the STAY_DISCONNECTED state where we will ignore lifecycle
-     * events because, from the 311 API's perspective, nothing should be getting emitted.
-     */
-    AWS_MQTT_AS_FIRST_CONNECT,
-
-    /*
-     * A call to the 311 connect API has resolved successfully.  Relay all lifecycle events until told otherwise.
-     */
-    AWS_MQTT_AS_STAY_CONNECTED,
-
-    /*
-     * We have not observed a successful initial connection attempt via the 311 API (or disconnect has been
-     * invoked afterwards).  Ignore all lifecycle events.
-     */
-    AWS_MQTT_AS_STAY_DISCONNECTED,
-};
-
-struct aws_mqtt_client_connection_5_impl {
-
-    struct aws_allocator *allocator;
-
-    struct aws_mqtt_client_connection base;
-
-    struct aws_mqtt5_client *client;
-    struct aws_mqtt5_listener *listener;
-    struct aws_event_loop *loop;
-
-    /*
-     * An event-loop-internal flag that we can read to check to see if we're in the scope of a callback
-     * that has already locked the adapter's lock.  Can only be referenced from the event loop thread.
-     *
-     * We use the flag to avoid deadlock in a few cases where we can re-enter the adapter logic from within a callback.
-     * It also provides a nice solution for the fact that we cannot safely upgrade a read lock to a write lock.
-     */
-    bool in_synchronous_callback;
-
-    /*
-     * The current adapter state based on the sequence of connect(), disconnect(), and connection completion events.
-     * This affects how the adapter reacts to incoming mqtt5 events.  Under certain conditions, we may change
-     * this state value based on unexpected events (stopping the mqtt5 client underneath the adapter, for example)
-     */
-    enum aws_mqtt_adapter_state adapter_state;
-
-    /*
-     * Tracks all references from external sources (ie users).  Incremented and decremented by the public
-     * acquire/release APIs of the 311 connection.
-     *
-     * When this value drops to zero, the terminated flag is set and no further callbacks will be invoked.  This
-     * also starts the asynchronous destruction process for the adapter.
-     */
-    struct aws_ref_count external_refs;
-
-    /*
-     * Tracks all references to the adapter from internal sources (temporary async processes that need the
-     * adapter to stay alive for an interval of time, like sending tasks across thread boundaries).
-     *
-     * Starts with a single reference that is held until the adapter's listener has fully detached from the mqtt5
-     * client.
-     *
-     * Once the internal ref count drops to zero, the adapter may be destroyed synchronously.
-     */
-    struct aws_ref_count internal_refs;
-
-    /*
-     * We use the adapter lock to guarantee that we can synchronously sever all callbacks from the mqtt5 client even
-     * though adapter shutdown is an asynchronous process.  This means the lock is held during callbacks which is a
-     * departure from our normal usage patterns.  We prevent deadlock (due to logical re-entry) by using the
-     * in_synchronous_callback flag.
-     *
-     * We hold a read lock when invoking callbacks and a write lock when setting terminated from false to true.
-     */
-    struct aws_rw_lock lock;
-
-    /*
-     * Synchronized data protected by the adapter lock.
-     */
-    struct {
-        bool terminated;
-    } synced_data;
-
-    /* All fields after here are internal to the adapter event loop thread */
-
-    /* 311 interface callbacks */
-    aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
-    void *on_interrupted_user_data;
-
-    aws_mqtt_client_on_connection_resumed_fn *on_resumed;
-    void *on_resumed_user_data;
-
-    aws_mqtt_client_on_connection_closed_fn *on_closed;
-    void *on_closed_user_data;
-
-    aws_mqtt_client_publish_received_fn *on_any_publish;
-    void *on_any_publish_user_data;
-
-    aws_mqtt_transform_websocket_handshake_fn *websocket_handshake_transformer;
-    void *websocket_handshake_transformer_user_data;
-
-    aws_mqtt5_transform_websocket_handshake_complete_fn *mqtt5_websocket_handshake_completion_function;
-    void *mqtt5_websocket_handshake_completion_user_data;
-
-    /* (mutually exclusive) 311 interface one-time transient callbacks */
-    aws_mqtt_client_on_disconnect_fn *on_disconnect;
-    void *on_disconnect_user_data;
-
-    aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
-    void *on_connection_complete_user_data;
-};
-
 struct aws_mqtt_adapter_final_destroy_task {
     struct aws_task task;
     struct aws_allocator *allocator;
@@ -160,6 +37,8 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
         adapter->client->config->websocket_handshake_transform = NULL;
         adapter->client->config->websocket_handshake_transform_user_data = NULL;
     }
+
+    aws_mqtt3_to_mqtt5_adapter_operation_table_clean_up(&adapter->operational_state);
 
     adapter->client = aws_mqtt5_client_release(adapter->client);
     aws_rw_lock_clean_up(&adapter->lock);
@@ -1564,6 +1443,180 @@ static void s_aws_mqtt_client_connection_5_release(void *impl) {
     aws_ref_count_release(&adapter->external_refs);
 }
 
+static void s_adapter_publish_operation_destroy(struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
+    if (operation == NULL) {
+        return;
+    }
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_publish *publish_op = operation->impl;
+
+    struct aws_mqtt_client_connection_5_impl *adapter_to_release = NULL;
+    if (publish_op->base.holding_adapter_ref) {
+        adapter_to_release = publish_op->base.adapter;
+    }
+
+    if (publish_op->publish_op != NULL) {
+        publish_op->publish_op->completion_options.completion_callback = NULL;
+        publish_op->publish_op->completion_options.completion_user_data = NULL;
+    }
+
+    aws_mqtt5_operation_release(&publish_op->publish_op->base);
+
+    aws_mem_release(operation->allocator, operation);
+
+    if (adapter_to_release != NULL) {
+        aws_ref_count_release(&adapter_to_release->internal_refs);
+    }
+}
+
+static struct aws_mqtt3_to_mqtt5_adapter_operation_vtable s_publish_operation_vtable = {
+    .destroy_fn = s_adapter_publish_operation_destroy,
+    .fail_fn = NULL,
+    .complete_fn = NULL,
+};
+
+static struct aws_mqtt3_to_mqtt5_adapter_operation_vtable *s_publish_operation_vtable_ptr = &s_publish_operation_vtable;
+
+static void s_aws_mqtt3_to_mqtt5_adapter_publish_completion_fn(
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet,
+    int error_code,
+    void *complete_ctx) {
+
+    (void)packet_type;
+    (void)packet;
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_publish *publish_op = complete_ctx;
+
+    if (publish_op->on_publish_complete != NULL) {
+        (*publish_op->on_publish_complete)(
+            &publish_op->base.adapter->base,
+            publish_op->base.id,
+            error_code,
+            publish_op->on_publish_complete_user_data);
+    }
+
+    aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(
+        &publish_op->base.adapter->operational_state, publish_op->base.id);
+}
+
+struct aws_mqtt3_to_mqtt5_adapter_operation_publish *aws_mqtt3_to_mqtt5_adapter_operation_new_publish(
+    struct aws_allocator *allocator,
+    struct aws_mqtt3_to_mqtt5_adapter_publish_options *options) {
+    struct aws_mqtt3_to_mqtt5_adapter_operation_publish *publish_op =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt3_to_mqtt5_adapter_operation_publish));
+
+    publish_op->base.allocator = allocator;
+    publish_op->base.vtable = s_publish_operation_vtable_ptr;
+    publish_op->base.impl = publish_op;
+    publish_op->base.type = AWS_MQTT3TO5_AOT_PUBLISH;
+    publish_op->base.adapter = options->adapter;
+    publish_op->base.holding_adapter_ref = false;
+
+    struct aws_mqtt5_packet_publish_view publish_view = {
+        .topic = options->topic,
+        .qos = (enum aws_mqtt5_qos)options->qos,
+        .payload = options->payload,
+        .retain = options->retain,
+    };
+
+    struct aws_mqtt5_publish_completion_options publish_completion_options = {
+        .completion_callback = s_aws_mqtt3_to_mqtt5_adapter_publish_completion_fn,
+        .completion_user_data = publish_op,
+    };
+
+    publish_op->publish_op = aws_mqtt5_operation_publish_new(
+        allocator, options->adapter->client, &publish_view, &publish_completion_options);
+    if (publish_op->publish_op == NULL) {
+        goto error;
+    }
+
+    publish_op->on_publish_complete = options->on_complete;
+    publish_op->on_publish_complete_user_data = options->on_complete_userdata;
+
+    return publish_op;
+
+error:
+
+    aws_mqtt3_to_mqtt5_adapter_operation_destroy(&publish_op->base);
+
+    return NULL;
+}
+
+void s_adapter_publish_submission_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_publish *operation = arg;
+
+    struct aws_mqtt_client_connection_5_impl *adapter = operation->base.adapter;
+
+    aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
+    aws_mqtt5_client_submit_operation_internal(
+        adapter->client, &operation->publish_op->base, status != AWS_TASK_STATUS_RUN_READY);
+}
+
+static uint16_t s_aws_mqtt_client_connection_5_publish(
+    void *impl,
+    const struct aws_byte_cursor *topic,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    const struct aws_byte_cursor *payload,
+    aws_mqtt_op_complete_fn *on_complete,
+    void *userdata) {
+
+    if (!aws_mqtt_is_valid_topic(topic)) {
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+        return 0;
+    }
+
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_byte_cursor topic_cursor = *topic;
+    struct aws_byte_cursor payload_cursor;
+    AWS_ZERO_STRUCT(payload_cursor);
+    if (payload != NULL) {
+        payload_cursor = *payload;
+    }
+
+    struct aws_mqtt3_to_mqtt5_adapter_publish_options publish_options = {
+        .adapter = adapter,
+        .topic = topic_cursor,
+        .qos = qos,
+        .retain = retain,
+        .payload = payload_cursor,
+        .on_complete = on_complete,
+        .on_complete_userdata = userdata,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_publish *operation =
+        aws_mqtt3_to_mqtt5_adapter_operation_new_publish(adapter->allocator, &publish_options);
+    if (operation == NULL) {
+        return 0;
+    }
+
+    if (aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(&adapter->operational_state, &operation->base)) {
+        goto error;
+    }
+
+    aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(&operation->base);
+
+    aws_task_init(
+        &operation->base.submission_task,
+        s_adapter_publish_submission_fn,
+        operation,
+        "Mqtt3ToMqtt5AdapterPublishSubmission");
+
+    aws_event_loop_schedule_task_now(adapter->loop, &operation->base.submission_task);
+
+    return operation->base.id;
+
+error:
+
+    aws_mqtt3_to_mqtt5_adapter_operation_destroy(&operation->base);
+
+    return 0;
+}
+
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_vtable = {
     .acquire_fn = s_aws_mqtt_client_connection_5_acquire,
     .release_fn = s_aws_mqtt_client_connection_5_release,
@@ -1583,7 +1636,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .subscribe_fn = NULL,
     .resubscribe_existing_topics_fn = NULL,
     .unsubscribe_fn = NULL,
-    .publish_fn = NULL,
+    .publish_fn = s_aws_mqtt_client_connection_5_publish,
     .get_stats_fn = NULL,
 };
 
@@ -1608,6 +1661,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     aws_ref_count_init(&adapter->internal_refs, adapter, s_aws_mqtt3_to_mqtt5_adapter_on_zero_internal_refs);
 
     aws_rw_lock_init(&adapter->lock);
+
+    aws_mqtt3_to_mqtt5_adapter_operation_table_init(&adapter->operational_state, allocator);
 
     /*
      * We start disabled to handle the case where someone passes in an mqtt5 client that is already "live."
@@ -1637,39 +1692,115 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
 
 #define DEFAULT_MQTT_ADAPTER_OPERATION_TABLE_SIZE 100
 
-void aws_mqtt3_to_mqtt5_adapter_operation_table_init(struct aws_mqtt3_to_mqtt5_adapter_operation_table *table, struct aws_allocator *allocator) {
+void aws_mqtt3_to_mqtt5_adapter_operation_table_init(
+    struct aws_mqtt3_to_mqtt5_adapter_operation_table *table,
+    struct aws_allocator *allocator) {
     aws_mutex_init(&table->lock);
-    aws_hash_table_init(&table->operations, allocator, DEFAULT_MQTT_ADAPTER_OPERATION_TABLE_SIZE, aws_mqtt_hash_uint16_t, aws_mqtt_compare_uint16_t_eq, NULL, NULL);
+    aws_hash_table_init(
+        &table->operations,
+        allocator,
+        DEFAULT_MQTT_ADAPTER_OPERATION_TABLE_SIZE,
+        aws_mqtt_hash_uint16_t,
+        aws_mqtt_compare_uint16_t_eq,
+        NULL,
+        NULL);
     table->next_id = 1;
 }
 
+static int s_adapter_operation_clean_up(void *context, struct aws_hash_element *operation_element) {
+    (void)context;
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation = operation_element->value;
+
+    aws_mqtt3_to_mqtt5_adapter_operation_destroy(operation);
+
+    return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
+}
+
 void aws_mqtt3_to_mqtt5_adapter_operation_table_clean_up(struct aws_mqtt3_to_mqtt5_adapter_operation_table *table) {
-    (void)table;
-    // TODO
+    aws_hash_table_foreach(&table->operations, s_adapter_operation_clean_up, table);
+
+    aws_hash_table_clean_up(&table->operations);
 }
 
-int aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(struct aws_mqtt3_to_mqtt5_adapter_operation_table *table, struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
-    (void)table;
-    (void)operation;
-    //TODO
+static uint16_t s_next_adapter_id(uint16_t current_id) {
+    if (++current_id == 0) {
+        current_id = 1;
+    }
 
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return current_id;
 }
 
-void aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(struct aws_mqtt3_to_mqtt5_adapter_operation_table *table, uint16_t operation_id) {
+int aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(
+    struct aws_mqtt3_to_mqtt5_adapter_operation_table *table,
+    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
+
+    operation->id = 0;
+
     aws_mutex_lock(&table->lock);
-    aws_hash_table_remove(&table->operations, &operation_id, NULL, NULL);
+
+    uint16_t current_id = table->next_id;
+    struct aws_hash_element *elem = NULL;
+    for (uint16_t i = 0; i < UINT16_MAX; ++i) {
+        aws_hash_table_find(&table->operations, &current_id, &elem);
+
+        if (elem == NULL) {
+            operation->id = current_id;
+            table->next_id = s_next_adapter_id(current_id);
+
+            if (aws_hash_table_put(&table->operations, &operation->id, operation, NULL)) {
+                operation->id = 0;
+            }
+
+            goto done;
+        }
+
+        current_id = s_next_adapter_id(current_id);
+    }
+
+done:
+
     aws_mutex_unlock(&table->lock);
+
+    return (operation->id != 0) ? AWS_OP_SUCCESS : aws_raise_error(AWS_ERROR_MQTT_QUEUE_FULL);
 }
 
-struct aws_mqtt3_to_mqtt5_adapter_operation_publish *aws_mqtt3_to_mqtt5_adapter_operation_new_publish(struct aws_allocator *allocator, struct aws_mqtt3_to_mqtt5_adapter_publish_options *options) {
-    (void)allocator;
-    (void)options;
-    // TODO
+void aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(
+    struct aws_mqtt3_to_mqtt5_adapter_operation_table *table,
+    uint16_t operation_id) {
+    struct aws_hash_element existing_element;
+    AWS_ZERO_STRUCT(existing_element);
 
-    return NULL;
+    aws_mutex_lock(&table->lock);
+    aws_hash_table_remove(&table->operations, &operation_id, &existing_element, NULL);
+    aws_mutex_unlock(&table->lock);
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation = existing_element.value;
+    if (operation != NULL) {
+        aws_mqtt3_to_mqtt5_adapter_operation_destroy(operation);
+    }
 }
 
 void aws_mqtt3_to_mqtt5_adapter_operation_destroy(struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
     (*operation->vtable->destroy_fn)(operation);
+}
+
+void aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(
+    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
+    if (operation->holding_adapter_ref) {
+        return;
+    }
+
+    operation->holding_adapter_ref = true;
+    aws_ref_count_acquire(&operation->adapter->internal_refs);
+}
+
+void aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(
+    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
+    if (!operation->holding_adapter_ref) {
+        return;
+    }
+
+    operation->holding_adapter_ref = false;
+    aws_ref_count_release(&operation->adapter->internal_refs);
 }
