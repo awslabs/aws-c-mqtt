@@ -1561,7 +1561,7 @@ static int s_mqtt3to5_adapter_operation_allocation_wraparound_fn(struct aws_allo
 
         ASSERT_INT_EQUALS(expected_id, (size_t)(publish->base.id));
 
-        aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(operational_state, expected_id);
+        aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(operational_state, publish->base.id);
     }
 
     aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
@@ -1627,3 +1627,12 @@ static int s_mqtt3to5_adapter_operation_allocation_exhaustion_fn(struct aws_allo
 }
 
 AWS_TEST_CASE(mqtt3to5_adapter_operation_allocation_exhaustion, s_mqtt3to5_adapter_operation_allocation_exhaustion_fn)
+
+/*
+add_test_case(mqtt3to5_adapter_publish_failure_invalid)
+add_test_case(mqtt3to5_adapter_publish_success_qos0)
+add_test_case(mqtt3to5_adapter_publish_success_qos1)
+add_test_case(mqtt3to5_adapter_publish_failure_server)
+add_test_case(mqtt3to5_adapter_publish_no_ack)
+add_test_case(mqtt3to5_adapter_publish_failure_offline_queue_policy)
+ */
