@@ -2480,7 +2480,7 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
 
 AWS_TEST_CASE(mqtt5_client_publish_timeout, s_mqtt5_client_publish_timeout_fn)
 
-static int s_aws_mqtt5_mock_server_handle_publish_puback(
+int aws_mqtt5_mock_server_handle_publish_puback(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -2510,7 +2510,7 @@ static int s_do_iot_core_throughput_test(struct aws_allocator *allocator, bool u
 
     /* send pubacks */
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_mock_server_handle_publish_puback;
+        aws_mqtt5_mock_server_handle_publish_puback;
 
     if (use_iot_core_limits) {
         test_options.client_options.extended_validation_and_flow_control_options =
@@ -2613,7 +2613,7 @@ static int s_do_iot_core_publish_tps_test(struct aws_allocator *allocator, bool 
 
     /* send pubacks */
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_mock_server_handle_publish_puback;
+        aws_mqtt5_mock_server_handle_publish_puback;
 
     if (use_iot_core_limits) {
         test_options.client_options.extended_validation_and_flow_control_options =
@@ -5963,7 +5963,7 @@ static int s_perform_outbound_alias_sequence_test(
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
         s_aws_mqtt5_mock_server_handle_connect_allow_aliasing;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_mock_server_handle_publish_puback;
+        aws_mqtt5_mock_server_handle_publish_puback;
 
     test_options.topic_aliasing_options.outbound_topic_alias_behavior = behavior_type;
 

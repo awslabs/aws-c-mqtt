@@ -518,10 +518,14 @@ static void s_aws_mqtt3_to_mqtt5_adapter_update_config_on_connect(
 
     config->connect->storage_view.keep_alive_interval_seconds = connect_task->keep_alive_time_secs;
     config->ping_timeout_ms = connect_task->ping_timeout_ms;
-    config->ack_timeout_seconds = aws_max_u64(
-        1,
-        aws_timestamp_convert(
-            connect_task->protocol_operation_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL));
+
+    /* Override timeout, rounding up as necessary */
+    config->ack_timeout_seconds = aws_timestamp_convert(
+        connect_task->protocol_operation_timeout_ms + AWS_TIMESTAMP_MILLIS - 1,
+        AWS_TIMESTAMP_MILLIS,
+        AWS_TIMESTAMP_SECS,
+        NULL);
+
     if (connect_task->clean_session) {
         config->session_behavior = AWS_MQTT5_CSBT_CLEAN;
         config->connect->storage_view.session_expiry_interval_seconds = NULL;
