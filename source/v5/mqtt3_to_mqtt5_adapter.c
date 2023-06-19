@@ -1602,6 +1602,7 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
         goto error;
     }
 
+    uint16_t synthetic_id = operation->base.id;
     aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(&operation->base);
 
     aws_task_init(
@@ -1612,7 +1613,7 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
 
     aws_event_loop_schedule_task_now(adapter->loop, &operation->base.submission_task);
 
-    return operation->base.id;
+    return synthetic_id;
 
 error:
 
