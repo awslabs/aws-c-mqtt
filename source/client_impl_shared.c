@@ -187,3 +187,10 @@ uint64_t aws_mqtt_hash_uint16_t(const void *item) {
 bool aws_mqtt_compare_uint16_t_eq(const void *a, const void *b) {
     return *(uint16_t *)a == *(uint16_t *)b;
 }
+
+bool aws_mqtt_byte_cursor_hash_equality(const void *a, const void *b) {
+    const struct aws_byte_cursor *a_cursor = a;
+    const struct aws_byte_cursor *b_cursor = b;
+
+    return aws_byte_cursor_eq(a_cursor, b_cursor);
+}
