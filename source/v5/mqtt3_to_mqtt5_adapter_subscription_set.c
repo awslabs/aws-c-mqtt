@@ -207,6 +207,9 @@ static struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *
 void aws_mqtt3_to_mqtt5_adapter_subscription_set_add_subscription(
     struct aws_mqtt3_to_mqtt5_adapter_subscription_set *subscription_set,
     const struct aws_mqtt3_to_mqtt5_adapter_subscription_options *subscription_options) {
+
+    AWS_FATAL_ASSERT(aws_mqtt_is_valid_topic_filter(&subscription_options->topic_filter));
+
     struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *subscription_node =
         s_aws_mqtt3_to_mqtt5_adapter_subscription_set_create_or_reference_topic_filter_path(
             subscription_set->root, subscription_options->topic_filter);
