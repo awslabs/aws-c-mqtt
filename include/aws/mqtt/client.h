@@ -66,10 +66,10 @@ typedef void(aws_mqtt_client_on_connection_complete_fn)(
     bool session_present,
     void *userdata);
 
-/* Called if the connection success (error_code == 0).
+/* Called when a connection attempt succeed (with a successful CONNACK)
  *
  * The callback is derived from aws_mqtt_client_on_connection_complete_fn.
- * It get triggered when connection_complete and error_code == 0
+ * It gets triggered when connection succeed (with a successful CONNACK)
  */
 typedef void(aws_mqtt_client_on_connection_success_fn)(
     struct aws_mqtt_client_connection *connection,
@@ -77,10 +77,10 @@ typedef void(aws_mqtt_client_on_connection_success_fn)(
     bool session_present,
     void *userdata);
 
-/* Called if the connection faiiled.
+/* Called if the connection attempt failed.
  *
  * The callback is derived from aws_mqtt_client_on_connection_complete_fn.
- * It get triggered when connection_complete and error_code != 0
+ * It gets triggered when connection failed.
  */
 typedef void(aws_mqtt_client_on_connection_failure_fn)(
     struct aws_mqtt_client_connection *connection,
@@ -444,12 +444,12 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     uint64_t max_timeout);
 
 /**
- * Sets the callbacks to call when a connection is success
+ * Sets the callbacks to call when a connection succeeds or fails
  *
  * \param[in] connection                The connection object
- * \param[in] on_connection_success     The function to call when a connection succeed
+ * \param[in] on_connection_success     The function to call when a connection is successful or gets resumed
  * \param[in] on_connection_success_ud  Userdata for on_connection_success
- * \param[in] on_connection_failure     The function to call when a connection failed
+ * \param[in] on_connection_failure     The function to call when a connection fails
  * \param[in] on_connection_failure_ud  Userdata for on_connection_failure
  */
 AWS_MQTT_API
