@@ -1120,6 +1120,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_http_proxy_options_fn = s_aws_mqtt_client_connection_5_set_http_proxy_options,
     .set_host_resolution_options_fn = s_aws_mqtt_client_connection_5_set_host_resolution_options,
     .set_reconnect_timeout_fn = s_aws_mqtt_client_connection_5_set_reconnect_timeout,
+    .set_connection_result_handlers = NULL, // TODO: Need update with introduction of mqtt5 lifeCycleEventCallback
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_5_set_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_5_set_on_closed_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_5_set_on_any_publish_handler,

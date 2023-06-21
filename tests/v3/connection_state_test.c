@@ -1074,17 +1074,30 @@ static int s_test_mqtt_connection_success_callback_fn(struct aws_allocator *allo
 
     struct aws_mqtt_connection_options connection_options = {
         .user_data = state_test_data,
-        .clean_session = true,
+        .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
-        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     s_wait_for_connection_to_succeed(state_test_data);
+
+    /* Decode all received packets by mock server */
+    ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->mock_server));
+
+    ASSERT_UINT_EQUALS(1, mqtt_mock_server_decoded_packets_count(state_test_data->mock_server));
+    struct mqtt_decoded_packet *received_packet =
+        mqtt_mock_server_get_decoded_packet_by_index(state_test_data->mock_server, 0);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
+    ASSERT_UINT_EQUALS(connection_options.clean_session, received_packet->clean_session);
+    ASSERT_TRUE(aws_byte_cursor_eq(&received_packet->client_identifier, &connection_options.client_id));
+
+    // Disconnect and finish
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
 
     return AWS_OP_SUCCESS;
 }
