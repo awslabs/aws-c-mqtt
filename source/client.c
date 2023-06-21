@@ -455,6 +455,7 @@ static void s_mqtt_client_shutdown(
                     "id=%p: Initial connection attempt failed, calling callback",
                     (void *)connection);
                 MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_failure, error_code);
                 break;
             default:
                 break;
@@ -671,6 +672,7 @@ static void s_mqtt_client_init(
 
 handle_error:
     MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, aws_last_error(), 0, false);
+    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_failure, aws_last_error());
     aws_channel_shutdown(channel, aws_last_error());
 
     if (message) {

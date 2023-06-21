@@ -66,6 +66,27 @@ typedef void(aws_mqtt_client_on_connection_complete_fn)(
     bool session_present,
     void *userdata);
 
+/* Called if the connection success (error_code == 0).
+ *
+ * The callback is derived from aws_mqtt_client_on_connection_complete_fn.
+ * It get triggered when connection_complete and error_code == 0
+ */
+typedef void(aws_mqtt_client_on_connection_success_fn)(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present,
+    void *userdata);
+
+/* Called if the connection faiiled.
+ *
+ * The callback is derived from aws_mqtt_client_on_connection_complete_fn.
+ * It get triggered when connection_complete and error_code != 0
+ */
+typedef void(aws_mqtt_client_on_connection_failure_fn)(
+    struct aws_mqtt_client_connection *connection,
+    int error_code,
+    void *userdata);
+
 /* Called if the connection to the server is lost. */
 typedef void(aws_mqtt_client_on_connection_interrupted_fn)(
     struct aws_mqtt_client_connection *connection,
@@ -421,6 +442,23 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     struct aws_mqtt_client_connection *connection,
     uint64_t min_timeout,
     uint64_t max_timeout);
+
+/**
+ * Sets the callbacks to call when a connection is success
+ *
+ * \param[in] connection                The connection object
+ * \param[in] on_connection_success     The function to call when a connection succeed
+ * \param[in] on_connection_success_ud  Userdata for on_connection_success
+ * \param[in] on_connection_failure     The function to call when a connection failed
+ * \param[in] on_connection_failure_ud  Userdata for on_connection_failure
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_connection_result_handlers(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_success_fn *on_connection_success,
+    void *on_connection_success_ud,
+    aws_mqtt_client_on_connection_failure_fn *on_connection_failure,
+    void *on_connection_failure_ud);
 
 /**
  * Sets the callbacks to call when a connection is interrupted and resumed.

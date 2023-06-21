@@ -199,6 +199,8 @@ static int s_packet_handler_connack(
             (void *)connection);
         MQTT_CLIENT_CALL_CALLBACK_ARGS(
             connection, on_connection_complete, AWS_OP_SUCCESS, connack.connect_return_code, connack.session_present);
+        MQTT_CLIENT_CALL_CALLBACK_ARGS(
+            connection, on_connection_success, connack.connect_return_code, connack.session_present);
     }
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection callback completed", (void *)connection);
