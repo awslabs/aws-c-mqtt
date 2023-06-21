@@ -21,6 +21,8 @@ struct aws_mqtt3_to_mqtt5_adapter_subscription_options {
 };
 
 struct aws_mqtt3_to_mqtt5_adapter_publish_received_options {
+    struct aws_mqtt_client_connection *connection;
+
     struct aws_byte_cursor topic;
     enum aws_mqtt_qos qos;
     bool retain;
@@ -52,8 +54,6 @@ struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node {
 struct aws_mqtt3_to_mqtt5_adapter_subscription_set {
     struct aws_allocator *allocator;
 
-    struct aws_mqtt_client_connection_5_impl *adapter; // not a ref
-
     struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *root; // implicitly have a permanent ref
 };
 
@@ -66,8 +66,7 @@ AWS_EXTERN_C_BEGIN
  * @return
  */
 AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_subscription_set *aws_mqtt3_to_mqtt5_adapter_subscription_set_new(
-    struct aws_allocator *allocator,
-    struct aws_mqtt_client_connection_5_impl *adapter);
+    struct aws_allocator *allocator);
 
 /**
  *

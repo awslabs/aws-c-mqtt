@@ -7,48 +7,6 @@
 
 #include <aws/mqtt/private/client_impl_shared.h>
 
-/*
-
-struct aws_mqtt3_to_mqtt5_adapter_publish_received_options {
-    struct aws_byte_cursor topic;
-    enum aws_mqtt_qos qos;
-    bool retain;
-    bool dup;
-
-    struct aws_byte_cursor payload;
-};
-
-struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node {
-    struct aws_allocator *allocator;
-
-    struct aws_byte_cursor topic_segment_cursor; // segment can be empty
-    struct aws_byte_buf topic_segment;
-
-    struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *parent;
-    struct aws_hash_table children; // (node's byte_cursor -> node)
-
-    size_t ref_count;
-
-    bool is_subscription; // or does callback_fn determine?  Technically you could subscribe with no callback and we
-either need to reject (no) or have  flag
-
-    aws_mqtt_client_publish_received_fn *on_publish_received;
-    aws_mqtt_userdata_cleanup_fn *on_cleanup;
-
-    void *callback_user_data;
-};
-
-struct aws_mqtt3_to_mqtt5_adapter_subscription_set {
-
-    struct aws_allocator *allocator;
-
-    struct aws_mqtt_client_connection_5_impl *adapter;
-
-    struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *root; // implicitly have a permanent ref
-};
-
- */
-
 #define SUBSCRIPTION_SET_DEFAULT_BRANCH_FACTOR 10
 
 static struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *s_aws_mqtt3_to_mqtt5_adapter_subscription_set_node_new(
@@ -66,21 +24,19 @@ static struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *s_aws_mqtt3_to_m
         aws_mqtt_byte_cursor_hash_equality,
         NULL,
         NULL);
-    node->ref_count = 1;
+    node->ref_count = 0;
     node->parent = parent;
 
     return node;
 }
 
 struct aws_mqtt3_to_mqtt5_adapter_subscription_set *aws_mqtt3_to_mqtt5_adapter_subscription_set_new(
-    struct aws_allocator *allocator,
-    struct aws_mqtt_client_connection_5_impl *adapter) {
+    struct aws_allocator *allocator) {
 
     struct aws_mqtt3_to_mqtt5_adapter_subscription_set *subscription_set =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt3_to_mqtt5_adapter_subscription_set));
 
     subscription_set->allocator = allocator;
-    subscription_set->adapter = adapter;
     subscription_set->root = s_aws_mqtt3_to_mqtt5_adapter_subscription_set_node_new(allocator, NULL);
 
     return subscription_set;
@@ -134,9 +90,11 @@ void aws_mqtt3_to_mqtt5_adapter_subscription_set_destroy(
     aws_mem_release(subscription_set->allocator, subscription_set);
 }
 
-bool aws_mqtt3_to_mqtt5_adapter_subscription_set_is_topic_filter_subscribed(
-    struct aws_mqtt3_to_mqtt5_adapter_subscription_set *subscription_set,
-    struct aws_byte_cursor topic_filter) {
+static struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *
+    s_aws_mqtt3_to_mqtt5_adapter_subscription_set_get_existing_subscription_node(
+        struct aws_mqtt3_to_mqtt5_adapter_subscription_set *subscription_set,
+        struct aws_byte_cursor topic_filter) {
+
     struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *current_node = subscription_set->root;
 
     struct aws_byte_cursor topic_segment;
@@ -146,13 +104,26 @@ bool aws_mqtt3_to_mqtt5_adapter_subscription_set_is_topic_filter_subscribed(
         aws_hash_table_find(&current_node->children, &topic_segment, &hash_element);
 
         if (hash_element == NULL) {
-            return false;
+            return NULL;
         } else {
             current_node = hash_element->value;
         }
     }
 
-    return current_node->is_subscription == true;
+    if (!current_node->is_subscription) {
+        return NULL;
+    }
+
+    return current_node;
+}
+
+bool aws_mqtt3_to_mqtt5_adapter_subscription_set_is_topic_filter_subscribed(
+    struct aws_mqtt3_to_mqtt5_adapter_subscription_set *subscription_set,
+    struct aws_byte_cursor topic_filter) {
+    struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *existing_node =
+        s_aws_mqtt3_to_mqtt5_adapter_subscription_set_get_existing_subscription_node(subscription_set, topic_filter);
+
+    return existing_node != NULL;
 }
 
 /*
@@ -194,12 +165,7 @@ static struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *
         }
     }
 
-    if (current_node->on_cleanup) {
-        (*current_node->on_cleanup)(current_node->callback_user_data);
-        current_node->on_cleanup = NULL;
-    }
-
-    current_node->is_subscription = true;
+    ++current_node->ref_count;
 
     return current_node;
 }
@@ -211,8 +177,20 @@ void aws_mqtt3_to_mqtt5_adapter_subscription_set_add_subscription(
     AWS_FATAL_ASSERT(aws_mqtt_is_valid_topic_filter(&subscription_options->topic_filter));
 
     struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *subscription_node =
-        s_aws_mqtt3_to_mqtt5_adapter_subscription_set_create_or_reference_topic_filter_path(
+        s_aws_mqtt3_to_mqtt5_adapter_subscription_set_get_existing_subscription_node(
+            subscription_set, subscription_options->topic_filter);
+    if (subscription_node == NULL) {
+        subscription_node = s_aws_mqtt3_to_mqtt5_adapter_subscription_set_create_or_reference_topic_filter_path(
             subscription_set->root, subscription_options->topic_filter);
+    }
+
+    if (subscription_node->on_cleanup) {
+        (*subscription_node->on_cleanup)(subscription_node->callback_user_data);
+        subscription_node->on_cleanup = NULL;
+    }
+
+    subscription_node->is_subscription = true;
+
     subscription_node->on_publish_received = subscription_options->on_publish_received;
     subscription_node->on_cleanup = subscription_options->on_cleanup;
     subscription_node->callback_user_data = subscription_options->callback_user_data;
@@ -240,6 +218,7 @@ void aws_mqtt3_to_mqtt5_adapter_subscription_set_remove_subscription(
         struct aws_hash_element *hash_element = NULL;
         aws_hash_table_find(&current_node->children, &topic_segment, &hash_element);
 
+        /* We previously validated the full path; this must exist */
         current_node = hash_element->value;
     }
 
@@ -253,13 +232,115 @@ void aws_mqtt3_to_mqtt5_adapter_subscription_set_remove_subscription(
         (*current_node->on_cleanup)(current_node->callback_user_data);
         current_node->on_cleanup = NULL;
     }
+
     current_node->on_publish_received = NULL;
     current_node->is_subscription = false;
+}
+
+struct aws_subscription_set_path_continuation {
+    struct aws_byte_cursor current_fragment;
+    struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *current_node;
+};
+
+static void s_add_subscription_set_path_continuation(
+    struct aws_array_list *paths,
+    struct aws_byte_cursor fragment,
+    struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *node) {
+    if (node == NULL) {
+        return;
+    }
+
+    struct aws_subscription_set_path_continuation path = {
+        .current_fragment = fragment,
+        .current_node = node,
+    };
+
+    aws_array_list_push_back(paths, &path);
+}
+
+#define SUBSCRIPTION_SET_PATH_FRAGMENT_DEFAULT 10
+
+AWS_STATIC_STRING_FROM_LITERAL(s_single_level_wildcard, "+");
+AWS_STATIC_STRING_FROM_LITERAL(s_multi_level_wildcard, "#");
+
+static struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *s_aws_subscription_set_node_find_child(
+    struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *node,
+    struct aws_byte_cursor fragment) {
+    struct aws_hash_element *element = NULL;
+    aws_hash_table_find(&node->children, &fragment, &element);
+
+    if (element == NULL) {
+        return NULL;
+    }
+
+    return element->value;
+}
+
+static void s_invoke_on_publish_received(
+    struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *node,
+    const struct aws_mqtt3_to_mqtt5_adapter_publish_received_options *publish_options) {
+    if (node == NULL || !node->is_subscription || node->on_publish_received == NULL) {
+        return;
+    }
+
+    (*node->on_publish_received)(
+        publish_options->connection,
+        &publish_options->topic,
+        &publish_options->payload,
+        publish_options->dup,
+        publish_options->qos,
+        publish_options->retain,
+        node->callback_user_data);
 }
 
 void aws_mqtt3_to_mqtt5_adapter_subscription_set_on_publish_received(
     struct aws_mqtt3_to_mqtt5_adapter_subscription_set *subscription_set,
     const struct aws_mqtt3_to_mqtt5_adapter_publish_received_options *publish_options) {
-    (void)subscription_set;
-    (void)publish_options;
+
+    struct aws_byte_cursor slw_cursor = aws_byte_cursor_from_string(s_single_level_wildcard);
+    struct aws_byte_cursor mlw_cursor = aws_byte_cursor_from_string(s_multi_level_wildcard);
+
+    struct aws_array_list tree_paths;
+    aws_array_list_init_dynamic(
+        &tree_paths,
+        subscription_set->allocator,
+        SUBSCRIPTION_SET_PATH_FRAGMENT_DEFAULT,
+        sizeof(struct aws_subscription_set_path_continuation));
+
+    struct aws_byte_cursor empty_cursor;
+    AWS_ZERO_STRUCT(empty_cursor);
+    s_add_subscription_set_path_continuation(&tree_paths, empty_cursor, subscription_set->root);
+
+    while (aws_array_list_length(&tree_paths) > 0) {
+        struct aws_subscription_set_path_continuation path_continuation;
+        AWS_ZERO_STRUCT(path_continuation);
+
+        size_t path_count = aws_array_list_length(&tree_paths);
+        aws_array_list_get_at(&tree_paths, &path_continuation, path_count - 1);
+        aws_array_list_pop_back(&tree_paths);
+
+        /*
+         * Invoke multi-level wildcard check before checking split result; this allows a subscription like
+         * 'a/b/#' to match an incoming 'a/b'
+         */
+        struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *mlw_node =
+            s_aws_subscription_set_node_find_child(path_continuation.current_node, mlw_cursor);
+        s_invoke_on_publish_received(mlw_node, publish_options);
+
+        struct aws_byte_cursor next_fragment = path_continuation.current_fragment;
+        if (!aws_byte_cursor_next_split(&publish_options->topic, '/', &next_fragment)) {
+            s_invoke_on_publish_received(path_continuation.current_node, publish_options);
+            continue;
+        }
+
+        struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *slw_node =
+            s_aws_subscription_set_node_find_child(path_continuation.current_node, slw_cursor);
+        s_add_subscription_set_path_continuation(&tree_paths, next_fragment, slw_node);
+
+        struct aws_mqtt3_to_mqtt5_adapter_subscription_set_node *fragment_node =
+            s_aws_subscription_set_node_find_child(path_continuation.current_node, next_fragment);
+        s_add_subscription_set_path_continuation(&tree_paths, next_fragment, fragment_node);
+    }
+
+    aws_array_list_clean_up(&tree_paths);
 }
