@@ -165,6 +165,57 @@ static void s_subscription_set_test_on_publish_received(
     s_aws_mqtt_adapter_subscription_set_test_context_record_callback(context, *topic, *payload);
 }
 
+enum subscription_set_operation_type {
+    SSOT_ADD,
+    SSOT_REMOVE,
+    SSOT_PUBLISH,
+};
+
+struct subscription_set_operation {
+    enum subscription_set_operation_type type;
+
+    const char *topic_filter;
+
+    const char *topic;
+    const char *payload;
+};
+
+static void s_subscription_set_perform_operations(
+    struct aws_mqtt_adapter_subscription_set_test_context *context,
+    struct aws_mqtt3_to_mqtt5_adapter_subscription_set *subscription_set,
+    struct subscription_set_operation *operations,
+    size_t operation_count) {
+    for (size_t i = 0; i < operation_count; ++i) {
+        struct subscription_set_operation *operation = operations + i;
+
+        switch (operation->type) {
+            case SSOT_ADD: {
+                struct aws_mqtt3_to_mqtt5_adapter_subscription_options subscription_options = {
+                    .topic_filter = aws_byte_cursor_from_c_str(operation->topic_filter),
+                    .callback_user_data = context,
+                    .on_publish_received = s_subscription_set_test_on_publish_received,
+                };
+                aws_mqtt3_to_mqtt5_adapter_subscription_set_add_subscription(subscription_set, &subscription_options);
+                break;
+            }
+
+            case SSOT_REMOVE:
+                aws_mqtt3_to_mqtt5_adapter_subscription_set_remove_subscription(
+                    subscription_set, aws_byte_cursor_from_c_str(operation->topic_filter));
+                break;
+
+            case SSOT_PUBLISH: {
+                struct aws_mqtt3_to_mqtt5_adapter_publish_received_options publish_options = {
+                    .topic = aws_byte_cursor_from_c_str(operation->topic),
+                    .payload = aws_byte_cursor_from_c_str(operation->payload),
+                };
+                aws_mqtt3_to_mqtt5_adapter_subscription_set_on_publish_received(subscription_set, &publish_options);
+                break;
+            }
+        }
+    }
+}
+
 static int s_mqtt3to5_adapter_subscription_set_ph_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -176,29 +227,18 @@ static int s_mqtt3to5_adapter_subscription_set_ph_fn(struct aws_allocator *alloc
     struct aws_mqtt3_to_mqtt5_adapter_subscription_set *subscription_set =
         aws_mqtt3_to_mqtt5_adapter_subscription_set_new(allocator);
 
-    struct aws_byte_cursor topic_filter = aws_byte_cursor_from_c_str("a/b/#");
-
-    struct aws_mqtt3_to_mqtt5_adapter_subscription_options subscription_options = {
-        .topic_filter = topic_filter,
-        .callback_user_data = &context,
-        .on_publish_received = s_subscription_set_test_on_publish_received,
+    struct subscription_set_operation operations[] = {
+        {.type = SSOT_ADD, .topic_filter = "a/b/#"},
+        {.type = SSOT_PUBLISH, .topic = "a/b/c", .payload = "payload"},
     };
-    aws_mqtt3_to_mqtt5_adapter_subscription_set_add_subscription(subscription_set, &subscription_options);
 
-    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("a/b/c");
-    struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("payload");
-
-    struct aws_mqtt3_to_mqtt5_adapter_publish_received_options publish_options = {
-        .topic = topic,
-        .payload = payload,
-    };
-    aws_mqtt3_to_mqtt5_adapter_subscription_set_on_publish_received(subscription_set, &publish_options);
+    s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
 
     struct subscription_test_context_callback_record expected_callback_records[] = {{
         .key =
             {
-                .topic = topic,
-                .payload = payload,
+                .topic = aws_byte_cursor_from_c_str("a/b/c"),
+                .payload = aws_byte_cursor_from_c_str("payload"),
             },
         .callback_count = 1,
     }};
