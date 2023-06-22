@@ -4,40 +4,30 @@
  */
 
 #include <aws/mqtt/mqtt.h>
+#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/v5/mqtt3_to_mqtt5_adapter_subscription_set.h>
 
 #include <aws/testing/aws_test_harness.h>
 
-struct subscription_test_context_callback_record_key {
-    struct aws_byte_cursor topic;
-    struct aws_byte_cursor payload;
-};
-
 struct subscription_test_context_callback_record {
     struct aws_allocator *allocator;
 
-    struct subscription_test_context_callback_record_key key;
-
+    struct aws_byte_cursor topic;
     struct aws_byte_buf topic_buffer;
-    struct aws_byte_buf payload_buffer;
 
     size_t callback_count;
 };
 
 static struct subscription_test_context_callback_record *s_subscription_test_context_callback_record_new(
     struct aws_allocator *allocator,
-    struct aws_byte_cursor topic,
-    struct aws_byte_cursor payload) {
+    struct aws_byte_cursor topic) {
     struct subscription_test_context_callback_record *record =
         aws_mem_calloc(allocator, 1, sizeof(struct subscription_test_context_callback_record));
     record->allocator = allocator;
     record->callback_count = 1;
 
     aws_byte_buf_init_copy_from_cursor(&record->topic_buffer, allocator, topic);
-    record->key.topic = aws_byte_cursor_from_buf(&record->topic_buffer);
-
-    aws_byte_buf_init_copy_from_cursor(&record->payload_buffer, allocator, payload);
-    record->key.payload = aws_byte_cursor_from_buf(&record->payload_buffer);
+    record->topic = aws_byte_cursor_from_buf(&record->topic_buffer);
 
     return record;
 }
@@ -49,7 +39,6 @@ static void s_subscription_test_context_callback_record_destroy(
     }
 
     aws_byte_buf_clean_up(&record->topic_buffer);
-    aws_byte_buf_clean_up(&record->payload_buffer);
 
     aws_mem_release(record->allocator, record);
 }
@@ -58,22 +47,6 @@ static void s_destroy_callback_record(void *element) {
     struct subscription_test_context_callback_record *record = element;
 
     s_subscription_test_context_callback_record_destroy(record);
-}
-
-static uint64_t s_subscription_test_context_callback_record_key_hash(const void *item) {
-    const struct subscription_test_context_callback_record_key *key = item;
-
-    uint64_t topic_hash = aws_hash_byte_cursor_ptr(&key->topic);
-    uint64_t payload_hash = aws_hash_byte_cursor_ptr(&key->payload);
-
-    return topic_hash ^ payload_hash;
-}
-
-static bool s_subscription_test_context_callback_record_key_eq(const void *a, const void *b) {
-    const struct subscription_test_context_callback_record_key *key_a = a;
-    const struct subscription_test_context_callback_record_key *key_b = b;
-
-    return aws_byte_cursor_eq(&key_a->topic, &key_b->topic) && aws_byte_cursor_eq(&key_a->payload, &key_b->payload);
 }
 
 struct aws_mqtt_adapter_subscription_set_test_context {
@@ -91,8 +64,8 @@ static void s_aws_mqtt_adapter_subscription_set_test_context_init(
         &context->callbacks,
         allocator,
         10,
-        s_subscription_test_context_callback_record_key_hash,
-        s_subscription_test_context_callback_record_key_eq,
+        aws_hash_byte_cursor_ptr,
+        aws_mqtt_byte_cursor_hash_equality,
         NULL,
         s_destroy_callback_record);
 }
@@ -104,20 +77,15 @@ static void s_aws_mqtt_adapter_subscription_set_test_context_clean_up(
 
 static void s_aws_mqtt_adapter_subscription_set_test_context_record_callback(
     struct aws_mqtt_adapter_subscription_set_test_context *context,
-    struct aws_byte_cursor topic,
-    struct aws_byte_cursor payload) {
-    struct subscription_test_context_callback_record_key key = {
-        .topic = topic,
-        .payload = payload,
-    };
+    struct aws_byte_cursor topic) {
 
     struct aws_hash_element *element = NULL;
-    aws_hash_table_find(&context->callbacks, &key, &element);
+    aws_hash_table_find(&context->callbacks, &topic, &element);
 
     if (element == NULL) {
         struct subscription_test_context_callback_record *record =
-            s_subscription_test_context_callback_record_new(context->allocator, topic, payload);
-        aws_hash_table_put(&context->callbacks, &record->key, record, NULL);
+            s_subscription_test_context_callback_record_new(context->allocator, topic);
+        aws_hash_table_put(&context->callbacks, &record->topic, record, NULL);
     } else {
         struct subscription_test_context_callback_record *record = element->value;
         ++record->callback_count;
@@ -134,7 +102,7 @@ static int s_aws_mqtt_adapter_subscription_set_test_context_validate_callbacks(
         struct subscription_test_context_callback_record *expected_record = expected_records + i;
 
         struct aws_hash_element *element = NULL;
-        aws_hash_table_find(&context->callbacks, &expected_record->key, &element);
+        aws_hash_table_find(&context->callbacks, &expected_record->topic, &element);
 
         ASSERT_TRUE(element != NULL);
         ASSERT_TRUE(element->value != NULL);
@@ -162,7 +130,7 @@ static void s_subscription_set_test_on_publish_received(
 
     struct aws_mqtt_adapter_subscription_set_test_context *context = userdata;
 
-    s_aws_mqtt_adapter_subscription_set_test_context_record_callback(context, *topic, *payload);
+    s_aws_mqtt_adapter_subscription_set_test_context_record_callback(context, *topic);
 }
 
 enum subscription_set_operation_type {
@@ -177,7 +145,6 @@ struct subscription_set_operation {
     const char *topic_filter;
 
     const char *topic;
-    const char *payload;
 };
 
 static void s_subscription_set_perform_operations(
@@ -207,7 +174,6 @@ static void s_subscription_set_perform_operations(
             case SSOT_PUBLISH: {
                 struct aws_mqtt3_to_mqtt5_adapter_publish_received_options publish_options = {
                     .topic = aws_byte_cursor_from_c_str(operation->topic),
-                    .payload = aws_byte_cursor_from_c_str(operation->payload),
                 };
                 aws_mqtt3_to_mqtt5_adapter_subscription_set_on_publish_received(subscription_set, &publish_options);
                 break;
@@ -228,18 +194,20 @@ static int s_mqtt3to5_adapter_subscription_set_ph_fn(struct aws_allocator *alloc
         aws_mqtt3_to_mqtt5_adapter_subscription_set_new(allocator);
 
     struct subscription_set_operation operations[] = {
-        {.type = SSOT_ADD, .topic_filter = "a/b/#"},
-        {.type = SSOT_PUBLISH, .topic = "a/b/c", .payload = "payload"},
+        {
+            .type = SSOT_ADD,
+            .topic_filter = "a/b/#",
+        },
+        {
+            .type = SSOT_PUBLISH,
+            .topic = "a/b/c",
+        },
     };
 
     s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
 
     struct subscription_test_context_callback_record expected_callback_records[] = {{
-        .key =
-            {
-                .topic = aws_byte_cursor_from_c_str("a/b/c"),
-                .payload = aws_byte_cursor_from_c_str("payload"),
-            },
+        .topic = aws_byte_cursor_from_c_str("a/b/c"),
         .callback_count = 1,
     }};
     ASSERT_SUCCESS(s_aws_mqtt_adapter_subscription_set_test_context_validate_callbacks(
