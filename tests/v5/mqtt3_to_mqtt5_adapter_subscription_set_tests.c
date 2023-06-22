@@ -124,6 +124,7 @@ static void s_subscription_set_test_on_publish_received(
     bool retain,
     void *userdata) {
     (void)connection;
+    (void)payload;
     (void)qos;
     (void)dup;
     (void)retain;
