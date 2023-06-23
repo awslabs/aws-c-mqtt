@@ -45,6 +45,13 @@ struct aws_mqtt_client_connection_vtable {
         aws_mqtt_client_on_connection_resumed_fn *on_resumed,
         void *on_resumed_ud);
 
+    int (*set_connection_result_handlers)(
+        void *impl,
+        aws_mqtt_client_on_connection_success_fn *on_connection_success,
+        void *on_connection_success_ud,
+        aws_mqtt_client_on_connection_failure_fn *on_connection_failure,
+        void *on_connection_failure_ud);
+
     int (*set_connection_closed_handler_fn)(
         void *impl,
         aws_mqtt_client_on_connection_closed_fn *on_closed,

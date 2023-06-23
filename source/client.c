@@ -455,6 +455,7 @@ static void s_mqtt_client_shutdown(
                     "id=%p: Initial connection attempt failed, calling callback",
                     (void *)connection);
                 MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, error_code, 0, false);
+                MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_failure, error_code);
                 break;
             default:
                 break;
@@ -671,6 +672,7 @@ static void s_mqtt_client_init(
 
 handle_error:
     MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_complete, aws_last_error(), 0, false);
+    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_connection_failure, aws_last_error());
     aws_channel_shutdown(channel, aws_last_error());
 
     if (message) {
@@ -1058,6 +1060,29 @@ static int s_aws_mqtt_client_connection_311_set_reconnect_timeout(
     connection->reconnect_timeouts.min_sec = min_timeout;
     connection->reconnect_timeouts.max_sec = max_timeout;
     connection->reconnect_timeouts.current_sec = min_timeout;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt_client_connection_311_set_connection_result_handlers(
+    void *impl,
+    aws_mqtt_client_on_connection_success_fn *on_connection_success,
+    void *on_connection_success_ud,
+    aws_mqtt_client_on_connection_failure_fn *on_connection_failure,
+    void *on_connection_failure_ud) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    AWS_PRECONDITION(connection);
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection success and failure handlers", (void *)connection);
+
+    connection->on_connection_success = on_connection_success;
+    connection->on_connection_success_ud = on_connection_success_ud;
+    connection->on_connection_failure = on_connection_failure;
+    connection->on_connection_failure_ud = on_connection_failure_ud;
 
     return AWS_OP_SUCCESS;
 }
@@ -3136,6 +3161,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .set_http_proxy_options_fn = s_aws_mqtt_client_connection_311_set_http_proxy_options,
     .set_host_resolution_options_fn = s_aws_mqtt_client_connection_311_set_host_resolution_options,
     .set_reconnect_timeout_fn = s_aws_mqtt_client_connection_311_set_reconnect_timeout,
+    .set_connection_result_handlers = s_aws_mqtt_client_connection_311_set_connection_result_handlers,
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_311_set_connection_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_311_set_connection_closed_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_311_set_on_any_publish_handler,

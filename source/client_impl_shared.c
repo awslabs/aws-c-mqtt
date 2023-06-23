@@ -71,6 +71,21 @@ int aws_mqtt_client_connection_set_reconnect_timeout(
     return (*connection->vtable->set_reconnect_timeout_fn)(connection->impl, min_timeout, max_timeout);
 }
 
+int aws_mqtt_client_connection_set_connection_result_handlers(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_success_fn *on_connection_success,
+    void *on_connection_success_ud,
+    aws_mqtt_client_on_connection_failure_fn *on_connection_failure,
+    void *on_connection_failure_ud) {
+
+    return (*connection->vtable->set_connection_result_handlers)(
+        connection->impl,
+        on_connection_success,
+        on_connection_success_ud,
+        on_connection_failure,
+        on_connection_failure_ud);
+}
+
 int aws_mqtt_client_connection_set_connection_interruption_handlers(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted,
