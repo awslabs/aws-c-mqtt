@@ -98,6 +98,7 @@ struct aws_mqtt3_to_mqtt5_adapter_test_fixture {
     struct aws_mqtt_client_connection *connection;
 
     struct aws_array_list lifecycle_events;
+
     struct aws_array_list operation_events;
 
     struct aws_mutex lock;
@@ -1913,10 +1914,6 @@ static int s_mqtt3to5_adapter_publish_failure_offline_queue_policy_fn(struct aws
 AWS_TEST_CASE(
     mqtt3to5_adapter_publish_failure_offline_queue_policy,
     s_mqtt3to5_adapter_publish_failure_offline_queue_policy_fn)
-
-/*
-add_test_case(mqtt3to5_adapter_publish_failure_offline_queue_policy)
- */
 
 static int s_mqtt3to5_adapter_publish_success_qos0_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
