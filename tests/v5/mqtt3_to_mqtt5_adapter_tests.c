@@ -2145,4 +2145,3 @@ static int s_mqtt3to5_adapter_publish_interrupted_fn(struct aws_allocator *alloc
 }
 
 AWS_TEST_CASE(mqtt3to5_adapter_publish_interrupted, s_mqtt3to5_adapter_publish_interrupted_fn)
-
