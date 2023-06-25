@@ -2155,15 +2155,11 @@ struct aws_mqtt_change_desired_state_task {
     struct aws_mqtt5_operation_disconnect *disconnect_operation;
 };
 
-static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-
-    struct aws_mqtt_change_desired_state_task *change_state_task = arg;
-    struct aws_mqtt5_client *client = change_state_task->client;
-    enum aws_mqtt5_client_state desired_state = change_state_task->desired_state;
-    if (status != AWS_TASK_STATUS_RUN_READY) {
-        goto done;
-    }
+void aws_mqtt5_client_change_desired_state(
+    struct aws_mqtt5_client *client,
+    enum aws_mqtt5_client_state desired_state,
+    struct aws_mqtt5_operation_disconnect *disconnect_op) {
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     if (client->desired_state != desired_state) {
         AWS_LOGF_INFO(
@@ -2175,7 +2171,6 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
 
         client->desired_state = desired_state;
 
-        struct aws_mqtt5_operation_disconnect *disconnect_op = change_state_task->disconnect_operation;
         if (desired_state == AWS_MCS_STOPPED && disconnect_op != NULL) {
             s_aws_mqtt5_client_shutdown_channel_with_disconnect(
                 client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, disconnect_op);
@@ -2183,6 +2178,19 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
 
         s_reevaluate_service_task(client);
     }
+}
+
+static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_change_desired_state_task *change_state_task = arg;
+    struct aws_mqtt5_client *client = change_state_task->client;
+    enum aws_mqtt5_client_state desired_state = change_state_task->desired_state;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    aws_mqtt5_client_change_desired_state(client, desired_state, change_state_task->disconnect_operation);
 
 done:
 
@@ -3354,6 +3362,8 @@ void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt
 
 bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client) {
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
+
+    client->current_reconnect_delay_ms = client->config->min_reconnect_delay_ms;
 
     switch (client->current_state) {
         case AWS_MCS_MQTT_CONNECT:

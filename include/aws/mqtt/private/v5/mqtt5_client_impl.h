@@ -673,6 +673,19 @@ AWS_MQTT_API const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_clien
  */
 AWS_MQTT_API bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client);
 
+/**
+ * Event-loop-internal API used to switch the client's desired state.  Used by both start() and stop() cross-thread
+ * tasks as well as by the 3-to-5 adapter to make changes synchronously (when in the event loop).
+ *
+ * @param client mqtt5 client to update desired state for
+ * @param desired_state new desired state
+ * @param disconnect_op optional description of a DISCONNECT packet to send as part of a stop command
+ */
+AWS_MQTT_API void aws_mqtt5_client_change_desired_state(
+    struct aws_mqtt5_client *client,
+    enum aws_mqtt5_client_state desired_state,
+    struct aws_mqtt5_operation_disconnect *disconnect_op);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT5_CLIENT_IMPL_H */
