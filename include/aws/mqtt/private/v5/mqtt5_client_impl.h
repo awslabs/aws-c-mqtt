@@ -679,7 +679,7 @@ AWS_MQTT_API bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *cli
  *
  * @param client mqtt5 client to update desired state for
  * @param desired_state new desired state
- * @param disconnect_op optional description of a DISCONNECT packet to send as part of a stop commandf
+ * @param disconnect_op optional description of a DISCONNECT packet to send as part of a stop command
  */
 AWS_MQTT_API void aws_mqtt5_client_change_desired_state(
     struct aws_mqtt5_client *client,
