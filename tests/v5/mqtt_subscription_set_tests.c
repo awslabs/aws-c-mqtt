@@ -608,19 +608,19 @@ static int s_mqtt_subscription_set_add_remove_repeated_fn(struct aws_allocator *
 
             /* One-by-one, remove the topic filters in an independent shifting sequence */
             for (size_t remove_index = 0; remove_index < filter_count; ++remove_index) {
-                size_t final_index = (remove_index + i) % filter_count;
+                size_t final_remove_index = (remove_index + i) % filter_count;
 
                 aws_mqtt_subscription_set_remove_subscription(
-                    subscription_set, aws_byte_cursor_from_c_str(topic_filters[final_index]));
+                    subscription_set, aws_byte_cursor_from_c_str(topic_filters[final_remove_index]));
 
                 for (size_t validate_index = 0; validate_index < filter_count; ++validate_index) {
-                    size_t final_index = (validate_index + i) % filter_count;
+                    size_t final_validate_index = (validate_index + i) % filter_count;
                     if (validate_index <= remove_index) {
                         ASSERT_FALSE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-                            subscription_set, aws_byte_cursor_from_c_str(topic_filters[final_index])));
+                            subscription_set, aws_byte_cursor_from_c_str(topic_filters[final_validate_index])));
                     } else {
                         ASSERT_TRUE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-                            subscription_set, aws_byte_cursor_from_c_str(topic_filters[final_index])));
+                            subscription_set, aws_byte_cursor_from_c_str(topic_filters[final_validate_index])));
                     }
                 }
             }
