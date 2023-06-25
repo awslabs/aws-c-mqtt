@@ -230,6 +230,10 @@ struct aws_mqtt_client_connection_311_impl {
     /* User connection callbacks */
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *on_connection_complete_ud;
+    aws_mqtt_client_on_connection_success_fn *on_connection_success;
+    void *on_connection_success_ud;
+    aws_mqtt_client_on_connection_failure_fn *on_connection_failure;
+    void *on_connection_failure_ud;
     aws_mqtt_client_on_connection_interrupted_fn *on_interrupted;
     void *on_interrupted_ud;
     aws_mqtt_client_on_connection_resumed_fn *on_resumed;
