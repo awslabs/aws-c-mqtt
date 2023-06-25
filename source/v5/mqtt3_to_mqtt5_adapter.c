@@ -269,11 +269,45 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     return connect_task;
 }
 
+static int s_validate_adapter_connection_options(const struct aws_mqtt_connection_options *connection_options) {
+    if (connection_options == NULL) {
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+    }
+
+    if (connection_options->host_name.len == 0) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "host name not set in MQTT client configuration");
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+    }
+
+    /* forbid no-timeout until someone convinces me otherwise */
+    if (connection_options->socket_options != NULL) {
+        if (connection_options->socket_options->type == AWS_SOCKET_DGRAM ||
+            connection_options->socket_options->connect_timeout_ms == 0) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid socket options in MQTT client configuration");
+            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+        }
+    }
+
+    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
+    if (!aws_mqtt5_client_keep_alive_options_are_valid(
+            connection_options->keep_alive_time_secs, connection_options->ping_timeout_ms)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_aws_mqtt_client_connection_5_connect(
     void *impl,
     const struct aws_mqtt_connection_options *connection_options) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
+    if (s_validate_adapter_connection_options(connection_options)) {
+        return AWS_OP_ERR;
+    }
 
     struct aws_mqtt_adapter_connect_task *task =
         s_aws_mqtt_adapter_connect_task_new(adapter->allocator, adapter, connection_options);
@@ -1631,6 +1665,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_http_proxy_options_fn = s_aws_mqtt_client_connection_5_set_http_proxy_options,
     .set_host_resolution_options_fn = s_aws_mqtt_client_connection_5_set_host_resolution_options,
     .set_reconnect_timeout_fn = s_aws_mqtt_client_connection_5_set_reconnect_timeout,
+    .set_connection_result_handlers = NULL, // TODO: Need update with introduction of mqtt5 lifeCycleEventCallback
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_5_set_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_5_set_on_closed_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_5_set_on_any_publish_handler,

@@ -201,6 +201,17 @@ static int s_packet_handler_connack(
             connection, on_connection_complete, AWS_OP_SUCCESS, connack.connect_return_code, connack.session_present);
     }
 
+    /*
+     * The on_connection_success would get triggered on the successful CONNACK. It invoked with both the first connect
+     * attempt and reconnection attempt as Mqtt5 does not have on_resume callback for reconnection.
+     */
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: received a successful CONNACK, invoking on_connection_success callback",
+        (void *)connection);
+    MQTT_CLIENT_CALL_CALLBACK_ARGS(
+        connection, on_connection_success, connack.connect_return_code, connack.session_present);
+
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: connection callback completed", (void *)connection);
 
     s_update_next_ping_time(connection);
