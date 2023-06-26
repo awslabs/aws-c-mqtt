@@ -86,6 +86,7 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_publish {
      Create cross thread task
      Create adapter op -> Create and attach mqtt5 op
      allocate id and add operation to adapter table
+     Add adapter op's internal ref to adapter
      submit cross thread task to event loop
      return id or 0
 
@@ -98,7 +99,7 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_publish {
      if terminated:
          remove adapter op from table
          destroy adapter op
-     Release internal ref to adapter
+     Release adapter op's internal ref to adapter
 
   On publish completion:
      Safe handler:
@@ -252,11 +253,6 @@ AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_table_init(
     struct aws_mqtt3_to_mqtt5_adapter_operation_table *table,
     struct aws_allocator *allocator);
 
-/*
- * Q: No call backs because by the time we call clean up we're terminated.  Cancel all ops though?
- * A: We haven't released our mqtt5 client reference yet so we are safe to internally manipulate (release our ref and
- * zero completion callbacks)
- */
 AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_table_clean_up(
     struct aws_mqtt3_to_mqtt5_adapter_operation_table *table);
 
