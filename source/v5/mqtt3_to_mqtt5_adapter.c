@@ -1761,6 +1761,8 @@ void aws_mqtt3_to_mqtt5_adapter_operation_table_clean_up(struct aws_mqtt3_to_mqt
     aws_hash_table_foreach(&table->operations, s_adapter_operation_clean_up, table);
 
     aws_hash_table_clean_up(&table->operations);
+
+    aws_mutex_clean_up(&table->lock);
 }
 
 static uint16_t s_next_adapter_id(uint16_t current_id) {
