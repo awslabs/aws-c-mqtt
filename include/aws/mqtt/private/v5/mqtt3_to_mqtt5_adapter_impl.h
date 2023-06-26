@@ -47,7 +47,8 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_base {
     void *impl;
 
     /*
-     * Holds an external reference while traveling to the event loop only.
+     * Holds an internal reference to the adapter while traveling to the event loop.  Reference gets released
+     * after intake on the event loop.
      *
      * We avoid calling back into a deleted adapter by zeroing out the
      * mqtt5 operation callbacks for everything we've submitted before final mqtt5 client release.
@@ -64,7 +65,13 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_base {
 struct aws_mqtt3_to_mqtt5_adapter_operation_publish {
     struct aws_mqtt3_to_mqtt5_adapter_operation_base base;
 
-    /* holds a reference */
+    /*
+     * holds a reference to the MQTT5 client publish operation until the operation completes or our adapter
+     * goes away.
+     *
+     * In the case where we're going away, we zero out the MQTT5 operation callbacks to prevent crash-triggering
+     * notifications.
+     */
     struct aws_mqtt5_operation_publish *publish_op;
 
     aws_mqtt_op_complete_fn *on_publish_complete;
@@ -73,15 +80,11 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_publish {
 
 /*
 
-  Issue 1: An adapter op could be in flight to the event loop when the listener detach resolves.  It's also in the
-  table, how to handle?
-  A: Don't use listener detach as the cleanup event, use internal ref count -> zero
-
   Sequencing (PUBLISH example):
 
   Mqtt311 public API call
      Create cross thread task
-     Create adapter op -> Create mqtt5 op
+     Create adapter op -> Create and attach mqtt5 op
      allocate id and add operation to adapter table
      submit cross thread task to event loop
      return id or 0
@@ -122,7 +125,7 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_table {
  * The adapter maintains a notion of state based on how its 311 API has been used.  This state guides how it handles
  * external lifecycle events.
  *
- * Operational events are always relayed unless the adapter has been terminated.
+ * Operational (sourced from the adapter) events are always relayed unless the adapter has been terminated.
  */
 enum aws_mqtt_adapter_state {
 

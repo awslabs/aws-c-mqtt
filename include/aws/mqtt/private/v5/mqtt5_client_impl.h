@@ -686,6 +686,15 @@ AWS_MQTT_API void aws_mqtt5_client_change_desired_state(
     enum aws_mqtt5_client_state desired_state,
     struct aws_mqtt5_operation_disconnect *disconnect_op);
 
+/**
+ * Event-loop-internal API to add an operation to the client's queue.  Used by the 3-to-5 adapter to synchnrously
+ * inject the MQTT5 operation once the adapter operation has reached the event loop.
+ *
+ * @param client MQTT5 client to submit an operation to
+ * @param operation MQTT5 operation to submit
+ * @param is_terminated flag that indicates whether the submitter is shutting down or not.  Needed to differentiate
+ * between adapter submissions and MQTT5 client API submissions and correctly handle ref count adjustments.
+ */
 AWS_MQTT_API void aws_mqtt5_client_submit_operation_internal(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation,
