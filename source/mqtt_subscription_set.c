@@ -5,7 +5,7 @@
 
 #include "aws/mqtt/private/mqtt_subscription_set.h"
 
-#include <aws/mqtt/private/client_impl_shared.h>
+#include "aws/mqtt/private/client_impl_shared.h"
 
 #define SUBSCRIPTION_SET_DEFAULT_BRANCH_FACTOR 10
 #define SUBSCRIPTION_SET_DEFAULT_ENTRY_COUNT 50
