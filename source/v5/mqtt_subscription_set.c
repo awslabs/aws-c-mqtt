@@ -440,7 +440,7 @@ static int s_subscription_set_subscriptions_hash_get_wrap(void *context, struct 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
 
-AWS_MQTT_API void aws_mqtt_subscription_set_get_subscriptions(
+void aws_mqtt_subscription_set_get_subscriptions(
     struct aws_mqtt_subscription_set *subscription_set,
     struct aws_array_list *subscriptions) {
     AWS_ZERO_STRUCT(*subscriptions);
