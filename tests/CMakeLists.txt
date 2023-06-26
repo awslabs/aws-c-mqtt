@@ -396,6 +396,7 @@ add_test_case(mqtt_subscription_set_publish_single_path)
 add_test_case(mqtt_subscription_set_publish_multi_path)
 add_test_case(mqtt_subscription_set_publish_single_level_wildcards)
 add_test_case(mqtt_subscription_set_publish_multi_level_wildcards)
+add_test_case(mqtt_subscription_set_get_subscriptions)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

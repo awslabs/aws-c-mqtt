@@ -158,7 +158,10 @@ static void s_subscription_set_perform_operations(
         switch (operation->type) {
             case SSOT_ADD: {
                 struct aws_mqtt_subscription_set_subscribe_options subscription_options = {
-                    .topic_filter = aws_byte_cursor_from_c_str(operation->topic_filter),
+                    .subscription =
+                        {
+                            .topic_filter = aws_byte_cursor_from_c_str(operation->topic_filter),
+                        },
                     .callback_user_data = context,
                     .on_publish_received = s_subscription_set_test_on_publish_received,
                 };
@@ -189,14 +192,10 @@ static int s_mqtt_subscription_set_add_empty_not_subbed_fn(struct aws_allocator 
 
     struct aws_mqtt_subscription_set *subscription_set = aws_mqtt_subscription_set_new(allocator);
 
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("/")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("abc")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("/")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("abc")));
 
     aws_mqtt_subscription_set_destroy(subscription_set);
 
@@ -225,23 +224,15 @@ static int s_mqtt_subscription_set_add_single_path_fn(struct aws_allocator *allo
     };
 
     s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
 
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("/")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("abc")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("/")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("abc")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/")));
 
     aws_mqtt_subscription_set_destroy(subscription_set);
 
@@ -279,55 +270,34 @@ static int s_mqtt_subscription_set_add_overlapped_branching_paths_fn(struct aws_
     };
 
     s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/+/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/+")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("/")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str(" ")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/#")));
     ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/+/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/+")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("/")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str(" ")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/#")));
-    ASSERT_TRUE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-        subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e/f/g")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/")));
+        aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e/f/g")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/")));
 
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/+")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/+/b")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
     ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/+")));
+        aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e/f")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/b/b")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/+/+")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str(" /")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("/ ")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("b")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/")));
     ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/+/b")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
-    ASSERT_FALSE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-        subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e/f")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/b/b")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/+/+")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str(" /")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("/ ")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("b")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/")));
-    ASSERT_FALSE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-        subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e/f/g/")));
+        aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e/f/g/")));
 
     aws_mqtt_subscription_set_destroy(subscription_set);
 
@@ -360,54 +330,34 @@ static int s_mqtt_subscription_set_remove_overlapping_path_fn(struct aws_allocat
     };
 
     s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b")));
-    ASSERT_TRUE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-        subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("a/b/c"));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b")));
-    ASSERT_TRUE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-        subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d"));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b")));
-    ASSERT_TRUE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-        subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("a/b"));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b")));
-    ASSERT_TRUE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-        subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e"));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b")));
-    ASSERT_FALSE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
-        subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c/d/e")));
 
     aws_mqtt_subscription_set_destroy(subscription_set);
 
@@ -438,54 +388,34 @@ static int s_mqtt_subscription_set_remove_branching_path_fn(struct aws_allocator
     };
 
     s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("+/b/c"));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("#"));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("+/+/#"));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("+/+/c"));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/b/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("+/+/c")));
 
     aws_mqtt_subscription_set_destroy(subscription_set);
 
@@ -513,19 +443,16 @@ static int s_mqtt_subscription_set_remove_invalid_fn(struct aws_allocator *alloc
     };
 
     s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("+/b/c"));
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("a"));
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("a/b"));
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("#"));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("a/b/c"));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
 
     aws_mqtt_subscription_set_destroy(subscription_set);
 
@@ -554,16 +481,12 @@ static int s_mqtt_subscription_set_remove_empty_segments_fn(struct aws_allocator
     };
 
     s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
-    ASSERT_TRUE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("///")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("////")));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("//")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("///")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("////")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("//")));
 
     aws_mqtt_subscription_set_remove_subscription(subscription_set, aws_byte_cursor_from_c_str("///"));
-    ASSERT_FALSE(
-        aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, aws_byte_cursor_from_c_str("///")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, aws_byte_cursor_from_c_str("///")));
 
     aws_mqtt_subscription_set_destroy(subscription_set);
 
@@ -601,8 +524,9 @@ static int s_mqtt_subscription_set_add_remove_repeated_fn(struct aws_allocator *
                 size_t final_index = (add_index + j) % filter_count;
 
                 struct aws_mqtt_subscription_set_subscribe_options subscription_options = {
-                    .topic_filter = aws_byte_cursor_from_c_str(topic_filters[final_index]),
-                };
+                    .subscription = {
+                        .topic_filter = aws_byte_cursor_from_c_str(topic_filters[final_index]),
+                    }};
                 aws_mqtt_subscription_set_add_subscription(subscription_set, &subscription_options);
             }
 
@@ -616,10 +540,10 @@ static int s_mqtt_subscription_set_add_remove_repeated_fn(struct aws_allocator *
                 for (size_t validate_index = 0; validate_index < filter_count; ++validate_index) {
                     size_t final_validate_index = (validate_index + i) % filter_count;
                     if (validate_index <= remove_index) {
-                        ASSERT_FALSE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
+                        ASSERT_FALSE(aws_mqtt_subscription_set_is_in_topic_tree(
                             subscription_set, aws_byte_cursor_from_c_str(topic_filters[final_validate_index])));
                     } else {
-                        ASSERT_TRUE(aws_mqtt_subscription_set_is_topic_filter_subscribed(
+                        ASSERT_TRUE(aws_mqtt_subscription_set_is_in_topic_tree(
                             subscription_set, aws_byte_cursor_from_c_str(topic_filters[final_validate_index])));
                     }
                 }
@@ -810,7 +734,6 @@ static int s_mqtt_subscription_set_publish_multi_level_wildcards_fn(struct aws_a
 
     struct aws_mqtt_subscription_set *subscription_set = aws_mqtt_subscription_set_new(allocator);
 
-    // Add '#', 'a/#', 'a/b/c/#'.  'derp' -> 1, 'a' -> 3, 'a/b' -> 5, 'a/b/c' -> 8, 'a/b/c/d/e' -> 11
     struct subscription_set_operation operations[] = {
         {.type = SSOT_ADD, .topic_filter = "#"},
         {.type = SSOT_ADD, .topic_filter = "a/#"},
@@ -854,3 +777,59 @@ static int s_mqtt_subscription_set_publish_multi_level_wildcards_fn(struct aws_a
 AWS_TEST_CASE(
     mqtt_subscription_set_publish_multi_level_wildcards,
     s_mqtt_subscription_set_publish_multi_level_wildcards_fn)
+
+static int s_mqtt_subscription_set_get_subscriptions_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt_subscription_set_test_context context;
+    s_aws_mqtt_subscription_set_test_context_init(&context, allocator);
+
+    struct aws_mqtt_subscription_set *subscription_set = aws_mqtt_subscription_set_new(allocator);
+
+    struct subscription_set_operation operations[] = {
+        {.type = SSOT_ADD, .topic_filter = "#"},
+        {.type = SSOT_ADD, .topic_filter = "a/#"},
+        {.type = SSOT_ADD, .topic_filter = "a/b/c/#"},
+        {.type = SSOT_ADD, .topic_filter = "/#"},
+        {.type = SSOT_ADD, .topic_filter = "/"},
+        {.type = SSOT_ADD, .topic_filter = "a/b/c"},
+        {.type = SSOT_ADD, .topic_filter = "a/#"},
+        {.type = SSOT_REMOVE, .topic_filter = "/#"},
+        {.type = SSOT_REMOVE, .topic_filter = "/"},
+    };
+
+    s_subscription_set_perform_operations(&context, subscription_set, operations, AWS_ARRAY_SIZE(operations));
+
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("#")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/#")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c/#")));
+    ASSERT_TRUE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("/#")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("/")));
+
+    struct aws_array_list subscriptions;
+    aws_mqtt_subscription_set_get_subscriptions(subscription_set, &subscriptions);
+
+    size_t subscription_count = aws_array_list_length(&subscriptions);
+    ASSERT_INT_EQUALS(4, subscription_count);
+    for (size_t i = 0; i < subscription_count; ++i) {
+        struct aws_mqtt5_subscription_view subscription;
+        aws_array_list_get_at(&subscriptions, &subscription, i);
+
+        ASSERT_TRUE(aws_mqtt_subscription_set_is_subscribed(subscription_set, subscription.topic_filter));
+    }
+
+    aws_array_list_clean_up(&subscriptions);
+
+    aws_mqtt_subscription_set_destroy(subscription_set);
+
+    s_aws_mqtt_subscription_set_test_context_clean_up(&context);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_subscription_set_get_subscriptions, s_mqtt_subscription_set_get_subscriptions_fn)

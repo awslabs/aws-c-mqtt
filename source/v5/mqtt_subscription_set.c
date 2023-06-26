@@ -8,6 +8,54 @@
 #include <aws/mqtt/private/client_impl_shared.h>
 
 #define SUBSCRIPTION_SET_DEFAULT_BRANCH_FACTOR 10
+#define SUBSCRIPTION_SET_DEFAULT_ENTRY_COUNT 50
+
+struct aws_mqtt_subscription_set_subscription_record {
+    struct aws_allocator *allocator;
+
+    struct aws_byte_cursor topic_filter;
+    struct aws_byte_buf topic_filter_buffer;
+
+    enum aws_mqtt5_qos qos;
+
+    /* MQTT5-only properties */
+    bool no_local;
+    bool retain_as_published;
+    enum aws_mqtt5_retain_handling_type retain_handling_type;
+};
+
+static struct aws_mqtt_subscription_set_subscription_record *s_aws_mqtt_subscription_set_subscription_record_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt5_subscription_view *subscription) {
+    struct aws_mqtt_subscription_set_subscription_record *record =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_subscription_set_subscription_record));
+
+    record->allocator = allocator;
+    aws_byte_buf_init_copy_from_cursor(&record->topic_filter_buffer, allocator, subscription->topic_filter);
+    record->topic_filter = aws_byte_cursor_from_buf(&record->topic_filter_buffer);
+
+    record->no_local = subscription->no_local;
+    record->retain_as_published = subscription->retain_as_published;
+    record->retain_handling_type = subscription->retain_handling_type;
+
+    return record;
+}
+
+static void s_aws_mqtt_subscription_set_subscription_record_destroy(
+    struct aws_mqtt_subscription_set_subscription_record *record) {
+    if (record == NULL) {
+        return;
+    }
+
+    aws_byte_buf_clean_up(&record->topic_filter_buffer);
+    aws_mem_release(record->allocator, record);
+}
+
+static void s_aws_mqtt_subscription_set_subscription_record_hash_destroy(void *element) {
+    struct aws_mqtt_subscription_set_subscription_record *record = element;
+
+    s_aws_mqtt_subscription_set_subscription_record_destroy(record);
+}
 
 static struct aws_mqtt_subscription_set_topic_tree_node *s_aws_mqtt_subscription_set_node_new(
     struct aws_allocator *allocator,
@@ -37,6 +85,15 @@ struct aws_mqtt_subscription_set *aws_mqtt_subscription_set_new(struct aws_alloc
 
     subscription_set->allocator = allocator;
     subscription_set->root = s_aws_mqtt_subscription_set_node_new(allocator, NULL);
+
+    aws_hash_table_init(
+        &subscription_set->subscriptions,
+        allocator,
+        SUBSCRIPTION_SET_DEFAULT_ENTRY_COUNT,
+        aws_hash_byte_cursor_ptr,
+        aws_mqtt_byte_cursor_hash_equality,
+        NULL,
+        s_aws_mqtt_subscription_set_subscription_record_hash_destroy);
 
     return subscription_set;
 }
@@ -83,6 +140,8 @@ void aws_mqtt_subscription_set_destroy(struct aws_mqtt_subscription_set *subscri
 
     s_aws_mqtt_subscription_set_node_destroy_tree(subscription_set->root);
 
+    aws_hash_table_clean_up(&subscription_set->subscriptions);
+
     aws_mem_release(subscription_set->allocator, subscription_set);
 }
 
@@ -112,7 +171,17 @@ static struct aws_mqtt_subscription_set_topic_tree_node *s_aws_mqtt_subscription
     return current_node;
 }
 
-bool aws_mqtt_subscription_set_is_topic_filter_subscribed(
+bool aws_mqtt_subscription_set_is_subscribed(
+    struct aws_mqtt_subscription_set *subscription_set,
+    struct aws_byte_cursor topic_filter) {
+
+    struct aws_hash_element *element = NULL;
+    aws_hash_table_find(&subscription_set->subscriptions, &topic_filter, &element);
+
+    return element && (element->value != NULL);
+}
+
+bool aws_mqtt_subscription_set_is_in_topic_tree(
     struct aws_mqtt_subscription_set *subscription_set,
     struct aws_byte_cursor topic_filter) {
     struct aws_mqtt_subscription_set_topic_tree_node *existing_node =
@@ -173,14 +242,21 @@ void aws_mqtt_subscription_set_add_subscription(
     struct aws_mqtt_subscription_set *subscription_set,
     const struct aws_mqtt_subscription_set_subscribe_options *subscription_options) {
 
-    AWS_FATAL_ASSERT(aws_mqtt_is_valid_topic_filter(&subscription_options->topic_filter));
+    AWS_FATAL_ASSERT(aws_mqtt_is_valid_topic_filter(&subscription_options->subscription.topic_filter));
+
+    aws_hash_table_remove(
+        &subscription_set->subscriptions, &subscription_options->subscription.topic_filter, NULL, NULL);
+
+    struct aws_mqtt_subscription_set_subscription_record *record = s_aws_mqtt_subscription_set_subscription_record_new(
+        subscription_set->allocator, &subscription_options->subscription);
+    aws_hash_table_put(&subscription_set->subscriptions, &record->topic_filter, record, NULL);
 
     struct aws_mqtt_subscription_set_topic_tree_node *subscription_node =
         s_aws_mqtt_subscription_set_get_existing_subscription_node(
-            subscription_set, subscription_options->topic_filter);
+            subscription_set, subscription_options->subscription.topic_filter);
     if (subscription_node == NULL) {
         subscription_node = s_aws_mqtt_subscription_set_create_or_reference_topic_filter_path(
-            subscription_set->root, subscription_options->topic_filter);
+            subscription_set->root, subscription_options->subscription.topic_filter);
     }
 
     if (subscription_node->on_cleanup) {
@@ -198,7 +274,10 @@ void aws_mqtt_subscription_set_add_subscription(
 void aws_mqtt_subscription_set_remove_subscription(
     struct aws_mqtt_subscription_set *subscription_set,
     struct aws_byte_cursor topic_filter) {
-    if (!aws_mqtt_subscription_set_is_topic_filter_subscribed(subscription_set, topic_filter)) {
+
+    aws_hash_table_remove(&subscription_set->subscriptions, &topic_filter, NULL, NULL);
+
+    if (!aws_mqtt_subscription_set_is_in_topic_tree(subscription_set, topic_filter)) {
         return;
     }
 
@@ -342,4 +421,34 @@ void aws_mqtt_subscription_set_on_publish_received(
     }
 
     aws_array_list_clean_up(&tree_paths);
+}
+
+static int s_subscription_set_subscriptions_hash_get_wrap(void *context, struct aws_hash_element *elem) {
+    struct aws_array_list *subscriptions = context;
+    struct aws_mqtt_subscription_set_subscription_record *record = elem->value;
+
+    struct aws_mqtt5_subscription_view view = {
+        .topic_filter = record->topic_filter,
+        .qos = record->qos,
+        .no_local = record->no_local,
+        .retain_as_published = record->retain_as_published,
+        .retain_handling_type = record->retain_handling_type,
+    };
+
+    aws_array_list_push_back(subscriptions, &view);
+
+    return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
+}
+
+AWS_MQTT_API void aws_mqtt_subscription_set_get_subscriptions(
+    struct aws_mqtt_subscription_set *subscription_set,
+    struct aws_array_list *subscriptions) {
+    AWS_ZERO_STRUCT(*subscriptions);
+
+    size_t subscription_count = aws_hash_table_get_entry_count(&subscription_set->subscriptions);
+    aws_array_list_init_dynamic(
+        subscriptions, subscription_set->allocator, subscription_count, sizeof(struct aws_mqtt5_subscription_view));
+
+    aws_hash_table_foreach(
+        &subscription_set->subscriptions, s_subscription_set_subscriptions_hash_get_wrap, subscriptions);
 }
