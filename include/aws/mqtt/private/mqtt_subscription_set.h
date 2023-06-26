@@ -12,13 +12,26 @@
 #include "aws/mqtt/v5/mqtt5_types.h"
 #include <aws/common/hash_table.h>
 
-struct aws_mqtt_subscription_set_subscribe_options {
-    struct aws_mqtt5_subscription_view subscription;
+struct aws_mqtt_subscription_set_subscription_options {
+    struct aws_byte_cursor topic_filter;
+
+    enum aws_mqtt5_qos qos;
+
+    bool no_local;
+    bool retain_as_published;
+    enum aws_mqtt5_retain_handling_type retain_handling_type;
 
     aws_mqtt_client_publish_received_fn *on_publish_received;
     aws_mqtt_userdata_cleanup_fn *on_cleanup;
 
     void *callback_user_data;
+};
+
+struct aws_mqtt_subscription_set_subscription_record {
+    struct aws_allocator *allocator;
+    struct aws_byte_buf topic_filter;
+
+    struct aws_mqtt_subscription_set_subscription_options subscription_view;
 };
 
 struct aws_mqtt_subscription_set_publish_received_options {
@@ -117,7 +130,7 @@ AWS_MQTT_API bool aws_mqtt_subscription_set_is_in_topic_tree(
  */
 AWS_MQTT_API void aws_mqtt_subscription_set_add_subscription(
     struct aws_mqtt_subscription_set *subscription_set,
-    const struct aws_mqtt_subscription_set_subscribe_options *subscription_options);
+    const struct aws_mqtt_subscription_set_subscription_options *subscription_options);
 
 /**
  * Removes a subscription from the subscription set
@@ -140,19 +153,36 @@ AWS_MQTT_API void aws_mqtt_subscription_set_on_publish_received(
     const struct aws_mqtt_subscription_set_publish_received_options *publish_options);
 
 /**
- * Queries the properties of all subscriptions tracked by this subscription set.  Used to implement re-susbcribe
+ * Queries the properties of all subscriptions tracked by this subscription set.  Used to implement re-subscribe
  * behavior.
  *
  * @param subscription_set subscription set to query the subscriptions on
  * @param subscriptions uninitialized array list to hold the subscriptions.
  *
  * The caller must invoke the cleanup function for array lists on the result.  The list elements are of type
- * 'struct aws_mqtt5_subscription_view' and the topic filter cursor points to the subscription set's internal backing
- * memory.
+ * 'struct aws_mqtt_subscription_set_subscription_options' and the topic filter cursor points to the subscription set's
+ * internal record.
  */
 AWS_MQTT_API void aws_mqtt_subscription_set_get_subscriptions(
     struct aws_mqtt_subscription_set *subscription_set,
     struct aws_array_list *subscriptions);
+
+/**
+ *
+ * @param allocator
+ * @param subscription
+ * @return
+ */
+AWS_MQTT_API struct aws_mqtt_subscription_set_subscription_record *aws_mqtt_subscription_set_subscription_record_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt_subscription_set_subscription_options *subscription);
+
+/**
+ *
+ * @param record
+ */
+AWS_MQTT_API void aws_mqtt_subscription_set_subscription_record_destroy(
+    struct aws_mqtt_subscription_set_subscription_record *record);
 
 AWS_EXTERN_C_END
 

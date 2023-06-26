@@ -157,11 +157,8 @@ static void s_subscription_set_perform_operations(
 
         switch (operation->type) {
             case SSOT_ADD: {
-                struct aws_mqtt_subscription_set_subscribe_options subscription_options = {
-                    .subscription =
-                        {
-                            .topic_filter = aws_byte_cursor_from_c_str(operation->topic_filter),
-                        },
+                struct aws_mqtt_subscription_set_subscription_options subscription_options = {
+                    .topic_filter = aws_byte_cursor_from_c_str(operation->topic_filter),
                     .callback_user_data = context,
                     .on_publish_received = s_subscription_set_test_on_publish_received,
                 };
@@ -523,10 +520,9 @@ static int s_mqtt_subscription_set_add_remove_repeated_fn(struct aws_allocator *
             for (size_t add_index = 0; add_index < filter_count; ++add_index) {
                 size_t final_index = (add_index + j) % filter_count;
 
-                struct aws_mqtt_subscription_set_subscribe_options subscription_options = {
-                    .subscription = {
-                        .topic_filter = aws_byte_cursor_from_c_str(topic_filters[final_index]),
-                    }};
+                struct aws_mqtt_subscription_set_subscription_options subscription_options = {
+                    .topic_filter = aws_byte_cursor_from_c_str(topic_filters[final_index]),
+                };
                 aws_mqtt_subscription_set_add_subscription(subscription_set, &subscription_options);
             }
 
@@ -815,7 +811,7 @@ static int s_mqtt_subscription_set_get_subscriptions_fn(struct aws_allocator *al
     size_t subscription_count = aws_array_list_length(&subscriptions);
     ASSERT_INT_EQUALS(4, subscription_count);
     for (size_t i = 0; i < subscription_count; ++i) {
-        struct aws_mqtt5_subscription_view subscription;
+        struct aws_mqtt_subscription_set_subscription_options subscription;
         aws_array_list_get_at(&subscriptions, &subscription, i);
 
         ASSERT_TRUE(aws_mqtt_subscription_set_is_subscribed(subscription_set, subscription.topic_filter));

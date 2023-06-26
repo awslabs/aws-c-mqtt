@@ -10,51 +10,34 @@
 #define SUBSCRIPTION_SET_DEFAULT_BRANCH_FACTOR 10
 #define SUBSCRIPTION_SET_DEFAULT_ENTRY_COUNT 50
 
-struct aws_mqtt_subscription_set_subscription_record {
-    struct aws_allocator *allocator;
-
-    struct aws_byte_cursor topic_filter;
-    struct aws_byte_buf topic_filter_buffer;
-
-    enum aws_mqtt5_qos qos;
-
-    /* MQTT5-only properties */
-    bool no_local;
-    bool retain_as_published;
-    enum aws_mqtt5_retain_handling_type retain_handling_type;
-};
-
-static struct aws_mqtt_subscription_set_subscription_record *s_aws_mqtt_subscription_set_subscription_record_new(
+struct aws_mqtt_subscription_set_subscription_record *aws_mqtt_subscription_set_subscription_record_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_subscription_view *subscription) {
+    const struct aws_mqtt_subscription_set_subscription_options *subscription) {
     struct aws_mqtt_subscription_set_subscription_record *record =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_subscription_set_subscription_record));
 
     record->allocator = allocator;
-    aws_byte_buf_init_copy_from_cursor(&record->topic_filter_buffer, allocator, subscription->topic_filter);
-    record->topic_filter = aws_byte_cursor_from_buf(&record->topic_filter_buffer);
-
-    record->no_local = subscription->no_local;
-    record->retain_as_published = subscription->retain_as_published;
-    record->retain_handling_type = subscription->retain_handling_type;
+    aws_byte_buf_init_copy_from_cursor(&record->topic_filter, allocator, subscription->topic_filter);
+    record->subscription_view = *subscription;
+    record->subscription_view.topic_filter = aws_byte_cursor_from_buf(&record->topic_filter);
 
     return record;
 }
 
-static void s_aws_mqtt_subscription_set_subscription_record_destroy(
+void aws_mqtt_subscription_set_subscription_record_destroy(
     struct aws_mqtt_subscription_set_subscription_record *record) {
     if (record == NULL) {
         return;
     }
 
-    aws_byte_buf_clean_up(&record->topic_filter_buffer);
+    aws_byte_buf_clean_up(&record->topic_filter);
     aws_mem_release(record->allocator, record);
 }
 
 static void s_aws_mqtt_subscription_set_subscription_record_hash_destroy(void *element) {
     struct aws_mqtt_subscription_set_subscription_record *record = element;
 
-    s_aws_mqtt_subscription_set_subscription_record_destroy(record);
+    aws_mqtt_subscription_set_subscription_record_destroy(record);
 }
 
 static struct aws_mqtt_subscription_set_topic_tree_node *s_aws_mqtt_subscription_set_node_new(
@@ -240,23 +223,22 @@ static struct aws_mqtt_subscription_set_topic_tree_node *
 
 void aws_mqtt_subscription_set_add_subscription(
     struct aws_mqtt_subscription_set *subscription_set,
-    const struct aws_mqtt_subscription_set_subscribe_options *subscription_options) {
+    const struct aws_mqtt_subscription_set_subscription_options *subscription_options) {
 
-    AWS_FATAL_ASSERT(aws_mqtt_is_valid_topic_filter(&subscription_options->subscription.topic_filter));
+    AWS_FATAL_ASSERT(aws_mqtt_is_valid_topic_filter(&subscription_options->topic_filter));
 
-    aws_hash_table_remove(
-        &subscription_set->subscriptions, &subscription_options->subscription.topic_filter, NULL, NULL);
+    aws_hash_table_remove(&subscription_set->subscriptions, &subscription_options->topic_filter, NULL, NULL);
 
-    struct aws_mqtt_subscription_set_subscription_record *record = s_aws_mqtt_subscription_set_subscription_record_new(
-        subscription_set->allocator, &subscription_options->subscription);
+    struct aws_mqtt_subscription_set_subscription_record *record =
+        aws_mqtt_subscription_set_subscription_record_new(subscription_set->allocator, subscription_options);
     aws_hash_table_put(&subscription_set->subscriptions, &record->topic_filter, record, NULL);
 
     struct aws_mqtt_subscription_set_topic_tree_node *subscription_node =
         s_aws_mqtt_subscription_set_get_existing_subscription_node(
-            subscription_set, subscription_options->subscription.topic_filter);
+            subscription_set, subscription_options->topic_filter);
     if (subscription_node == NULL) {
         subscription_node = s_aws_mqtt_subscription_set_create_or_reference_topic_filter_path(
-            subscription_set->root, subscription_options->subscription.topic_filter);
+            subscription_set->root, subscription_options->topic_filter);
     }
 
     if (subscription_node->on_cleanup) {
@@ -427,15 +409,7 @@ static int s_subscription_set_subscriptions_hash_get_wrap(void *context, struct 
     struct aws_array_list *subscriptions = context;
     struct aws_mqtt_subscription_set_subscription_record *record = elem->value;
 
-    struct aws_mqtt5_subscription_view view = {
-        .topic_filter = record->topic_filter,
-        .qos = record->qos,
-        .no_local = record->no_local,
-        .retain_as_published = record->retain_as_published,
-        .retain_handling_type = record->retain_handling_type,
-    };
-
-    aws_array_list_push_back(subscriptions, &view);
+    aws_array_list_push_back(subscriptions, &record->subscription_view);
 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
@@ -447,7 +421,10 @@ void aws_mqtt_subscription_set_get_subscriptions(
 
     size_t subscription_count = aws_hash_table_get_entry_count(&subscription_set->subscriptions);
     aws_array_list_init_dynamic(
-        subscriptions, subscription_set->allocator, subscription_count, sizeof(struct aws_mqtt5_subscription_view));
+        subscriptions,
+        subscription_set->allocator,
+        subscription_count,
+        sizeof(struct aws_mqtt_subscription_set_subscription_options));
 
     aws_hash_table_foreach(
         &subscription_set->subscriptions, s_subscription_set_subscriptions_hash_get_wrap, subscriptions);
