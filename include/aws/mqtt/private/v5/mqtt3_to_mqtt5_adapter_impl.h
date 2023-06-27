@@ -331,15 +331,16 @@ AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(
 
 AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_publish *aws_mqtt3_to_mqtt5_adapter_operation_new_publish(
     struct aws_allocator *allocator,
-    struct aws_mqtt3_to_mqtt5_adapter_publish_options *options);
+    const struct aws_mqtt3_to_mqtt5_adapter_publish_options *options);
 
 AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(
     struct aws_allocator *allocator,
-    struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options);
+    const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options);
 
-AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_unsubscribe(
-    struct aws_allocator *allocator,
-    struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options *options);
+AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *
+    aws_mqtt3_to_mqtt5_adapter_operation_new_unsubscribe(
+        struct aws_allocator *allocator,
+        const struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options *options);
 
 AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_destroy(
     struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);

@@ -1540,7 +1540,7 @@ static void s_aws_mqtt3_to_mqtt5_adapter_publish_completion_fn(
 
 struct aws_mqtt3_to_mqtt5_adapter_operation_publish *aws_mqtt3_to_mqtt5_adapter_operation_new_publish(
     struct aws_allocator *allocator,
-    struct aws_mqtt3_to_mqtt5_adapter_publish_options *options) {
+    const struct aws_mqtt3_to_mqtt5_adapter_publish_options *options) {
     struct aws_mqtt3_to_mqtt5_adapter_operation_publish *publish_op =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt3_to_mqtt5_adapter_operation_publish));
 
@@ -1665,7 +1665,10 @@ static void s_adapter_subscribe_operation_destroy(struct aws_mqtt3_to_mqtt5_adap
 
     size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
     for (size_t i = 0; i < subscription_count; ++i) {
-        ??;
+        struct aws_mqtt_subscription_set_subscription_record *record = NULL;
+        aws_array_list_get_at(&subscribe_op->subscriptions, &record, i);
+
+        aws_mqtt_subscription_set_subscription_record_destroy(record);
     }
     aws_array_list_clean_up(&subscribe_op->subscriptions);
 
@@ -1694,7 +1697,21 @@ static struct aws_mqtt3_to_mqtt5_adapter_operation_vtable s_subscribe_operation_
     .complete_fn = NULL,
 };
 
-static struct aws_mqtt3_to_mqtt5_adapter_operation_vtable *s_subscribe_operation_vtable_ptr = &s_subscribe_operation_vtable;
+static struct aws_mqtt3_to_mqtt5_adapter_operation_vtable *s_subscribe_operation_vtable_ptr =
+    &s_subscribe_operation_vtable;
+
+static enum aws_mqtt_qos s_convert_mqtt5_suback_reason_code_to_mqtt3_granted_qos(
+    enum aws_mqtt5_suback_reason_code reason_code) {
+    switch (reason_code) {
+        case AWS_MQTT5_SARC_GRANTED_QOS_0:
+        case AWS_MQTT5_SARC_GRANTED_QOS_1:
+        case AWS_MQTT5_SARC_GRANTED_QOS_2:
+            return (enum aws_mqtt_qos)reason_code;
+
+        default:
+            return AWS_MQTT_QOS_FAILURE;
+    }
+}
 
 static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
     const struct aws_mqtt5_packet_suback_view *suback,
@@ -1703,22 +1720,110 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
     (void)suback;
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *subscribe_op = complete_ctx;
+    struct aws_mqtt_client_connection_5_impl *adapter = subscribe_op->base.adapter;
 
     if (subscribe_op->on_suback != NULL) {
-        ??;
+        struct aws_byte_cursor topic_filter;
+        AWS_ZERO_STRUCT(topic_filter);
+        enum aws_mqtt_qos granted_qos = AWS_MQTT_QOS_AT_MOST_ONCE;
+
+        size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
+        if (subscription_count > 0) {
+            struct aws_mqtt_subscription_set_subscription_record *record = NULL;
+            aws_array_list_get_at(&subscribe_op->subscriptions, &record, 0);
+
+            topic_filter = record->subscription_view.topic_filter;
+        }
+
+        if (suback->reason_code_count > 0) {
+            granted_qos = s_convert_mqtt5_suback_reason_code_to_mqtt3_granted_qos(suback->reason_codes[0]);
+        }
+
+        (*subscribe_op->on_suback)(
+            &adapter->base,
+            subscribe_op->base.id,
+            &topic_filter,
+            granted_qos,
+            error_code,
+            subscribe_op->on_suback_user_data);
     }
 
     if (subscribe_op->on_multi_suback != NULL) {
-        ??;
+        AWS_VARIABLE_LENGTH_ARRAY(
+            uint8_t,
+            multi_sub_subscription_buf,
+            suback->reason_code_count * sizeof(struct aws_mqtt_topic_subscription));
+        AWS_VARIABLE_LENGTH_ARRAY(
+            uint8_t,
+            multi_sub_subscription_ptr_buf,
+            suback->reason_code_count * sizeof(struct aws_mqtt_topic_subscription *));
+        struct aws_mqtt_topic_subscription *subscription_ptr =
+            (struct aws_mqtt_topic_subscription *)multi_sub_subscription_buf;
+
+        struct aws_array_list multi_sub_list;
+        aws_array_list_init_static(
+            &multi_sub_list,
+            multi_sub_subscription_ptr_buf,
+            suback->reason_code_count,
+            sizeof(struct aws_mqtt_topic_subscription));
+
+        size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
+
+        for (size_t i = 0; i < suback->reason_code_count; ++i) {
+            struct aws_mqtt_topic_subscription *subscription = subscription_ptr + i;
+            AWS_ZERO_STRUCT(*subscription);
+
+            subscription->qos = s_convert_mqtt5_suback_reason_code_to_mqtt3_granted_qos(suback->reason_codes[i]);
+
+            if (i < subscription_count) {
+                struct aws_mqtt_subscription_set_subscription_record *record = NULL;
+                aws_array_list_get_at(&subscribe_op->subscriptions, &record, i);
+
+                subscription->topic = record->subscription_view.topic_filter;
+                subscription->on_publish = record->subscription_view.on_publish_received;
+                subscription->on_publish_ud = record->subscription_view.callback_user_data;
+                subscription->on_cleanup = record->subscription_view.on_cleanup;
+            }
+
+            aws_array_list_push_back(&multi_sub_list, &subscription);
+        }
+
+        (*subscribe_op->on_multi_suback)(
+            &adapter->base,
+            subscribe_op->base.id,
+            &multi_sub_list,
+            error_code,
+            subscribe_op->on_multi_suback_user_data);
+        aws_array_list_clean_up(&multi_sub_list);
     }
 
     aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(
         &subscribe_op->base.adapter->operational_state, subscribe_op->base.id);
 }
 
+static int s_validate_adapter_subscribe_options(const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options) {
+    if (options->subscription_count == 0) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    for (size_t i = 0; i < options->subscription_count; ++i) {
+        struct aws_mqtt_topic_subscription *subscription_options = &options->subscriptions[i];
+        enum aws_mqtt_qos qos = subscription_options->qos;
+        if (qos < AWS_MQTT_QOS_AT_MOST_ONCE || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(
     struct aws_allocator *allocator,
-    struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options) {
+    const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options) {
+
+    if (s_validate_adapter_subscribe_options(options)) {
+        return NULL;
+    }
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *subscribe_op =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe));
@@ -1730,11 +1835,43 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapte
     subscribe_op->base.adapter = options->adapter;
     subscribe_op->base.holding_adapter_ref = false;
 
-    ??; /* make persistent adapter sub array */
-    ??; /* make temp mqtt5 sub array */
+    /* make persistent adapter sub array */
+    aws_array_list_init_dynamic(
+        &subscribe_op->subscriptions,
+        allocator,
+        options->subscription_count,
+        sizeof(struct aws_mqtt_subscription_set_subscription_record *));
+    for (size_t i = 0; i < options->subscription_count; ++i) {
+        struct aws_mqtt_topic_subscription *subscription_options = &options->subscriptions[i];
+
+        struct aws_mqtt_subscription_set_subscription_options subscription_record_options = {
+            .topic_filter = subscription_options->topic,
+            .qos = (enum aws_mqtt5_qos)subscription_options->qos,
+            .on_publish_received = subscription_options->on_publish,
+            .callback_user_data = subscription_options->on_publish_ud,
+            .on_cleanup = subscription_options->on_cleanup,
+        };
+        struct aws_mqtt_subscription_set_subscription_record *record =
+            aws_mqtt_subscription_set_subscription_record_new(allocator, &subscription_record_options);
+
+        aws_array_list_push_back(&subscribe_op->subscriptions, &record);
+    }
+
+    /* make temp mqtt5 subscription view array */
+    AWS_VARIABLE_LENGTH_ARRAY(
+        struct aws_mqtt5_subscription_view, mqtt5_subscription_buffer, options->subscription_count);
+    struct aws_mqtt5_subscription_view *subscription_ptr = mqtt5_subscription_buffer;
+    for (size_t i = 0; i < options->subscription_count; ++i) {
+        struct aws_mqtt5_subscription_view *subscription = subscription_ptr + i;
+        AWS_ZERO_STRUCT(*subscription);
+
+        subscription->topic_filter = options->subscriptions[i].topic;
+        subscription->qos = (enum aws_mqtt5_qos)options->subscriptions[i].qos;
+    }
 
     struct aws_mqtt5_packet_subscribe_view subscribe_view = {
-        ??;
+        .subscriptions = subscription_ptr,
+        .subscription_count = options->subscription_count,
     };
 
     struct aws_mqtt5_subscribe_completion_options subscribe_completion_options = {
@@ -1744,8 +1881,6 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapte
 
     subscribe_op->subscribe_op = aws_mqtt5_operation_subscribe_new(
         allocator, options->adapter->client, &subscribe_view, &subscribe_completion_options);
-
-    ??; /* delete temp mqtt5 sub array */
 
     if (subscribe_op->subscribe_op == NULL) {
         goto error;
@@ -1761,6 +1896,133 @@ error:
     aws_mqtt3_to_mqtt5_adapter_operation_destroy(&subscribe_op->base);
 
     return NULL;
+}
+
+void s_adapter_subscribe_submission_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation = arg;
+
+    struct aws_mqtt_client_connection_5_impl *adapter = operation->base.adapter;
+
+    aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
+
+    size_t subscription_count = aws_array_list_length(&operation->subscriptions);
+    for (size_t i = 0; i < subscription_count; ++i) {
+        struct aws_mqtt_subscription_set_subscription_record *record = NULL;
+        aws_array_list_get_at(&operation->subscriptions, &record, i);
+
+        aws_mqtt_subscription_set_add_subscription(&adapter->subscriptions, &record->subscription_view);
+    }
+
+    aws_mqtt5_client_submit_operation_internal(
+        adapter->client, &operation->subscribe_op->base, status != AWS_TASK_STATUS_RUN_READY);
+}
+
+static uint16_t s_aws_mqtt_client_connection_5_subscribe(
+    void *impl,
+    const struct aws_byte_cursor *topic_filter,
+    enum aws_mqtt_qos qos,
+    aws_mqtt_client_publish_received_fn *on_publish,
+    void *on_publish_ud,
+    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
+    aws_mqtt_suback_fn *on_suback,
+    void *on_suback_user_data) {
+
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_mqtt_topic_subscription subscription = {
+        .topic = *topic_filter,
+        .qos = qos,
+        .on_publish = on_publish,
+        .on_cleanup = on_ud_cleanup,
+        .on_publish_ud = on_publish_ud,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_subscribe_options subscribe_options = {
+        .adapter = adapter,
+        .subscriptions = &subscription,
+        .subscription_count = 1,
+        .on_suback = on_suback,
+        .on_suback_user_data = on_suback_user_data,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation =
+        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options);
+    if (operation == NULL) {
+        return 0;
+    }
+
+    if (aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(&adapter->operational_state, &operation->base)) {
+        goto error;
+    }
+
+    uint16_t synthetic_id = operation->base.id;
+    aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(&operation->base);
+
+    aws_task_init(
+        &operation->base.submission_task,
+        s_adapter_subscribe_submission_fn,
+        operation,
+        "Mqtt3ToMqtt5AdapterSubscribeSubmission");
+
+    aws_event_loop_schedule_task_now(adapter->loop, &operation->base.submission_task);
+
+    return synthetic_id;
+
+error:
+
+    aws_mqtt3_to_mqtt5_adapter_operation_destroy(&operation->base);
+
+    return 0;
+}
+
+static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
+    void *impl,
+    const struct aws_array_list *topic_filters,
+    aws_mqtt_suback_multi_fn *on_suback,
+    void *on_suback_user_data) {
+
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_mqtt_topic_subscription *subscriptions = topic_filters->data;
+
+    struct aws_mqtt3_to_mqtt5_adapter_subscribe_options subscribe_options = {
+        .adapter = adapter,
+        .subscriptions = subscriptions,
+        .subscription_count = aws_array_list_length(topic_filters),
+        .on_multi_suback = on_suback,
+        .on_multi_suback_user_data = on_suback_user_data,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation =
+        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options);
+    if (operation == NULL) {
+        return 0;
+    }
+
+    if (aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(&adapter->operational_state, &operation->base)) {
+        goto error;
+    }
+
+    uint16_t synthetic_id = operation->base.id;
+    aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(&operation->base);
+
+    aws_task_init(
+        &operation->base.submission_task,
+        s_adapter_subscribe_submission_fn,
+        operation,
+        "Mqtt3ToMqtt5AdapterSubscribeMultipleSubmission");
+
+    aws_event_loop_schedule_task_now(adapter->loop, &operation->base.submission_task);
+
+    return synthetic_id;
+
+error:
+
+    aws_mqtt3_to_mqtt5_adapter_operation_destroy(&operation->base);
+
+    return 0;
 }
 
 static void s_adapter_unsubscribe_operation_destroy(struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
@@ -1797,7 +2059,8 @@ static struct aws_mqtt3_to_mqtt5_adapter_operation_vtable s_unsubscribe_operatio
     .complete_fn = NULL,
 };
 
-static struct aws_mqtt3_to_mqtt5_adapter_operation_vtable *s_unsubscribe_operation_vtable_ptr = &s_unsubscribe_operation_vtable;
+static struct aws_mqtt3_to_mqtt5_adapter_operation_vtable *s_unsubscribe_operation_vtable_ptr =
+    &s_unsubscribe_operation_vtable;
 
 static void s_aws_mqtt3_to_mqtt5_adapter_unsubscribe_completion_fn(
     const struct aws_mqtt5_packet_unsuback_view *unsuback,
@@ -1821,7 +2084,7 @@ static void s_aws_mqtt3_to_mqtt5_adapter_unsubscribe_completion_fn(
 
 struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_unsubscribe(
     struct aws_allocator *allocator,
-    struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options *options) {
+    const struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options *options) {
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *unsubscribe_op =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe));
@@ -1870,7 +2133,8 @@ void s_adapter_unsubscribe_submission_fn(struct aws_task *task, void *arg, enum 
 
     aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
 
-    aws_mqtt_subscription_set_remove_subscription(&adapter->subscriptions, aws_byte_cursor_from_buf(&operation->topic_filter));
+    aws_mqtt_subscription_set_remove_subscription(
+        &adapter->subscriptions, aws_byte_cursor_from_buf(&operation->topic_filter));
 
     aws_mqtt5_client_submit_operation_internal(
         adapter->client, &operation->unsubscribe_op->base, status != AWS_TASK_STATUS_RUN_READY);
@@ -1942,8 +2206,8 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .connect_fn = s_aws_mqtt_client_connection_5_connect,
     .reconnect_fn = NULL,
     .disconnect_fn = s_aws_mqtt_client_connection_5_disconnect,
-    .subscribe_multiple_fn = NULL,
-    .subscribe_fn = NULL,
+    .subscribe_multiple_fn = s_aws_mqtt_client_connection_5_subscribe_multiple,
+    .subscribe_fn = s_aws_mqtt_client_connection_5_subscribe,
     .resubscribe_existing_topics_fn = NULL,
     .unsubscribe_fn = s_aws_mqtt_client_connection_5_unsubscribe,
     .publish_fn = s_aws_mqtt_client_connection_5_publish,
