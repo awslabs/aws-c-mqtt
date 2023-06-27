@@ -13,6 +13,7 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/mqtt/client.h>
 #include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/private/mqtt_subscription_set.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 
 struct aws_mqtt3_to_mqtt5_adapter_operation_base;
@@ -33,6 +34,28 @@ struct aws_mqtt3_to_mqtt5_adapter_publish_options {
 
     aws_mqtt_op_complete_fn *on_complete;
     void *on_complete_userdata;
+};
+
+struct aws_mqtt3_to_mqtt5_adapter_subscribe_options {
+    struct aws_mqtt_client_connection_5_impl *adapter;
+
+    struct aws_mqtt_topic_subscription *subscriptions;
+    size_t subscription_count;
+
+    aws_mqtt_suback_fn *on_suback;
+    void *on_suback_user_data;
+
+    aws_mqtt_suback_multi_fn *on_multi_suback;
+    void *on_multi_suback_user_data;
+};
+
+struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options {
+    struct aws_mqtt_client_connection_5_impl *adapter;
+
+    struct aws_byte_cursor topic_filter;
+
+    aws_mqtt_op_complete_fn *on_unsuback;
+    void *on_unsuback_user_data;
 };
 
 enum aws_mqtt3_to_mqtt5_adapter_operation_type {
@@ -76,6 +99,46 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_publish {
 
     aws_mqtt_op_complete_fn *on_publish_complete;
     void *on_publish_complete_user_data;
+};
+
+struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe {
+    struct aws_mqtt3_to_mqtt5_adapter_operation_base base;
+
+    /*
+     * holds a reference to the MQTT5 client subscribe operation until the operation completes or our adapter
+     * goes away.
+     *
+     * In the case where we're going away, we zero out the MQTT5 operation callbacks to prevent crash-triggering
+     * notifications.
+     */
+    struct aws_mqtt5_operation_subscribe *subscribe_op;
+
+    /* aws_array_list<struct aws_mqtt_subscription_set_subscription_record *> */
+    struct aws_array_list subscriptions;
+
+    aws_mqtt_suback_fn *on_suback;
+    void *on_suback_user_data;
+
+    aws_mqtt_suback_multi_fn *on_multi_suback;
+    void *on_multi_suback_user_data;
+};
+
+struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe {
+    struct aws_mqtt3_to_mqtt5_adapter_operation_base base;
+
+    /*
+     * holds a reference to the MQTT5 client unsubscribe operation until the operation completes or our adapter
+     * goes away.
+     *
+     * In the case where we're going away, we zero out the MQTT5 operation callbacks to prevent crash-triggering
+     * notifications.
+     */
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op;
+
+    struct aws_byte_buf topic_filter;
+
+    aws_mqtt_op_complete_fn *on_unsuback;
+    void *on_unsuback_user_data;
 };
 
 /*
@@ -218,6 +281,8 @@ struct aws_mqtt_client_connection_5_impl {
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_table operational_state;
 
+    struct aws_mqtt_subscription_set subscriptions;
+
     /* All fields after here are internal to the adapter event loop thread */
 
     /* 311 interface callbacks */
@@ -268,11 +333,20 @@ AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_publish *aws_mqtt3_to_m
     struct aws_allocator *allocator,
     struct aws_mqtt3_to_mqtt5_adapter_publish_options *options);
 
+AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(
+    struct aws_allocator *allocator,
+    struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options);
+
+AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_unsubscribe(
+    struct aws_allocator *allocator,
+    struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options *options);
+
 AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_destroy(
     struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
 
 AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(
     struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
+
 AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(
     struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
 
