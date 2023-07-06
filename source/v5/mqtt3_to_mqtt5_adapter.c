@@ -1756,13 +1756,9 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
 
     if (subscribe_op->on_multi_suback != NULL) {
         AWS_VARIABLE_LENGTH_ARRAY(
-            uint8_t,
-            multi_sub_subscription_buf,
-            suback->reason_code_count * sizeof(struct aws_mqtt_topic_subscription));
+            struct aws_mqtt_topic_subscription, multi_sub_subscription_buf, suback->reason_code_count);
         AWS_VARIABLE_LENGTH_ARRAY(
-            uint8_t,
-            multi_sub_subscription_ptr_buf,
-            suback->reason_code_count * sizeof(struct aws_mqtt_topic_subscription *));
+            struct aws_mqtt_topic_subscription *, multi_sub_subscription_ptr_buf, suback->reason_code_count);
         struct aws_mqtt_topic_subscription *subscription_ptr =
             (struct aws_mqtt_topic_subscription *)multi_sub_subscription_buf;
 
@@ -1894,6 +1890,8 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapte
 
     subscribe_op->on_suback = options->on_suback;
     subscribe_op->on_suback_user_data = options->on_suback_user_data;
+    subscribe_op->on_multi_suback = options->on_multi_suback;
+    subscribe_op->on_multi_suback_user_data = options->on_multi_suback_user_data;
 
     return subscribe_op;
 

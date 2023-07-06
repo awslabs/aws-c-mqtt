@@ -385,7 +385,7 @@ add_test_case(mqtt3to5_adapter_publish_no_ack)
 add_test_case(mqtt3to5_adapter_publish_interrupted)
 
 add_test_case(mqtt3to5_adapter_subscribe_single_success)
-#add_test_case(mqtt3to5_adapter_subscribe_multi_success)
+add_test_case(mqtt3to5_adapter_subscribe_multi_success)
 #add_test_case(mqtt3to5_adapter_subscribe_single_failure)
 #add_test_case(mqtt3to5_adapter_subscribe_multi_failure)
 #add_test_case(mqtt3to5_adapter_subscribe_single_publish)
