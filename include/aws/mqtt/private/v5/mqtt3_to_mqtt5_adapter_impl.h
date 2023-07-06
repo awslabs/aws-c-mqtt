@@ -281,7 +281,7 @@ struct aws_mqtt_client_connection_5_impl {
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_table operational_state;
 
-    struct aws_mqtt_subscription_set subscriptions;
+    struct aws_mqtt_subscription_set *subscriptions;
 
     /* All fields after here are internal to the adapter event loop thread */
 

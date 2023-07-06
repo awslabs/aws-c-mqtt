@@ -38,6 +38,7 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
         adapter->client->config->websocket_handshake_transform_user_data = NULL;
     }
 
+    aws_mqtt_subscription_set_destroy(adapter->subscriptions);
     aws_mqtt3_to_mqtt5_adapter_operation_table_clean_up(&adapter->operational_state);
 
     adapter->client = aws_mqtt5_client_release(adapter->client);
@@ -1493,7 +1494,9 @@ static void s_adapter_publish_operation_destroy(struct aws_mqtt3_to_mqtt5_adapte
         adapter_to_release = publish_op->base.adapter;
     }
 
+    /* We're going away before our MQTT5 operation, make sure it doesn't try to call us back when it completes */
     if (publish_op->publish_op != NULL) {
+        AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(publish_op->base.adapter->loop));
         publish_op->publish_op->completion_options.completion_callback = NULL;
         publish_op->publish_op->completion_options.completion_user_data = NULL;
     }
@@ -1588,9 +1591,10 @@ void s_adapter_publish_submission_fn(struct aws_task *task, void *arg, enum aws_
 
     struct aws_mqtt_client_connection_5_impl *adapter = operation->base.adapter;
 
-    aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
     aws_mqtt5_client_submit_operation_internal(
         adapter->client, &operation->publish_op->base, status != AWS_TASK_STATUS_RUN_READY);
+
+    aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
 }
 
 static uint16_t s_aws_mqtt_client_connection_5_publish(
@@ -1677,7 +1681,9 @@ static void s_adapter_subscribe_operation_destroy(struct aws_mqtt3_to_mqtt5_adap
         adapter_to_release = subscribe_op->base.adapter;
     }
 
+    /* We're going away before our MQTT5 operation, make sure it doesn't try to call us back when it completes */
     if (subscribe_op->subscribe_op != NULL) {
+        AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(subscribe_op->base.adapter->loop));
         subscribe_op->subscribe_op->completion_options.completion_callback = NULL;
         subscribe_op->subscribe_op->completion_options.completion_user_data = NULL;
     }
@@ -1905,18 +1911,18 @@ void s_adapter_subscribe_submission_fn(struct aws_task *task, void *arg, enum aw
 
     struct aws_mqtt_client_connection_5_impl *adapter = operation->base.adapter;
 
-    aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
-
     size_t subscription_count = aws_array_list_length(&operation->subscriptions);
     for (size_t i = 0; i < subscription_count; ++i) {
         struct aws_mqtt_subscription_set_subscription_record *record = NULL;
         aws_array_list_get_at(&operation->subscriptions, &record, i);
 
-        aws_mqtt_subscription_set_add_subscription(&adapter->subscriptions, &record->subscription_view);
+        aws_mqtt_subscription_set_add_subscription(adapter->subscriptions, &record->subscription_view);
     }
 
     aws_mqtt5_client_submit_operation_internal(
         adapter->client, &operation->subscribe_op->base, status != AWS_TASK_STATUS_RUN_READY);
+
+    aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
 }
 
 static uint16_t s_aws_mqtt_client_connection_5_subscribe(
@@ -2039,7 +2045,9 @@ static void s_adapter_unsubscribe_operation_destroy(struct aws_mqtt3_to_mqtt5_ad
         adapter_to_release = unsubscribe_op->base.adapter;
     }
 
+    /* We're going away before our MQTT5 operation, make sure it doesn't try to call us back when it completes */
     if (unsubscribe_op->unsubscribe_op != NULL) {
+        AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(unsubscribe_op->base.adapter->loop));
         unsubscribe_op->unsubscribe_op->completion_options.completion_callback = NULL;
         unsubscribe_op->unsubscribe_op->completion_options.completion_user_data = NULL;
     }
@@ -2131,13 +2139,13 @@ void s_adapter_unsubscribe_submission_fn(struct aws_task *task, void *arg, enum 
 
     struct aws_mqtt_client_connection_5_impl *adapter = operation->base.adapter;
 
-    aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
-
     aws_mqtt_subscription_set_remove_subscription(
-        &adapter->subscriptions, aws_byte_cursor_from_buf(&operation->topic_filter));
+        adapter->subscriptions, aws_byte_cursor_from_buf(&operation->topic_filter));
 
     aws_mqtt5_client_submit_operation_internal(
         adapter->client, &operation->unsubscribe_op->base, status != AWS_TASK_STATUS_RUN_READY);
+
+    aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
 }
 
 static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
@@ -2237,6 +2245,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     aws_rw_lock_init(&adapter->lock);
 
     aws_mqtt3_to_mqtt5_adapter_operation_table_init(&adapter->operational_state, allocator);
+
+    adapter->subscriptions = aws_mqtt_subscription_set_new(allocator);
 
     /*
      * We start disabled to handle the case where someone passes in an mqtt5 client that is already "live."
