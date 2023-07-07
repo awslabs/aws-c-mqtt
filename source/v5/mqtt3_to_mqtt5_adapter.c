@@ -1496,7 +1496,6 @@ static void s_adapter_publish_operation_destroy(struct aws_mqtt3_to_mqtt5_adapte
 
     /* We're going away before our MQTT5 operation, make sure it doesn't try to call us back when it completes */
     if (publish_op->publish_op != NULL) {
-        AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(publish_op->base.adapter->loop));
         publish_op->publish_op->completion_options.completion_callback = NULL;
         publish_op->publish_op->completion_options.completion_user_data = NULL;
     }
@@ -1683,7 +1682,6 @@ static void s_adapter_subscribe_operation_destroy(struct aws_mqtt3_to_mqtt5_adap
 
     /* We're going away before our MQTT5 operation, make sure it doesn't try to call us back when it completes */
     if (subscribe_op->subscribe_op != NULL) {
-        AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(subscribe_op->base.adapter->loop));
         subscribe_op->subscribe_op->completion_options.completion_callback = NULL;
         subscribe_op->subscribe_op->completion_options.completion_user_data = NULL;
     }
@@ -1767,7 +1765,7 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
             &multi_sub_list,
             multi_sub_subscription_ptr_buf,
             suback->reason_code_count,
-            sizeof(struct aws_mqtt_topic_subscription));
+            sizeof(struct aws_mqtt_topic_subscription *));
 
         size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
 
@@ -1796,7 +1794,6 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
             &multi_sub_list,
             error_code,
             subscribe_op->on_multi_suback_user_data);
-        aws_array_list_clean_up(&multi_sub_list);
     }
 
     aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(
@@ -2045,7 +2042,6 @@ static void s_adapter_unsubscribe_operation_destroy(struct aws_mqtt3_to_mqtt5_ad
 
     /* We're going away before our MQTT5 operation, make sure it doesn't try to call us back when it completes */
     if (unsubscribe_op->unsubscribe_op != NULL) {
-        AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(unsubscribe_op->base.adapter->loop));
         unsubscribe_op->unsubscribe_op->completion_options.completion_callback = NULL;
         unsubscribe_op->unsubscribe_op->completion_options.completion_user_data = NULL;
     }
