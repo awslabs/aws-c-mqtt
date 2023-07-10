@@ -2421,15 +2421,19 @@ static int s_mqtt3to5_adapter_subscribe_single_success_fn(struct aws_allocator *
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
-    struct aws_mqtt_topic_subscription expected_subs[1] = {{
-        .topic = topic,
-        .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
-    }};
+    struct aws_mqtt_topic_subscription expected_subs[1] = {
+        {
+            .topic = topic,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        },
+    };
 
-    struct aws_mqtt3_operation_event expected_events[] = {{
-        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
-        .error_code = AWS_ERROR_SUCCESS,
-    }};
+    struct aws_mqtt3_operation_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+    };
     aws_array_list_init_static_from_initialized(
         &expected_events[0].granted_subscriptions,
         (void *)expected_subs,
@@ -2532,7 +2536,8 @@ static int s_mqtt3to5_adapter_subscribe_multi_success_fn(struct aws_allocator *a
         {
             .topic = aws_byte_cursor_from_c_str("topic/2"),
             .qos = AWS_MQTT_QOS_AT_MOST_ONCE,
-        }};
+        },
+    };
 
     struct aws_array_list subscription_list;
     aws_array_list_init_static_from_initialized(
@@ -2546,10 +2551,12 @@ static int s_mqtt3to5_adapter_subscribe_multi_success_fn(struct aws_allocator *a
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
-    struct aws_mqtt3_operation_event expected_events[] = {{
-        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
-        .error_code = AWS_ERROR_SUCCESS,
-    }};
+    struct aws_mqtt3_operation_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+    };
     aws_array_list_init_static_from_initialized(
         &expected_events[0].granted_subscriptions,
         (void *)subscriptions,
@@ -2638,15 +2645,19 @@ static int s_mqtt3to5_adapter_subscribe_single_failure_fn(struct aws_allocator *
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
-    struct aws_mqtt_topic_subscription expected_subs[1] = {{
-        .topic = topic,
-        .qos = AWS_MQTT_QOS_FAILURE,
-    }};
+    struct aws_mqtt_topic_subscription expected_subs[1] = {
+        {
+            .topic = topic,
+            .qos = AWS_MQTT_QOS_FAILURE,
+        },
+    };
 
-    struct aws_mqtt3_operation_event expected_events[] = {{
-        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
-        .error_code = AWS_ERROR_SUCCESS,
-    }};
+    struct aws_mqtt3_operation_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+    };
 
     aws_array_list_init_static_from_initialized(
         &expected_events[0].granted_subscriptions,
@@ -2704,7 +2715,8 @@ static int s_mqtt3to5_adapter_subscribe_multi_failure_fn(struct aws_allocator *a
         {
             .topic = aws_byte_cursor_from_c_str("topic/2"),
             .qos = AWS_MQTT_QOS_AT_MOST_ONCE,
-        }};
+        },
+    };
 
     struct aws_array_list subscription_list;
     aws_array_list_init_static_from_initialized(
@@ -2824,7 +2836,8 @@ static int s_mqtt3to5_adapter_subscribe_single_publish_fn(struct aws_allocator *
             .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
             .topic_cursor = topic,
             .payload_cursor = payload,
-        }};
+        },
+    };
 
     ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
         &fixture, AWS_ARRAY_SIZE(expected_events), expected_events));
@@ -3121,7 +3134,8 @@ static int s_mqtt3to5_adapter_unsubscribe_success_fn(struct aws_allocator *alloc
         },
         {
             .type = AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE,
-        }};
+        },
+    };
 
     ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
         &fixture, AWS_ARRAY_SIZE(expected_events_after), expected_events_after));
