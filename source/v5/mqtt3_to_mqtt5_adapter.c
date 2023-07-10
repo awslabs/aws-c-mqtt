@@ -638,8 +638,31 @@ done:
 static bool s_aws_mqtt5_listener_publish_received_adapter(
     const struct aws_mqtt5_packet_publish_view *publish,
     void *user_data) {
-    (void)publish;
-    (void)user_data;
+
+    struct aws_mqtt_client_connection_5_impl *adapter = user_data;
+    struct aws_mqtt_client_connection *connection = &adapter->base;
+
+    struct aws_mqtt_subscription_set_publish_received_options incoming_publish_options = {
+        .connection = connection,
+        .topic = publish->topic,
+        .qos = (enum aws_mqtt_qos)publish->qos,
+        .retain = publish->retain,
+        .dup = publish->duplicate,
+        .payload = publish->payload,
+    };
+
+    aws_mqtt_subscription_set_on_publish_received(adapter->subscriptions, &incoming_publish_options);
+
+    if (adapter->on_any_publish) {
+        (*adapter->on_any_publish)(
+            connection,
+            &publish->topic,
+            &publish->payload,
+            publish->duplicate,
+            (enum aws_mqtt_qos)publish->qos,
+            publish->retain,
+            adapter->on_any_publish_user_data);
+    }
 
     return false;
 }
@@ -2117,6 +2140,8 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *aws_mqtt3_to_mqtt5_adap
     unsubscribe_op->on_unsuback = options->on_unsuback;
     unsubscribe_op->on_unsuback_user_data = options->on_unsuback_user_data;
 
+    aws_byte_buf_init_copy_from_cursor(&unsubscribe_op->topic_filter, allocator, options->topic_filter);
+
     return unsubscribe_op;
 
 error:
@@ -2148,7 +2173,7 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_user_data) {
 
-    if (!aws_mqtt_is_valid_topic(topic_filter)) {
+    if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
         return 0;
     }

@@ -58,12 +58,21 @@ struct aws_mqtt3_operation_event {
     // publish received properties
     enum aws_mqtt_qos qos;
     struct aws_byte_buf topic;
+    struct aws_byte_cursor topic_cursor;
     struct aws_byte_buf payload;
+    struct aws_byte_cursor payload_cursor;
 
     // subscribe complete properties
     struct aws_array_list granted_subscriptions;
 
     struct aws_byte_buf topic_storage;
+
+    /*
+     * Not a part of recorded events, instead used to help verification check number of occurrences.  Only
+     * used by the "contains" verification function which wouldn't otherise be able to check if an exact
+     * event appears multiple times in the set.
+     */
+    size_t expected_count;
 };
 
 static void s_aws_mqtt3_operation_event_clean_up(struct aws_mqtt3_operation_event *event) {
@@ -78,19 +87,42 @@ static void s_aws_mqtt3_operation_event_clean_up(struct aws_mqtt3_operation_even
     aws_array_list_clean_up(&event->granted_subscriptions);
 }
 
-static int s_aws_mqtt3_operation_event_verify_equals(
+static bool s_aws_mqtt3_operation_event_equals(
     struct aws_mqtt3_operation_event *expected,
     struct aws_mqtt3_operation_event *actual) {
-    ASSERT_INT_EQUALS(expected->type, actual->type);
-    ASSERT_INT_EQUALS(expected->error_code, actual->error_code);
-    ASSERT_INT_EQUALS(expected->qos, actual->qos);
+    if (expected->type != actual->type) {
+        return false;
+    }
 
-    ASSERT_BIN_ARRAYS_EQUALS(expected->topic.buffer, expected->topic.len, actual->topic.buffer, actual->topic.len);
-    ASSERT_BIN_ARRAYS_EQUALS(
-        expected->payload.buffer, expected->payload.len, actual->payload.buffer, actual->payload.len);
+    if (expected->error_code != actual->error_code) {
+        return false;
+    }
 
-    ASSERT_INT_EQUALS(
-        aws_array_list_length(&expected->granted_subscriptions), aws_array_list_length(&actual->granted_subscriptions));
+    if (expected->qos != actual->qos) {
+        return false;
+    }
+
+    if (expected->topic_cursor.len != actual->topic_cursor.len) {
+        return false;
+    }
+
+    if (memcmp(expected->topic_cursor.ptr, actual->topic_cursor.ptr, expected->topic_cursor.len) != 0) {
+        return false;
+    }
+
+    if (expected->payload_cursor.len != actual->payload_cursor.len) {
+        return false;
+    }
+
+    if (memcmp(expected->payload_cursor.ptr, actual->payload_cursor.ptr, expected->payload_cursor.len) != 0) {
+        return false;
+    }
+
+    if (aws_array_list_length(&expected->granted_subscriptions) !=
+        aws_array_list_length(&actual->granted_subscriptions)) {
+        return false;
+    }
+
     for (size_t i = 0; i < aws_array_list_length(&expected->granted_subscriptions); ++i) {
 
         struct aws_mqtt_topic_subscription expected_sub;
@@ -99,12 +131,20 @@ static int s_aws_mqtt3_operation_event_verify_equals(
         struct aws_mqtt_topic_subscription actual_sub;
         aws_array_list_get_at(&actual->granted_subscriptions, &actual_sub, i);
 
-        ASSERT_INT_EQUALS(expected_sub.qos, actual_sub.qos);
-        ASSERT_BIN_ARRAYS_EQUALS(
-            expected_sub.topic.ptr, expected_sub.topic.len, actual_sub.topic.ptr, actual_sub.topic.len);
+        if (expected_sub.qos != actual_sub.qos) {
+            return false;
+        }
+
+        if (expected_sub.topic.len != actual_sub.topic.len) {
+            return false;
+        }
+
+        if (memcmp(expected_sub.topic.ptr, actual_sub.topic.ptr, expected_sub.topic.len) != 0) {
+            return false;
+        }
     }
 
-    return AWS_OP_SUCCESS;
+    return true;
 }
 
 struct aws_mqtt3_to_mqtt5_adapter_test_fixture_config {
@@ -160,7 +200,41 @@ static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence(
         struct aws_mqtt3_operation_event *actual_event = NULL;
         aws_array_list_get_at_ptr(&fixture->operation_events, (void **)(&actual_event), i);
 
-        ASSERT_SUCCESS(s_aws_mqtt3_operation_event_verify_equals(expected_event, actual_event));
+        ASSERT_TRUE(s_aws_mqtt3_operation_event_equals(expected_event, actual_event));
+    }
+
+    aws_mutex_unlock(&fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
+    size_t expected_event_count,
+    struct aws_mqtt3_operation_event *expected_events) {
+
+    aws_mutex_lock(&fixture->lock);
+
+    size_t actual_event_count = aws_array_list_length(&fixture->operation_events);
+
+    for (size_t i = 0; i < expected_event_count; ++i) {
+        struct aws_mqtt3_operation_event *expected_event = expected_events + i;
+        size_t match_count = 0;
+
+        for (size_t j = 0; j < actual_event_count; ++j) {
+            struct aws_mqtt3_operation_event *actual_event = NULL;
+            aws_array_list_get_at_ptr(&fixture->operation_events, (void **)(&actual_event), j);
+
+            if (s_aws_mqtt3_operation_event_equals(expected_event, actual_event)) {
+                ++match_count;
+            }
+        }
+
+        if (expected_event->expected_count == 0) {
+            ASSERT_INT_EQUALS(1, match_count);
+        } else {
+            ASSERT_INT_EQUALS(expected_event->expected_count, match_count);
+        }
     }
 
     aws_mutex_unlock(&fixture->lock);
@@ -2218,6 +2292,47 @@ void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete(
     aws_condition_variable_notify_all(&fixture->signal);
 }
 
+static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_received(
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture,
+    enum aws_mqtt3_operation_event_type event_type,
+    struct aws_byte_cursor topic,
+    struct aws_byte_cursor payload,
+    enum aws_mqtt_qos qos) {
+
+    struct aws_mqtt3_operation_event operation_event = {
+        .type = event_type,
+        .qos = qos,
+    };
+
+    aws_byte_buf_init_copy_from_cursor(&operation_event.topic, fixture->mqtt5_fixture.allocator, topic);
+    operation_event.topic_cursor = aws_byte_cursor_from_buf(&operation_event.topic);
+    aws_byte_buf_init_copy_from_cursor(&operation_event.payload, fixture->mqtt5_fixture.allocator, payload);
+    operation_event.payload_cursor = aws_byte_cursor_from_buf(&operation_event.payload);
+
+    aws_mutex_lock(&fixture->lock);
+    aws_array_list_push_back(&fixture->operation_events, &operation_event);
+    aws_mutex_unlock(&fixture->lock);
+    aws_condition_variable_notify_all(&fixture->signal);
+}
+
+static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_on_any_publish(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    void *userdata) {
+
+    (void)connection;
+    (void)dup;
+    (void)retain;
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
+    s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_received(
+        fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, *topic, *payload, qos);
+}
+
 void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
@@ -2228,12 +2343,12 @@ void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish(
     void *userdata) {
 
     (void)connection;
-    (void)topic;
-    (void)payload;
     (void)dup;
-    (void)qos;
     (void)retain;
-    (void)userdata;
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
+    s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_received(
+        fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED, *topic, *payload, qos);
 }
 
 static int s_mqtt5_mock_server_handle_subscribe_suback_success(
@@ -2627,9 +2742,625 @@ static int s_mqtt3to5_adapter_subscribe_multi_failure_fn(struct aws_allocator *a
 
 AWS_TEST_CASE(mqtt3to5_adapter_subscribe_multi_failure, s_mqtt3to5_adapter_subscribe_multi_failure_fn)
 
-/*
-#add_test_case(mqtt3to5_adapter_subscribe_single_publish)
-#add_test_case(mqtt3to5_adapter_subscribe_multi_overlapping_publish)
-#add_test_case(mqtt3to5_adapter_unsubscribe_success)
-#add_test_case(mqtt3to5_adapter_unsubscribe_failure)
- */
+static int s_mqtt3to5_adapter_subscribe_single_publish_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_mqtt5_mock_server_handle_subscribe_suback_success;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        aws_mqtt5_mock_server_handle_publish_puback_and_forward;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    aws_mqtt_client_connection_set_on_any_publish_handler(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_on_any_publish, &fixture);
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("derp");
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
+
+    struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("Payload!");
+
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED, 1);
+
+    struct aws_mqtt3_operation_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_COMPLETE,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic,
+            .payload_cursor = payload,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic,
+            .payload_cursor = payload,
+        }};
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events));
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_subscribe_single_publish, s_mqtt3to5_adapter_subscribe_single_publish_fn)
+
+static int s_mqtt3to5_adapter_subscribe_multi_overlapping_publish_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_mqtt5_mock_server_handle_subscribe_suback_success;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        aws_mqtt5_mock_server_handle_publish_puback_and_forward;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    aws_mqtt_client_connection_set_on_any_publish_handler(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_on_any_publish, &fixture);
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("hello/world");
+    struct aws_byte_cursor topic2 = aws_byte_cursor_from_c_str("hello/+");
+    struct aws_byte_cursor topic3 = aws_byte_cursor_from_c_str("derp");
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic1,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic2,
+        AWS_MQTT_QOS_AT_MOST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic3,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 3);
+
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload 1!");
+    struct aws_byte_cursor payload2 = aws_byte_cursor_from_c_str("Payload 2!");
+
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic1,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload1,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic3,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload2,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 2);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 2);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED, 3);
+
+    struct aws_mqtt3_operation_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic1,
+            .payload_cursor = payload1,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic3,
+            .payload_cursor = payload2,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic1,
+            .payload_cursor = payload1,
+            .expected_count = 2,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic3,
+            .payload_cursor = payload2,
+        },
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events));
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt3to5_adapter_subscribe_multi_overlapping_publish,
+    s_mqtt3to5_adapter_subscribe_multi_overlapping_publish_fn)
+
+static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_unsubscribe_complete(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    int error_code,
+    void *userdata) {
+
+    (void)connection;
+    (void)packet_id;
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
+
+    struct aws_mqtt3_operation_event operation_event = {
+        .type = AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE,
+        .error_code = error_code,
+    };
+
+    aws_mutex_lock(&fixture->lock);
+    aws_array_list_push_back(&fixture->operation_events, &operation_event);
+    aws_mutex_unlock(&fixture->lock);
+    aws_condition_variable_notify_all(&fixture->signal);
+}
+
+static int s_mqtt3to5_adapter_unsubscribe_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_mqtt5_mock_server_handle_subscribe_suback_success;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        aws_mqtt5_mock_server_handle_publish_puback_and_forward;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
+        aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    aws_mqtt_client_connection_set_on_any_publish_handler(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_on_any_publish, &fixture);
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("hello/world");
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
+
+    struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("Payload 1!");
+
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 1);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED, 1);
+
+    struct aws_mqtt3_operation_event expected_events_before[] = {
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic,
+            .payload_cursor = payload,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic,
+            .payload_cursor = payload,
+        },
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(expected_events_before), expected_events_before));
+
+    aws_mqtt_client_connection_unsubscribe(
+        connection, &topic, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_unsubscribe_complete, &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE, 1);
+
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 2);
+
+    struct aws_mqtt3_operation_event expected_events_after[] = {
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic,
+            .payload_cursor = payload,
+            .expected_count = 2,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic,
+            .payload_cursor = payload,
+        },
+        {
+            .type = AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE,
+        }};
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(expected_events_after), expected_events_after));
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_unsubscribe_success, s_mqtt3to5_adapter_unsubscribe_success_fn)
+
+static int s_mqtt5_mock_server_handle_unsubscribe_unsuback_failure(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view = packet;
+
+    AWS_VARIABLE_LENGTH_ARRAY(
+        enum aws_mqtt5_unsuback_reason_code, mqtt5_unsuback_codes, unsubscribe_view->topic_filter_count);
+    for (size_t i = 0; i < unsubscribe_view->topic_filter_count; ++i) {
+        enum aws_mqtt5_unsuback_reason_code *reason_code_ptr = &mqtt5_unsuback_codes[i];
+        *reason_code_ptr = AWS_MQTT5_UARC_IMPLEMENTATION_SPECIFIC_ERROR;
+    }
+
+    struct aws_mqtt5_packet_unsuback_view unsuback_view = {
+        .packet_id = unsubscribe_view->packet_id,
+        .reason_code_count = AWS_ARRAY_SIZE(mqtt5_unsuback_codes),
+        .reason_codes = mqtt5_unsuback_codes,
+    };
+
+    return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_UNSUBACK, &unsuback_view);
+}
+
+static int s_mqtt3to5_adapter_unsubscribe_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
+        s_mqtt5_mock_server_handle_unsubscribe_unsuback_failure;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("hello/world");
+
+    aws_mqtt_client_connection_unsubscribe(
+        connection, &topic, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_unsubscribe_complete, &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE, 1);
+
+    struct aws_mqtt3_operation_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE,
+        },
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events));
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_unsubscribe_failure, s_mqtt3to5_adapter_unsubscribe_failure_fn)
+
+static int s_mqtt3to5_adapter_unsubscribe_overlapped_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_mqtt5_mock_server_handle_subscribe_suback_success;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        aws_mqtt5_mock_server_handle_publish_puback_and_forward;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
+        aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    aws_mqtt_client_connection_set_on_any_publish_handler(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_on_any_publish, &fixture);
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("hello/world");
+    struct aws_byte_cursor topic2 = aws_byte_cursor_from_c_str("hello/+");
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic1,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic2,
+        AWS_MQTT_QOS_AT_MOST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 2);
+
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload 1!");
+
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic1,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload1,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 1);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED, 2);
+
+    struct aws_mqtt3_operation_event expected_events_before[] = {
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic1,
+            .payload_cursor = payload1,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic1,
+            .payload_cursor = payload1,
+            .expected_count = 2,
+        },
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(expected_events_before), expected_events_before));
+
+    /* drop the wildcard subscription and publish again, should only get one more publish received subscribed */
+    aws_mqtt_client_connection_unsubscribe(
+        connection, &topic2, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_unsubscribe_complete, &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE, 1);
+
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic1,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload1,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 2);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 2);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED, 3);
+
+    struct aws_mqtt3_operation_event expected_events_after[] = {
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic1,
+            .payload_cursor = payload1,
+            .expected_count = 2,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED,
+            .error_code = AWS_ERROR_SUCCESS,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+            .topic_cursor = topic1,
+            .payload_cursor = payload1,
+            .expected_count = 3,
+        },
+        {
+            .type = AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE,
+        },
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(expected_events_after), expected_events_after));
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_unsubscribe_overlapped, s_mqtt3to5_adapter_unsubscribe_overlapped_fn)
