@@ -2458,6 +2458,9 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_multi_com
     int error_code,
     void *userdata) {
 
+    (void)connection;
+    (void)packet_id;
+
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
 
     struct aws_mqtt3_operation_event operation_event = {
