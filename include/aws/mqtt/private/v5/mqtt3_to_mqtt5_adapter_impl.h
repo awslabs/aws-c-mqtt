@@ -13,14 +13,9 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/mqtt/client.h>
 #include <aws/mqtt/private/client_impl_shared.h>
-#include <aws/mqtt/private/mqtt_subscription_set.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 
-struct aws_mqtt3_to_mqtt5_adapter_operation_base;
-
-struct aws_mqtt3_to_mqtt5_adapter_operation_vtable {
-    void (*destroy_fn)(struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
-};
+struct aws_mqtt_subscription_set;
 
 struct aws_mqtt3_to_mqtt5_adapter_publish_options {
     struct aws_mqtt_client_connection_5_impl *adapter;

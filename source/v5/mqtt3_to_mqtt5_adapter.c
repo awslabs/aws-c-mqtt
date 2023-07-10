@@ -9,6 +9,7 @@
 #include <aws/common/rw_lock.h>
 
 #include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/private/mqtt_subscription_set.h>
 #include <aws/mqtt/private/v5/mqtt3_to_mqtt5_adapter_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
