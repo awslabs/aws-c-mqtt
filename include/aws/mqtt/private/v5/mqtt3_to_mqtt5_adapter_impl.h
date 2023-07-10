@@ -20,8 +20,6 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_base;
 
 struct aws_mqtt3_to_mqtt5_adapter_operation_vtable {
     void (*destroy_fn)(struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
-    void (*fail_fn)(struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation, int error_code);
-    void (*complete_fn)(struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation, void *completion_data);
 };
 
 struct aws_mqtt3_to_mqtt5_adapter_publish_options {
@@ -66,7 +64,7 @@ enum aws_mqtt3_to_mqtt5_adapter_operation_type {
 
 struct aws_mqtt3_to_mqtt5_adapter_operation_base {
     struct aws_allocator *allocator;
-    const struct aws_mqtt3_to_mqtt5_adapter_operation_vtable *vtable;
+    struct aws_ref_count ref_count;
     void *impl;
 
     /*
@@ -342,7 +340,10 @@ AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *
         struct aws_allocator *allocator,
         const struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options *options);
 
-AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_destroy(
+AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_base *aws_mqtt3_to_mqtt5_adapter_operation_release(
+    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
+
+AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_base *aws_mqtt3_to_mqtt5_adapter_operation_acquire(
     struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
 
 AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(

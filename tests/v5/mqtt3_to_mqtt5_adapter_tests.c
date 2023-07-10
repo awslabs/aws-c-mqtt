@@ -1827,7 +1827,7 @@ static int s_mqtt3to5_adapter_operation_allocation_exhaustion_fn(struct aws_allo
             aws_mqtt3_to_mqtt5_adapter_operation_new_publish(allocator, &publish_options);
         if (i >= UINT16_MAX) {
             ASSERT_FAILS(aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(operational_state, &publish->base));
-            aws_mqtt3_to_mqtt5_adapter_operation_destroy(&publish->base);
+            aws_mqtt3_to_mqtt5_adapter_operation_release(&publish->base);
             continue;
         }
 
@@ -2820,6 +2820,7 @@ static int s_mqtt3to5_adapter_subscribe_single_publish_fn(struct aws_allocator *
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED, 1);
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 1);
 
     struct aws_mqtt3_operation_event expected_events[] = {
         {
