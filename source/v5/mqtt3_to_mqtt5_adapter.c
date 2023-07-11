@@ -2228,6 +2228,74 @@ error:
     return 0;
 }
 
+static int s_aws_mqtt_client_connection_5_reconnect(
+    void *impl,
+    aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
+    void *userdata) {
+    (void)impl;
+    (void)on_connection_complete;
+    (void)userdata;
+
+    /* DEPRECATED, connection will reconnect automatically now. */
+    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "aws_mqtt_client_connection_reconnect has been DEPRECATED.");
+    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+}
+
+static int s_aws_mqtt_client_connection_5_get_stats(
+    void *impl,
+    struct aws_mqtt_connection_operation_statistics *stats) {
+
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    // Error checking
+    if (!adapter) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "Invalid MQTT3-to-5 adapter used when trying to get operation statistics");
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    if (!stats) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Invalid MQTT311 statistics struct used when trying to get operation statistics",
+            (void *)adapter);
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    struct aws_mqtt5_client_operation_statistics mqtt5_stats;
+    AWS_ZERO_STRUCT(mqtt5_stats);
+    aws_mqtt5_client_get_stats(adapter->client, &mqtt5_stats);
+
+    stats->incomplete_operation_count = mqtt5_stats.incomplete_operation_count;
+    stats->incomplete_operation_size = mqtt5_stats.incomplete_operation_size;
+    stats->unacked_operation_count = mqtt5_stats.unacked_operation_count;
+    stats->unacked_operation_size = mqtt5_stats.unacked_operation_size;
+
+    return AWS_OP_SUCCESS;
+}
+
+static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
+    void *impl,
+    aws_mqtt_suback_multi_fn *on_suback,
+    void *on_suback_ud) {
+
+    (void)on_suback;
+    (void)on_suback_ud;
+
+    uint16_t packet_id = 0;
+    struct aws_mqtt_client_connection_5_impl *connection = impl;
+
+    struct aws_array_list full_subscriptions;
+    AWS_ZERO_STRUCT(full_subscriptions);
+
+    aws_mqtt_subscription_set_get_subscriptions(connection->subscriptions, &full_subscriptions);
+
+done:
+
+    aws_array_list_clean_up(&full_subscriptions);
+
+    return packet_id;
+}
+
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_vtable = {
     .acquire_fn = s_aws_mqtt_client_connection_5_acquire,
     .release_fn = s_aws_mqtt_client_connection_5_release,
@@ -2242,14 +2310,14 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_5_set_on_closed_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_5_set_on_any_publish_handler,
     .connect_fn = s_aws_mqtt_client_connection_5_connect,
-    .reconnect_fn = NULL,
+    .reconnect_fn = s_aws_mqtt_client_connection_5_reconnect,
     .disconnect_fn = s_aws_mqtt_client_connection_5_disconnect,
     .subscribe_multiple_fn = s_aws_mqtt_client_connection_5_subscribe_multiple,
     .subscribe_fn = s_aws_mqtt_client_connection_5_subscribe,
-    .resubscribe_existing_topics_fn = NULL,
+    .resubscribe_existing_topics_fn = s_aws_mqtt_5_resubscribe_existing_topics,
     .unsubscribe_fn = s_aws_mqtt_client_connection_5_unsubscribe,
     .publish_fn = s_aws_mqtt_client_connection_5_publish,
-    .get_stats_fn = NULL,
+    .get_stats_fn = s_aws_mqtt_client_connection_5_get_stats,
 };
 
 static struct aws_mqtt_client_connection_vtable *s_aws_mqtt_client_connection_5_vtable_ptr =
