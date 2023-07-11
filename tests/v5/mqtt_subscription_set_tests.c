@@ -804,6 +804,7 @@ static int s_mqtt_subscription_set_get_subscriptions_fn(struct aws_allocator *al
     ASSERT_TRUE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("a/b/c")));
     ASSERT_FALSE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("/#")));
     ASSERT_FALSE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("/")));
+    ASSERT_FALSE(aws_mqtt_subscription_set_is_subscribed(subscription_set, aws_byte_cursor_from_c_str("a")));
 
     struct aws_array_list subscriptions;
     aws_mqtt_subscription_set_get_subscriptions(subscription_set, &subscriptions);
