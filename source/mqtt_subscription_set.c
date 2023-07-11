@@ -129,7 +129,7 @@ void aws_mqtt_subscription_set_destroy(struct aws_mqtt_subscription_set *subscri
 }
 
 static struct aws_mqtt_subscription_set_topic_tree_node *s_aws_mqtt_subscription_set_get_existing_subscription_node(
-    struct aws_mqtt_subscription_set *subscription_set,
+    const struct aws_mqtt_subscription_set *subscription_set,
     struct aws_byte_cursor topic_filter) {
 
     struct aws_mqtt_subscription_set_topic_tree_node *current_node = subscription_set->root;
@@ -155,7 +155,7 @@ static struct aws_mqtt_subscription_set_topic_tree_node *s_aws_mqtt_subscription
 }
 
 bool aws_mqtt_subscription_set_is_subscribed(
-    struct aws_mqtt_subscription_set *subscription_set,
+    const struct aws_mqtt_subscription_set *subscription_set,
     struct aws_byte_cursor topic_filter) {
 
     struct aws_hash_element *element = NULL;
@@ -165,7 +165,7 @@ bool aws_mqtt_subscription_set_is_subscribed(
 }
 
 bool aws_mqtt_subscription_set_is_in_topic_tree(
-    struct aws_mqtt_subscription_set *subscription_set,
+    const struct aws_mqtt_subscription_set *subscription_set,
     struct aws_byte_cursor topic_filter) {
     struct aws_mqtt_subscription_set_topic_tree_node *existing_node =
         s_aws_mqtt_subscription_set_get_existing_subscription_node(subscription_set, topic_filter);
@@ -354,7 +354,7 @@ static void s_invoke_on_publish_received(
 }
 
 void aws_mqtt_subscription_set_on_publish_received(
-    struct aws_mqtt_subscription_set *subscription_set,
+    const struct aws_mqtt_subscription_set *subscription_set,
     const struct aws_mqtt_subscription_set_publish_received_options *publish_options) {
 
     struct aws_byte_cursor slw_cursor = aws_byte_cursor_from_string(s_single_level_wildcard);
