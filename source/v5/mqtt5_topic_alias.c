@@ -7,6 +7,7 @@
 
 #include <aws/common/lru_cache.h>
 #include <aws/common/string.h>
+#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 
 int aws_mqtt5_inbound_topic_alias_resolver_init(
@@ -450,13 +451,6 @@ static void s_destroy_assignment_value(void *value) {
     s_aws_topic_alias_assignment_destroy(value);
 }
 
-static bool s_topic_hash_equality_fn(const void *a, const void *b) {
-    const struct aws_byte_cursor *a_cursor = a;
-    const struct aws_byte_cursor *b_cursor = b;
-
-    return aws_byte_cursor_eq(a_cursor, b_cursor);
-}
-
 static int s_aws_mqtt5_outbound_topic_alias_resolver_lru_reset(
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver,
     uint16_t topic_alias_maximum) {
@@ -471,7 +465,7 @@ static int s_aws_mqtt5_outbound_topic_alias_resolver_lru_reset(
         lru_resolver->lru_cache = aws_cache_new_lru(
             lru_resolver->base.allocator,
             aws_hash_byte_cursor_ptr,
-            s_topic_hash_equality_fn,
+            aws_mqtt_byte_cursor_hash_equality,
             NULL,
             s_destroy_assignment_value,
             topic_alias_maximum);
