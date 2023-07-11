@@ -2289,6 +2289,41 @@ static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
 
     aws_mqtt_subscription_set_get_subscriptions(connection->subscriptions, &full_subscriptions);
 
+    size_t subscription_count = aws_array_list_length(&full_subscriptions);
+
+    AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt_topic_subscription, multi_sub_subscriptions, subscription_count);
+    AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt_topic_subscription *, multi_sub_subscription_ptrs, subscription_count);
+
+    if (subscription_count == 0) {
+        aws_raise_error(AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS);
+        goto done;
+    }
+
+    for (size_t i = 0; i < subscription_count; ++i) {
+        struct aws_mqtt_subscription_set_subscription_options *existing_subscription = NULL;
+        aws_array_list_get_at_ptr(&full_subscriptions, (void **)&existing_subscription, i);
+
+        multi_sub_subscriptions[i].topic = existing_subscription->topic_filter;
+        multi_sub_subscriptions[i].qos = (enum aws_mqtt_qos)existing_subscription->qos;
+        multi_sub_subscriptions[i].on_publish = existing_subscription->on_publish_received;
+        multi_sub_subscriptions[i].on_cleanup = existing_subscription->on_cleanup;
+        multi_sub_subscriptions[i].on_publish_ud = existing_subscription->callback_user_data;
+
+        multi_sub_subscription_ptrs[i] = &multi_sub_subscriptions[i];
+    }
+
+    struct aws_array_list multi_subscription_ptr_list;
+    AWS_ZERO_STRUCT(multi_subscription_ptr_list);
+
+    aws_array_list_init_static_from_initialized(
+        &multi_subscription_ptr_list,
+        multi_sub_subscription_ptrs,
+        subscription_count,
+        sizeof(struct aws_mqtt_topic_subscription *));
+
+    packet_id =
+        s_aws_mqtt_client_connection_5_subscribe_multiple(impl, &multi_subscription_ptr_list, on_suback, on_suback_ud);
+
 done:
 
     aws_array_list_clean_up(&full_subscriptions);

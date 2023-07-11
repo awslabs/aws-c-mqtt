@@ -220,6 +220,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT,
                 "Mqtt5 connection was reset by the Mqtt3 adapter in order to guarantee correct connection configuration"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS,
+                "Resubscribe was called when there were no subscriptions"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
