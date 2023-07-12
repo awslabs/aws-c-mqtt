@@ -29,6 +29,11 @@ struct aws_mqtt3_to_mqtt5_adapter_publish_options {
     void *on_complete_userdata;
 };
 
+/*
+ * A subscribe with no subscriptions represents a re-subscribe of all internally tracked topics.  While this
+ * is a bit hacky, the alternative is to copy-and-paste almost the entire multi-subscribe adapter operation and
+ * supporting logic, which is approximately 300 lines.
+ */
 struct aws_mqtt3_to_mqtt5_adapter_subscribe_options {
     struct aws_mqtt_client_connection_5_impl *adapter;
 

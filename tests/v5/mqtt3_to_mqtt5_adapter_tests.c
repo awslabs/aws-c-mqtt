@@ -106,16 +106,20 @@ static bool s_aws_mqtt3_operation_event_equals(
         return false;
     }
 
-    if (memcmp(expected->topic_cursor.ptr, actual->topic_cursor.ptr, expected->topic_cursor.len) != 0) {
-        return false;
+    if (expected->topic_cursor.len > 0) {
+        if (memcmp(expected->topic_cursor.ptr, actual->topic_cursor.ptr, expected->topic_cursor.len) != 0) {
+            return false;
+        }
     }
 
     if (expected->payload_cursor.len != actual->payload_cursor.len) {
         return false;
     }
 
-    if (memcmp(expected->payload_cursor.ptr, actual->payload_cursor.ptr, expected->payload_cursor.len) != 0) {
-        return false;
+    if (expected->payload_cursor.len > 0) {
+        if (memcmp(expected->payload_cursor.ptr, actual->payload_cursor.ptr, expected->payload_cursor.len) != 0) {
+            return false;
+        }
     }
 
     if (aws_array_list_length(&expected->granted_subscriptions) !=
@@ -128,18 +132,30 @@ static bool s_aws_mqtt3_operation_event_equals(
         struct aws_mqtt_topic_subscription expected_sub;
         aws_array_list_get_at(&expected->granted_subscriptions, &expected_sub, i);
 
-        struct aws_mqtt_topic_subscription actual_sub;
-        aws_array_list_get_at(&actual->granted_subscriptions, &actual_sub, i);
+        bool found_match = false;
+        for (size_t j = 0; j < aws_array_list_length(&actual->granted_subscriptions); ++j) {
+            struct aws_mqtt_topic_subscription actual_sub;
+            aws_array_list_get_at(&actual->granted_subscriptions, &actual_sub, j);
 
-        if (expected_sub.qos != actual_sub.qos) {
-            return false;
+            if (expected_sub.qos != actual_sub.qos) {
+                continue;
+            }
+
+            if (expected_sub.topic.len != actual_sub.topic.len) {
+                continue;
+            }
+
+            if (expected_sub.topic.len > 0) {
+                if (memcmp(expected_sub.topic.ptr, actual_sub.topic.ptr, expected_sub.topic.len) != 0) {
+                    continue;
+                }
+            }
+
+            found_match = true;
+            break;
         }
 
-        if (expected_sub.topic.len != actual_sub.topic.len) {
-            return false;
-        }
-
-        if (memcmp(expected_sub.topic.ptr, actual_sub.topic.ptr, expected_sub.topic.len) != 0) {
+        if (!found_match) {
             return false;
         }
     }
@@ -2468,30 +2484,32 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_multi_com
         .error_code = error_code,
     };
 
-    size_t granted_count = aws_array_list_length(topic_subacks);
+    if (error_code == AWS_ERROR_SUCCESS) {
+        size_t granted_count = aws_array_list_length(topic_subacks);
 
-    aws_array_list_init_dynamic(
-        &operation_event.granted_subscriptions,
-        fixture->mqtt5_fixture.allocator,
-        granted_count,
-        sizeof(struct aws_mqtt_topic_subscription));
+        aws_array_list_init_dynamic(
+            &operation_event.granted_subscriptions,
+            fixture->mqtt5_fixture.allocator,
+            granted_count,
+            sizeof(struct aws_mqtt_topic_subscription));
 
-    size_t topic_length = 0;
-    for (size_t i = 0; i < granted_count; ++i) {
-        struct aws_mqtt_topic_subscription *granted_sub = NULL;
-        aws_array_list_get_at(topic_subacks, &granted_sub, i);
+        size_t topic_length = 0;
+        for (size_t i = 0; i < granted_count; ++i) {
+            struct aws_mqtt_topic_subscription *granted_sub = NULL;
+            aws_array_list_get_at(topic_subacks, &granted_sub, i);
 
-        aws_array_list_push_back(&operation_event.granted_subscriptions, (void *)granted_sub);
-        topic_length += granted_sub->topic.len;
-    }
+            aws_array_list_push_back(&operation_event.granted_subscriptions, (void *)granted_sub);
+            topic_length += granted_sub->topic.len;
+        }
 
-    aws_byte_buf_init(&operation_event.topic_storage, fixture->mqtt5_fixture.allocator, topic_length);
+        aws_byte_buf_init(&operation_event.topic_storage, fixture->mqtt5_fixture.allocator, topic_length);
 
-    for (size_t i = 0; i < granted_count; ++i) {
-        struct aws_mqtt_topic_subscription *granted_sub = NULL;
-        aws_array_list_get_at_ptr(&operation_event.granted_subscriptions, (void **)&granted_sub, i);
+        for (size_t i = 0; i < granted_count; ++i) {
+            struct aws_mqtt_topic_subscription *granted_sub = NULL;
+            aws_array_list_get_at_ptr(&operation_event.granted_subscriptions, (void **)&granted_sub, i);
 
-        aws_byte_buf_append_and_update(&operation_event.topic_storage, &granted_sub->topic);
+            aws_byte_buf_append_and_update(&operation_event.topic_storage, &granted_sub->topic);
+        }
     }
 
     aws_mutex_lock(&fixture->lock);
@@ -3382,3 +3400,283 @@ static int s_mqtt3to5_adapter_unsubscribe_overlapped_fn(struct aws_allocator *al
 }
 
 AWS_TEST_CASE(mqtt3to5_adapter_unsubscribe_overlapped, s_mqtt3to5_adapter_unsubscribe_overlapped_fn)
+
+static int s_mqtt5_mock_server_handle_connect_publish_throttled(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_connack_view connack_view;
+    AWS_ZERO_STRUCT(connack_view);
+
+    uint16_t receive_maximum = 1;
+
+    connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
+    connack_view.receive_maximum = &receive_maximum;
+
+    return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
+}
+
+/*
+ * In this test, we configure the server to only allow a single unacked QoS1 publish and to not respond to
+ * publishes.  Then we throw three QoS 1 publishes at the client.  This leads to the client being "paralyzed" waiting
+ * for a PUBACK for the first publish.  We then query the client stats and expected to see one unacked operation and
+ * two additional (for a total of three) incomplete operations.
+ */
+static int s_mqtt3to5_adapter_get_stats_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_mqtt5_mock_server_handle_connect_publish_throttled;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = NULL;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    aws_mqtt_client_connection_set_on_any_publish_handler(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_on_any_publish, &fixture);
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("hi/there");
+    struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("something");
+
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_publish_complete,
+        &fixture);
+
+    aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+
+    struct aws_mqtt_connection_operation_statistics stats;
+    aws_mqtt_client_connection_get_stats(connection, &stats);
+
+    ASSERT_INT_EQUALS(1, stats.unacked_operation_count);
+    ASSERT_INT_EQUALS(3, stats.incomplete_operation_count);
+    ASSERT_TRUE(stats.unacked_operation_size > 0);
+    ASSERT_TRUE(stats.incomplete_operation_size > 0);
+    ASSERT_INT_EQUALS(stats.unacked_operation_size * 3, stats.incomplete_operation_size);
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_get_stats, s_mqtt3to5_adapter_get_stats_fn)
+
+/*
+ * In this test we invoke a resubscribe while there are no active subscriptions.  This hits a degenerate pathway
+ * that we have to handle specially inside the adapter since an empty subscribe is invalid.
+ */
+static int s_mqtt3to5_adapter_resubscribe_nothing_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_mqtt5_mock_server_handle_subscribe_suback_success;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    aws_mqtt_client_connection_set_on_any_publish_handler(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_on_any_publish, &fixture);
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    aws_mqtt_resubscribe_existing_topics(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_multi_complete, &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
+
+    struct aws_mqtt3_operation_event resubscribe_ack[] = {{
+        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, .error_code = AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS,
+        /* no granted subscriptions */
+    }};
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(resubscribe_ack), resubscribe_ack));
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_resubscribe_nothing, s_mqtt3to5_adapter_resubscribe_nothing_fn)
+
+/*
+ * In this test we subscribe individually to three separate topics, wait, then invoke resubscribe on the client and
+ * verify that we record 4 subacks, 3 for the individual and one 3-sized multi-sub for appropriate topics.
+ */
+static int s_mqtt3to5_adapter_resubscribe_something_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_mqtt5_mock_server_handle_subscribe_suback_success;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt3_to_mqtt5_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt3_to_mqtt5_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options, NULL));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    aws_mqtt_client_connection_set_on_any_publish_handler(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_on_any_publish, &fixture);
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("hello/world");
+    struct aws_byte_cursor topic2 = aws_byte_cursor_from_c_str("foo/bar");
+    struct aws_byte_cursor topic3 = aws_byte_cursor_from_c_str("a/b/c");
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic1,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic2,
+        AWS_MQTT_QOS_AT_MOST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic3,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 3);
+
+    aws_mqtt_resubscribe_existing_topics(
+        connection, s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_multi_complete, &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 4);
+
+    struct aws_mqtt3_operation_event resubscribe_ack[] = {{
+        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+    }};
+
+    struct aws_mqtt_topic_subscription subscriptions[] = {
+        {
+            .topic = topic1,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        },
+        {
+            .topic = topic2,
+            .qos = AWS_MQTT_QOS_AT_MOST_ONCE,
+        },
+        {
+            .topic = topic3,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        },
+    };
+
+    aws_array_list_init_static_from_initialized(
+        &resubscribe_ack[0].granted_subscriptions,
+        (void *)subscriptions,
+        AWS_ARRAY_SIZE(subscriptions),
+        sizeof(struct aws_mqtt_topic_subscription));
+
+    ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(resubscribe_ack), resubscribe_ack));
+
+    aws_mqtt3_to_mqtt5_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt3to5_adapter_resubscribe_something, s_mqtt3to5_adapter_resubscribe_something_fn)

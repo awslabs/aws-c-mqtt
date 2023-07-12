@@ -1520,10 +1520,8 @@ static void s_adapter_publish_operation_destroy(void *context) {
     }
 
     /* We're going away before our MQTT5 operation, make sure it doesn't try to call us back when it completes */
-    if (publish_op->publish_op != NULL) {
-        publish_op->publish_op->completion_options.completion_callback = NULL;
-        publish_op->publish_op->completion_options.completion_user_data = NULL;
-    }
+    publish_op->publish_op->completion_options.completion_callback = NULL;
+    publish_op->publish_op->completion_options.completion_user_data = NULL;
 
     aws_mqtt5_operation_release(&publish_op->publish_op->base);
 
@@ -1712,9 +1710,9 @@ static void s_adapter_subscribe_operation_destroy(void *context) {
     if (subscribe_op->subscribe_op != NULL) {
         subscribe_op->subscribe_op->completion_options.completion_callback = NULL;
         subscribe_op->subscribe_op->completion_options.completion_user_data = NULL;
-    }
 
-    aws_mqtt5_operation_release(&subscribe_op->subscribe_op->base);
+        aws_mqtt5_operation_release(&subscribe_op->subscribe_op->base);
+    }
 
     aws_mem_release(operation->allocator, operation);
 
@@ -1820,16 +1818,72 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
 }
 
 static int s_validate_adapter_subscribe_options(const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options) {
-    if (options->subscription_count == 0) {
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
-
     for (size_t i = 0; i < options->subscription_count; ++i) {
         struct aws_mqtt_topic_subscription *subscription_options = &options->subscriptions[i];
         enum aws_mqtt_qos qos = subscription_options->qos;
         if (qos < AWS_MQTT_QOS_AT_MOST_ONCE || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
             return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt3_to_mqtt5_adapter_build_subscribe(
+    struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *subscribe_op,
+    size_t subscription_count,
+    struct aws_mqtt_topic_subscription *subscriptions) {
+    struct aws_allocator *allocator = subscribe_op->base.allocator;
+
+    /* make persistent adapter sub array */
+    aws_array_list_init_dynamic(
+        &subscribe_op->subscriptions,
+        allocator,
+        subscription_count,
+        sizeof(struct aws_mqtt_subscription_set_subscription_record *));
+    for (size_t i = 0; i < subscription_count; ++i) {
+        struct aws_mqtt_topic_subscription *subscription_options = &subscriptions[i];
+
+        struct aws_mqtt_subscription_set_subscription_options subscription_record_options = {
+            .topic_filter = subscription_options->topic,
+            .qos = (enum aws_mqtt5_qos)subscription_options->qos,
+            .on_publish_received = subscription_options->on_publish,
+            .callback_user_data = subscription_options->on_publish_ud,
+            .on_cleanup = subscription_options->on_cleanup,
+        };
+        struct aws_mqtt_subscription_set_subscription_record *record =
+            aws_mqtt_subscription_set_subscription_record_new(allocator, &subscription_record_options);
+
+        aws_array_list_push_back(&subscribe_op->subscriptions, &record);
+    }
+
+    /* make temp mqtt5 subscription view array */
+    AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt5_subscription_view, mqtt5_subscription_buffer, subscription_count);
+    struct aws_mqtt5_subscription_view *subscription_ptr = mqtt5_subscription_buffer;
+    for (size_t i = 0; i < subscription_count; ++i) {
+        struct aws_mqtt5_subscription_view *subscription = subscription_ptr + i;
+        AWS_ZERO_STRUCT(*subscription);
+
+        subscription->topic_filter = subscriptions[i].topic;
+        subscription->qos = (enum aws_mqtt5_qos)subscriptions[i].qos;
+    }
+
+    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
+        .subscriptions = subscription_ptr,
+        .subscription_count = subscription_count,
+    };
+
+    struct aws_mqtt5_subscribe_completion_options subscribe_completion_options = {
+        .completion_callback = s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn,
+        .completion_user_data = subscribe_op,
+    };
+
+    subscribe_op->subscribe_op = aws_mqtt5_operation_subscribe_new(
+        allocator, subscribe_op->base.adapter->client, &subscribe_view, &subscribe_completion_options);
+
+    if (subscribe_op->subscribe_op == NULL) {
+        /* subscribe options validation will have been raised as the error */
+        return AWS_OP_ERR;
     }
 
     return AWS_OP_SUCCESS;
@@ -1853,55 +1907,15 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapte
     subscribe_op->base.adapter = options->adapter;
     subscribe_op->base.holding_adapter_ref = false;
 
-    /* make persistent adapter sub array */
-    aws_array_list_init_dynamic(
-        &subscribe_op->subscriptions,
-        allocator,
-        options->subscription_count,
-        sizeof(struct aws_mqtt_subscription_set_subscription_record *));
-    for (size_t i = 0; i < options->subscription_count; ++i) {
-        struct aws_mqtt_topic_subscription *subscription_options = &options->subscriptions[i];
-
-        struct aws_mqtt_subscription_set_subscription_options subscription_record_options = {
-            .topic_filter = subscription_options->topic,
-            .qos = (enum aws_mqtt5_qos)subscription_options->qos,
-            .on_publish_received = subscription_options->on_publish,
-            .callback_user_data = subscription_options->on_publish_ud,
-            .on_cleanup = subscription_options->on_cleanup,
-        };
-        struct aws_mqtt_subscription_set_subscription_record *record =
-            aws_mqtt_subscription_set_subscription_record_new(allocator, &subscription_record_options);
-
-        aws_array_list_push_back(&subscribe_op->subscriptions, &record);
-    }
-
-    /* make temp mqtt5 subscription view array */
-    AWS_VARIABLE_LENGTH_ARRAY(
-        struct aws_mqtt5_subscription_view, mqtt5_subscription_buffer, options->subscription_count);
-    struct aws_mqtt5_subscription_view *subscription_ptr = mqtt5_subscription_buffer;
-    for (size_t i = 0; i < options->subscription_count; ++i) {
-        struct aws_mqtt5_subscription_view *subscription = subscription_ptr + i;
-        AWS_ZERO_STRUCT(*subscription);
-
-        subscription->topic_filter = options->subscriptions[i].topic;
-        subscription->qos = (enum aws_mqtt5_qos)options->subscriptions[i].qos;
-    }
-
-    struct aws_mqtt5_packet_subscribe_view subscribe_view = {
-        .subscriptions = subscription_ptr,
-        .subscription_count = options->subscription_count,
-    };
-
-    struct aws_mqtt5_subscribe_completion_options subscribe_completion_options = {
-        .completion_callback = s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn,
-        .completion_user_data = subscribe_op,
-    };
-
-    subscribe_op->subscribe_op = aws_mqtt5_operation_subscribe_new(
-        allocator, options->adapter->client, &subscribe_view, &subscribe_completion_options);
-
-    if (subscribe_op->subscribe_op == NULL) {
-        goto error;
+    /*
+     * If we're a regular subscribe, build the mqtt5 operation now.  Otherwise, we have to wait until
+     * we're on the event loop thread and it's safe to query the subscription set.
+     */
+    if (options->subscription_count > 0) {
+        if (s_aws_mqtt3_to_mqtt5_adapter_build_subscribe(
+                subscribe_op, options->subscription_count, options->subscriptions)) {
+            goto error;
+        }
     }
 
     subscribe_op->on_suback = options->on_suback;
@@ -1918,12 +1932,61 @@ error:
     return NULL;
 }
 
+static int s_aws_mqtt3_to_mqtt5_adapter_build_resubscribe(
+    struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *subscribe_op,
+    struct aws_array_list *full_subscriptions) {
+    size_t subscription_count = aws_array_list_length(full_subscriptions);
+
+    AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt_topic_subscription, multi_sub_subscriptions, subscription_count);
+
+    for (size_t i = 0; i < subscription_count; ++i) {
+        struct aws_mqtt_subscription_set_subscription_options *existing_subscription = NULL;
+        aws_array_list_get_at_ptr(full_subscriptions, (void **)&existing_subscription, i);
+
+        multi_sub_subscriptions[i].topic = existing_subscription->topic_filter;
+        multi_sub_subscriptions[i].qos = (enum aws_mqtt_qos)existing_subscription->qos;
+        multi_sub_subscriptions[i].on_publish = existing_subscription->on_publish_received;
+        multi_sub_subscriptions[i].on_cleanup = existing_subscription->on_cleanup;
+        multi_sub_subscriptions[i].on_publish_ud = existing_subscription->callback_user_data;
+    }
+
+    return s_aws_mqtt3_to_mqtt5_adapter_build_subscribe(subscribe_op, subscription_count, multi_sub_subscriptions);
+}
+
 void s_adapter_subscribe_submission_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation = arg;
-
     struct aws_mqtt_client_connection_5_impl *adapter = operation->base.adapter;
+
+    struct aws_array_list full_subscriptions;
+    AWS_ZERO_STRUCT(full_subscriptions);
+
+    /* If we're a re-subscribe, it's now safe to build the subscription set and MQTT5 subscribe op */
+    if (operation->subscribe_op == NULL) {
+        aws_mqtt_subscription_set_get_subscriptions(adapter->subscriptions, &full_subscriptions);
+        size_t subscription_count = aws_array_list_length(&full_subscriptions);
+        if (subscription_count == 0 || s_aws_mqtt3_to_mqtt5_adapter_build_resubscribe(operation, &full_subscriptions)) {
+            /* There's either nothing to do (no subscriptions) or we failed to build the op (should never happen) */
+            int error_code = aws_last_error();
+            if (subscription_count == 0) {
+                error_code = AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS;
+            }
+
+            if (operation->on_multi_suback) {
+                (*operation->on_multi_suback)(
+                    &adapter->base, operation->base.id, NULL, error_code, operation->on_multi_suback_user_data);
+            }
+
+            /*
+             * Remove the persistent ref represented by being seated in the incomplete operations table.
+             * The other (transient) ref gets released at the end of the function.
+             */
+            aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(
+                &adapter->operational_state, operation->base.id);
+            goto complete;
+        }
+    }
 
     size_t subscription_count = aws_array_list_length(&operation->subscriptions);
     for (size_t i = 0; i < subscription_count; ++i) {
@@ -1935,6 +1998,10 @@ void s_adapter_subscribe_submission_fn(struct aws_task *task, void *arg, enum aw
 
     aws_mqtt5_client_submit_operation_internal(
         adapter->client, &operation->subscribe_op->base, status != AWS_TASK_STATUS_RUN_READY);
+
+complete:
+
+    aws_array_list_clean_up(&full_subscriptions);
 
     /* release the transient adapter reference for the move to the event loop */
     aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(&operation->base);
@@ -2075,10 +2142,8 @@ static void s_adapter_unsubscribe_operation_destroy(void *context) {
     }
 
     /* We're going away before our MQTT5 operation, make sure it doesn't try to call us back when it completes */
-    if (unsubscribe_op->unsubscribe_op != NULL) {
-        unsubscribe_op->unsubscribe_op->completion_options.completion_callback = NULL;
-        unsubscribe_op->unsubscribe_op->completion_options.completion_user_data = NULL;
-    }
+    unsubscribe_op->unsubscribe_op->completion_options.completion_callback = NULL;
+    unsubscribe_op->unsubscribe_op->completion_options.completion_user_data = NULL;
 
     aws_mqtt5_operation_release(&unsubscribe_op->unsubscribe_op->base);
 
@@ -2276,59 +2341,51 @@ static int s_aws_mqtt_client_connection_5_get_stats(
 static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
     void *impl,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_ud) {
+    void *on_suback_user_data) {
 
-    (void)on_suback;
-    (void)on_suback_ud;
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
-    uint16_t packet_id = 0;
-    struct aws_mqtt_client_connection_5_impl *connection = impl;
+    struct aws_mqtt3_to_mqtt5_adapter_subscribe_options subscribe_options = {
+        .adapter = adapter,
+        .subscriptions = NULL,
+        .subscription_count = 0,
+        .on_multi_suback = on_suback,
+        .on_multi_suback_user_data = on_suback_user_data,
+    };
 
-    struct aws_array_list full_subscriptions;
-    AWS_ZERO_STRUCT(full_subscriptions);
-
-    aws_mqtt_subscription_set_get_subscriptions(connection->subscriptions, &full_subscriptions);
-
-    size_t subscription_count = aws_array_list_length(&full_subscriptions);
-
-    AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt_topic_subscription, multi_sub_subscriptions, subscription_count);
-    AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt_topic_subscription *, multi_sub_subscription_ptrs, subscription_count);
-
-    if (subscription_count == 0) {
-        aws_raise_error(AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS);
-        goto done;
+    struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation =
+        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options);
+    if (operation == NULL) {
+        return 0;
     }
 
-    for (size_t i = 0; i < subscription_count; ++i) {
-        struct aws_mqtt_subscription_set_subscription_options *existing_subscription = NULL;
-        aws_array_list_get_at_ptr(&full_subscriptions, (void **)&existing_subscription, i);
-
-        multi_sub_subscriptions[i].topic = existing_subscription->topic_filter;
-        multi_sub_subscriptions[i].qos = (enum aws_mqtt_qos)existing_subscription->qos;
-        multi_sub_subscriptions[i].on_publish = existing_subscription->on_publish_received;
-        multi_sub_subscriptions[i].on_cleanup = existing_subscription->on_cleanup;
-        multi_sub_subscriptions[i].on_publish_ud = existing_subscription->callback_user_data;
-
-        multi_sub_subscription_ptrs[i] = &multi_sub_subscriptions[i];
+    if (aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(&adapter->operational_state, &operation->base)) {
+        goto error;
     }
 
-    struct aws_array_list multi_subscription_ptr_list;
-    AWS_ZERO_STRUCT(multi_subscription_ptr_list);
+    uint16_t synthetic_id = operation->base.id;
 
-    aws_array_list_init_static_from_initialized(
-        &multi_subscription_ptr_list,
-        multi_sub_subscription_ptrs,
-        subscription_count,
-        sizeof(struct aws_mqtt_topic_subscription *));
+    /* add a transient reference to the adapter until this operation is passed into the event loop */
+    aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(&operation->base);
 
-    packet_id =
-        s_aws_mqtt_client_connection_5_subscribe_multiple(impl, &multi_subscription_ptr_list, on_suback, on_suback_ud);
+    /* add a transient reference to the operation until this operation is passed into the event loop */
+    aws_mqtt3_to_mqtt5_adapter_operation_acquire(&operation->base);
 
-done:
+    aws_task_init(
+        &operation->base.submission_task,
+        s_adapter_subscribe_submission_fn,
+        operation,
+        "Mqtt3ToMqtt5AdapterSubscribeResubscribe");
 
-    aws_array_list_clean_up(&full_subscriptions);
+    aws_event_loop_schedule_task_now(adapter->loop, &operation->base.submission_task);
 
-    return packet_id;
+    return synthetic_id;
+
+error:
+
+    aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
+
+    return 0;
 }
 
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_vtable = {
