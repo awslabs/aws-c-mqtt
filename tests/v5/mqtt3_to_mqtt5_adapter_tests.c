@@ -422,6 +422,10 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_closed_handler(
     struct aws_mqtt_client_connection *connection,
     struct on_connection_closed_data *data,
     void *userdata) {
+
+    (void)connection;
+    (void)data;
+
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
 
     /* record the event */
@@ -441,6 +445,9 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_interrupted_handler(
     struct aws_mqtt_client_connection *connection,
     int error_code,
     void *userdata) {
+
+    (void)connection;
+
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
 
     /* record the event */
@@ -462,6 +469,9 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_resumed_handler(
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *userdata) {
+
+    (void)connection;
+
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
 
     /* record the event */
@@ -483,6 +493,9 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_connection_failure_handler
     struct aws_mqtt_client_connection *connection,
     int error_code,
     void *userdata) {
+
+    (void)connection;
+
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
 
     /* record the event */
@@ -504,6 +517,9 @@ static void s_aws_mqtt3_to_mqtt5_adapter_test_fixture_connection_success_handler
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *userdata) {
+
+    (void)connection;
+
     struct aws_mqtt3_to_mqtt5_adapter_test_fixture *fixture = userdata;
 
     /* record the event */
