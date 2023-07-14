@@ -1192,7 +1192,7 @@ static int s_verify_bad_connectivity_callbacks(struct aws_mqtt3_to_mqtt5_adapter
         },
         {
             .type = AWS_MQTT3_LET_INTERRUPTED,
-            .error_code = AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+            .error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP,
         },
         {
             .type = AWS_MQTT3_LET_CONNECTION_SUCCESS,
@@ -1202,7 +1202,7 @@ static int s_verify_bad_connectivity_callbacks(struct aws_mqtt3_to_mqtt5_adapter
         },
         {
             .type = AWS_MQTT3_LET_INTERRUPTED,
-            .error_code = AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+            .error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP,
         },
         {
             .type = AWS_MQTT3_LET_CONNECTION_SUCCESS,
@@ -1212,7 +1212,7 @@ static int s_verify_bad_connectivity_callbacks(struct aws_mqtt3_to_mqtt5_adapter
         },
         {
             .type = AWS_MQTT3_LET_INTERRUPTED,
-            .error_code = AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+            .error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP,
         },
     };
     ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence_starts_with(
@@ -1413,11 +1413,11 @@ static int s_mqtt3to5_adapter_connect_failure_connect_success_via_mqtt5_fn(struc
     struct aws_mqtt3_lifecycle_event expected_events[] = {
         {
             .type = AWS_MQTT3_LET_CONNECTION_FAILURE,
-            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+            .error_code = AWS_ERROR_MQTT_PROTOCOL_ERROR,
         },
         {
             .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
-            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+            .error_code = AWS_ERROR_MQTT_PROTOCOL_ERROR,
         },
     };
     ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence(
@@ -1437,11 +1437,11 @@ static int s_mqtt3to5_adapter_connect_failure_connect_success_via_mqtt5_fn(struc
     struct aws_mqtt3_lifecycle_event expected_reconnect_events[] = {
         {
             .type = AWS_MQTT3_LET_CONNECTION_FAILURE,
-            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+            .error_code = AWS_ERROR_MQTT_PROTOCOL_ERROR,
         },
         {
             .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
-            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+            .error_code = AWS_ERROR_MQTT_PROTOCOL_ERROR,
         },
         {
             .type = AWS_MQTT3_LET_CONNECTION_SUCCESS,
@@ -1646,19 +1646,19 @@ static int s_mqtt3to5_adapter_connect_reconnect_failures_fn(struct aws_allocator
         },
         {
             .type = AWS_MQTT3_LET_INTERRUPTED,
-            .error_code = AWS_ERROR_MQTT5_DISCONNECT_RECEIVED,
+            .error_code = AWS_ERROR_MQTT_UNEXPECTED_HANGUP,
         },
         {
             .type = AWS_MQTT3_LET_CONNECTION_FAILURE,
-            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+            .error_code = AWS_ERROR_MQTT_PROTOCOL_ERROR,
         },
         {
             .type = AWS_MQTT3_LET_CONNECTION_FAILURE,
-            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+            .error_code = AWS_ERROR_MQTT_PROTOCOL_ERROR,
         },
         {
             .type = AWS_MQTT3_LET_CONNECTION_FAILURE,
-            .error_code = AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED,
+            .error_code = AWS_ERROR_MQTT_PROTOCOL_ERROR,
         },
     };
     ASSERT_SUCCESS(s_aws_mqtt3_to_mqtt5_adapter_test_fixture_verify_lifecycle_sequence_starts_with(
@@ -3222,35 +3222,38 @@ static int s_mqtt3to5_adapter_subscribe_multi_overlapping_publish_fn(struct aws_
     struct aws_byte_cursor topic2 = aws_byte_cursor_from_c_str("hello/+");
     struct aws_byte_cursor topic3 = aws_byte_cursor_from_c_str("derp");
 
-    aws_mqtt_client_connection_subscribe(
-        connection,
-        &topic1,
-        AWS_MQTT_QOS_AT_LEAST_ONCE,
-        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
-        &fixture,
-        NULL,
-        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+    ASSERT_TRUE(
+        0 != aws_mqtt_client_connection_subscribe(
+                 connection,
+                 &topic1,
+                 AWS_MQTT_QOS_AT_LEAST_ONCE,
+                 s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+                 &fixture,
+                 NULL,
+                 s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+                 &fixture));
 
-    aws_mqtt_client_connection_subscribe(
-        connection,
-        &topic2,
-        AWS_MQTT_QOS_AT_MOST_ONCE,
-        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
-        &fixture,
-        NULL,
-        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+    ASSERT_TRUE(
+        0 != aws_mqtt_client_connection_subscribe(
+                 connection,
+                 &topic2,
+                 AWS_MQTT_QOS_AT_MOST_ONCE,
+                 s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+                 &fixture,
+                 NULL,
+                 s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+                 &fixture));
 
-    aws_mqtt_client_connection_subscribe(
-        connection,
-        &topic3,
-        AWS_MQTT_QOS_AT_LEAST_ONCE,
-        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
-        &fixture,
-        NULL,
-        s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+    ASSERT_TRUE(
+        0 != aws_mqtt_client_connection_subscribe(
+                 connection,
+                 &topic3,
+                 AWS_MQTT_QOS_AT_LEAST_ONCE,
+                 s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_topic_specific_publish,
+                 &fixture,
+                 NULL,
+                 s_aws_mqtt3_to_mqtt5_adapter_test_fixture_record_subscribe_complete,
+                 &fixture));
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 3);
 

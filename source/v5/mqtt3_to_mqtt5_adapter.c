@@ -14,6 +14,46 @@
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
+/*
+ * A best-effort-but-not-100%-accurate translation from mqtt5 error codes to mqtt311 error codes.
+ */
+static int s_translate_mqtt5_error_code_to_mqtt311(int error_code) {
+    switch (error_code) {
+        case AWS_ERROR_MQTT5_ENCODE_FAILURE:
+        case AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR:
+            return AWS_ERROR_MQTT_PROTOCOL_ERROR;
+
+        case AWS_ERROR_MQTT5_CONNACK_CONNECTION_REFUSED:
+            return AWS_ERROR_MQTT_PROTOCOL_ERROR; /* a decidedly strange choice by the 311 implementation */
+
+        case AWS_ERROR_MQTT5_CONNACK_TIMEOUT:
+        case AWS_ERROR_MQTT5_PING_RESPONSE_TIMEOUT:
+            return AWS_ERROR_MQTT_TIMEOUT;
+
+        case AWS_ERROR_MQTT5_USER_REQUESTED_STOP:
+        case AWS_ERROR_MQTT5_CLIENT_TERMINATED:
+            return AWS_IO_SOCKET_CLOSED;
+
+        case AWS_ERROR_MQTT5_DISCONNECT_RECEIVED:
+            return AWS_ERROR_MQTT_UNEXPECTED_HANGUP;
+
+        case AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY:
+            return AWS_ERROR_MQTT_CANCELLED_FOR_CLEAN_SESSION;
+
+        case AWS_ERROR_MQTT5_ENCODE_SIZE_UNSUPPORTED_PACKET_TYPE:
+            return AWS_ERROR_MQTT_INVALID_PACKET_TYPE;
+
+        case AWS_ERROR_MQTT5_OPERATION_PROCESSING_FAILURE:
+            return AWS_ERROR_MQTT_PROTOCOL_ERROR;
+
+        case AWS_ERROR_MQTT5_INVALID_UTF8_STRING:
+            return AWS_ERROR_MQTT_INVALID_TOPIC;
+
+        default:
+            return error_code;
+    }
+}
+
 struct aws_mqtt_adapter_final_destroy_task {
     struct aws_task task;
     struct aws_allocator *allocator;
@@ -389,15 +429,21 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
              */
             if (event->error_code != AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT) {
                 if (adapter->adapter_state != AWS_MQTT_AS_STAY_DISCONNECTED) {
+                    int mqtt311_error_code = s_translate_mqtt5_error_code_to_mqtt311(event->error_code);
+
                     if (adapter->on_connection_failure != NULL) {
                         (*adapter->on_connection_failure)(
-                            &adapter->base, event->error_code, adapter->on_connection_failure_user_data);
+                            &adapter->base, mqtt311_error_code, adapter->on_connection_failure_user_data);
                     }
 
                     if (adapter->adapter_state == AWS_MQTT_AS_FIRST_CONNECT) {
                         if (adapter->on_connection_complete != NULL) {
                             (*adapter->on_connection_complete)(
-                                &adapter->base, event->error_code, 0, false, adapter->on_connection_complete_user_data);
+                                &adapter->base,
+                                mqtt311_error_code,
+                                0,
+                                false,
+                                adapter->on_connection_complete_user_data);
 
                             adapter->on_connection_complete = NULL;
                             adapter->on_connection_complete_user_data = NULL;
@@ -418,7 +464,10 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
             if (adapter->on_interrupted != NULL && adapter->adapter_state == AWS_MQTT_AS_STAY_CONNECTED &&
                 event->error_code != AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT) {
 
-                (*adapter->on_interrupted)(&adapter->base, event->error_code, adapter->on_interrupted_user_data);
+                (*adapter->on_interrupted)(
+                    &adapter->base,
+                    s_translate_mqtt5_error_code_to_mqtt311(event->error_code),
+                    adapter->on_interrupted_user_data);
             }
             break;
 
@@ -1136,7 +1185,9 @@ static void s_aws_mqtt5_adapter_websocket_handshake_completion_fn(
     struct aws_mqtt_client_connection_5_impl *adapter = complete_ctx;
 
     (*adapter->mqtt5_websocket_handshake_completion_function)(
-        request, error_code, adapter->mqtt5_websocket_handshake_completion_user_data);
+        request,
+        s_translate_mqtt5_error_code_to_mqtt311(error_code),
+        adapter->mqtt5_websocket_handshake_completion_user_data);
 
     aws_ref_count_release(&adapter->internal_refs);
 }
@@ -1413,6 +1464,16 @@ static int s_aws_mqtt_client_connection_5_set_will(
     const struct aws_byte_cursor *payload) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    /* check qos */
+    if (qos < 0 || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+    }
+
+    /* check topic */
+    if (!aws_mqtt_is_valid_topic(topic)) {
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+    }
 
     struct aws_mqtt_set_will_task *task =
         s_aws_mqtt_set_will_task_new(adapter->allocator, adapter, topic, qos, retain, payload);
@@ -1752,6 +1813,11 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata) {
 
+    /* check qos */
+    if (qos < 0 || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+    }
+
     if (!aws_mqtt_is_valid_topic(topic)) {
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
         return 0;
@@ -1944,6 +2010,26 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
         &subscribe_op->base.adapter->operational_state, subscribe_op->base.id);
 }
 
+static int s_validate_adapter_subscribe_options(
+    size_t subscription_count,
+    struct aws_mqtt_topic_subscription *subscriptions) {
+    for (size_t i = 0; i < subscription_count; ++i) {
+        struct aws_mqtt_topic_subscription *subscription = subscriptions + i;
+
+        /* check qos */
+        if (subscription->qos < 0 || subscription->qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+            return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+        }
+
+        /* check topic */
+        if (!aws_mqtt_is_valid_topic_filter(&subscription->topic)) {
+            return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_aws_mqtt3_to_mqtt5_adapter_build_subscribe(
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *subscribe_op,
     size_t subscription_count,
@@ -2007,6 +2093,10 @@ static int s_aws_mqtt3_to_mqtt5_adapter_build_subscribe(
 struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(
     struct aws_allocator *allocator,
     const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options) {
+
+    if (s_validate_adapter_subscribe_options(options->subscription_count, options->subscriptions)) {
+        return NULL;
+    }
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *subscribe_op =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe));
