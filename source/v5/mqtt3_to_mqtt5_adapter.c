@@ -338,31 +338,38 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
     switch (event->event_type) {
 
         case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
-            if (adapter->adapter_state == AWS_MQTT_AS_FIRST_CONNECT) {
-                /*
-                 * If the 311 view is that this is an initial connection attempt, then invoke the completion callback
-                 * and move to the stay-connected state.
-                 */
-                if (adapter->on_connection_complete != NULL) {
-                    (*adapter->on_connection_complete)(
-                        &adapter->base,
-                        event->error_code,
-                        0,
-                        event->settings->rejoined_session,
-                        adapter->on_connection_complete_user_data);
-
-                    adapter->on_connection_complete = NULL;
-                    adapter->on_connection_complete_user_data = NULL;
+            if (adapter->adapter_state != AWS_MQTT_AS_STAY_DISCONNECTED) {
+                if (adapter->on_connection_success != NULL) {
+                    (*adapter->on_connection_success)(
+                        &adapter->base, 0, event->settings->rejoined_session, adapter->on_connection_success_user_data);
                 }
-                adapter->adapter_state = AWS_MQTT_AS_STAY_CONNECTED;
-            } else if (adapter->adapter_state == AWS_MQTT_AS_STAY_CONNECTED) {
-                /*
-                 * If the 311 view is that we're in the stay-connected state (ie we've successfully done or simulated
-                 * an initial connection), then invoke the connection resumption callback.
-                 */
-                if (adapter->on_resumed != NULL) {
-                    (*adapter->on_resumed)(
-                        &adapter->base, 0, event->settings->rejoined_session, adapter->on_resumed_user_data);
+
+                if (adapter->adapter_state == AWS_MQTT_AS_FIRST_CONNECT) {
+                    /*
+                     * If the 311 view is that this is an initial connection attempt, then invoke the completion
+                     * callback and move to the stay-connected state.
+                     */
+                    if (adapter->on_connection_complete != NULL) {
+                        (*adapter->on_connection_complete)(
+                            &adapter->base,
+                            event->error_code,
+                            0,
+                            event->settings->rejoined_session,
+                            adapter->on_connection_complete_user_data);
+
+                        adapter->on_connection_complete = NULL;
+                        adapter->on_connection_complete_user_data = NULL;
+                    }
+                    adapter->adapter_state = AWS_MQTT_AS_STAY_CONNECTED;
+                } else if (adapter->adapter_state == AWS_MQTT_AS_STAY_CONNECTED) {
+                    /*
+                     * If the 311 view is that we're in the stay-connected state (ie we've successfully done or
+                     * simulated an initial connection), then invoke the connection resumption callback.
+                     */
+                    if (adapter->on_resumed != NULL) {
+                        (*adapter->on_resumed)(
+                            &adapter->base, 0, event->settings->rejoined_session, adapter->on_resumed_user_data);
+                    }
                 }
             }
             break;
@@ -380,19 +387,27 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
              * put the adapter into the "disconnected" state, simulating the way the 311 client stops after an
              * initial connection failure.
              */
-            if (event->error_code != AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT &&
-                adapter->adapter_state == AWS_MQTT_AS_FIRST_CONNECT) {
+            if (event->error_code != AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT) {
+                if (adapter->adapter_state != AWS_MQTT_AS_STAY_DISCONNECTED) {
+                    if (adapter->on_connection_failure != NULL) {
+                        (*adapter->on_connection_failure)(
+                            &adapter->base, event->error_code, adapter->on_connection_failure_user_data);
+                    }
 
-                if (adapter->on_connection_complete != NULL) {
-                    (*adapter->on_connection_complete)(
-                        &adapter->base, event->error_code, 0, false, adapter->on_connection_complete_user_data);
+                    if (adapter->adapter_state == AWS_MQTT_AS_FIRST_CONNECT) {
+                        if (adapter->on_connection_complete != NULL) {
+                            (*adapter->on_connection_complete)(
+                                &adapter->base, event->error_code, 0, false, adapter->on_connection_complete_user_data);
 
-                    adapter->on_connection_complete = NULL;
-                    adapter->on_connection_complete_user_data = NULL;
+                            adapter->on_connection_complete = NULL;
+                            adapter->on_connection_complete_user_data = NULL;
+                        }
+
+                        adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
+                    }
                 }
-
-                adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
             }
+
             break;
 
         case AWS_MQTT5_CLET_DISCONNECTION:
@@ -737,6 +752,89 @@ static int s_aws_mqtt_client_connection_5_set_interruption_handlers(
         adapter->allocator, adapter, on_interrupted, on_interrupted_user_data, on_resumed, on_resumed_user_data);
     if (task == NULL) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set interruption handlers task", (void *)adapter);
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
+struct aws_mqtt_set_connection_result_handlers_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection_5_impl *adapter;
+
+    aws_mqtt_client_on_connection_success_fn *on_connection_success;
+    void *on_connection_success_user_data;
+
+    aws_mqtt_client_on_connection_failure_fn *on_connection_failure;
+    void *on_connection_failure_user_data;
+};
+
+static void s_set_connection_result_handlers_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_set_connection_result_handlers_task *set_task = arg;
+    struct aws_mqtt_client_connection_5_impl *adapter = set_task->adapter;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    adapter->on_connection_success = set_task->on_connection_success;
+    adapter->on_connection_success_user_data = set_task->on_connection_success_user_data;
+    adapter->on_connection_failure = set_task->on_connection_failure;
+    adapter->on_connection_failure_user_data = set_task->on_connection_failure_user_data;
+
+done:
+
+    aws_ref_count_release(&adapter->internal_refs);
+
+    aws_mem_release(set_task->allocator, set_task);
+}
+
+static struct aws_mqtt_set_connection_result_handlers_task *s_aws_mqtt_set_connection_result_handlers_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    aws_mqtt_client_on_connection_success_fn *on_connection_success,
+    void *on_connection_success_user_data,
+    aws_mqtt_client_on_connection_failure_fn *on_connection_failure,
+    void *on_connection_failure_user_data) {
+
+    struct aws_mqtt_set_connection_result_handlers_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_connection_result_handlers_task));
+
+    aws_task_init(
+        &set_task->task, s_set_connection_result_handlers_task_fn, (void *)set_task, "SetConnectionResultHandlersTask");
+    set_task->allocator = adapter->allocator;
+    set_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
+    set_task->on_connection_success = on_connection_success;
+    set_task->on_connection_success_user_data = on_connection_success_user_data;
+    set_task->on_connection_failure = on_connection_failure;
+    set_task->on_connection_failure_user_data = on_connection_failure_user_data;
+
+    return set_task;
+}
+
+static int s_aws_mqtt_client_connection_5_set_connection_result_handlers(
+    void *impl,
+    aws_mqtt_client_on_connection_success_fn *on_connection_success,
+    void *on_connection_success_user_data,
+    aws_mqtt_client_on_connection_failure_fn *on_connection_failure,
+    void *on_connection_failure_user_data) {
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_mqtt_set_connection_result_handlers_task *task = s_aws_mqtt_set_connection_result_handlers_task_new(
+        adapter->allocator,
+        adapter,
+        on_connection_success,
+        on_connection_success_user_data,
+        on_connection_failure,
+        on_connection_failure_user_data);
+    if (task == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: failed to create set connection result handlers task", (void *)adapter);
         return AWS_OP_ERR;
     }
 
@@ -2410,7 +2508,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_http_proxy_options_fn = s_aws_mqtt_client_connection_5_set_http_proxy_options,
     .set_host_resolution_options_fn = s_aws_mqtt_client_connection_5_set_host_resolution_options,
     .set_reconnect_timeout_fn = s_aws_mqtt_client_connection_5_set_reconnect_timeout,
-    .set_connection_result_handlers = NULL, // TODO: Need update with introduction of mqtt5 lifeCycleEventCallback
+    .set_connection_result_handlers = s_aws_mqtt_client_connection_5_set_connection_result_handlers,
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_5_set_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_5_set_on_closed_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_5_set_on_any_publish_handler,

@@ -1520,7 +1520,7 @@ int aws_mqtt5_mock_server_handle_connect_succeed_on_nth(
     struct aws_mqtt5_packet_connack_view connack_view;
     AWS_ZERO_STRUCT(connack_view);
 
-    if (context->connection_attempts == context->required_connection_failure_count) {
+    if (context->connection_attempts == context->required_connection_count_threshold) {
         connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
         aws_high_res_clock_get_ticks(&context->connect_timestamp);
     } else {
@@ -1616,7 +1616,7 @@ static int s_mqtt5_client_reconnect_backoff_insufficient_reset_fn(struct aws_all
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     struct aws_mqtt5_mock_server_reconnect_state mock_server_state = {
-        .required_connection_failure_count = 6,
+        .required_connection_count_threshold = 6,
         /* quick disconnect should not reset reconnect delay */
         .successful_connection_disconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY / 5,
     };
@@ -1736,7 +1736,7 @@ static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_alloc
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     struct aws_mqtt5_mock_server_reconnect_state mock_server_state = {
-        .required_connection_failure_count = 6,
+        .required_connection_count_threshold = 6,
         /* slow disconnect should reset reconnect delay */
         .successful_connection_disconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY * 2,
     };

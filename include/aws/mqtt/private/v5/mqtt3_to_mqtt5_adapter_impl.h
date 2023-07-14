@@ -293,6 +293,12 @@ struct aws_mqtt_client_connection_5_impl {
     aws_mqtt_client_on_connection_closed_fn *on_closed;
     void *on_closed_user_data;
 
+    aws_mqtt_client_on_connection_success_fn *on_connection_success;
+    void *on_connection_success_user_data;
+
+    aws_mqtt_client_on_connection_failure_fn *on_connection_failure;
+    void *on_connection_failure_user_data;
+
     aws_mqtt_client_publish_received_fn *on_any_publish;
     void *on_any_publish_user_data;
 

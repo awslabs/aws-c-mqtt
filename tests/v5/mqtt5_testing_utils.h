@@ -129,7 +129,7 @@ struct mqtt5_client_test_options {
 };
 
 struct aws_mqtt5_mock_server_reconnect_state {
-    size_t required_connection_failure_count;
+    size_t required_connection_count_threshold;
 
     size_t connection_attempts;
     uint64_t connect_timestamp;
