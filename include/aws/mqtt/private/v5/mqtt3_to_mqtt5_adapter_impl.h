@@ -346,12 +346,6 @@ AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_base *aws_mqtt3_to_mqtt
 AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_base *aws_mqtt3_to_mqtt5_adapter_operation_acquire(
     struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
 
-AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_reference_adapter(
-    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
-
-AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_dereference_adapter(
-    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
-
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT3_TO_MQTT5_ADAPTER_IMPL_H */
