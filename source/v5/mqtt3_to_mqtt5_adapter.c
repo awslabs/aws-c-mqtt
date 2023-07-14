@@ -1506,6 +1506,12 @@ static void s_aws_mqtt_client_connection_5_release(void *impl) {
     aws_ref_count_release(&adapter->external_refs);
 }
 
+/*
+ * When submitting an operation (across threads), we not only need to keep the adapter alive, we also need to keep
+ * the operation alive since it's technically already being tracked within the adapter's operational state.
+ *
+ * Note: we may not truly need the operation ref but it's safer to keep it.
+ */
 static void s_aws_mqtt3_to_mqtt5_adapter_operation_acquire_cross_thread_refs(
     struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
     if (!operation->holding_adapter_ref) {
@@ -1516,6 +1522,10 @@ static void s_aws_mqtt3_to_mqtt5_adapter_operation_acquire_cross_thread_refs(
     aws_mqtt3_to_mqtt5_adapter_operation_acquire(operation);
 }
 
+/*
+ * Once an operation has been received on the adapter's event loop, whether reject or accepted, we must release the
+ * transient references to the operation and adapter
+ */
 static void s_aws_mqtt3_to_mqtt5_adapter_operation_release_cross_thread_refs(
     struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation) {
     if (operation->holding_adapter_ref) {
@@ -1630,6 +1640,10 @@ void s_adapter_publish_submission_fn(struct aws_task *task, void *arg, enum aws_
     aws_mqtt5_client_submit_operation_internal(
         adapter->client, &operation->publish_op->base, status != AWS_TASK_STATUS_RUN_READY);
 
+    /*
+     * The operation has been submitted in-thread.  We can release the transient refs (operation, adapter) needed to
+     * keep things alive during the handover
+     */
     s_aws_mqtt3_to_mqtt5_adapter_operation_release_cross_thread_refs(&operation->base);
 }
 
@@ -1678,6 +1692,10 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
 
     uint16_t synthetic_id = operation->base.id;
 
+    /*
+     * While in-transit to the adapter event loop, we take refs to both the operation and the adapter so that we
+     * are guaranteed they are still alive when the cross-thread submission task is run.
+     */
     s_aws_mqtt3_to_mqtt5_adapter_operation_acquire_cross_thread_refs(&operation->base);
 
     aws_task_init(
@@ -1927,6 +1945,10 @@ void s_adapter_subscribe_submission_fn(struct aws_task *task, void *arg, enum aw
     aws_mqtt5_client_submit_operation_internal(
         adapter->client, &operation->subscribe_op->base, status != AWS_TASK_STATUS_RUN_READY);
 
+    /*
+     * The operation has been submitted in-thread.  We can release the transient refs (operation, adapter) needed to
+     * keep things alive during the handover
+     */
     s_aws_mqtt3_to_mqtt5_adapter_operation_release_cross_thread_refs(&operation->base);
 }
 
@@ -1970,6 +1992,10 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
 
     uint16_t synthetic_id = operation->base.id;
 
+    /*
+     * While in-transit to the adapter event loop, we take refs to both the operation and the adapter so that we
+     * are guaranteed they are still alive when the cross-thread submission task is run.
+     */
     s_aws_mqtt3_to_mqtt5_adapter_operation_acquire_cross_thread_refs(&operation->base);
 
     aws_task_init(
@@ -2019,6 +2045,10 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
 
     uint16_t synthetic_id = operation->base.id;
 
+    /*
+     * While in-transit to the adapter event loop, we take refs to both the operation and the adapter so that we
+     * are guaranteed they are still alive when the cross-thread submission task is run.
+     */
     s_aws_mqtt3_to_mqtt5_adapter_operation_acquire_cross_thread_refs(&operation->base);
 
     aws_task_init(
@@ -2145,6 +2175,10 @@ void s_adapter_unsubscribe_submission_fn(struct aws_task *task, void *arg, enum 
     aws_mqtt5_client_submit_operation_internal(
         adapter->client, &operation->unsubscribe_op->base, status != AWS_TASK_STATUS_RUN_READY);
 
+    /*
+     * The operation has been submitted in-thread.  We can release the transient refs (operation, adapter) needed to
+     * keep things alive during the handover
+     */
     s_aws_mqtt3_to_mqtt5_adapter_operation_release_cross_thread_refs(&operation->base);
 }
 
@@ -2180,6 +2214,10 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
 
     uint16_t synthetic_id = operation->base.id;
 
+    /*
+     * While in-transit to the adapter event loop, we take refs to both the operation and the adapter so that we
+     * are guaranteed they are still alive when the cross-thread submission task is run.
+     */
     s_aws_mqtt3_to_mqtt5_adapter_operation_acquire_cross_thread_refs(&operation->base);
 
     aws_task_init(
