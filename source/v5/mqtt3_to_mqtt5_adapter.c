@@ -67,6 +67,8 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
     struct aws_mqtt_adapter_final_destroy_task *destroy_task = arg;
     struct aws_mqtt_client_connection_5_impl *adapter = destroy_task->connection->impl;
 
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Final destruction of mqtt3-to-5 adapter", (void *)adapter);
+
     if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
         /*
          * If the mqtt5 client is pointing to us for websocket transform, then erase that.  The callback
@@ -151,6 +153,8 @@ static int s_aws_mqtt5_adapter_perform_safe_callback(
     bool use_write_lock,
     adapter_callback_fn callback_fn,
     void *callback_user_data) {
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5 adapter performing safe user callback", (void *)adapter);
 
     /* Step (1) - conditionally lock and manipulate the in_synchronous_callback flag */
     bool should_unlock = true;
@@ -311,13 +315,18 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     return connect_task;
 }
 
-static int s_validate_adapter_connection_options(const struct aws_mqtt_connection_options *connection_options) {
+static int s_validate_adapter_connection_options(
+    const struct aws_mqtt_connection_options *connection_options,
+    struct aws_mqtt_client_connection_5_impl *adapter) {
     if (connection_options == NULL) {
         return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
     }
 
     if (connection_options->host_name.len == 0) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "host name not set in MQTT client configuration");
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: mqtt3-to-5-adapter - host name not set in MQTT client configuration",
+            (void *)adapter);
         return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
     }
 
@@ -325,7 +334,10 @@ static int s_validate_adapter_connection_options(const struct aws_mqtt_connectio
     if (connection_options->socket_options != NULL) {
         if (connection_options->socket_options->type == AWS_SOCKET_DGRAM ||
             connection_options->socket_options->connect_timeout_ms == 0) {
-            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid socket options in MQTT client configuration");
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: mqtt3-to-5-adapter - invalid socket options in MQTT client configuration",
+                (void *)adapter);
             return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
         }
     }
@@ -333,7 +345,10 @@ static int s_validate_adapter_connection_options(const struct aws_mqtt_connectio
     /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
     if (!aws_mqtt5_client_keep_alive_options_are_valid(
             connection_options->keep_alive_time_secs, connection_options->ping_timeout_ms)) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: mqtt3-to-5-adapter - keep alive interval is too small relative to ping timeout interval",
+            (void *)adapter);
         return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
     }
 
@@ -347,14 +362,15 @@ static int s_aws_mqtt_client_connection_5_connect(
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
-    if (s_validate_adapter_connection_options(connection_options)) {
+    if (s_validate_adapter_connection_options(connection_options, adapter)) {
         return AWS_OP_ERR;
     }
 
     struct aws_mqtt_adapter_connect_task *task =
         s_aws_mqtt_adapter_connect_task_new(adapter->allocator, adapter, connection_options);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create adapter connect task", (void *)adapter);
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter - failed to create adapter connect task", (void *)adapter);
         return AWS_OP_ERR;
     }
 
@@ -378,6 +394,12 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
     switch (event->event_type) {
 
         case AWS_MQTT5_CLET_CONNECTION_SUCCESS:
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: mqtt3-to-5-adapter - received on connection success event from mqtt5 client, adapter in state "
+                "(%d)",
+                (void *)adapter,
+                (int)adapter->adapter_state);
             if (adapter->adapter_state != AWS_MQTT_AS_STAY_DISCONNECTED) {
                 if (adapter->on_connection_success != NULL) {
                     (*adapter->on_connection_success)(
@@ -415,6 +437,13 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
             break;
 
         case AWS_MQTT5_CLET_CONNECTION_FAILURE:
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: mqtt3-to-5-adapter - received on connection failure event from mqtt5 client, adapter in state "
+                "(%d)",
+                (void *)adapter,
+                (int)adapter->adapter_state);
+
             /*
              * The MQTT311 interface only cares about connection failures when it's the initial connection attempt
              * after a call to connect().  Since an adapter connect() can sever an existing connection (with an
@@ -457,6 +486,13 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
             break;
 
         case AWS_MQTT5_CLET_DISCONNECTION:
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: mqtt3-to-5-adapter - received on disconnection event from mqtt5 client, adapter in state (%d), "
+                "error code (%d)",
+                (void *)adapter,
+                (int)adapter->adapter_state,
+                event->error_code);
             /*
              * If the 311 view is that we're in the stay-connected state (ie we've successfully done or simulated
              * an initial connection), then invoke the connection interrupted callback.
@@ -472,6 +508,12 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_lifecycle_handler(
             break;
 
         case AWS_MQTT5_CLET_STOPPED:
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: mqtt3-to-5-adapter - received on stopped event from mqtt5 client, adapter in state (%d)",
+                (void *)adapter,
+                (int)adapter->adapter_state);
+
             /* If an MQTT311-view user is waiting on a disconnect callback, invoke it */
             if (adapter->on_disconnect) {
                 (*adapter->on_disconnect)(&adapter->base, adapter->on_disconnect_user_data);
@@ -519,6 +561,12 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_disconnect_handler(
         return AWS_OP_SUCCESS;
     }
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: mqtt3-to-5-adapter - performing disconnect safe callback, adapter in state (%d)",
+        (void *)adapter,
+        (int)adapter->adapter_state);
+
     /*
      * If we're already disconnected (from the 311 perspective only), then invoke the callback and return
      */
@@ -551,6 +599,11 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_disconnect_handler(
 
     bool invoke_callbacks = true;
     if (adapter->client->desired_state != AWS_MCS_STOPPED) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: mqtt3-to-5-adapter - disconnect forwarding stop request to mqtt5 client",
+            (void *)adapter);
+
         aws_mqtt5_client_change_desired_state(adapter->client, AWS_MCS_STOPPED, NULL);
 
         adapter->on_disconnect = disconnect_task->on_disconnect;
@@ -647,6 +700,12 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_connect_handler(
         return AWS_OP_SUCCESS;
     }
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: mqtt3-to-5-adapter - performing connect safe callback, adapter in state (%d)",
+        (void *)adapter,
+        (int)adapter->adapter_state);
+
     if (adapter->adapter_state != AWS_MQTT_AS_STAY_DISCONNECTED) {
         if (connect_task->on_connection_complete) {
             (*connect_task->on_connection_complete)(
@@ -667,6 +726,11 @@ static int s_aws_mqtt3_to_mqtt5_adapter_safe_connect_handler(
     }
 
     adapter->adapter_state = AWS_MQTT_AS_FIRST_CONNECT;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: mqtt3-to-5-adapter - resetting mqtt5 client connection and requesting start",
+        (void *)adapter);
 
     /* Update mqtt5 config */
     s_aws_mqtt3_to_mqtt5_adapter_update_config_on_connect(adapter, connect_task);
@@ -1467,11 +1531,13 @@ static int s_aws_mqtt_client_connection_5_set_will(
 
     /* check qos */
     if (qos < 0 || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, invalid qos for will", (void *)adapter);
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
     }
 
     /* check topic */
     if (!aws_mqtt_is_valid_topic(topic)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, invalid topic for will", (void *)adapter);
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
     }
 
@@ -1541,6 +1607,8 @@ static void s_set_login_task_fn(struct aws_task *task, void *arg, enum aws_task_
     }
 
     if (aws_mqtt5_packet_connect_view_validate(&new_connect_view)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter - invalid CONNECT username or password", (void *)adapter);
         goto done;
     }
 
@@ -1813,18 +1881,21 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
     aws_mqtt_op_complete_fn *on_complete,
     void *userdata) {
 
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, invoking publish API", (void *)adapter);
+
     /* check qos */
     if (qos < 0 || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, invalid qos for publish", (void *)adapter);
         aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
         return 0;
     }
 
     if (!aws_mqtt_is_valid_topic(topic)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, invalid topic for publish", (void *)adapter);
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
         return 0;
     }
-
-    struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     struct aws_byte_cursor topic_cursor = *topic;
     struct aws_byte_cursor payload_cursor;
@@ -1938,6 +2009,9 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
     struct aws_mqtt_client_connection_5_impl *adapter = subscribe_op->base.adapter;
 
     if (subscribe_op->on_suback != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, completing single-topic subscribe", (void *)adapter);
+
         struct aws_byte_cursor topic_filter;
         AWS_ZERO_STRUCT(topic_filter);
         enum aws_mqtt_qos granted_qos = AWS_MQTT_QOS_AT_MOST_ONCE;
@@ -1964,6 +2038,9 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
     }
 
     if (subscribe_op->on_multi_suback != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, completing multi-topic subscribe", (void *)adapter);
+
         AWS_VARIABLE_LENGTH_ARRAY(
             struct aws_mqtt_topic_subscription, multi_sub_subscription_buf, suback->reason_code_count);
         AWS_VARIABLE_LENGTH_ARRAY(
@@ -2013,17 +2090,21 @@ static void s_aws_mqtt3_to_mqtt5_adapter_subscribe_completion_fn(
 
 static int s_validate_adapter_subscribe_options(
     size_t subscription_count,
-    struct aws_mqtt_topic_subscription *subscriptions) {
+    struct aws_mqtt_topic_subscription *subscriptions,
+    struct aws_mqtt_client_connection_5_impl *adapter) {
     for (size_t i = 0; i < subscription_count; ++i) {
         struct aws_mqtt_topic_subscription *subscription = subscriptions + i;
 
         /* check qos */
         if (subscription->qos < 0 || subscription->qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, invalid qos for subscribe", (void *)adapter);
             return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
         }
 
         /* check topic */
         if (!aws_mqtt_is_valid_topic_filter(&subscription->topic)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, invalid topic filter for subscribe", (void *)adapter);
             return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
         }
     }
@@ -2043,6 +2124,7 @@ static int s_aws_mqtt3_to_mqtt5_adapter_build_subscribe(
         allocator,
         subscription_count,
         sizeof(struct aws_mqtt_subscription_set_subscription_record *));
+
     for (size_t i = 0; i < subscription_count; ++i) {
         struct aws_mqtt_topic_subscription *subscription_options = &subscriptions[i];
 
@@ -2093,9 +2175,10 @@ static int s_aws_mqtt3_to_mqtt5_adapter_build_subscribe(
 
 struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(
     struct aws_allocator *allocator,
-    const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options) {
+    const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options,
+    struct aws_mqtt_client_connection_5_impl *adapter) {
 
-    if (s_validate_adapter_subscribe_options(options->subscription_count, options->subscriptions)) {
+    if (s_validate_adapter_subscribe_options(options->subscription_count, options->subscriptions, adapter)) {
         return NULL;
     }
 
@@ -2223,6 +2306,8 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
     void *on_suback_user_data) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, single-topic subscribe API invoked", (void *)adapter);
 
     struct aws_mqtt_topic_subscription subscription = {
         .topic = *topic_filter,
@@ -2241,7 +2326,7 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
     };
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation =
-        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options);
+        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options, adapter);
     if (operation == NULL) {
         return 0;
     }
@@ -2270,6 +2355,9 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
 
 error:
 
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, single-topic subscribe failed synchronously", (void *)adapter);
+
     aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
 
     return 0;
@@ -2281,12 +2369,15 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
     aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_user_data) {
 
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, multi-topic subscribe API invoked", (void *)adapter);
+
     if (topic_filters == NULL || aws_array_list_length(topic_filters) == 0) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter multi-topic subscribe empty", (void *)adapter);
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return 0;
     }
-
-    struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     struct aws_mqtt_topic_subscription *subscriptions = topic_filters->data;
 
@@ -2299,8 +2390,12 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
     };
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation =
-        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options);
+        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options, adapter);
     if (operation == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: mqtt3-to-5-adapter, multi-topic subscribe operation creation failed",
+            (void *)adapter);
         return 0;
     }
 
@@ -2327,6 +2422,8 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
     return synthetic_id;
 
 error:
+
+    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, multi-topic subscribe failed", (void *)adapter);
 
     aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
 
@@ -2451,12 +2548,16 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_user_data) {
 
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, unsubscribe called", (void *)adapter);
+
     if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, unsubscribe failed, invalid topic filter", (void *)adapter);
         aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
         return 0;
     }
-
-    struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options unsubscribe_options = {
         .adapter = adapter,
@@ -2468,6 +2569,8 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
     struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *operation =
         aws_mqtt3_to_mqtt5_adapter_operation_new_unsubscribe(adapter->allocator, &unsubscribe_options);
     if (operation == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, unsubscribe operation creation failed", (void *)adapter);
         return 0;
     }
 
@@ -2494,6 +2597,8 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
     return synthetic_id;
 
 error:
+
+    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, unsubscribe failed", (void *)adapter);
 
     aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
 
@@ -2525,6 +2630,8 @@ static int s_aws_mqtt_client_connection_5_get_stats(
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, get_stats invoked", (void *)adapter);
+
     if (!stats) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
@@ -2552,6 +2659,9 @@ static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics invoked", (void *)adapter);
+
     struct aws_mqtt3_to_mqtt5_adapter_subscribe_options subscribe_options = {
         .adapter = adapter,
         .subscriptions = NULL,
@@ -2561,8 +2671,12 @@ static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
     };
 
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation =
-        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options);
+        aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options, adapter);
     if (operation == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics failed on operation creation",
+            (void *)adapter);
         return 0;
     }
 
@@ -2589,6 +2703,9 @@ static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
     return synthetic_id;
 
 error:
+
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics failed", (void *)adapter);
 
     aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
 

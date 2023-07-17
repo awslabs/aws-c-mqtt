@@ -339,7 +339,8 @@ AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_publish *aws_mqtt3_to_m
 
 AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(
     struct aws_allocator *allocator,
-    const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options);
+    const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options,
+    struct aws_mqtt_client_connection_5_impl *adapter);
 
 AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *
     aws_mqtt3_to_mqtt5_adapter_operation_new_unsubscribe(
