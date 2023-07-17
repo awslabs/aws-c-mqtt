@@ -112,7 +112,13 @@ static void s_aws_mqtt_adapter_final_destroy(struct aws_mqtt_client_connection_5
     struct aws_mqtt_adapter_final_destroy_task *task =
         s_aws_mqtt_adapter_final_destroy_task_new(adapter->allocator, adapter);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create adapter final destroy task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create adapter final destroy task, last_error: %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return;
     }
 
@@ -237,7 +243,13 @@ static int s_aws_mqtt_client_connection_5_disconnect(
     struct aws_mqtt_adapter_disconnect_task *task =
         s_aws_mqtt_adapter_disconnect_task_new(adapter->allocator, adapter, on_disconnect, on_disconnect_user_data);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create adapter disconnect task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create adapter disconnect task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -369,8 +381,13 @@ static int s_aws_mqtt_client_connection_5_connect(
     struct aws_mqtt_adapter_connect_task *task =
         s_aws_mqtt_adapter_connect_task_new(adapter->allocator, adapter, connection_options);
     if (task == NULL) {
+        int error_code = aws_last_error();
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter - failed to create adapter connect task", (void *)adapter);
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: mqtt3-to-5-adapter - failed to create adapter connect task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -864,7 +881,13 @@ static int s_aws_mqtt_client_connection_5_set_interruption_handlers(
     struct aws_mqtt_set_interruption_handlers_task *task = s_aws_mqtt_set_interruption_handlers_task_new(
         adapter->allocator, adapter, on_interrupted, on_interrupted_user_data, on_resumed, on_resumed_user_data);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set interruption handlers task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set interruption handlers task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -946,8 +969,13 @@ static int s_aws_mqtt_client_connection_5_set_connection_result_handlers(
         on_connection_failure,
         on_connection_failure_user_data);
     if (task == NULL) {
+        int error_code = aws_last_error();
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT, "id=%p: failed to create set connection result handlers task", (void *)adapter);
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set connection result handlers task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -1011,7 +1039,13 @@ static int s_aws_mqtt_client_connection_5_set_on_closed_handler(
     struct aws_mqtt_set_on_closed_handler_task *task =
         s_aws_mqtt_set_on_closed_handler_task_new(adapter->allocator, adapter, on_closed, on_closed_user_data);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set on closed handler task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set on closed handler task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -1076,7 +1110,13 @@ static int s_aws_mqtt_client_connection_5_set_on_any_publish_handler(
     struct aws_mqtt_set_on_any_publish_handler_task *task = s_aws_mqtt_set_on_any_publish_handler_task_new(
         adapter->allocator, adapter, on_any_publish, on_any_publish_user_data);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set on any publish task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set on any publish task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -1142,7 +1182,13 @@ static int s_aws_mqtt_client_connection_5_set_reconnect_timeout(
     struct aws_mqtt_set_reconnect_timeout_task *task =
         s_aws_mqtt_set_reconnect_timeout_task_new(adapter->allocator, adapter, min_timeout, max_timeout);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set reconnect timeout task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set reconnect timeout task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -1223,7 +1269,13 @@ static int s_aws_mqtt_client_connection_5_set_http_proxy_options(
     struct aws_mqtt_set_http_proxy_options_task *task =
         s_aws_mqtt_set_http_proxy_options_task_new(adapter->allocator, adapter, proxy_options);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set http proxy options task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set http proxy options task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -1360,7 +1412,13 @@ static int s_aws_mqtt_client_connection_5_use_websockets(
     struct aws_mqtt_set_use_websockets_task *task =
         s_aws_mqtt_set_use_websockets_task_new(adapter->allocator, adapter, transformer, transformer_user_data);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set use websockets task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set use websockets task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -1421,7 +1479,13 @@ static int s_aws_mqtt_client_connection_5_set_host_resolution_options(
     struct aws_mqtt_set_host_resolution_task *task =
         s_aws_mqtt_set_host_resolution_task_new(adapter->allocator, adapter, host_resolution_config);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set reconnect timeout task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set reconnect timeout task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -1660,7 +1724,13 @@ static int s_aws_mqtt_client_connection_5_set_login(
     struct aws_mqtt_set_login_task *task =
         s_aws_mqtt_set_login_task_new(adapter->allocator, adapter, username, password);
     if (task == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: failed to create set login task", (void *)adapter);
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: failed to create set login task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return AWS_OP_ERR;
     }
 
@@ -2355,8 +2425,14 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
 
 error:
 
+    ;
+    int error_code = aws_last_error();
     AWS_LOGF_ERROR(
-        AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, single-topic subscribe failed synchronously", (void *)adapter);
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: mqtt3-to-5-adapter, single-topic subscribe failed synchronously, error code %d(%s)",
+        (void *)adapter,
+        error_code,
+        aws_error_debug_str(error_code));
 
     aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
 
@@ -2392,10 +2468,13 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation =
         aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options, adapter);
     if (operation == NULL) {
+        int error_code = aws_last_error();
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
-            "id=%p: mqtt3-to-5-adapter, multi-topic subscribe operation creation failed",
-            (void *)adapter);
+            "id=%p: mqtt3-to-5-adapter, multi-topic subscribe operation creation failed, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return 0;
     }
 
@@ -2423,7 +2502,14 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
 
 error:
 
-    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, multi-topic subscribe failed", (void *)adapter);
+    ;
+    int error_code = aws_last_error();
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: mqtt3-to-5-adapter, multi-topic subscribe failed, error code %d(%s)",
+        (void *)adapter,
+        error_code,
+        aws_error_debug_str(error_code));
 
     aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
 
@@ -2569,8 +2655,13 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
     struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *operation =
         aws_mqtt3_to_mqtt5_adapter_operation_new_unsubscribe(adapter->allocator, &unsubscribe_options);
     if (operation == NULL) {
+        int error_code = aws_last_error();
         AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, unsubscribe operation creation failed", (void *)adapter);
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: mqtt3-to-5-adapter, unsubscribe operation creation failed, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return 0;
     }
 
@@ -2598,7 +2689,14 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
 
 error:
 
-    AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, unsubscribe failed", (void *)adapter);
+    ;
+    int error_code = aws_last_error();
+    AWS_LOGF_ERROR(
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: mqtt3-to-5-adapter, unsubscribe failed, error code %d(%s)",
+        (void *)adapter,
+        error_code,
+        aws_error_debug_str(error_code));
 
     aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
 
@@ -2673,10 +2771,13 @@ static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
     struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *operation =
         aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options, adapter);
     if (operation == NULL) {
+        int error_code = aws_last_error();
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
-            "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics failed on operation creation",
-            (void *)adapter);
+            "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics failed on operation creation, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
         return 0;
     }
 
@@ -2704,8 +2805,14 @@ static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
 
 error:
 
+    ;
+    int error_code = aws_last_error();
     AWS_LOGF_ERROR(
-        AWS_LS_MQTT_CLIENT, "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics failed", (void *)adapter);
+        AWS_LS_MQTT_CLIENT,
+        "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics failed, error code %d(%s)",
+        (void *)adapter,
+        error_code,
+        aws_error_debug_str(error_code));
 
     aws_mqtt3_to_mqtt5_adapter_operation_release(&operation->base);
 
