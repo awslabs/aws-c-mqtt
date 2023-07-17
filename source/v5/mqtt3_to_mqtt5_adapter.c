@@ -2190,6 +2190,11 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
     aws_mqtt_suback_multi_fn *on_suback,
     void *on_suback_user_data) {
 
+    if (topic_filters == NULL || aws_array_list_length(topic_filters) == 0) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return 0;
+    }
+
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     struct aws_mqtt_topic_subscription *subscriptions = topic_filters->data;
