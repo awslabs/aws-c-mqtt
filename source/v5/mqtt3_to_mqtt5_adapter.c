@@ -1815,7 +1815,8 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
 
     /* check qos */
     if (qos < 0 || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
-        return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+        return 0;
     }
 
     if (!aws_mqtt_is_valid_topic(topic)) {
