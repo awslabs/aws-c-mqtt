@@ -83,7 +83,7 @@ static void s_clean_up_decoding_test_context(struct mqtt_311_decoding_test_conte
 
 #define TEST_ADJACENT_PACKET_COUNT 4
 
-static int s_mqtt_decode_publish_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt_frame_and_decode_publish_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_mqtt_library_init(allocator);
@@ -151,4 +151,90 @@ static int s_mqtt_decode_publish_fn(struct aws_allocator *allocator, void *ctx) 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(mqtt_decode_publish, s_mqtt_decode_publish_fn)
+AWS_TEST_CASE(mqtt_frame_and_decode_publish, s_mqtt_frame_and_decode_publish_fn)
+
+static int s_mqtt_frame_and_decode_bad_remaining_length_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt_311_decoding_test_context test_context;
+    s_init_decoding_test_context(&test_context, allocator);
+
+    struct aws_mqtt311_decoder *decoder = &test_context.decoder;
+
+    /* QoS 0 Publish "Packet" data where the remaining length vli-encoding is illegal */
+    uint8_t bad_packet_data[] = { 0x30, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00, 0x00 };
+
+    size_t fragment_lengths[] = {1, 2, 3, 5};
+
+    for (size_t j = 0; j < AWS_ARRAY_SIZE(fragment_lengths); ++j) {
+        aws_mqtt311_decoder_reset_for_new_connection(decoder);
+
+        size_t fragment_length = fragment_lengths[j];
+        struct aws_byte_cursor packet_cursor = aws_byte_cursor_from_array(bad_packet_data, AWS_ARRAY_SIZE(bad_packet_data));
+        while (packet_cursor.len > 0) {
+            size_t advance = aws_min_size(packet_cursor.len, fragment_length);
+            struct aws_byte_cursor fragment_cursor = aws_byte_cursor_advance(&packet_cursor, advance);
+
+            /* If this or a previous call contains the final 0x80 of the invalid vli encoding, then decode must fail */
+            bool should_fail = (fragment_cursor.ptr + fragment_cursor.len) - bad_packet_data > 4;
+            if (should_fail) {
+                ASSERT_FAILS(aws_mqtt311_decoder_on_bytes_received(decoder, fragment_cursor));
+            } else {
+                ASSERT_SUCCESS(aws_mqtt311_decoder_on_bytes_received(decoder, fragment_cursor));
+            }
+        }
+    }
+
+    s_clean_up_decoding_test_context(&test_context);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_frame_and_decode_bad_remaining_length, s_mqtt_frame_and_decode_bad_remaining_length_fn)
+
+static int s_mqtt_frame_and_decode_unsupported_packet_type_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt_311_decoding_test_context test_context;
+    s_init_decoding_test_context(&test_context, allocator);
+
+    struct aws_mqtt311_decoder *decoder = &test_context.decoder;
+
+    /* Pingreq packet, no handler installed */
+    uint8_t pingreq_packet_data[] = { 192, 0 };
+
+    size_t fragment_lengths[] = {1, 2};
+
+    for (size_t j = 0; j < AWS_ARRAY_SIZE(fragment_lengths); ++j) {
+        aws_mqtt311_decoder_reset_for_new_connection(decoder);
+
+        size_t fragment_length = fragment_lengths[j];
+        struct aws_byte_cursor packet_cursor = aws_byte_cursor_from_array(pingreq_packet_data, AWS_ARRAY_SIZE(pingreq_packet_data));
+        while (packet_cursor.len > 0) {
+            size_t advance = aws_min_size(packet_cursor.len, fragment_length);
+            struct aws_byte_cursor fragment_cursor = aws_byte_cursor_advance(&packet_cursor, advance);
+
+            /* If this is the final call, it should fail-but-not-crash as there's no handler */
+            bool should_fail = packet_cursor.len == 0;
+            if (should_fail) {
+                ASSERT_FAILS(aws_mqtt311_decoder_on_bytes_received(decoder, fragment_cursor));
+            } else {
+                ASSERT_SUCCESS(aws_mqtt311_decoder_on_bytes_received(decoder, fragment_cursor));
+            }
+        }
+    }
+
+    s_clean_up_decoding_test_context(&test_context);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_frame_and_decode_unsupported_packet_type, s_mqtt_frame_and_decode_unsupported_packet_type_fn)
