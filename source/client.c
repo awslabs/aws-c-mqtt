@@ -3221,7 +3221,11 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
         goto failed_init_mutex;
     }
 
-    aws_mqtt311_decoder_init(&connection->thread_data.decoder, client->allocator, connection);
+    struct aws_mqtt311_decoder_options config = {
+        .packet_handlers = aws_mqtt311_get_default_packet_handlers(),
+        .handler_user_data = connection,
+    };
+    aws_mqtt311_decoder_init(&connection->thread_data.decoder, client->allocator, &config);
 
     if (aws_mqtt_topic_tree_init(&connection->thread_data.subscriptions, connection->allocator)) {
 
