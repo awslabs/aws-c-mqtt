@@ -113,6 +113,14 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
     return (*connection->vtable->set_on_any_publish_handler_fn)(connection->impl, on_any_publish, on_any_publish_ud);
 }
 
+int aws_mqtt_client_connection_set_termination_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_termination_fn *on_termination,
+    void *on_termination_ud) {
+
+    return (*connection->vtable->set_termination_handler_fn)(connection->impl, on_termination, on_termination_ud);
+}
+
 int aws_mqtt_client_connection_connect(
     struct aws_mqtt_client_connection *connection,
     const struct aws_mqtt_connection_options *connection_options) {

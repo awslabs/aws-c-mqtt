@@ -250,6 +250,8 @@ struct aws_mqtt_client_connection_311_impl {
     void *on_any_publish_ud;
     aws_mqtt_client_on_disconnect_fn *on_disconnect;
     void *on_disconnect_ud;
+    aws_mqtt_client_on_termination_fn *on_termination;
+    void *on_termination_ud;
     aws_mqtt_on_operation_statistics_fn *on_any_operation_statistics;
     void *on_any_operation_statistics_ud;
 
