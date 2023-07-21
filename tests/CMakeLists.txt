@@ -27,6 +27,8 @@ add_test_case(mqtt_packet_pingreq)
 add_test_case(mqtt_packet_pingresp)
 add_test_case(mqtt_packet_disconnect)
 
+add_test_case(mqtt_decode_publish)
+
 add_test_case(mqtt_topic_tree_match)
 add_test_case(mqtt_topic_tree_unsubscribe)
 add_test_case(mqtt_topic_tree_duplicate_transactions)

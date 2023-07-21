@@ -575,6 +575,8 @@ static void s_mqtt_client_init(
         goto handle_error;
     }
 
+    aws_mqtt311_decoder_reset_for_new_connection(&connection->thread_data.decoder);
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: Connection successfully opened, sending CONNECT packet", (void *)connection);
 
@@ -821,6 +823,8 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     /* Free all of the active subscriptions */
     aws_mqtt_topic_tree_clean_up(&connection->thread_data.subscriptions);
+
+    aws_mqtt311_decoder_clean_up(&connection->thread_data.decoder);
 
     aws_hash_table_clean_up(&connection->synced_data.outstanding_requests_table);
     /* clean up the pending_requests if it's not empty */
@@ -3197,6 +3201,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     aws_ref_count_init(
         &connection->ref_count, connection, (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
     connection->client = aws_mqtt_client_acquire(client);
+
     AWS_ZERO_STRUCT(connection->synced_data);
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min_sec = 1;
@@ -3215,6 +3220,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
             aws_error_name(aws_last_error()));
         goto failed_init_mutex;
     }
+
+    aws_mqtt311_decoder_init(&connection->thread_data.decoder, client->allocator, connection);
 
     if (aws_mqtt_topic_tree_init(&connection->thread_data.subscriptions, connection->allocator)) {
 
