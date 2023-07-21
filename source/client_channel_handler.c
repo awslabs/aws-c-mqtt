@@ -562,8 +562,7 @@ static struct aws_mqtt_client_connection_packet_handlers s_default_packet_handle
         [AWS_MQTT_PACKET_PINGREQ] = &s_packet_handler_default,
         [AWS_MQTT_PACKET_PINGRESP] = &s_packet_handler_pingresp,
         [AWS_MQTT_PACKET_DISCONNECT] = &s_packet_handler_default,
-    }
-};
+    }};
 
 const struct aws_mqtt_client_connection_packet_handlers *aws_mqtt311_get_default_packet_handlers(void) {
     return &s_default_packet_handlers;

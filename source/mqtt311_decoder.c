@@ -1,13 +1,16 @@
 /**
-* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-* SPDX-License-Identifier: Apache-2.0.
-*/
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
 
 #include <aws/mqtt/private/mqtt311_decoder.h>
 
 #include <aws/mqtt/private/fixed_header.h>
 
-void aws_mqtt311_decoder_init(struct aws_mqtt311_decoder *decoder, struct aws_allocator *allocator, const struct aws_mqtt311_decoder_options *options) {
+void aws_mqtt311_decoder_init(
+    struct aws_mqtt311_decoder *decoder,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt311_decoder_options *options) {
     decoder->state = AWS_MDST_READ_FIRST_BYTE;
     decoder->total_packet_length = 0;
     aws_byte_buf_init(&decoder->packet_buffer, allocator, 5);
@@ -45,7 +48,8 @@ static int s_handle_decoder_read_first_byte(struct aws_mqtt311_decoder *decoder,
     struct aws_byte_cursor temp_cursor = *data;
     struct aws_mqtt_fixed_header packet_header;
     AWS_ZERO_STRUCT(packet_header);
-    if (!aws_mqtt_fixed_header_decode(&temp_cursor, &packet_header) && temp_cursor.len >= packet_header.remaining_length) {
+    if (!aws_mqtt_fixed_header_decode(&temp_cursor, &packet_header) &&
+        temp_cursor.len >= packet_header.remaining_length) {
         /* figure out the cursor that spans the full packet */
         size_t fixed_header_length = temp_cursor.ptr - data->ptr;
         struct aws_byte_cursor whole_packet_cursor = *data;
@@ -59,7 +63,8 @@ static int s_handle_decoder_read_first_byte(struct aws_mqtt311_decoder *decoder,
          * because we'll be back at the beginning of the next packet (if it exists).
          */
         enum aws_mqtt_packet_type packet_type = aws_mqtt_get_packet_type(whole_packet_cursor.ptr);
-        return decoder->config.packet_handlers->handlers_by_packet_type[packet_type](whole_packet_cursor, decoder->config.handler_user_data);
+        return decoder->config.packet_handlers->handlers_by_packet_type[packet_type](
+            whole_packet_cursor, decoder->config.handler_user_data);
     }
 
     uint8_t byte = *data->ptr;
@@ -110,7 +115,8 @@ static int s_handle_decoder_read_body(struct aws_mqtt311_decoder *decoder, struc
     if (decoder->packet_buffer.len == decoder->total_packet_length) {
         struct aws_byte_cursor packet_data = aws_byte_cursor_from_buf(&decoder->packet_buffer);
         enum aws_mqtt_packet_type packet_type = aws_mqtt_get_packet_type(packet_data.ptr);
-        if (decoder->config.packet_handlers->handlers_by_packet_type[packet_type](packet_data, decoder->config.handler_user_data) == AWS_OP_ERR) {
+        if (decoder->config.packet_handlers->handlers_by_packet_type[packet_type](
+                packet_data, decoder->config.handler_user_data) == AWS_OP_ERR) {
             return AWS_OP_ERR;
         }
 
