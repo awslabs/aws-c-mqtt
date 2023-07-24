@@ -34,17 +34,16 @@ static void s_aws_mqtt311_decoder_reset_for_new_packet(struct aws_mqtt311_decode
     }
 }
 
-enum aws_mqtt311_decoding_directive {
-    AWS_MDD_CONTINUE,
-    AWS_MDD_OUT_OF_DATA,
-    AWS_MDD_PROTOCOL_ERROR
-};
+enum aws_mqtt311_decoding_directive { AWS_MDD_CONTINUE, AWS_MDD_OUT_OF_DATA, AWS_MDD_PROTOCOL_ERROR };
 
 static enum aws_mqtt311_decoding_directive aws_result_to_mqtt311_decoding_directive(int result) {
     return (result == AWS_OP_SUCCESS) ? AWS_MDD_CONTINUE : AWS_MDD_PROTOCOL_ERROR;
 }
 
-static int s_aws_mqtt311_decoder_safe_packet_handle(struct aws_mqtt311_decoder *decoder, enum aws_mqtt_packet_type packet_type, struct aws_byte_cursor packet_cursor) {
+static int s_aws_mqtt311_decoder_safe_packet_handle(
+    struct aws_mqtt311_decoder *decoder,
+    enum aws_mqtt_packet_type packet_type,
+    struct aws_byte_cursor packet_cursor) {
     packet_handler_fn *handler = decoder->config.packet_handlers->handlers_by_packet_type[packet_type];
     if (handler != NULL) {
         return handler(packet_cursor, decoder->config.handler_user_data);
@@ -53,7 +52,9 @@ static int s_aws_mqtt311_decoder_safe_packet_handle(struct aws_mqtt311_decoder *
     }
 }
 
-static enum aws_mqtt311_decoding_directive s_handle_decoder_read_first_byte(struct aws_mqtt311_decoder *decoder, struct aws_byte_cursor *data) {
+static enum aws_mqtt311_decoding_directive s_handle_decoder_read_first_byte(
+    struct aws_mqtt311_decoder *decoder,
+    struct aws_byte_cursor *data) {
     AWS_FATAL_ASSERT(decoder->packet_buffer.len == 0);
     if (data->len == 0) {
         return AWS_MDD_OUT_OF_DATA;
@@ -87,7 +88,8 @@ static enum aws_mqtt311_decoding_directive s_handle_decoder_read_first_byte(stru
          * because we'll be back at the beginning of the next packet (if it exists).
          */
         enum aws_mqtt_packet_type packet_type = aws_mqtt_get_packet_type(whole_packet_cursor.ptr);
-        return aws_result_to_mqtt311_decoding_directive(s_aws_mqtt311_decoder_safe_packet_handle(decoder, packet_type, whole_packet_cursor));
+        return aws_result_to_mqtt311_decoding_directive(
+            s_aws_mqtt311_decoder_safe_packet_handle(decoder, packet_type, whole_packet_cursor));
     }
 
     uint8_t byte = *data->ptr;
@@ -99,7 +101,9 @@ static enum aws_mqtt311_decoding_directive s_handle_decoder_read_first_byte(stru
     return AWS_MDD_CONTINUE;
 }
 
-static enum aws_mqtt311_decoding_directive s_handle_decoder_read_remaining_length(struct aws_mqtt311_decoder *decoder, struct aws_byte_cursor *data) {
+static enum aws_mqtt311_decoding_directive s_handle_decoder_read_remaining_length(
+    struct aws_mqtt311_decoder *decoder,
+    struct aws_byte_cursor *data) {
     AWS_FATAL_ASSERT(decoder->total_packet_length == 0);
     if (data->len == 0) {
         return AWS_MDD_OUT_OF_DATA;
@@ -128,13 +132,14 @@ static enum aws_mqtt311_decoding_directive s_handle_decoder_read_remaining_lengt
         decoder->total_packet_length = remaining_length + decoder->packet_buffer.len;
         AWS_FATAL_ASSERT(decoder->total_packet_length > 0);
         decoder->state = AWS_MDST_READ_BODY;
-        return AWS_MDD_CONTINUE;
     }
 
-    return AWS_MDD_OUT_OF_DATA;
+    return AWS_MDD_CONTINUE;
 }
 
-static enum aws_mqtt311_decoding_directive s_handle_decoder_read_body(struct aws_mqtt311_decoder *decoder, struct aws_byte_cursor *data) {
+static enum aws_mqtt311_decoding_directive s_handle_decoder_read_body(
+    struct aws_mqtt311_decoder *decoder,
+    struct aws_byte_cursor *data) {
     AWS_FATAL_ASSERT(decoder->total_packet_length > 0);
 
     size_t buffer_length = decoder->packet_buffer.len;
