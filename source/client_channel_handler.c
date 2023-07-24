@@ -619,7 +619,9 @@ static int s_process_read_message(
         struct aws_byte_cursor packet_data =
             aws_byte_cursor_advance(&message_cursor, fixed_header_size + packet_header.remaining_length);
         AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: full mqtt packet read, dispatching.", (void *)connection);
-        s_process_mqtt_packet(connection, packet_header.packet_type, packet_data);
+        if (s_process_mqtt_packet(connection, packet_header.packet_type, packet_data)) {
+            return AWS_OP_ERR;
+        }
     }
 
 cleanup:
