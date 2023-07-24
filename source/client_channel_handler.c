@@ -641,6 +641,12 @@ static int s_shutdown(
 
     struct aws_mqtt_client_connection_311_impl *connection = handler->impl;
 
+    if (connection->thread_data.pending_packet.len) {
+        /* Clean up the pending packet */
+        aws_byte_buf_clean_up(&connection->thread_data.pending_packet);
+        AWS_ZERO_STRUCT(connection->thread_data.pending_packet);
+    }
+
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         /* On closing write direction, send out disconnect packet before closing connection. */
 
