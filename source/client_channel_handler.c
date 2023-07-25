@@ -251,7 +251,7 @@ static int s_packet_handler_connack(struct aws_byte_cursor message_cursor, void 
 
 static int s_packet_handler_publish(struct aws_byte_cursor message_cursor, void *user_data) {
     struct aws_mqtt_client_connection_311_impl *connection = user_data;
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: PUBLISH received", (void *)connection);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: PUBLISH received", (void *)connection);
     if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_PUBLISH)) {
         return AWS_OP_ERR;
     }
