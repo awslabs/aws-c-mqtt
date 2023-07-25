@@ -125,8 +125,8 @@ static enum aws_mqtt311_decoding_directive s_handle_decoder_read_remaining_lengt
     }
 
     /*
-     * If we successfully decoded a VLI integer, we now know exactly how many bytes we need to receive in order
-     * to have the full packet.
+     * If we successfully decoded a variable-length integer, we now know exactly how many bytes we need to receive in
+     * order to have the full packet.
      */
     if (vli_result == AWS_OP_SUCCESS) {
         decoder->total_packet_length = remaining_length + decoder->packet_buffer.len;
