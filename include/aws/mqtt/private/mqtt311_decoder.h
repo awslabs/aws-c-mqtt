@@ -24,8 +24,13 @@ struct aws_mqtt_client_connection_packet_handlers {
 };
 
 /*
- * Internal state of the 311 decoder/framing logic.  Under normal circumstances, state moves
- * circularly first byte -> remaining length -> body -> first byte etc...
+ * Internal state of the 311 decoder/framing logic.
+ *
+ * When a packet is fragmented across multiple io buffers, state moves circularly:
+ *      first byte -> remaining length -> body -> first byte etc...
+ *
+ * When a packet is completely contained inside a single io buffer, the entire packet is processed within
+ * the READ_FIRST_BYTE state.
  */
 enum aws_mqtt_311_decoder_state_type {
 
