@@ -103,7 +103,6 @@ static int s_validate_received_packet_type(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: First message received from the server was not a CONNACK. Terminating connection.",
                 (void *)connection);
-            aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
             return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
         }
         mqtt_connection_unlock_synced_data(connection);
@@ -538,7 +537,7 @@ static int s_packet_handler_pingresp(struct aws_byte_cursor message_cursor, void
     (void)message_cursor;
 
     struct aws_mqtt_client_connection_311_impl *connection = user_data;
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: PINGRESP received", (void *)connection);
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: PINGRESP received", (void *)connection);
 
     connection->thread_data.waiting_on_ping_response = false;
 
@@ -599,8 +598,11 @@ static int s_process_read_message(
 
     if (result == AWS_OP_SUCCESS) {
         /* Do cleanup */
-        aws_channel_slot_increment_read_window(slot, message->message_data.len);
+        size_t message_data_length = message->message_data.len;
         aws_mem_release(message->allocator, message);
+        aws_channel_slot_increment_read_window(slot, message_data_length);
+    } else {
+        aws_channel_shutdown(connection->slot->channel, aws_last_error());
     }
 
     return result;
