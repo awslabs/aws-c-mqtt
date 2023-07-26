@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#ifndef AWS_MQTT_MQTT3_TO_MQTT5_ADAPTER_IMPL_H
-#define AWS_MQTT_MQTT3_TO_MQTT5_ADAPTER_IMPL_H
+#ifndef AWS_MQTT_MQTT5_TO_MQTT3_ADAPTER_IMPL_H
+#define AWS_MQTT_MQTT5_TO_MQTT3_ADAPTER_IMPL_H
 
 #include <aws/mqtt/mqtt.h>
 
@@ -17,7 +17,7 @@
 
 struct aws_mqtt_subscription_set;
 
-struct aws_mqtt3_to_mqtt5_adapter_publish_options {
+struct aws_mqtt5_to_mqtt3_adapter_publish_options {
     struct aws_mqtt_client_connection_5_impl *adapter;
 
     const struct aws_byte_cursor topic;
@@ -34,7 +34,7 @@ struct aws_mqtt3_to_mqtt5_adapter_publish_options {
  * is a bit hacky, the alternative is to copy-and-paste almost the entire multi-subscribe adapter operation and
  * supporting logic, which is approximately 300 lines.
  */
-struct aws_mqtt3_to_mqtt5_adapter_subscribe_options {
+struct aws_mqtt5_to_mqtt3_adapter_subscribe_options {
     struct aws_mqtt_client_connection_5_impl *adapter;
 
     struct aws_mqtt_topic_subscription *subscriptions;
@@ -47,7 +47,7 @@ struct aws_mqtt3_to_mqtt5_adapter_subscribe_options {
     void *on_multi_suback_user_data;
 };
 
-struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options {
+struct aws_mqtt5_to_mqtt3_adapter_unsubscribe_options {
     struct aws_mqtt_client_connection_5_impl *adapter;
 
     struct aws_byte_cursor topic_filter;
@@ -56,13 +56,13 @@ struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options {
     void *on_unsuback_user_data;
 };
 
-enum aws_mqtt3_to_mqtt5_adapter_operation_type {
-    AWS_MQTT3TO5_AOT_PUBLISH,
-    AWS_MQTT3TO5_AOT_SUBSCRIBE,
-    AWS_MQTT3TO5_AOT_UNSUBSCRIBE,
+enum aws_mqtt5_to_mqtt3_adapter_operation_type {
+    AWS_MQTT5TO3_AOT_PUBLISH,
+    AWS_MQTT5TO3_AOT_SUBSCRIBE,
+    AWS_MQTT5TO3_AOT_UNSUBSCRIBE,
 };
 
-struct aws_mqtt3_to_mqtt5_adapter_operation_base {
+struct aws_mqtt5_to_mqtt3_adapter_operation_base {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
     void *impl;
@@ -79,12 +79,12 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_base {
 
     struct aws_task submission_task;
 
-    enum aws_mqtt3_to_mqtt5_adapter_operation_type type;
+    enum aws_mqtt5_to_mqtt3_adapter_operation_type type;
     uint16_t id;
 };
 
-struct aws_mqtt3_to_mqtt5_adapter_operation_publish {
-    struct aws_mqtt3_to_mqtt5_adapter_operation_base base;
+struct aws_mqtt5_to_mqtt3_adapter_operation_publish {
+    struct aws_mqtt5_to_mqtt3_adapter_operation_base base;
 
     /*
      * holds a reference to the MQTT5 client publish operation until the operation completes or our adapter
@@ -99,8 +99,8 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_publish {
     void *on_publish_complete_user_data;
 };
 
-struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe {
-    struct aws_mqtt3_to_mqtt5_adapter_operation_base base;
+struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe {
+    struct aws_mqtt5_to_mqtt3_adapter_operation_base base;
 
     /*
      * holds a reference to the MQTT5 client subscribe operation until the operation completes or our adapter
@@ -121,8 +121,8 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe {
     void *on_multi_suback_user_data;
 };
 
-struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe {
-    struct aws_mqtt3_to_mqtt5_adapter_operation_base base;
+struct aws_mqtt5_to_mqtt3_adapter_operation_unsubscribe {
+    struct aws_mqtt5_to_mqtt3_adapter_operation_base base;
 
     /*
      * holds a reference to the MQTT5 client unsubscribe operation until the operation completes or our adapter
@@ -176,7 +176,7 @@ struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe {
      Clear table
 */
 
-struct aws_mqtt3_to_mqtt5_adapter_operation_table {
+struct aws_mqtt5_to_mqtt3_adapter_operation_table {
     struct aws_mutex lock;
 
     struct aws_hash_table operations;
@@ -277,7 +277,7 @@ struct aws_mqtt_client_connection_5_impl {
         bool terminated;
     } synced_data;
 
-    struct aws_mqtt3_to_mqtt5_adapter_operation_table operational_state;
+    struct aws_mqtt5_to_mqtt3_adapter_operation_table operational_state;
 
     struct aws_mqtt_subscription_set *subscriptions;
 
@@ -318,41 +318,41 @@ struct aws_mqtt_client_connection_5_impl {
 
 AWS_EXTERN_C_BEGIN
 
-AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_table_init(
-    struct aws_mqtt3_to_mqtt5_adapter_operation_table *table,
+AWS_MQTT_API void aws_mqtt5_to_mqtt3_adapter_operation_table_init(
+    struct aws_mqtt5_to_mqtt3_adapter_operation_table *table,
     struct aws_allocator *allocator);
 
-AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_table_clean_up(
-    struct aws_mqtt3_to_mqtt5_adapter_operation_table *table);
+AWS_MQTT_API void aws_mqtt5_to_mqtt3_adapter_operation_table_clean_up(
+    struct aws_mqtt5_to_mqtt3_adapter_operation_table *table);
 
-AWS_MQTT_API int aws_mqtt3_to_mqtt5_adapter_operation_table_add_operation(
-    struct aws_mqtt3_to_mqtt5_adapter_operation_table *table,
-    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
+AWS_MQTT_API int aws_mqtt5_to_mqtt3_adapter_operation_table_add_operation(
+    struct aws_mqtt5_to_mqtt3_adapter_operation_table *table,
+    struct aws_mqtt5_to_mqtt3_adapter_operation_base *operation);
 
-AWS_MQTT_API void aws_mqtt3_to_mqtt5_adapter_operation_table_remove_operation(
-    struct aws_mqtt3_to_mqtt5_adapter_operation_table *table,
+AWS_MQTT_API void aws_mqtt5_to_mqtt3_adapter_operation_table_remove_operation(
+    struct aws_mqtt5_to_mqtt3_adapter_operation_table *table,
     uint16_t operation_id);
 
-AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_publish *aws_mqtt3_to_mqtt5_adapter_operation_new_publish(
+AWS_MQTT_API struct aws_mqtt5_to_mqtt3_adapter_operation_publish *aws_mqtt5_to_mqtt3_adapter_operation_new_publish(
     struct aws_allocator *allocator,
-    const struct aws_mqtt3_to_mqtt5_adapter_publish_options *options);
+    const struct aws_mqtt5_to_mqtt3_adapter_publish_options *options);
 
-AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_subscribe *aws_mqtt3_to_mqtt5_adapter_operation_new_subscribe(
+AWS_MQTT_API struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *aws_mqtt5_to_mqtt3_adapter_operation_new_subscribe(
     struct aws_allocator *allocator,
-    const struct aws_mqtt3_to_mqtt5_adapter_subscribe_options *options,
+    const struct aws_mqtt5_to_mqtt3_adapter_subscribe_options *options,
     struct aws_mqtt_client_connection_5_impl *adapter);
 
-AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_unsubscribe *
-    aws_mqtt3_to_mqtt5_adapter_operation_new_unsubscribe(
+AWS_MQTT_API struct aws_mqtt5_to_mqtt3_adapter_operation_unsubscribe *
+    aws_mqtt5_to_mqtt3_adapter_operation_new_unsubscribe(
         struct aws_allocator *allocator,
-        const struct aws_mqtt3_to_mqtt5_adapter_unsubscribe_options *options);
+        const struct aws_mqtt5_to_mqtt3_adapter_unsubscribe_options *options);
 
-AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_base *aws_mqtt3_to_mqtt5_adapter_operation_release(
-    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
+AWS_MQTT_API struct aws_mqtt5_to_mqtt3_adapter_operation_base *aws_mqtt5_to_mqtt3_adapter_operation_release(
+    struct aws_mqtt5_to_mqtt3_adapter_operation_base *operation);
 
-AWS_MQTT_API struct aws_mqtt3_to_mqtt5_adapter_operation_base *aws_mqtt3_to_mqtt5_adapter_operation_acquire(
-    struct aws_mqtt3_to_mqtt5_adapter_operation_base *operation);
+AWS_MQTT_API struct aws_mqtt5_to_mqtt3_adapter_operation_base *aws_mqtt5_to_mqtt3_adapter_operation_acquire(
+    struct aws_mqtt5_to_mqtt3_adapter_operation_base *operation);
 
 AWS_EXTERN_C_END
 
-#endif /* AWS_MQTT_MQTT3_TO_MQTT5_ADAPTER_IMPL_H */
+#endif /* AWS_MQTT_MQTT5_TO_MQTT3_ADAPTER_IMPL_H */
