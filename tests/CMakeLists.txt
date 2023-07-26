@@ -35,6 +35,7 @@ add_test_case(mqtt_frame_and_decode_pingresp)
 add_test_case(mqtt_frame_and_decode_connack)
 add_test_case(mqtt_frame_and_decode_bad_remaining_length)
 add_test_case(mqtt_frame_and_decode_unsupported_packet_type)
+add_test_case(mqtt_frame_and_decode_bad_flags_for_packet_type)
 
 add_test_case(mqtt_topic_tree_match)
 add_test_case(mqtt_topic_tree_unsubscribe)

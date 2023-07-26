@@ -66,8 +66,9 @@ static int s_decoding_test_handle_suback(struct aws_byte_cursor message_cursor, 
         return AWS_OP_ERR;
     }
 
+    int result = AWS_OP_ERR;
     if (aws_mqtt_packet_suback_decode(&message_cursor, &suback)) {
-        return AWS_OP_ERR;
+        goto done;
     }
 
     struct aws_mqtt_packet_suback *expected_suback = context->expected_packet;
@@ -90,9 +91,13 @@ static int s_decoding_test_handle_suback(struct aws_byte_cursor message_cursor, 
 
     ++context->packet_count[AWS_MQTT_PACKET_SUBACK];
 
+    result = AWS_OP_SUCCESS;
+
+done:
+
     aws_mqtt_packet_suback_clean_up(&suback);
 
-    return AWS_OP_SUCCESS;
+    return result;
 }
 
 static int s_decoding_test_handle_unsuback(struct aws_byte_cursor message_cursor, void *user_data) {
@@ -624,3 +629,65 @@ static int s_mqtt_frame_and_decode_unsupported_packet_type_fn(struct aws_allocat
 }
 
 AWS_TEST_CASE(mqtt_frame_and_decode_unsupported_packet_type, s_mqtt_frame_and_decode_unsupported_packet_type_fn)
+
+static int s_mqtt_frame_and_decode_bad_flags_for_packet_type_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt_311_decoding_test_context test_context;
+    s_init_decoding_test_context(&test_context, allocator);
+
+    struct aws_mqtt311_decoder *decoder = &test_context.decoder;
+
+    /* start with a valid suback */
+    struct aws_mqtt_packet_suback suback_packet;
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_init(&suback_packet, allocator, 1234));
+
+    uint8_t sample_return_codes[] = {0x00, 0x01, 0x02, 0x80, 0x01};
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(sample_return_codes); ++i) {
+        aws_mqtt_packet_suback_add_return_code(&suback_packet, sample_return_codes[i]);
+    }
+
+    /* encode it */
+    struct aws_byte_buf encoded_buffer;
+    aws_byte_buf_init(&encoded_buffer, allocator, 100 * TEST_ADJACENT_PACKET_COUNT);
+
+    ASSERT_SUCCESS(aws_mqtt_packet_suback_encode(&encoded_buffer, &suback_packet));
+
+    /* suback flags should be zero; mess that up */
+    encoded_buffer.buffer[0] |= 0x05;
+
+    size_t fragment_lengths[] = {1, 2, 3, 5, 7, 11, 23};
+
+    for (size_t j = 0; j < AWS_ARRAY_SIZE(fragment_lengths); ++j) {
+        size_t fragment_length = fragment_lengths[j];
+
+        aws_mqtt311_decoder_reset_for_new_connection(decoder);
+
+        struct aws_byte_cursor packet_cursor = aws_byte_cursor_from_buf(&encoded_buffer);
+        while (packet_cursor.len > 0) {
+            size_t advance = aws_min_size(packet_cursor.len, fragment_length);
+            struct aws_byte_cursor fragment_cursor = aws_byte_cursor_advance(&packet_cursor, advance);
+
+            /* If this is the final call, it should fail-but-not-crash as the full decode should fail */
+            bool should_fail = packet_cursor.len == 0;
+            if (should_fail) {
+                ASSERT_FAILS(aws_mqtt311_decoder_on_bytes_received(decoder, fragment_cursor));
+            } else {
+                ASSERT_SUCCESS(aws_mqtt311_decoder_on_bytes_received(decoder, fragment_cursor));
+            }
+        }
+    }
+
+    aws_mqtt_packet_suback_clean_up(&suback_packet);
+    aws_byte_buf_clean_up(&encoded_buffer);
+
+    s_clean_up_decoding_test_context(&test_context);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_frame_and_decode_bad_flags_for_packet_type, s_mqtt_frame_and_decode_bad_flags_for_packet_type_fn)

@@ -92,6 +92,10 @@ static enum aws_mqtt311_decoding_directive s_handle_decoder_read_first_byte(
             s_aws_mqtt311_decoder_safe_packet_handle(decoder, packet_type, whole_packet_cursor));
     }
 
+    /*
+     * The packet is fragmented, spanning more than this io message.  So we buffer it and use the
+     * simple state machine to decode.
+     */
     uint8_t byte = *data->ptr;
     aws_byte_cursor_advance(data, 1);
     aws_byte_buf_append_byte_dynamic(&decoder->packet_buffer, byte);
@@ -117,22 +121,22 @@ static enum aws_mqtt311_decoding_directive s_handle_decoder_read_remaining_lengt
     aws_byte_cursor_advance(&vli_cursor, 1);
 
     size_t remaining_length = 0;
-    int vli_result = aws_mqtt311_decode_remaining_length(&vli_cursor, &remaining_length);
-
-    /* anything other than a short buffer error (not enough data yet) is a terminal error */
-    if (vli_result == AWS_OP_ERR && aws_last_error() != AWS_ERROR_SHORT_BUFFER) {
-        return AWS_MDD_PROTOCOL_ERROR;
+    if (aws_mqtt311_decode_remaining_length(&vli_cursor, &remaining_length) == AWS_OP_ERR) {
+        /* anything other than a short buffer error (not enough data yet) is a terminal error */
+        if (aws_last_error() == AWS_ERROR_SHORT_BUFFER) {
+            return AWS_MDD_CONTINUE;
+        } else {
+            return AWS_MDD_PROTOCOL_ERROR;
+        }
     }
 
     /*
      * If we successfully decoded a variable-length integer, we now know exactly how many bytes we need to receive in
      * order to have the full packet.
      */
-    if (vli_result == AWS_OP_SUCCESS) {
-        decoder->total_packet_length = remaining_length + decoder->packet_buffer.len;
-        AWS_FATAL_ASSERT(decoder->total_packet_length > 0);
-        decoder->state = AWS_MDST_READ_BODY;
-    }
+    decoder->total_packet_length = remaining_length + decoder->packet_buffer.len;
+    AWS_FATAL_ASSERT(decoder->total_packet_length > 0);
+    decoder->state = AWS_MDST_READ_BODY;
 
     return AWS_MDD_CONTINUE;
 }
@@ -146,9 +150,7 @@ static enum aws_mqtt311_decoding_directive s_handle_decoder_read_body(
     size_t amount_to_read = aws_min_size(decoder->total_packet_length - buffer_length, data->len);
 
     struct aws_byte_cursor copy_cursor = aws_byte_cursor_advance(data, amount_to_read);
-    if (aws_byte_buf_append_dynamic(&decoder->packet_buffer, &copy_cursor)) {
-        return AWS_MDD_PROTOCOL_ERROR;
-    }
+    aws_byte_buf_append_dynamic(&decoder->packet_buffer, &copy_cursor);
 
     if (decoder->packet_buffer.len == decoder->total_packet_length) {
 
@@ -194,7 +196,10 @@ int aws_mqtt311_decoder_on_bytes_received(struct aws_mqtt311_decoder *decoder, s
          */
         if (decode_directive == AWS_MDD_PROTOCOL_ERROR) {
             decoder->state = AWS_MDST_PROTOCOL_ERROR;
-            return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+            if (aws_last_error() == AWS_ERROR_SUCCESS) {
+                aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+            }
+            return AWS_OP_ERR;
         }
     }
 
