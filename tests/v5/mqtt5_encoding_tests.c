@@ -14,12 +14,6 @@
 
 #include <aws/testing/aws_test_harness.h>
 
-/*
- * AWS_MQTT_API enum aws_mqtt5_decode_result_type aws_mqtt5_decode_vli(struct aws_byte_cursor *cursor, uint32_t *dest);
- * AWS_MQTT_API int aws_mqtt5_encode_variable_length_integer(struct aws_byte_buf *buf, uint32_t value);
- * AWS_MQTT_API int aws_mqtt5_get_variable_length_encode_size(size_t value, size_t *encode_size);
- */
-
 static int s_mqtt5_vli_size_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     (void)allocator;
@@ -43,9 +37,6 @@ static int s_mqtt5_vli_size_fn(struct aws_allocator *allocator, void *ctx) {
 
     ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(16383, &encode_size));
     ASSERT_INT_EQUALS(2, encode_size);
-
-    ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(16384, &encode_size));
-    ASSERT_INT_EQUALS(3, encode_size);
 
     ASSERT_SUCCESS(aws_mqtt5_get_variable_length_encode_size(16384, &encode_size));
     ASSERT_INT_EQUALS(3, encode_size);

@@ -36,15 +36,10 @@ static void s_update_next_ping_time(struct aws_mqtt_client_connection_311_impl *
  * Packet State Machine
  ******************************************************************************/
 
-typedef int(
-    packet_handler_fn)(struct aws_mqtt_client_connection_311_impl *connection, struct aws_byte_cursor message_cursor);
-
-static int s_packet_handler_default(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_byte_cursor message_cursor) {
-    (void)connection;
+static int s_packet_handler_default(struct aws_byte_cursor message_cursor, void *user_data) {
     (void)message_cursor;
 
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
     AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Unhandled packet type received", (void *)connection);
     return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
 }
@@ -94,11 +89,45 @@ static void s_on_time_to_ping(struct aws_channel_task *channel_task, void *arg, 
         s_schedule_ping(connection);
     }
 }
-static int s_packet_handler_connack(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_byte_cursor message_cursor) {
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: CONNACK received", (void *)connection);
+static int s_validate_received_packet_type(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    enum aws_mqtt_packet_type packet_type) {
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
+        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTING &&
+            packet_type != AWS_MQTT_PACKET_CONNACK) {
+            mqtt_connection_unlock_synced_data(connection);
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: First message received from the server was not a CONNACK. Terminating connection.",
+                (void *)connection);
+            return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+        }
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
+
+    if (AWS_UNLIKELY(packet_type > AWS_MQTT_PACKET_DISCONNECT || packet_type < AWS_MQTT_PACKET_CONNECT)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Invalid packet type received %d. Terminating connection.",
+            (void *)connection,
+            packet_type);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
+    }
+
+    /* Handle the packet */
+    return AWS_OP_SUCCESS;
+}
+
+static int s_packet_handler_connack(struct aws_byte_cursor message_cursor, void *user_data) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: CONNACK received", (void *)connection);
+    if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_CONNACK)) {
+        return AWS_OP_ERR;
+    }
 
     struct aws_mqtt_packet_connack connack;
     if (aws_mqtt_packet_connack_decode(&message_cursor, &connack)) {
@@ -219,9 +248,12 @@ static int s_packet_handler_connack(
     return AWS_OP_SUCCESS;
 }
 
-static int s_packet_handler_publish(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_publish(struct aws_byte_cursor message_cursor, void *user_data) {
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: PUBLISH received", (void *)connection);
+    if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_PUBLISH)) {
+        return AWS_OP_ERR;
+    }
 
     /* TODO: need to handle the QoS 2 message to avoid processing the message a second time */
     struct aws_mqtt_packet_publish publish;
@@ -291,9 +323,14 @@ static int s_packet_handler_publish(
     return AWS_OP_SUCCESS;
 }
 
-static int s_packet_handler_ack(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_puback(struct aws_byte_cursor message_cursor, void *user_data) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: received a PUBACK", (void *)connection);
+    if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_PUBACK)) {
+        return AWS_OP_ERR;
+    }
+
     struct aws_mqtt_packet_ack ack;
     if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
         return AWS_OP_ERR;
@@ -307,9 +344,14 @@ static int s_packet_handler_ack(
     return AWS_OP_SUCCESS;
 }
 
-static int s_packet_handler_suback(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_suback(struct aws_byte_cursor message_cursor, void *user_data) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: received a SUBACK", (void *)connection);
+    if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_SUBACK)) {
+        return AWS_OP_ERR;
+    }
+
     struct aws_mqtt_packet_suback suback;
     if (aws_mqtt_packet_suback_init(&suback, connection->allocator, 0 /* fake packet_id */)) {
         return AWS_OP_ERR;
@@ -367,9 +409,34 @@ error:
     return AWS_OP_ERR;
 }
 
-static int s_packet_handler_pubrec(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_unsuback(struct aws_byte_cursor message_cursor, void *user_data) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: received a UNSUBACK", (void *)connection);
+    if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_UNSUBACK)) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_mqtt_packet_ack ack;
+    if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
+
+    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_packet_handler_pubrec(struct aws_byte_cursor message_cursor, void *user_data) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: received a PUBREC", (void *)connection);
+    if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_PUBREC)) {
+        return AWS_OP_ERR;
+    }
 
     struct aws_mqtt_packet_ack ack;
     if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
@@ -405,9 +472,13 @@ on_error:
     return AWS_OP_ERR;
 }
 
-static int s_packet_handler_pubrel(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_pubrel(struct aws_byte_cursor message_cursor, void *user_data) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: received a PUBREL", (void *)connection);
+    if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_PUBREL)) {
+        return AWS_OP_ERR;
+    }
 
     struct aws_mqtt_packet_ack ack;
     if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
@@ -440,13 +511,33 @@ on_error:
     return AWS_OP_ERR;
 }
 
-static int s_packet_handler_pingresp(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    struct aws_byte_cursor message_cursor) {
+static int s_packet_handler_pubcomp(struct aws_byte_cursor message_cursor, void *user_data) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: received a PUBCOMP", (void *)connection);
+    if (s_validate_received_packet_type(connection, AWS_MQTT_PACKET_PUBCOMP)) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_mqtt_packet_ack ack;
+    if (aws_mqtt_packet_ack_decode(&message_cursor, &ack)) {
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
+
+    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_packet_handler_pingresp(struct aws_byte_cursor message_cursor, void *user_data) {
 
     (void)message_cursor;
 
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: PINGRESP received", (void *)connection);
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: PINGRESP received", (void *)connection);
 
     connection->thread_data.waiting_on_ping_response = false;
 
@@ -454,59 +545,31 @@ static int s_packet_handler_pingresp(
 }
 
 /* Bake up a big ol' function table just like Gramma used to make */
-static packet_handler_fn *s_packet_handlers[] = {
-    [AWS_MQTT_PACKET_CONNECT] = &s_packet_handler_default,
-    [AWS_MQTT_PACKET_CONNACK] = &s_packet_handler_connack,
-    [AWS_MQTT_PACKET_PUBLISH] = &s_packet_handler_publish,
-    [AWS_MQTT_PACKET_PUBACK] = &s_packet_handler_ack,
-    [AWS_MQTT_PACKET_PUBREC] = &s_packet_handler_pubrec,
-    [AWS_MQTT_PACKET_PUBREL] = &s_packet_handler_pubrel,
-    [AWS_MQTT_PACKET_PUBCOMP] = &s_packet_handler_ack,
-    [AWS_MQTT_PACKET_SUBSCRIBE] = &s_packet_handler_default,
-    [AWS_MQTT_PACKET_SUBACK] = &s_packet_handler_suback,
-    [AWS_MQTT_PACKET_UNSUBSCRIBE] = &s_packet_handler_default,
-    [AWS_MQTT_PACKET_UNSUBACK] = &s_packet_handler_ack,
-    [AWS_MQTT_PACKET_PINGREQ] = &s_packet_handler_default,
-    [AWS_MQTT_PACKET_PINGRESP] = &s_packet_handler_pingresp,
-    [AWS_MQTT_PACKET_DISCONNECT] = &s_packet_handler_default,
-};
+static struct aws_mqtt_client_connection_packet_handlers s_default_packet_handlers = {
+    .handlers_by_packet_type = {
+        [AWS_MQTT_PACKET_CONNECT] = &s_packet_handler_default,
+        [AWS_MQTT_PACKET_CONNACK] = &s_packet_handler_connack,
+        [AWS_MQTT_PACKET_PUBLISH] = &s_packet_handler_publish,
+        [AWS_MQTT_PACKET_PUBACK] = &s_packet_handler_puback,
+        [AWS_MQTT_PACKET_PUBREC] = &s_packet_handler_pubrec,
+        [AWS_MQTT_PACKET_PUBREL] = &s_packet_handler_pubrel,
+        [AWS_MQTT_PACKET_PUBCOMP] = &s_packet_handler_pubcomp,
+        [AWS_MQTT_PACKET_SUBSCRIBE] = &s_packet_handler_default,
+        [AWS_MQTT_PACKET_SUBACK] = &s_packet_handler_suback,
+        [AWS_MQTT_PACKET_UNSUBSCRIBE] = &s_packet_handler_default,
+        [AWS_MQTT_PACKET_UNSUBACK] = &s_packet_handler_unsuback,
+        [AWS_MQTT_PACKET_PINGREQ] = &s_packet_handler_default,
+        [AWS_MQTT_PACKET_PINGRESP] = &s_packet_handler_pingresp,
+        [AWS_MQTT_PACKET_DISCONNECT] = &s_packet_handler_default,
+    }};
+
+const struct aws_mqtt_client_connection_packet_handlers *aws_mqtt311_get_default_packet_handlers(void) {
+    return &s_default_packet_handlers;
+}
 
 /*******************************************************************************
  * Channel Handler
  ******************************************************************************/
-
-static int s_process_mqtt_packet(
-    struct aws_mqtt_client_connection_311_impl *connection,
-    enum aws_mqtt_packet_type packet_type,
-    struct aws_byte_cursor packet) {
-    { /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
-        /* [MQTT-3.2.0-1] The first packet sent from the Server to the Client MUST be a CONNACK Packet */
-        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTING &&
-            packet_type != AWS_MQTT_PACKET_CONNACK) {
-            mqtt_connection_unlock_synced_data(connection);
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: First message received from the server was not a CONNACK. Terminating connection.",
-                (void *)connection);
-            aws_channel_shutdown(connection->slot->channel, AWS_ERROR_MQTT_PROTOCOL_ERROR);
-            return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
-        }
-        mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
-
-    if (AWS_UNLIKELY(packet_type > AWS_MQTT_PACKET_DISCONNECT || packet_type < AWS_MQTT_PACKET_CONNECT)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Invalid packet type received %d. Terminating connection.",
-            (void *)connection,
-            packet_type);
-        return aws_raise_error(AWS_ERROR_MQTT_INVALID_PACKET_TYPE);
-    }
-
-    /* Handle the packet */
-    return s_packet_handlers[packet_type](connection, packet);
-}
 
 /**
  * Handles incoming messages from the server.
@@ -531,103 +594,18 @@ static int s_process_read_message(
     /* This cursor will be updated as we read through the message. */
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
-    /* If there's pending packet left over from last time, attempt to complete it. */
-    if (connection->thread_data.pending_packet.len) {
-        int result = AWS_OP_SUCCESS;
+    int result = aws_mqtt311_decoder_on_bytes_received(&connection->thread_data.decoder, message_cursor);
 
-        /* This determines how much to read from the message (min(expected_remaining, message.len)) */
-        size_t to_read = connection->thread_data.pending_packet.capacity - connection->thread_data.pending_packet.len;
-        /* This will be set to false if this message still won't complete the packet object. */
-        bool packet_complete = true;
-        if (to_read > message_cursor.len) {
-            to_read = message_cursor.len;
-            packet_complete = false;
-        }
-
-        /* Write the chunk to the buffer.
-         * This will either complete the packet, or be the entirety of message if more data is required. */
-        struct aws_byte_cursor chunk = aws_byte_cursor_advance(&message_cursor, to_read);
-        AWS_ASSERT(chunk.ptr); /* Guaranteed to be in bounds */
-        result = (int)aws_byte_buf_write_from_whole_cursor(&connection->thread_data.pending_packet, chunk) - 1;
-        if (result) {
-            goto handle_error;
-        }
-
-        /* If the packet is still incomplete, don't do anything with the data. */
-        if (!packet_complete) {
-            AWS_LOGF_TRACE(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: partial message is still incomplete, waiting on another read.",
-                (void *)connection);
-
-            goto cleanup;
-        }
-
-        /* Handle the completed pending packet */
-        struct aws_byte_cursor packet_data = aws_byte_cursor_from_buf(&connection->thread_data.pending_packet);
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: full mqtt packet re-assembled, dispatching.", (void *)connection);
-        result = s_process_mqtt_packet(connection, aws_mqtt_get_packet_type(packet_data.ptr), packet_data);
-
-    handle_error:
-        /* Clean up the pending packet */
-        aws_byte_buf_clean_up(&connection->thread_data.pending_packet);
-        AWS_ZERO_STRUCT(connection->thread_data.pending_packet);
-
-        if (result) {
-            return AWS_OP_ERR;
-        }
+    if (result == AWS_OP_SUCCESS) {
+        /* Do cleanup */
+        size_t message_data_length = message->message_data.len;
+        aws_mem_release(message->allocator, message);
+        aws_channel_slot_increment_read_window(slot, message_data_length);
+    } else {
+        aws_channel_shutdown(connection->slot->channel, aws_last_error());
     }
 
-    while (message_cursor.len) {
-
-        /* Temp byte cursor so we can decode the header without advancing message_cursor. */
-        struct aws_byte_cursor header_decode = message_cursor;
-
-        struct aws_mqtt_fixed_header packet_header;
-        AWS_ZERO_STRUCT(packet_header);
-        int result = aws_mqtt_fixed_header_decode(&header_decode, &packet_header);
-
-        /* Calculate how much data was read. */
-        const size_t fixed_header_size = message_cursor.len - header_decode.len;
-
-        if (result) {
-            if (aws_last_error() == AWS_ERROR_SHORT_BUFFER) {
-                /* Message data too short, store data and come back later. */
-                AWS_LOGF_TRACE(
-                    AWS_LS_MQTT_CLIENT, "id=%p: message is incomplete, waiting on another read.", (void *)connection);
-                if (aws_byte_buf_init(
-                        &connection->thread_data.pending_packet,
-                        connection->allocator,
-                        fixed_header_size + packet_header.remaining_length)) {
-
-                    return AWS_OP_ERR;
-                }
-
-                /* Write the partial packet. */
-                if (!aws_byte_buf_write_from_whole_cursor(&connection->thread_data.pending_packet, message_cursor)) {
-                    aws_byte_buf_clean_up(&connection->thread_data.pending_packet);
-                    return AWS_OP_ERR;
-                }
-
-                aws_reset_error();
-                goto cleanup;
-            } else {
-                return AWS_OP_ERR;
-            }
-        }
-
-        struct aws_byte_cursor packet_data =
-            aws_byte_cursor_advance(&message_cursor, fixed_header_size + packet_header.remaining_length);
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: full mqtt packet read, dispatching.", (void *)connection);
-        s_process_mqtt_packet(connection, packet_header.packet_type, packet_data);
-    }
-
-cleanup:
-    /* Do cleanup */
-    aws_channel_slot_increment_read_window(slot, message->message_data.len);
-    aws_mem_release(message->allocator, message);
-
-    return AWS_OP_SUCCESS;
+    return result;
 }
 
 static int s_shutdown(
