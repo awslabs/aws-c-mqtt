@@ -129,7 +129,7 @@ struct mqtt5_client_test_options {
 };
 
 struct aws_mqtt5_mock_server_reconnect_state {
-    size_t required_connection_failure_count;
+    size_t required_connection_count_threshold;
 
     size_t connection_attempts;
     uint64_t connect_timestamp;
@@ -199,6 +199,21 @@ int aws_mqtt5_mock_server_send_packet(
     void *packet);
 
 int aws_mqtt5_mock_server_handle_connect_succeed_on_nth(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+int aws_mqtt5_mock_server_handle_publish_puback(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+int aws_mqtt5_mock_server_handle_publish_puback_and_forward(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+int aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data);

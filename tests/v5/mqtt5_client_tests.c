@@ -1520,7 +1520,7 @@ int aws_mqtt5_mock_server_handle_connect_succeed_on_nth(
     struct aws_mqtt5_packet_connack_view connack_view;
     AWS_ZERO_STRUCT(connack_view);
 
-    if (context->connection_attempts == context->required_connection_failure_count) {
+    if (context->connection_attempts == context->required_connection_count_threshold) {
         connack_view.reason_code = AWS_MQTT5_CRC_SUCCESS;
         aws_high_res_clock_get_ticks(&context->connect_timestamp);
     } else {
@@ -1616,7 +1616,7 @@ static int s_mqtt5_client_reconnect_backoff_insufficient_reset_fn(struct aws_all
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     struct aws_mqtt5_mock_server_reconnect_state mock_server_state = {
-        .required_connection_failure_count = 6,
+        .required_connection_count_threshold = 6,
         /* quick disconnect should not reset reconnect delay */
         .successful_connection_disconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY / 5,
     };
@@ -1736,7 +1736,7 @@ static int s_mqtt5_client_reconnect_backoff_sufficient_reset_fn(struct aws_alloc
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     struct aws_mqtt5_mock_server_reconnect_state mock_server_state = {
-        .required_connection_failure_count = 6,
+        .required_connection_count_threshold = 6,
         /* slow disconnect should reset reconnect delay */
         .successful_connection_disconnect_delay_ms = RECONNECT_TEST_BACKOFF_RESET_DELAY * 2,
     };
@@ -2480,7 +2480,7 @@ static int s_mqtt5_client_publish_timeout_fn(struct aws_allocator *allocator, vo
 
 AWS_TEST_CASE(mqtt5_client_publish_timeout, s_mqtt5_client_publish_timeout_fn)
 
-static int s_aws_mqtt5_mock_server_handle_publish_puback(
+int aws_mqtt5_mock_server_handle_publish_puback(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -2510,7 +2510,7 @@ static int s_do_iot_core_throughput_test(struct aws_allocator *allocator, bool u
 
     /* send pubacks */
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_mock_server_handle_publish_puback;
+        aws_mqtt5_mock_server_handle_publish_puback;
 
     if (use_iot_core_limits) {
         test_options.client_options.extended_validation_and_flow_control_options =
@@ -2613,7 +2613,7 @@ static int s_do_iot_core_publish_tps_test(struct aws_allocator *allocator, bool 
 
     /* send pubacks */
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_mock_server_handle_publish_puback;
+        aws_mqtt5_mock_server_handle_publish_puback;
 
     if (use_iot_core_limits) {
         test_options.client_options.extended_validation_and_flow_control_options =
@@ -3113,11 +3113,7 @@ static void s_sub_pub_unsub_wait_for_publish_received(struct aws_mqtt5_sub_pub_u
     aws_mutex_unlock(&test_fixture->lock);
 }
 
-static enum aws_mqtt5_unsuback_reason_code s_unsuback_reason_codes[] = {
-    AWS_MQTT5_UARC_SUCCESS,
-};
-
-static int s_aws_mqtt5_server_send_unsuback_on_unsubscribe(
+int aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -3126,10 +3122,17 @@ static int s_aws_mqtt5_server_send_unsuback_on_unsubscribe(
 
     struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view = packet;
 
+    AWS_VARIABLE_LENGTH_ARRAY(
+        enum aws_mqtt5_unsuback_reason_code, mqtt5_unsuback_codes, unsubscribe_view->topic_filter_count);
+    for (size_t i = 0; i < unsubscribe_view->topic_filter_count; ++i) {
+        enum aws_mqtt5_unsuback_reason_code *reason_code_ptr = &mqtt5_unsuback_codes[i];
+        *reason_code_ptr = AWS_MQTT5_UARC_SUCCESS;
+    }
+
     struct aws_mqtt5_packet_unsuback_view unsuback_view = {
         .packet_id = unsubscribe_view->packet_id,
-        .reason_code_count = AWS_ARRAY_SIZE(s_unsuback_reason_codes),
-        .reason_codes = s_unsuback_reason_codes,
+        .reason_code_count = AWS_ARRAY_SIZE(mqtt5_unsuback_codes),
+        .reason_codes = mqtt5_unsuback_codes,
     };
 
     return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_UNSUBACK, &unsuback_view);
@@ -3137,7 +3140,7 @@ static int s_aws_mqtt5_server_send_unsuback_on_unsubscribe(
 
 #define FORWARDED_PUBLISH_PACKET_ID 32768
 
-static int s_aws_mqtt5_server_send_puback_and_forward_on_publish(
+int aws_mqtt5_mock_server_handle_publish_puback_and_forward(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -3268,9 +3271,9 @@ static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqt
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
         s_aws_mqtt5_server_send_suback_on_subscribe;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_server_send_puback_and_forward_on_publish;
+        aws_mqtt5_mock_server_handle_publish_puback_and_forward;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
-        s_aws_mqtt5_server_send_unsuback_on_unsubscribe;
+        aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success;
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
         .client_options = &test_options.client_options,
@@ -4312,7 +4315,7 @@ static int s_do_mqtt5_client_statistics_publish_test(
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_server_send_puback_and_forward_on_publish;
+        aws_mqtt5_mock_server_handle_publish_puback_and_forward;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
     struct aws_mqtt5_sub_pub_unsub_context full_test_context = {
@@ -5271,7 +5274,7 @@ static int s_mqtt5_client_offline_operation_submission_then_connect_fn(struct aw
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_server_send_puback_and_forward_on_publish;
+        aws_mqtt5_mock_server_handle_publish_puback_and_forward;
 
     test_options.client_options.offline_queue_behavior = AWS_MQTT5_COQBT_FAIL_NON_QOS1_PUBLISH_ON_DISCONNECT;
 
@@ -5963,7 +5966,7 @@ static int s_perform_outbound_alias_sequence_test(
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
         s_aws_mqtt5_mock_server_handle_connect_allow_aliasing;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
-        s_aws_mqtt5_mock_server_handle_publish_puback;
+        aws_mqtt5_mock_server_handle_publish_puback;
 
     test_options.topic_aliasing_options.outbound_topic_alias_behavior = behavior_type;
 
