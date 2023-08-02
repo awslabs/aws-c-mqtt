@@ -1350,7 +1350,10 @@ static void s_aws_mqtt5_adapter_transform_websocket_handshake_fn(
         adapter->mqtt5_websocket_handshake_completion_user_data = complete_ctx;
 
         (*adapter->websocket_handshake_transformer)(
-            request, user_data, s_aws_mqtt5_adapter_websocket_handshake_completion_fn, adapter);
+            request,
+            adapter->websocket_handshake_transformer_user_data,
+            s_aws_mqtt5_adapter_websocket_handshake_completion_fn,
+            adapter);
     } else {
         (*complete_fn)(args.output_request, args.completion_error_code, complete_ctx);
     }
