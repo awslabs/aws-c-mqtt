@@ -306,16 +306,31 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
 
     aws_task_init(&connect_task->task, s_adapter_connect_task_fn, (void *)connect_task, "AdapterConnectTask");
     connect_task->allocator = adapter->allocator;
-    connect_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
 
     aws_byte_buf_init_copy_from_cursor(&connect_task->host_name, allocator, connection_options->host_name);
     connect_task->port = connection_options->port;
     connect_task->socket_options = *connection_options->socket_options;
     if (connection_options->tls_options) {
-        aws_tls_connection_options_copy(&connect_task->tls_options, connection_options->tls_options);
+        if (aws_tls_connection_options_copy(&connect_task->tls_options, connection_options->tls_options)) {
+            goto error;
+        }
         connect_task->tls_options_ptr = &connect_task->tls_options;
-    }
 
+        /* Cheat and set the tls_options host_name to our copy if they're the same */
+        if (!connect_task->tls_options.server_name) {
+            struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_buf(&connect_task->host_name);
+
+            if (aws_tls_connection_options_set_server_name(
+                    &connect_task->tls_options, connect_task->allocator, &host_name_cur)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+                    "id=%p: mqtt3-to-5-adapter - Failed to set TLS Connection Options server name",
+                    (void *)adapter);
+                goto error;
+            }
+        }
+    }
+    connect_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
     aws_byte_buf_init_copy_from_cursor(&connect_task->client_id, allocator, connection_options->client_id);
 
     connect_task->keep_alive_time_secs = connection_options->keep_alive_time_secs;
@@ -326,6 +341,11 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     connect_task->clean_session = connection_options->clean_session;
 
     return connect_task;
+
+error:
+    s_aws_mqtt_adapter_connect_task_destroy(connect_task);
+
+    return NULL;
 }
 
 static int s_validate_adapter_connection_options(
@@ -1350,7 +1370,10 @@ static void s_aws_mqtt5_adapter_transform_websocket_handshake_fn(
         adapter->mqtt5_websocket_handshake_completion_user_data = complete_ctx;
 
         (*adapter->websocket_handshake_transformer)(
-            request, user_data, s_aws_mqtt5_adapter_websocket_handshake_completion_fn, adapter);
+            request,
+            adapter->websocket_handshake_transformer_user_data,
+            s_aws_mqtt5_adapter_websocket_handshake_completion_fn,
+            adapter);
     } else {
         (*complete_fn)(args.output_request, args.completion_error_code, complete_ctx);
     }
