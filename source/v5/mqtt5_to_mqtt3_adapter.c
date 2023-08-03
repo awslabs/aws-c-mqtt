@@ -306,7 +306,6 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
 
     aws_task_init(&connect_task->task, s_adapter_connect_task_fn, (void *)connect_task, "AdapterConnectTask");
     connect_task->allocator = adapter->allocator;
-    connect_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
 
     aws_byte_buf_init_copy_from_cursor(&connect_task->host_name, allocator, connection_options->host_name);
     connect_task->port = connection_options->port;
@@ -340,18 +339,12 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     connect_task->on_connection_complete = connection_options->on_connection_complete;
     connect_task->on_connection_complete_user_data = connection_options->user_data;
     connect_task->clean_session = connection_options->clean_session;
+    connect_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
 
     return connect_task;
 
 error:
-    aws_byte_buf_clean_up(&connect_task->host_name);
-
-    if (connect_task->tls_options_ptr) {
-        aws_tls_connection_options_clean_up(connect_task->tls_options_ptr);
-    }
-
-    aws_mem_release(connect_task->allocator, connect_task);
-    aws_ref_count_release(&adapter->internal_refs);
+    s_aws_mqtt_adapter_connect_task_destroy(connect_task);
 
     return NULL;
 }
