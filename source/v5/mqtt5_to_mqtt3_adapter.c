@@ -314,6 +314,20 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     if (connection_options->tls_options) {
         aws_tls_connection_options_copy(&connect_task->tls_options, connection_options->tls_options);
         connect_task->tls_options_ptr = &connect_task->tls_options;
+
+        /* Cheat and set the tls_options host_name to our copy if they're the same */
+        if (!connect_task->tls_options.server_name) {
+            struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_buf(&connect_task->host_name);
+
+            if (aws_tls_connection_options_set_server_name(
+                    &connect_task->tls_options, connect_task->allocator, &host_name_cur)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+                    "id=%p: mqtt3-to-5-adapter - Failed to set TLS Connection Options server name",
+                    (void *)adapter);
+                goto error;
+            }
+        }
     }
 
     aws_byte_buf_init_copy_from_cursor(&connect_task->client_id, allocator, connection_options->client_id);
@@ -326,6 +340,13 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     connect_task->clean_session = connection_options->clean_session;
 
     return connect_task;
+
+error:
+    aws_ref_count_release(&adapter->internal_refs);
+
+    s_aws_mqtt_adapter_connect_task_destroy(connect_task);
+
+    return NULL;
 }
 
 static int s_validate_adapter_connection_options(
