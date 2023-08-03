@@ -330,7 +330,7 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
             }
         }
     }
-
+    connect_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
     aws_byte_buf_init_copy_from_cursor(&connect_task->client_id, allocator, connection_options->client_id);
 
     connect_task->keep_alive_time_secs = connection_options->keep_alive_time_secs;
@@ -339,7 +339,6 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     connect_task->on_connection_complete = connection_options->on_connection_complete;
     connect_task->on_connection_complete_user_data = connection_options->user_data;
     connect_task->clean_session = connection_options->clean_session;
-    connect_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
 
     return connect_task;
 
