@@ -312,7 +312,9 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     connect_task->port = connection_options->port;
     connect_task->socket_options = *connection_options->socket_options;
     if (connection_options->tls_options) {
-        aws_tls_connection_options_copy(&connect_task->tls_options, connection_options->tls_options);
+        if (aws_tls_connection_options_copy(&connect_task->tls_options, connection_options->tls_options)) {
+            goto error;
+        }
         connect_task->tls_options_ptr = &connect_task->tls_options;
 
         /* Cheat and set the tls_options host_name to our copy if they're the same */
@@ -342,9 +344,14 @@ static struct aws_mqtt_adapter_connect_task *s_aws_mqtt_adapter_connect_task_new
     return connect_task;
 
 error:
-    aws_ref_count_release(&adapter->internal_refs);
+    aws_byte_buf_clean_up(&connect_task->host_name);
 
-    s_aws_mqtt_adapter_connect_task_destroy(connect_task);
+    if (connect_task->tls_options_ptr) {
+        aws_tls_connection_options_clean_up(connect_task->tls_options_ptr);
+    }
+
+    aws_mem_release(connect_task->allocator, connect_task);
+    aws_ref_count_release(&adapter->internal_refs);
 
     return NULL;
 }
