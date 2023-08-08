@@ -128,6 +128,11 @@ struct aws_mqtt_request {
 
     struct aws_channel_task outgoing_task;
 
+    /*
+     * The request send time. Currently used to push off keepalive packet.
+     */
+    uint64_t request_send_timestamp;
+
     /* How this operation is currently affecting the statistics of the connection */
     enum aws_mqtt_operation_statistic_state_flags statistic_state_flags;
     /* The encoded size of the packet - used for operation statistics tracking */
@@ -307,11 +312,6 @@ struct aws_mqtt_client_connection_311_impl {
          * Helps us find the next free ID faster.
          */
         uint16_t packet_id;
-
-        /**
-         * The last request complete time
-         */
-        uint64_t last_request_write_timestamp;
 
     } synced_data;
 
