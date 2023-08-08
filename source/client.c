@@ -93,6 +93,15 @@ void mqtt_connection_set_state(
     connection->synced_data.state = state;
 }
 
+/* Set the socket write timestamp to current clock time */
+void s_mqtt_connection_sync_socket_write_time(struct aws_mqtt_client_connection_311_impl *connection) {
+    ASSERT_SYNCED_DATA_LOCK_HELD(connection);
+    if (connection->slot != NULL && connection->slot->channel != NULL) {
+        aws_channel_current_clock_time(
+            connection->slot->channel, &connection->synced_data.last_request_write_timestamp);
+    }
+}
+
 struct request_timeout_wrapper;
 
 /* used for timeout task */
@@ -1841,6 +1850,8 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
      */
     if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         aws_mem_release(message->allocator, message);
+    } else {
+        s_mqtt_connection_sync_socket_write_time(task_arg->connection);
     }
 
     if (!task_arg->tree_updated) {
@@ -2295,6 +2306,8 @@ static enum aws_mqtt_client_request_state s_resubscribe_send(
     /* This is not necessarily a fatal error; if the send fails, it'll just retry.  Still need to clean up though. */
     if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         aws_mem_release(message->allocator, message);
+    } else {
+        s_mqtt_connection_sync_socket_write_time(task_arg->connection);
     }
 
     return AWS_MQTT_CLIENT_REQUEST_ONGOING;
@@ -2535,6 +2548,8 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
     if (aws_channel_slot_send_message(task_arg->connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
         goto handle_error;
+    } else {
+        s_mqtt_connection_sync_socket_write_time(task_arg->connection);
     }
 
     /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
@@ -2810,6 +2825,8 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
             /* If it's QoS 0, telling user that the message haven't been sent, else, the message will be resent once the
              * connection is back */
             return is_qos_0 ? AWS_MQTT_CLIENT_REQUEST_ERROR : AWS_MQTT_CLIENT_REQUEST_ONGOING;
+        } else {
+            s_mqtt_connection_sync_socket_write_time(task_arg->connection);
         }
 
         /* If there's still payload left, get a new message and start again. */

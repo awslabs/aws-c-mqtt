@@ -32,6 +32,16 @@ static void s_update_next_ping_time(struct aws_mqtt_client_connection_311_impl *
     }
 }
 
+/* push off next ping time on ack received. The function must be called in critical section. */
+static void s_pushoff_next_ping_time(struct aws_mqtt_client_connection_311_impl *connection) {
+    ASSERT_SYNCED_DATA_LOCK_HELD(connection);
+    uint64_t last_socket_write_time = connection->synced_data.last_request_write_timestamp;
+    aws_add_u64_checked(last_socket_write_time, connection->keep_alive_time_ns, &last_socket_write_time);
+    if (last_socket_write_time > connection->next_ping_time) {
+        connection->next_ping_time = last_socket_write_time;
+    }
+}
+
 /*******************************************************************************
  * Packet State Machine
  ******************************************************************************/
@@ -426,7 +436,6 @@ static int s_packet_handler_unsuback(struct aws_byte_cursor message_cursor, void
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
     mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
-
     return AWS_OP_SUCCESS;
 }
 
@@ -528,7 +537,6 @@ static int s_packet_handler_pubcomp(struct aws_byte_cursor message_cursor, void 
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
     mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
-
     return AWS_OP_SUCCESS;
 }
 
@@ -813,9 +821,6 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
-                /* Since a request has complete, update the next ping time */
-                s_update_next_ping_time(connection);
-
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
                 aws_memory_pool_release(&connection->synced_data.requests_pool, request);
@@ -836,9 +841,6 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 /* Set the request as incomplete and un-acked in the operation statistics */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
-
-                /* Since a request has complete, update the next ping time */
-                s_update_next_ping_time(connection);
 
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
@@ -1003,6 +1005,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
 
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
+        s_pushoff_next_ping_time(connection);
         struct aws_hash_element *elem = NULL;
         aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, &elem);
         if (elem != NULL) {

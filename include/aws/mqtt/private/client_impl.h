@@ -308,6 +308,11 @@ struct aws_mqtt_client_connection_311_impl {
          */
         uint16_t packet_id;
 
+        /**
+         * The last request complete time
+         */
+        uint64_t last_request_write_timestamp;
+
     } synced_data;
 
     struct {
