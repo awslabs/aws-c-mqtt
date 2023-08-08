@@ -95,11 +95,14 @@ void mqtt_connection_set_state(
 
 /* Set the socket write timestamp to current clock time */
 void s_mqtt_connection_sync_socket_write_time(struct aws_mqtt_client_connection_311_impl *connection) {
-    ASSERT_SYNCED_DATA_LOCK_HELD(connection);
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
     if (connection->slot != NULL && connection->slot->channel != NULL) {
         aws_channel_current_clock_time(
             connection->slot->channel, &connection->synced_data.last_request_write_timestamp);
     }
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
 }
 
 struct request_timeout_wrapper;
