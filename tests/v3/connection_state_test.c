@@ -3390,9 +3390,9 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
 
     uint64_t begin_timestamp = 0;
-    aws_high_res_clock_get_ticks(&begin_timestamp);
     uint64_t elapsed_time = 0;
     uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&begin_timestamp);
     uint64_t test_duration = (uint64_t)4 * AWS_TIMESTAMP_NANOS;
 
     // Make sure we publish for 4 seconds;
@@ -3413,6 +3413,8 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
         aws_high_res_clock_get_ticks(&now);
         elapsed_time = now - begin_timestamp;
     }
+
+    aws_thread_current_sleep(250000000); /* Sleep 0.25 seconds to consider jittering*/
 
     /* Ensure the server got 0 PING packets */
     ASSERT_INT_EQUALS(0, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
@@ -3457,9 +3459,9 @@ static int s_test_mqtt_connection_ping_noack_fn(struct aws_allocator *allocator,
     struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
 
     uint64_t begin_timestamp = 0;
-    aws_high_res_clock_get_ticks(&begin_timestamp);
     uint64_t elapsed_time = 0;
     uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&begin_timestamp);
     uint64_t test_duration = (uint64_t)4 * AWS_TIMESTAMP_NANOS;
 
     // Make sure we publish for 4 seconds;
@@ -3479,6 +3481,8 @@ static int s_test_mqtt_connection_ping_noack_fn(struct aws_allocator *allocator,
         aws_high_res_clock_get_ticks(&now);
         elapsed_time = now - begin_timestamp;
     }
+
+    aws_thread_current_sleep(250000000); /* Sleep 0.25 seconds to consider jittering*/
 
     /* Ensure the server got 4 PING packets */
     ASSERT_INT_EQUALS(4, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
