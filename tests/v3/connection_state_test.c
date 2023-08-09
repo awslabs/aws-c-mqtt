@@ -3343,7 +3343,6 @@ static int s_test_mqtt_connection_ping_norm_fn(struct aws_allocator *allocator, 
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
-    s_wait_for_connection_to_complete(state_test_data);
 
     /* Wait for 4.5 seconds (to account for slight drift/jitter) */
     aws_thread_current_sleep(4500000000);
@@ -3394,7 +3393,7 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
     aws_high_res_clock_get_ticks(&begin_timestamp);
     uint64_t elapsed_time = 0;
     uint64_t now = 0;
-    uint64_t test_duration = 4.0 * AWS_TIMESTAMP_NANOS;
+    uint64_t test_duration = (uint64_t)4 * AWS_TIMESTAMP_NANOS;
 
     // Make sure we publish for 4 seconds;
     while (elapsed_time < test_duration) {
@@ -3461,7 +3460,7 @@ static int s_test_mqtt_connection_ping_noack_fn(struct aws_allocator *allocator,
     aws_high_res_clock_get_ticks(&begin_timestamp);
     uint64_t elapsed_time = 0;
     uint64_t now = 0;
-    uint64_t test_duration = 4.0 * AWS_TIMESTAMP_NANOS;
+    uint64_t test_duration = (uint64_t)4 * AWS_TIMESTAMP_NANOS;
 
     // Make sure we publish for 4 seconds;
     while (elapsed_time < test_duration) {
