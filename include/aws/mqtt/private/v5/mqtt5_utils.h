@@ -67,10 +67,8 @@ struct aws_mqtt5_negotiated_settings;
 #define AWS_MQTT5_SUBSCRIBE_FLAGS_QOS_BIT_MASK 0x03
 
 /* Static AWS IoT Core Limit/Quota Values */
-#define AWS_IOT_CORE_MAXIMUM_CLIENT_ID_LENGTH 128
 #define AWS_IOT_CORE_MAXIMUM_TOPIC_LENGTH 256
 #define AWS_IOT_CORE_MAXIMUM_TOPIC_SEGMENTS 8
-#define AWS_IOT_CORE_MAXIMUM_SUSBCRIPTIONS_PER_SUBSCRIBE 8
 
 /* Dynamic IoT Core Limits */
 #define AWS_IOT_CORE_PUBLISH_PER_SECOND_LIMIT 100
@@ -328,7 +326,8 @@ AWS_MQTT_API uint64_t aws_mqtt5_client_random_in_range(uint64_t from, uint64_t t
  * @param topic_cursor topic to get the non-rules suffix for
  * @return remaining part of the topic after the leading AWS IoT Rules prefix has been skipped, if present
  */
-AWS_MQTT_API struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(struct aws_byte_cursor topic_cursor);
+AWS_MQTT_API struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(
+    struct aws_byte_cursor topic_cursor);
 
 /**
  * Computes the number of topic segments in a topic or topic filter
