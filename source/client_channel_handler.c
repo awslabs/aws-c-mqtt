@@ -32,6 +32,28 @@ static void s_update_next_ping_time(struct aws_mqtt_client_connection_311_impl *
     }
 }
 
+/* Caches the request send time. The `request_send_timestamp` will be used to push off ping request on request complete.
+ */
+static void s_update_request_send_time(struct aws_mqtt_request *request) {
+    if (request->connection != NULL && request->connection->slot != NULL &&
+        request->connection->slot->channel != NULL) {
+        aws_channel_current_clock_time(request->connection->slot->channel, &request->request_send_timestamp);
+    }
+}
+
+/* push off next ping time on ack received to last_request_send_timestamp_ns + keep_alive_time_ns
+ * The function must be called in critical section. */
+static void s_pushoff_next_ping_time(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    uint64_t last_request_send_timestamp_ns) {
+    ASSERT_SYNCED_DATA_LOCK_HELD(connection);
+    aws_add_u64_checked(
+        last_request_send_timestamp_ns, connection->keep_alive_time_ns, &last_request_send_timestamp_ns);
+    if (last_request_send_timestamp_ns > connection->next_ping_time) {
+        connection->next_ping_time = last_request_send_timestamp_ns;
+    }
+}
+
 /*******************************************************************************
  * Packet State Machine
  ******************************************************************************/
@@ -426,7 +448,6 @@ static int s_packet_handler_unsuback(struct aws_byte_cursor message_cursor, void
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
     mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
-
     return AWS_OP_SUCCESS;
 }
 
@@ -528,7 +549,6 @@ static int s_packet_handler_pubcomp(struct aws_byte_cursor message_cursor, void 
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
     mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
-
     return AWS_OP_SUCCESS;
 }
 
@@ -780,6 +800,8 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
     /* Send the request */
     enum aws_mqtt_client_request_state state =
         request->send_request(request->packet_id, !request->initiated, request->send_request_ud);
+    /* Update the request send time.*/
+    s_update_request_send_time(request);
     request->initiated = true;
     int error_code = AWS_ERROR_SUCCESS;
     switch (state) {
@@ -813,9 +835,6 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_NONE);
 
-                /* Since a request has complete, update the next ping time */
-                s_update_next_ping_time(connection);
-
                 aws_hash_table_remove(
                     &connection->synced_data.outstanding_requests_table, &request->packet_id, NULL, NULL);
                 aws_memory_pool_release(&connection->synced_data.requests_pool, request);
@@ -836,9 +855,6 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
                 /* Set the request as incomplete and un-acked in the operation statistics */
                 aws_mqtt_connection_statistics_change_operation_statistic_state(
                     request->connection, request, AWS_MQTT_OSS_INCOMPLETE | AWS_MQTT_OSS_UNACKED);
-
-                /* Since a request has complete, update the next ping time */
-                s_update_next_ping_time(connection);
 
                 mqtt_connection_unlock_synced_data(connection);
             } /* END CRITICAL SECTION */
@@ -1016,6 +1032,7 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
             aws_mqtt_connection_statistics_change_operation_statistic_state(
                 request->connection, request, AWS_MQTT_OSS_NONE);
 
+            s_pushoff_next_ping_time(connection, request->request_send_timestamp);
             /* clean up request resources */
             aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
             /* remove the request from the list, which is thread_data.ongoing_requests_list */
