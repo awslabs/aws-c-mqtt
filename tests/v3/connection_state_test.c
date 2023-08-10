@@ -3414,7 +3414,7 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
         elapsed_time = now - begin_timestamp;
     }
 
-    aws_thread_current_sleep(250000000); /* Sleep 0.25 seconds to consider jittering*/
+    aws_thread_current_sleep(250000000); /* Sleep 0.25 seconds to consider jitter*/
 
     /* Ensure the server got 0 PING packets */
     ASSERT_INT_EQUALS(0, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
@@ -3466,7 +3466,7 @@ static int s_test_mqtt_connection_ping_noack_fn(struct aws_allocator *allocator,
 
     // Make sure we publish for 4 seconds;
     while (elapsed_time < test_duration) {
-        /* Publish qos1*/
+        /* Publish qos0*/
         uint16_t packet_id = aws_mqtt_client_connection_publish(
             state_test_data->mqtt_connection,
             &pub_topic,
@@ -3482,7 +3482,7 @@ static int s_test_mqtt_connection_ping_noack_fn(struct aws_allocator *allocator,
         elapsed_time = now - begin_timestamp;
     }
 
-    aws_thread_current_sleep(250000000); /* Sleep 0.25 seconds to consider jittering*/
+    aws_thread_current_sleep(250000000); /* Sleep 0.25 seconds to consider jitter*/
 
     /* Ensure the server got 4 PING packets */
     ASSERT_INT_EQUALS(4, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
