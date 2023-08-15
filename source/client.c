@@ -440,16 +440,16 @@ static void s_mqtt_client_shutdown(
                     AWS_LS_MQTT_CLIENT,
                     "id=%p: Caller requested disconnect from on_interrupted callback, aborting reconnect",
                     (void *)connection);
-                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
                 MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
+                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
                 break;
             case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
                 AWS_LOGF_DEBUG(
                     AWS_LS_MQTT_CLIENT,
                     "id=%p: Disconnect completed, clearing request queue and calling callback",
                     (void *)connection);
-                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
                 MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
+                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
                 break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
                 AWS_LOGF_TRACE(
@@ -727,8 +727,8 @@ static void s_attempt_reconnect(struct aws_task *task, void *userdata, enum aws_
             /* Unlock the synced data, then potentially call the disconnect callback and release the connection */
             mqtt_connection_unlock_synced_data(connection);
             if (perform_full_destroy) {
-                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
                 MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
+                MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
                 aws_mqtt_client_connection_release(&connection->base);
             }
             return;
