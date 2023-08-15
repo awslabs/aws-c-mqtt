@@ -568,7 +568,6 @@ int aws_mqtt_client_connection_disconnect(
     aws_mqtt_client_on_disconnect_fn *on_disconnect,
     void *userdata);
 
-
 AWS_MQTT_API
 int aws_mqtt_client_connection_termination(
     struct aws_mqtt_client_connection *connection,
