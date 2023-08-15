@@ -552,16 +552,16 @@ static int s_aws_mqtt5_to_mqtt3_adapter_safe_lifecycle_handler(
                 (void *)adapter,
                 (int)adapter->adapter_state);
 
+            if (adapter->on_closed) {
+                (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
+            }
+
             /* If an MQTT311-view user is waiting on a disconnect callback, invoke it */
             if (adapter->on_disconnect) {
                 (*adapter->on_disconnect)(&adapter->base, adapter->on_disconnect_user_data);
 
                 adapter->on_disconnect = NULL;
                 adapter->on_disconnect_user_data = NULL;
-            }
-
-            if (adapter->on_closed) {
-                (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
             }
 
             /*
@@ -650,12 +650,11 @@ static int s_aws_mqtt5_to_mqtt3_adapter_safe_disconnect_handler(
     }
 
     if (invoke_callbacks) {
-        if (disconnect_task->on_disconnect != NULL) {
-            (*disconnect_task->on_disconnect)(&adapter->base, disconnect_task->on_disconnect_user_data);
-        }
-
         if (adapter->on_closed) {
             (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
+        }
+        if (disconnect_task->on_disconnect != NULL) {
+            (*disconnect_task->on_disconnect)(&adapter->base, disconnect_task->on_disconnect_user_data);
         }
     }
 
