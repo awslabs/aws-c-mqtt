@@ -558,11 +558,13 @@ static int s_aws_mqtt5_to_mqtt3_adapter_safe_lifecycle_handler(
 
                 adapter->on_disconnect = NULL;
                 adapter->on_disconnect_user_data = NULL;
+
+                if (adapter->on_closed) {
+                    (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
+                }
             }
 
-            if (adapter->on_closed) {
-                (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
-            }
+
 
             /*
              * Judgement call: If the mqtt5 client is stopped behind our back, it seems better to transition to the
@@ -652,10 +654,10 @@ static int s_aws_mqtt5_to_mqtt3_adapter_safe_disconnect_handler(
     if (invoke_callbacks) {
         if (disconnect_task->on_disconnect != NULL) {
             (*disconnect_task->on_disconnect)(&adapter->base, disconnect_task->on_disconnect_user_data);
-        }
 
-        if (adapter->on_closed) {
-            (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
+            if (adapter->on_closed) {
+                (*adapter->on_closed)(&adapter->base, NULL, adapter->on_closed_user_data);
+            }
         }
     }
 
