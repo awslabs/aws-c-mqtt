@@ -785,6 +785,8 @@ void aws_create_reconnect_task(struct aws_mqtt_client_connection_311_impl *conne
 
 static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connection *base_connection) {
 
+    // TODO put terminate here
+
     struct aws_mqtt_client_connection_311_impl *connection = base_connection->impl;
     AWS_PRECONDITION(!connection || connection->allocator);
     if (!connection) {
