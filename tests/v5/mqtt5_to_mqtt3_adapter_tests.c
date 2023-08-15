@@ -1002,8 +1002,8 @@ static int s_do_mqtt5to3_adapter_connect_success_disconnect_success_cycle(
         aws_mqtt_client_connection_disconnect(
             adapter, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_disconnection_complete, &fixture);
 
-        s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_DISCONNECTION_COMPLETE, i + 1);
         s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CLOSED, i + 1);
+        s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_DISCONNECTION_COMPLETE, i + 1);
 
         struct aws_mqtt3_lifecycle_event expected_event_sequence[] = {
             {
@@ -1013,10 +1013,10 @@ static int s_do_mqtt5to3_adapter_connect_success_disconnect_success_cycle(
                 .type = AWS_MQTT3_LET_CONNECTION_COMPLETE,
             },
             {
-                .type = AWS_MQTT3_LET_DISCONNECTION_COMPLETE,
+                .type = AWS_MQTT3_LET_CLOSED,
             },
             {
-                .type = AWS_MQTT3_LET_CLOSED,
+                .type = AWS_MQTT3_LET_DISCONNECTION_COMPLETE,
             },
         };
         size_t sequence_size = AWS_ARRAY_SIZE(expected_event_sequence);
@@ -1220,10 +1220,10 @@ static int s_verify_bad_connectivity_callbacks(struct aws_mqtt5_to_mqtt3_adapter
 
     struct aws_mqtt3_lifecycle_event expected_events_end[] = {
         {
-            .type = AWS_MQTT3_LET_DISCONNECTION_COMPLETE,
+            .type = AWS_MQTT3_LET_CLOSED,
         },
         {
-            .type = AWS_MQTT3_LET_CLOSED,
+            .type = AWS_MQTT3_LET_DISCONNECTION_COMPLETE
         },
     };
 
@@ -1899,8 +1899,8 @@ static int s_mqtt5to3_adapter_connect_success_disconnect_success_disconnect_succ
     aws_mqtt_client_connection_disconnect(
         adapter, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_disconnection_complete, &fixture);
 
-    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_DISCONNECTION_COMPLETE, 3);
     s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CLOSED, 1);
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_DISCONNECTION_COMPLETE, 3);
 
     aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
