@@ -71,7 +71,7 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
 
     /* trigger the termination callback */
     if (adapter->on_termination) {
-        adapter->on_termination(&adapter->base, adapter->on_termination_user_data);
+        adapter->on_termination(adapter->on_termination_user_data);
         adapter->on_termination = NULL;
         adapter->on_termination_user_data = NULL;
     }
