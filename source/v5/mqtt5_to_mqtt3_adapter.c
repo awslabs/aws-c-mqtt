@@ -70,13 +70,11 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: Final destruction of mqtt3-to-5 adapter", (void *)adapter);
 
     /* trigger the termination callback */
-    if(adapter->on_termination)
-    {
+    if (adapter->on_termination) {
         adapter->on_termination(NULL, adapter->on_termination_user_data);
         adapter->on_termination = NULL;
         adapter->on_termination_user_data = NULL;
     }
-
 
     if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
         /*
@@ -1093,9 +1091,8 @@ struct aws_mqtt_set_on_termination_handlers_task {
     void *on_termination_ud;
 };
 
-
-static void s_set_on_termination_handlers_task_fn(struct aws_task *task, void *arg, enum aws_task_status status)
-{
+static void s_set_on_termination_handlers_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
     struct aws_mqtt_set_on_termination_handlers_task *set_task = arg;
     struct aws_mqtt_client_connection_5_impl *adapter = set_task->adapter;
     if (status != AWS_TASK_STATUS_RUN_READY) {
@@ -1110,9 +1107,7 @@ done:
     aws_ref_count_release(&adapter->internal_refs);
 
     aws_mem_release(set_task->allocator, set_task);
-
 }
-
 
 static struct aws_mqtt_set_on_termination_handlers_task *s_aws_mqtt_set_on_termination_handler_task_new(
     struct aws_allocator *allocator,
@@ -1132,9 +1127,10 @@ static struct aws_mqtt_set_on_termination_handlers_task *s_aws_mqtt_set_on_termi
     return set_task;
 }
 
-static int s_aws_mqtt_client_connection_5_set_termination_handler(void *impl,
+static int s_aws_mqtt_client_connection_5_set_termination_handler(
+    void *impl,
     aws_mqtt_client_on_termination_fn *on_termination,
-    void *on_termination_ud){
+    void *on_termination_ud) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     struct aws_mqtt_set_on_termination_handlers_task *task =
@@ -1153,7 +1149,6 @@ static int s_aws_mqtt_client_connection_5_set_termination_handler(void *impl,
     aws_event_loop_schedule_task_now(adapter->loop, &task->task);
 
     return AWS_OP_SUCCESS;
-
 }
 
 struct aws_mqtt_set_on_any_publish_handler_task {
