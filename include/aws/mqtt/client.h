@@ -161,7 +161,10 @@ typedef void(aws_mqtt_client_publish_received_fn)(
 /** Called when a connection is closed, right before any resources are deleted */
 typedef void(aws_mqtt_client_on_disconnect_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
-typedef void(aws_mqtt_client_on_termination_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
+/**
+ * Signature of callback invoked on a connection destruction.
+ */
+typedef void(aws_mqtt_client_on_termination_fn)(void *userdata);
 
 /**
  * Function to invoke when the websocket handshake request transformation completes.
