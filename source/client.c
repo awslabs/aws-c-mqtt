@@ -463,9 +463,6 @@ static void s_mqtt_client_shutdown(
                 break;
         }
 
-        /* TODO Call termination callback */
-        connection->on_termination(connection, connection->on_termination_ud);
-
         /* The connection can die now. Release the refcount */
         aws_mqtt_client_connection_release(&connection->base);
     }
@@ -799,6 +796,9 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
     AWS_ASSERT(!connection->slot);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
+
+    /* TODO Call termination callback */
+    connection->on_termination(base_connection, connection->on_termination_ud);
 
     /* If the reconnect_task isn't freed, free it */
     if (connection->reconnect_task) {
