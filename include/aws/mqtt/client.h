@@ -511,6 +511,13 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
     aws_mqtt_client_publish_received_fn *on_any_publish,
     void *on_any_publish_ud);
 
+/**
+ * Sets the callback to call on a connection destruction.
+ *
+ * \param[in] connection        The connection object.
+ * \param[in] on_termination    The function to call when a connection is destroyed.
+ * \param[in] on_termination_ud Userdata for on_termination.
+ */
 AWS_MQTT_API
 int aws_mqtt_client_connection_set_termination_handler(
     struct aws_mqtt_client_connection *connection,
@@ -569,12 +576,6 @@ AWS_MQTT_API
 int aws_mqtt_client_connection_disconnect(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_on_disconnect_fn *on_disconnect,
-    void *userdata);
-
-AWS_MQTT_API
-int aws_mqtt_client_connection_termination(
-    struct aws_mqtt_client_connection *connection,
-    aws_mqtt_client_on_termination_fn *on_termination,
     void *userdata);
 
 /**
