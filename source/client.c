@@ -464,6 +464,7 @@ static void s_mqtt_client_shutdown(
         }
 
         /* TODO Call termination callback */
+        connection->on_termination(connection, connection->on_termination_ud);
 
         /* The connection can die now. Release the refcount */
         aws_mqtt_client_connection_release(&connection->base);
