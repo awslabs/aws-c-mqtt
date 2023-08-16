@@ -462,7 +462,6 @@ static void s_mqtt_client_shutdown(
             default:
                 break;
         }
-
         /* The connection can die now. Release the refcount */
         aws_mqtt_client_connection_release(&connection->base);
     }
@@ -783,8 +782,6 @@ void aws_create_reconnect_task(struct aws_mqtt_client_connection_311_impl *conne
 
 static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connection *base_connection) {
 
-    // TODO put terminate here
-
     struct aws_mqtt_client_connection_311_impl *connection = base_connection->impl;
     AWS_PRECONDITION(!connection || connection->allocator);
     if (!connection) {
@@ -862,12 +859,19 @@ static void s_on_final_disconnect(struct aws_mqtt_client_connection *connection,
 static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connection_311_impl *connection) {
     bool call_destroy_final = false;
 
-    MQTT_CLIENT_CALL_CALLBACK(connection, on_termination);
-
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Last refcount on connection has been released, start destroying the connection.",
         (void *)connection);
+
+    aws_mqtt_client_on_termination_fn *client_termination_handler = NULL;
+    void *client_termination_handler_user_data = NULL;
+    /* TODO Should it be in a critical section? */
+    if (connection->on_termination != NULL) {
+        client_termination_handler = connection->on_termination;
+        client_termination_handler_user_data = connection->on_termination_ud;
+    }
+
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
@@ -894,6 +898,10 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
 
     if (call_destroy_final) {
         s_mqtt_client_connection_destroy_final(&connection->base);
+    }
+
+    if (client_termination_handler != NULL) {
+        (*client_termination_handler)(client_termination_handler_user_data);
     }
 }
 
