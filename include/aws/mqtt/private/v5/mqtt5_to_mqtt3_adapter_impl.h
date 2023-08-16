@@ -314,6 +314,9 @@ struct aws_mqtt_client_connection_5_impl {
 
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete;
     void *on_connection_complete_user_data;
+
+    aws_mqtt_client_on_termination_fn *on_termination;
+    void *on_termination_user_data;
 };
 
 AWS_EXTERN_C_BEGIN
