@@ -1177,7 +1177,7 @@ static int s_aws_mqtt_client_connection_311_set_termination_handler(
     if (s_check_connection_state_for_configuration(connection)) {
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection closed handler", (void *)connection);
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection termination handler", (void *)connection);
 
     connection->on_termination = on_termination;
     connection->on_termination_ud = on_termination_ud;
