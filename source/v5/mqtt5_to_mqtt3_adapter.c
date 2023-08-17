@@ -1087,7 +1087,7 @@ struct aws_mqtt_set_on_termination_handlers_task {
     struct aws_allocator *allocator;
     struct aws_mqtt_client_connection_5_impl *adapter;
 
-    aws_mqtt_client_on_termination_fn *on_termination_callback;
+    aws_mqtt_client_on_connection_termination_fn *on_termination_callback;
     void *on_termination_ud;
 };
 
@@ -1112,7 +1112,7 @@ done:
 static struct aws_mqtt_set_on_termination_handlers_task *s_aws_mqtt_set_on_termination_handler_task_new(
     struct aws_allocator *allocator,
     struct aws_mqtt_client_connection_5_impl *adapter,
-    aws_mqtt_client_on_termination_fn *on_termination,
+    aws_mqtt_client_on_connection_termination_fn *on_termination,
     void *on_termination_user_data) {
 
     struct aws_mqtt_set_on_termination_handlers_task *set_task =
@@ -1129,7 +1129,7 @@ static struct aws_mqtt_set_on_termination_handlers_task *s_aws_mqtt_set_on_termi
 
 static int s_aws_mqtt_client_connection_5_set_termination_handler(
     void *impl,
-    aws_mqtt_client_on_termination_fn *on_termination,
+    aws_mqtt_client_on_connection_termination_fn *on_termination,
     void *on_termination_ud) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
@@ -2953,7 +2953,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_connection_result_handlers = s_aws_mqtt_client_connection_5_set_connection_result_handlers,
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_5_set_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_5_set_on_closed_handler,
-    .set_termination_handler_fn = s_aws_mqtt_client_connection_5_set_termination_handler,
+    .set_connection_termination_handler_fn = s_aws_mqtt_client_connection_5_set_termination_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_5_set_on_any_publish_handler,
     .connect_fn = s_aws_mqtt_client_connection_5_connect,
     .reconnect_fn = s_aws_mqtt_client_connection_5_reconnect,

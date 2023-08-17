@@ -619,7 +619,7 @@ int aws_mqtt5_to_mqtt3_adapter_test_fixture_init(
     aws_mutex_init(&fixture->lock);
     aws_condition_variable_init(&fixture->signal);
 
-    aws_mqtt_client_connection_set_termination_handler(
+    aws_mqtt_client_connection_set_connection_termination_handler(
         fixture->connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_termination_handler, fixture);
     aws_mqtt_client_connection_set_connection_closed_handler(
         fixture->connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_closed_handler, fixture);
