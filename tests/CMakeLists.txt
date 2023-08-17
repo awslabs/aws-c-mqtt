@@ -81,7 +81,6 @@ add_test_case(mqtt_connection_ping_double_scenario)
 add_test_case(mqtt_connection_close_callback_simple)
 add_test_case(mqtt_connection_close_callback_interrupted)
 add_test_case(mqtt_connection_close_callback_multi)
-add_test_case(mqtt_connection_termination_callback_simple)
 add_test_case(mqtt_connection_reconnection_backoff_stable)
 add_test_case(mqtt_connection_reconnection_backoff_unstable)
 add_test_case(mqtt_connection_reconnection_backoff_reset)
@@ -96,6 +95,9 @@ add_test_case(mqtt_operation_statistics_simple_subscribe)
 add_test_case(mqtt_operation_statistics_simple_unsubscribe)
 add_test_case(mqtt_operation_statistics_simple_resubscribe)
 add_test_case(mqtt_operation_statistics_simple_callback)
+
+# Connection termination tests
+add_test_case(mqtt_connection_termination_callback_simple)
 
 # MQTT5 tests
 
