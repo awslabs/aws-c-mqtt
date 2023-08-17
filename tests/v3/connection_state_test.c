@@ -80,6 +80,9 @@ struct mqtt_connection_state_test {
     size_t ops_completed;
     size_t expected_ops_completed;
     size_t connection_close_calls; /* All of the times on_connection_closed has been called */
+
+    bool termination_completed;
+    size_t connection_termination_calls;
 };
 
 static struct mqtt_connection_state_test test_data = {0};
@@ -3058,6 +3061,55 @@ AWS_TEST_CASE_FIXTURE(
     mqtt_connection_close_callback_multi,
     s_setup_mqtt_server_fn,
     s_test_mqtt_connection_close_callback_multi_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+
+static bool s_is_termination_completed(void *arg) {
+    struct mqtt_connection_state_test *state_test_data = arg;
+    return state_test_data->termination_completed;
+}
+
+static void s_wait_for_termination_to_complete(struct mqtt_connection_state_test *state_test_data) {
+    aws_mutex_lock(&state_test_data->lock);
+    aws_condition_variable_wait_pred(
+        &state_test_data->cvar, &state_test_data->lock, s_is_termination_completed, state_test_data);
+    state_test_data->termination_completed = false;
+    aws_mutex_unlock(&state_test_data->lock);
+}
+
+static void s_on_connection_termination_fn(void *userdata) {
+    struct mqtt_connection_state_test *state_test_data = (struct mqtt_connection_state_test *)userdata;
+
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->connection_termination_calls += 1;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    state_test_data->termination_completed = true;
+}
+
+/**
+ * Test that the connection termination callback is fired for the connection that was not actually connected ever.
+ */
+static int s_test_mqtt_connection_termination_callback_simple_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    aws_mqtt_client_connection_set_connection_termination_handler(
+        state_test_data->mqtt_connection, s_on_connection_termination_fn, state_test_data);
+
+    aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
+
+    s_wait_for_termination_to_complete(state_test_data);
+    ASSERT_UINT_EQUALS(1, state_test_data->connection_termination_calls);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_termination_callback_simple,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_termination_callback_simple_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
 

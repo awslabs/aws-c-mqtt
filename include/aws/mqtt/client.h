@@ -164,7 +164,7 @@ typedef void(aws_mqtt_client_on_disconnect_fn)(struct aws_mqtt_client_connection
 /**
  * Signature of callback invoked on a connection destruction.
  */
-typedef void(aws_mqtt_client_on_termination_fn)(void *userdata);
+typedef void(aws_mqtt_client_on_connection_termination_fn)(void *userdata);
 
 /**
  * Function to invoke when the websocket handshake request transformation completes.
@@ -519,9 +519,9 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
  * \param[in] on_termination_ud Userdata for on_termination.
  */
 AWS_MQTT_API
-int aws_mqtt_client_connection_set_termination_handler(
+int aws_mqtt_client_connection_set_connection_termination_handler(
     struct aws_mqtt_client_connection *connection,
-    aws_mqtt_client_on_termination_fn *on_termination,
+    aws_mqtt_client_on_connection_termination_fn *on_termination,
     void *on_termination_ud);
 
 /**
