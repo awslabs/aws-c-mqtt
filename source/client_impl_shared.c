@@ -118,7 +118,8 @@ int aws_mqtt_client_connection_set_connection_termination_handler(
     aws_mqtt_client_on_connection_termination_fn *on_termination,
     void *on_termination_ud) {
 
-    return (*connection->vtable->set_connection_termination_handler_fn)(connection->impl, on_termination, on_termination_ud);
+    return (*connection->vtable->set_connection_termination_handler_fn)(
+        connection->impl, on_termination, on_termination_ud);
 }
 
 int aws_mqtt_client_connection_connect(
