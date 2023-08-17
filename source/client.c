@@ -794,6 +794,13 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
 
+    aws_mqtt_client_on_connection_termination_fn *termination_handler = NULL;
+    void *termination_handler_user_data = NULL;
+    if (connection->on_termination != NULL) {
+        termination_handler = connection->on_termination;
+        termination_handler_user_data = connection->on_termination_ud;
+    }
+
     /* If the reconnect_task isn't freed, free it */
     if (connection->reconnect_task) {
         aws_mem_release(connection->reconnect_task->allocator, connection->reconnect_task);
@@ -848,6 +855,10 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     /* Frees all allocated memory */
     aws_mem_release(connection->allocator, connection);
+
+    if (termination_handler != NULL) {
+        (*termination_handler)(termination_handler_user_data);
+    }
 }
 
 static void s_on_final_disconnect(struct aws_mqtt_client_connection *connection, void *userdata) {
@@ -863,14 +874,6 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
         AWS_LS_MQTT_CLIENT,
         "id=%p: Last refcount on connection has been released, start destroying the connection.",
         (void *)connection);
-
-    aws_mqtt_client_on_termination_fn *client_termination_handler = NULL;
-    void *client_termination_handler_user_data = NULL;
-    /* TODO Should it be in a critical section? */
-    if (connection->on_termination != NULL) {
-        client_termination_handler = connection->on_termination;
-        client_termination_handler_user_data = connection->on_termination_ud;
-    }
 
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
@@ -898,10 +901,6 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
 
     if (call_destroy_final) {
         s_mqtt_client_connection_destroy_final(&connection->base);
-    }
-
-    if (client_termination_handler != NULL) {
-        (*client_termination_handler)(client_termination_handler_user_data);
     }
 }
 
@@ -1172,9 +1171,9 @@ static int s_aws_mqtt_client_connection_311_set_on_any_publish_handler(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_mqtt_client_connection_311_set_termination_handler(
+static int s_aws_mqtt_client_connection_311_set_connection_termination_handler(
     void *impl,
-    aws_mqtt_client_on_termination_fn *on_termination,
+    aws_mqtt_client_on_connection_termination_fn *on_termination,
     void *on_termination_ud) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
@@ -3195,7 +3194,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_311_set_connection_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_311_set_connection_closed_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_311_set_on_any_publish_handler,
-    .set_termination_handler_fn = s_aws_mqtt_client_connection_311_set_termination_handler,
+    .set_connection_termination_handler_fn = s_aws_mqtt_client_connection_311_set_connection_termination_handler,
     .connect_fn = s_aws_mqtt_client_connection_311_connect,
     .reconnect_fn = s_aws_mqtt_client_connection_311_reconnect,
     .disconnect_fn = s_aws_mqtt_client_connection_311_disconnect,
