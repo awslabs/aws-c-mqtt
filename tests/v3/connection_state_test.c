@@ -3761,8 +3761,8 @@ AWS_TEST_CASE_FIXTURE(
  * Test that the connection termination callback is fired after connect and disconnect.
  */
 static int s_test_mqtt_connection_termination_callback_connect_disconnect_fn(
-        struct aws_allocator *allocator,
-        void *ctx) {
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
@@ -3795,11 +3795,11 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /*
- * Test that the connection termination callback is fired after connect failure.
+ * Test that the connection termination callback is fired after connection failure.
  */
-static int s_test_mqtt_connection_termination_callback_failed_connect_fn(
-        struct aws_allocator *allocator,
-        void *ctx) {
+static int s_test_mqtt_connection_termination_callback_connect_failed_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
@@ -3825,8 +3825,8 @@ static int s_test_mqtt_connection_termination_callback_failed_connect_fn(
 }
 
 AWS_TEST_CASE_FIXTURE(
-    mqtt_connection_termination_callback_failed_connect,
+    mqtt_connection_termination_callback_connect_failed,
     s_setup_mqtt_server_fn,
-    s_test_mqtt_connection_termination_callback_failed_connect_fn,
+    s_test_mqtt_connection_termination_callback_connect_failed_fn,
     s_clean_up_mqtt_server_with_termination_fn,
     &test_data)
