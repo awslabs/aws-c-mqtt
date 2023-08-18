@@ -99,7 +99,7 @@ add_test_case(mqtt_operation_statistics_simple_callback)
 # Connection termination tests
 add_test_case(mqtt_connection_termination_callback_simple)
 add_test_case(mqtt_connection_termination_callback_connect_disconnect)
-add_test_case(mqtt_connection_termination_callback_failed_connect)
+add_test_case(mqtt_connection_termination_callback_connect_failed)
 
 # MQTT5 tests
 
