@@ -3797,9 +3797,7 @@ AWS_TEST_CASE_FIXTURE(
 /*
  * Test that the connection termination callback is fired after connection failure.
  */
-static int s_test_mqtt_connection_termination_callback_connect_failed_fn(
-    struct aws_allocator *allocator,
-    void *ctx) {
+static int s_test_mqtt_connection_termination_callback_connect_failed_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
