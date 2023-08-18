@@ -60,6 +60,7 @@ struct mqtt_connection_state_test {
     bool connection_resumed;
     bool subscribe_completed;
     bool listener_destroyed;
+    bool connection_terminated;
     int interruption_error;
     int subscribe_complete_error;
     int op_complete_error;
@@ -81,8 +82,7 @@ struct mqtt_connection_state_test {
     size_t expected_ops_completed;
     size_t connection_close_calls; /* All of the times on_connection_closed has been called */
 
-    bool termination_completed;
-    size_t connection_termination_calls;
+    size_t connection_termination_calls; /* How many times on_connection_termination has been called, should be 1 */
 };
 
 static struct mqtt_connection_state_test test_data = {0};
@@ -3688,14 +3688,14 @@ AWS_TEST_CASE_FIXTURE(
 
 static bool s_is_termination_completed(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;
-    return state_test_data->termination_completed;
+    return state_test_data->connection_terminated;
 }
 
 static void s_wait_for_termination_to_complete(struct mqtt_connection_state_test *state_test_data) {
     aws_mutex_lock(&state_test_data->lock);
     aws_condition_variable_wait_pred(
         &state_test_data->cvar, &state_test_data->lock, s_is_termination_completed, state_test_data);
-    state_test_data->termination_completed = false;
+    state_test_data->connection_terminated = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
 
@@ -3706,7 +3706,35 @@ static void s_on_connection_termination_fn(void *userdata) {
     state_test_data->connection_termination_calls += 1;
     aws_mutex_unlock(&state_test_data->lock);
 
-    state_test_data->termination_completed = true;
+    state_test_data->connection_terminated = true;
+}
+
+static int s_clean_up_mqtt_server_with_termination_fn(struct aws_allocator *allocator, int setup_result, void *ctx) {
+    (void)allocator;
+
+    if (!setup_result) {
+        struct mqtt_connection_state_test *state_test_data = ctx;
+
+        s_received_publish_packet_list_clean_up(&state_test_data->published_messages);
+        s_received_publish_packet_list_clean_up(&state_test_data->any_published_messages);
+        aws_array_list_clean_up(&state_test_data->qos_returned);
+        aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
+
+        s_wait_for_termination_to_complete(state_test_data);
+        ASSERT_UINT_EQUALS(1, state_test_data->connection_termination_calls);
+
+        aws_mqtt_client_release(state_test_data->mqtt_client);
+        aws_client_bootstrap_release(state_test_data->client_bootstrap);
+        aws_host_resolver_release(state_test_data->host_resolver);
+        aws_server_bootstrap_destroy_socket_listener(state_test_data->server_bootstrap, state_test_data->listener);
+        s_wait_on_listener_cleanup(state_test_data);
+        aws_server_bootstrap_release(state_test_data->server_bootstrap);
+        aws_event_loop_group_release(state_test_data->el_group);
+        destroy_mqtt_mock_server(state_test_data->mock_server);
+    }
+
+    aws_mqtt_library_clean_up();
+    return AWS_OP_SUCCESS;
 }
 
 /**
@@ -3719,11 +3747,6 @@ static int s_test_mqtt_connection_termination_callback_simple_fn(struct aws_allo
     aws_mqtt_client_connection_set_connection_termination_handler(
         state_test_data->mqtt_connection, s_on_connection_termination_fn, state_test_data);
 
-    aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
-
-    s_wait_for_termination_to_complete(state_test_data);
-    ASSERT_UINT_EQUALS(1, state_test_data->connection_termination_calls);
-
     return AWS_OP_SUCCESS;
 }
 
@@ -3731,5 +3754,79 @@ AWS_TEST_CASE_FIXTURE(
     mqtt_connection_termination_callback_simple,
     s_setup_mqtt_server_fn,
     s_test_mqtt_connection_termination_callback_simple_fn,
-    s_clean_up_mqtt_server_fn,
+    s_clean_up_mqtt_server_with_termination_fn,
+    &test_data)
+
+/*
+ * Test that the connection termination callback is fired after connect and disconnect.
+ */
+static int s_test_mqtt_connection_termination_callback_connect_disconnect_fn(
+        struct aws_allocator *allocator,
+        void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    aws_mqtt_client_connection_set_connection_termination_handler(
+        state_test_data->mqtt_connection, s_on_connection_termination_fn, state_test_data);
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_termination_callback_connect_disconnect,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_termination_callback_connect_disconnect_fn,
+    s_clean_up_mqtt_server_with_termination_fn,
+    &test_data)
+
+/*
+ * Test that the connection termination callback is fired after connect failure.
+ */
+static int s_test_mqtt_connection_termination_callback_failed_connect_fn(
+        struct aws_allocator *allocator,
+        void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    aws_mqtt_client_connection_set_connection_termination_handler(
+        state_test_data->mqtt_connection, s_on_connection_termination_fn, state_test_data);
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+    };
+
+    mqtt_mock_server_set_max_connack(state_test_data->mock_server, 0);
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_termination_callback_failed_connect,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_termination_callback_failed_connect_fn,
+    s_clean_up_mqtt_server_with_termination_fn,
     &test_data)
