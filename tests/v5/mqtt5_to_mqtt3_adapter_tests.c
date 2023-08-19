@@ -302,9 +302,8 @@ static bool s_is_termination_callback_invoked(void *context) {
 static void s_wait_for_termination_callback(struct aws_mqtt5_to_mqtt3_adapter_test_fixture *fixture) {
     aws_mutex_lock(&fixture->lock);
     aws_condition_variable_wait_pred(&fixture->signal, &fixture->lock, s_is_termination_callback_invoked, fixture);
-    fixture->connection_terminated = false;
     aws_mutex_unlock(&fixture->lock);
-    aws_condition_variable_notify_one(&fixture->signal);
+    aws_condition_variable_notify_all(&fixture->signal);
 }
 
 struct n_lifeycle_event_wait_context {
