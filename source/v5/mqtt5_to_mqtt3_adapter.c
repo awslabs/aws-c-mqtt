@@ -69,6 +69,13 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: Final destruction of mqtt3-to-5 adapter", (void *)adapter);
 
+    aws_mqtt_client_on_connection_termination_fn *termination_handler = NULL;
+    void *termination_handler_user_data = NULL;
+    if (adapter->on_termination != NULL) {
+        termination_handler = adapter->on_termination;
+        termination_handler_user_data = adapter->on_termination_user_data;
+    }
+
     if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
         /*
          * If the mqtt5 client is pointing to us for websocket transform, then erase that.  The callback
@@ -90,6 +97,11 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
     aws_mem_release(adapter->allocator, adapter);
 
     aws_mem_release(destroy_task->allocator, destroy_task);
+
+    /* trigger the termination callback */
+    if (termination_handler) {
+        termination_handler(termination_handler_user_data);
+    }
 }
 
 static struct aws_mqtt_adapter_final_destroy_task *s_aws_mqtt_adapter_final_destroy_task_new(
@@ -1059,6 +1071,75 @@ static int s_aws_mqtt_client_connection_5_set_on_closed_handler(
 
     struct aws_mqtt_set_on_closed_handler_task *task =
         s_aws_mqtt_set_on_closed_handler_task_new(adapter->allocator, adapter, on_closed, on_closed_user_data);
+    if (task == NULL) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+            "id=%p: failed to create set on closed handler task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
+struct aws_mqtt_set_on_termination_handlers_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection_5_impl *adapter;
+
+    aws_mqtt_client_on_connection_termination_fn *on_termination_callback;
+    void *on_termination_ud;
+};
+
+static void s_set_on_termination_handlers_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    struct aws_mqtt_set_on_termination_handlers_task *set_task = arg;
+    struct aws_mqtt_client_connection_5_impl *adapter = set_task->adapter;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    adapter->on_termination = set_task->on_termination_callback;
+    adapter->on_termination_user_data = set_task->on_termination_ud;
+
+done:
+
+    aws_ref_count_release(&adapter->internal_refs);
+
+    aws_mem_release(set_task->allocator, set_task);
+}
+
+static struct aws_mqtt_set_on_termination_handlers_task *s_aws_mqtt_set_on_termination_handler_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    aws_mqtt_client_on_connection_termination_fn *on_termination,
+    void *on_termination_user_data) {
+
+    struct aws_mqtt_set_on_termination_handlers_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_on_termination_handlers_task));
+
+    aws_task_init(&set_task->task, s_set_on_termination_handlers_task_fn, (void *)set_task, "SetOnClosedHandlerTask");
+    set_task->allocator = adapter->allocator;
+    set_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
+    set_task->on_termination_callback = on_termination;
+    set_task->on_termination_ud = on_termination_user_data;
+
+    return set_task;
+}
+
+static int s_aws_mqtt_client_connection_5_set_termination_handler(
+    void *impl,
+    aws_mqtt_client_on_connection_termination_fn *on_termination,
+    void *on_termination_ud) {
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_mqtt_set_on_termination_handlers_task *task =
+        s_aws_mqtt_set_on_termination_handler_task_new(adapter->allocator, adapter, on_termination, on_termination_ud);
     if (task == NULL) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -2877,6 +2958,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_connection_result_handlers = s_aws_mqtt_client_connection_5_set_connection_result_handlers,
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_5_set_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_5_set_on_closed_handler,
+    .set_connection_termination_handler_fn = s_aws_mqtt_client_connection_5_set_termination_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_5_set_on_any_publish_handler,
     .connect_fn = s_aws_mqtt_client_connection_5_connect,
     .reconnect_fn = s_aws_mqtt_client_connection_5_reconnect,

@@ -162,6 +162,11 @@ typedef void(aws_mqtt_client_publish_received_fn)(
 typedef void(aws_mqtt_client_on_disconnect_fn)(struct aws_mqtt_client_connection *connection, void *userdata);
 
 /**
+ * Signature of callback invoked on a connection destruction.
+ */
+typedef void(aws_mqtt_client_on_connection_termination_fn)(void *userdata);
+
+/**
  * Function to invoke when the websocket handshake request transformation completes.
  * This function MUST be invoked or the application will soft-lock.
  *
@@ -505,6 +510,19 @@ int aws_mqtt_client_connection_set_on_any_publish_handler(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_client_publish_received_fn *on_any_publish,
     void *on_any_publish_ud);
+
+/**
+ * Sets the callback to call on a connection destruction.
+ *
+ * \param[in] connection        The connection object.
+ * \param[in] on_termination    The function to call when a connection is destroyed.
+ * \param[in] on_termination_ud Userdata for on_termination.
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_connection_termination_handler(
+    struct aws_mqtt_client_connection *connection,
+    aws_mqtt_client_on_connection_termination_fn *on_termination,
+    void *on_termination_ud);
 
 /**
  * Opens the actual connection defined by aws_mqtt_client_connection_new.
