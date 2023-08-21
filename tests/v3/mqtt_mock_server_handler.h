@@ -126,4 +126,9 @@ struct mqtt_decoded_packet *mqtt_mock_server_find_decoded_packet_by_type(
  */
 int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler);
 
+/**
+ * Returns the number of PINGs the server has gotten
+ */
+size_t mqtt_mock_server_get_ping_count(struct aws_channel_handler *handler);
+
 #endif /* MQTT_MOCK_SERVER_HANDLER_H */

@@ -121,6 +121,22 @@ struct aws_mqtt5_client_mock_test_fixture {
     uint32_t server_current_inflight_publishes;
 };
 
+struct mqtt5_client_test_options {
+    struct aws_mqtt5_client_topic_alias_options topic_aliasing_options;
+    struct aws_mqtt5_packet_connect_view connect_options;
+    struct aws_mqtt5_client_options client_options;
+    struct aws_mqtt5_mock_server_vtable server_function_table;
+};
+
+struct aws_mqtt5_mock_server_reconnect_state {
+    size_t required_connection_count_threshold;
+
+    size_t connection_attempts;
+    uint64_t connect_timestamp;
+
+    uint64_t successful_connection_disconnect_delay_ms;
+};
+
 int aws_mqtt5_test_verify_user_properties_raw(
     size_t property_count,
     const struct aws_mqtt5_user_property *properties,
@@ -144,5 +160,68 @@ bool aws_mqtt5_client_test_are_packets_equal(
     void *rhs_packet_storage);
 
 size_t aws_mqtt5_linked_list_length(struct aws_linked_list *list);
+
+void aws_mqtt5_client_test_init_default_options(struct mqtt5_client_test_options *test_options);
+
+void aws_wait_for_connected_lifecycle_event(struct aws_mqtt5_client_mock_test_fixture *test_context);
+void aws_wait_for_stopped_lifecycle_event(struct aws_mqtt5_client_mock_test_fixture *test_context);
+
+int aws_verify_received_packet_sequence(
+    struct aws_mqtt5_client_mock_test_fixture *test_context,
+    struct aws_mqtt5_mock_server_packet_record *expected_packets,
+    size_t expected_packets_count);
+
+int aws_mqtt5_mock_server_handle_connect_always_fail(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+void aws_mqtt5_wait_for_n_lifecycle_events(
+    struct aws_mqtt5_client_mock_test_fixture *test_context,
+    enum aws_mqtt5_client_lifecycle_event_type type,
+    size_t count);
+
+int aws_verify_reconnection_exponential_backoff_timestamps(struct aws_mqtt5_client_mock_test_fixture *test_fixture);
+
+int aws_verify_client_state_sequence(
+    struct aws_mqtt5_client_mock_test_fixture *test_context,
+    enum aws_mqtt5_client_state *expected_states,
+    size_t expected_states_count);
+
+int aws_mqtt5_mock_server_handle_connect_always_succeed(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+int aws_mqtt5_mock_server_send_packet(
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    enum aws_mqtt5_packet_type packet_type,
+    void *packet);
+
+int aws_mqtt5_mock_server_handle_connect_succeed_on_nth(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+int aws_mqtt5_mock_server_handle_publish_puback(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+int aws_mqtt5_mock_server_handle_publish_puback_and_forward(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+int aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+extern const struct aws_string *g_default_client_id;
+
+#define RECONNECT_TEST_MIN_BACKOFF 500
+#define RECONNECT_TEST_MAX_BACKOFF 5000
+#define RECONNECT_TEST_BACKOFF_RESET_DELAY 5000
 
 #endif /* MQTT_MQTT5_TESTING_UTILS_H */

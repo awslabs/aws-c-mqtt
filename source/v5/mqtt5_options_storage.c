@@ -80,19 +80,6 @@ size_t aws_mqtt5_user_property_set_size(const struct aws_mqtt5_user_property_set
     return aws_array_list_length(&property_set->properties);
 }
 
-int aws_mqtt5_user_property_set_get_property(
-    const struct aws_mqtt5_user_property_set *property_set,
-    size_t index,
-    struct aws_mqtt5_user_property *property_out) {
-    return aws_array_list_get_at(&property_set->properties, property_out, index);
-}
-
-int aws_mqtt5_user_property_set_add_stored_property(
-    struct aws_mqtt5_user_property_set *property_set,
-    struct aws_mqtt5_user_property *property) {
-    return aws_array_list_push_back(&property_set->properties, property);
-}
-
 static void s_aws_mqtt5_user_property_set_log(
     struct aws_logger *log_handle,
     const struct aws_mqtt5_user_property *properties,
@@ -1313,7 +1300,7 @@ static int s_aws_mqtt5_packet_disconnect_view_validate_vs_connection_settings(
          * cannot set a non-zero value here if you sent a 0-value or no value in the CONNECT (presumably allows
          * the server to skip tracking session state, and we can't undo that now)
          */
-        const uint32_t *session_expiry_ptr = client->config->connect.storage_view.session_expiry_interval_seconds;
+        const uint32_t *session_expiry_ptr = client->config->connect->storage_view.session_expiry_interval_seconds;
         if (*disconnect_view->session_expiry_interval_seconds > 0 &&
             (session_expiry_ptr == NULL || *session_expiry_ptr == 0)) {
             AWS_LOGF_ERROR(
@@ -1725,19 +1712,6 @@ int aws_mqtt5_packet_publish_view_validate(const struct aws_mqtt5_packet_publish
     return AWS_OP_SUCCESS;
 }
 
-int aws_mqtt5_packet_publish_view_validate_vs_iot_core(const struct aws_mqtt5_packet_publish_view *publish_view) {
-    if (!aws_mqtt_is_valid_topic_for_iot_core(publish_view->topic)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_publish_view - topic not valid for AWS Iot Core limits: \"" PRInSTR "\"",
-            (void *)publish_view,
-            AWS_BYTE_CURSOR_PRI(publish_view->topic));
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
 static int s_aws_mqtt5_packet_publish_view_validate_vs_connection_settings(
     const void *packet_view,
     const struct aws_mqtt5_client *client) {
@@ -2114,6 +2088,7 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     const struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_publish_view *publish_options,
     const struct aws_mqtt5_publish_completion_options *completion_options) {
+    (void)client;
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(publish_options != NULL);
 
@@ -2128,12 +2103,6 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
             (void *)publish_options);
         aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
         return NULL;
-    }
-
-    if (client != NULL && client->config->extended_validation_and_flow_control_options != AWS_MQTT5_EVAFCO_NONE) {
-        if (aws_mqtt5_packet_publish_view_validate_vs_iot_core(publish_options)) {
-            return NULL;
-        }
     }
 
     struct aws_mqtt5_operation_publish *publish_op =
@@ -2392,25 +2361,6 @@ int aws_mqtt5_packet_unsubscribe_view_validate(const struct aws_mqtt5_packet_uns
     return AWS_OP_SUCCESS;
 }
 
-AWS_MQTT_API int aws_mqtt5_packet_unsubscribe_view_validate_vs_iot_core(
-    const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view) {
-
-    for (size_t i = 0; i < unsubscribe_view->topic_filter_count; ++i) {
-        const struct aws_byte_cursor *topic_filter = &unsubscribe_view->topic_filters[i];
-        if (!aws_mqtt_is_valid_topic_filter_for_iot_core(*topic_filter)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: aws_mqtt5_packet_unsubscribe_view - topic filter not valid for AWS Iot Core limits: \"" PRInSTR
-                "\"",
-                (void *)unsubscribe_view,
-                AWS_BYTE_CURSOR_PRI(*topic_filter));
-            return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
-        }
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
 void aws_mqtt5_packet_unsubscribe_view_log(
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view,
     enum aws_log_level level) {
@@ -2597,6 +2547,7 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     const struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
     const struct aws_mqtt5_unsubscribe_completion_options *completion_options) {
+    (void)client;
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(unsubscribe_options != NULL);
 
@@ -2611,12 +2562,6 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
             (void *)unsubscribe_options);
         aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
         return NULL;
-    }
-
-    if (client != NULL && client->config->extended_validation_and_flow_control_options != AWS_MQTT5_EVAFCO_NONE) {
-        if (aws_mqtt5_packet_unsubscribe_view_validate_vs_iot_core(unsubscribe_options)) {
-            return NULL;
-        }
     }
 
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
@@ -2769,37 +2714,6 @@ int aws_mqtt5_packet_subscribe_view_validate(const struct aws_mqtt5_packet_subsc
             "aws_mqtt5_packet_subscribe_view",
             (void *)subscribe_view)) {
         return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_MQTT_API int aws_mqtt5_packet_subscribe_view_validate_vs_iot_core(
-    const struct aws_mqtt5_packet_subscribe_view *subscribe_view) {
-
-    if (subscribe_view->subscription_count > AWS_IOT_CORE_MAXIMUM_SUSBCRIPTIONS_PER_SUBSCRIBE) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_packet_subscribe_view - number of subscriptions (%zu) exceeds default AWS IoT Core limit "
-            "(%d)",
-            (void *)subscribe_view,
-            subscribe_view->subscription_count,
-            (int)AWS_IOT_CORE_MAXIMUM_SUSBCRIPTIONS_PER_SUBSCRIBE);
-        return AWS_OP_ERR;
-    }
-
-    for (size_t i = 0; i < subscribe_view->subscription_count; ++i) {
-        const struct aws_mqtt5_subscription_view *subscription = &subscribe_view->subscriptions[i];
-        const struct aws_byte_cursor *topic_filter = &subscription->topic_filter;
-        if (!aws_mqtt_is_valid_topic_filter_for_iot_core(*topic_filter)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: aws_mqtt5_packet_subscribe_view - topic filter not valid for AWS Iot Core limits: \"" PRInSTR
-                "\"",
-                (void *)subscribe_view,
-                AWS_BYTE_CURSOR_PRI(*topic_filter));
-            return aws_raise_error(AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION);
-        }
     }
 
     return AWS_OP_SUCCESS;
@@ -3016,6 +2930,7 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     const struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
     const struct aws_mqtt5_subscribe_completion_options *completion_options) {
+    (void)client;
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(subscribe_options != NULL);
 
@@ -3030,12 +2945,6 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
             (void *)subscribe_options);
         aws_raise_error(AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION);
         return NULL;
-    }
-
-    if (client != NULL && client->config->extended_validation_and_flow_control_options != AWS_MQTT5_EVAFCO_NONE) {
-        if (aws_mqtt5_packet_subscribe_view_validate_vs_iot_core(subscribe_options)) {
-            return NULL;
-        }
     }
 
     struct aws_mqtt5_operation_subscribe *subscribe_op =
@@ -3388,6 +3297,26 @@ struct aws_mqtt5_operation_pingreq *aws_mqtt5_operation_pingreq_new(struct aws_a
     return pingreq_op;
 }
 
+bool aws_mqtt5_client_keep_alive_options_are_valid(uint16_t keep_alive_interval_seconds, uint32_t ping_timeout_ms) {
+    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
+    if (keep_alive_interval_seconds > 0) {
+        uint64_t keep_alive_ms =
+            aws_timestamp_convert(keep_alive_interval_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
+        uint64_t one_second_ms = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
+
+        if (ping_timeout_ms == 0) {
+            ping_timeout_ms = AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS;
+        }
+
+        if ((uint64_t)ping_timeout_ms + one_second_ms > keep_alive_ms) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
+            return false;
+        }
+    }
+
+    return true;
+}
+
 /*********************************************************************************************************************
  * Client storage options
  ********************************************************************************************************************/
@@ -3441,34 +3370,15 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
 
     if (aws_mqtt5_packet_connect_view_validate(options->connect_options)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid CONNECT options in mqtt5 client configuration");
+        /* connect validation failure will have already rasied the appropriate error */
         return AWS_OP_ERR;
     }
 
     /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
-    if (options->connect_options->keep_alive_interval_seconds > 0) {
-        uint64_t keep_alive_ms = aws_timestamp_convert(
-            options->connect_options->keep_alive_interval_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
-        uint64_t one_second_ms = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
-
-        uint64_t ping_timeout_ms = options->ping_timeout_ms;
-        if (ping_timeout_ms == 0) {
-            ping_timeout_ms = AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS;
-        }
-
-        if (ping_timeout_ms + one_second_ms > keep_alive_ms) {
-            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
-            return AWS_OP_ERR;
-        }
-    }
-
-    if (options->extended_validation_and_flow_control_options != AWS_MQTT5_EVAFCO_NONE) {
-        if (options->connect_options->client_id.len > AWS_IOT_CORE_MAXIMUM_CLIENT_ID_LENGTH) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "AWS IoT Core limits client_id to be less than or equal to %d bytes in length",
-                (int)AWS_IOT_CORE_MAXIMUM_CLIENT_ID_LENGTH);
-            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
-        }
+    if (!aws_mqtt5_client_keep_alive_options_are_valid(
+            options->connect_options->keep_alive_interval_seconds, options->ping_timeout_ms)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
     }
 
     return AWS_OP_SUCCESS;
@@ -3794,7 +3704,7 @@ void aws_mqtt5_client_options_storage_log(
         "id=%p: aws_mqtt5_client_options_storage connect options:",
         (void *)options_storage);
 
-    aws_mqtt5_packet_connect_view_log(&options_storage->connect.storage_view, level);
+    aws_mqtt5_packet_connect_view_log(&options_storage->connect->storage_view, level);
 
     AWS_LOGUF(
         log_handle,
@@ -3816,7 +3726,8 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
     aws_tls_connection_options_clean_up(&options_storage->tls_options);
     aws_http_proxy_config_destroy(options_storage->http_proxy_config);
 
-    aws_mqtt5_packet_connect_storage_clean_up(&options_storage->connect);
+    aws_mqtt5_packet_connect_storage_clean_up(options_storage->connect);
+    aws_mem_release(options_storage->connect->allocator, options_storage->connect);
 
     aws_mem_release(options_storage->allocator, options_storage);
 }
@@ -3944,7 +3855,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         options_storage->topic_aliasing_options = *options->topic_aliasing_options;
     }
 
-    if (aws_mqtt5_packet_connect_storage_init(&options_storage->connect, allocator, options->connect_options)) {
+    options_storage->connect = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
+    if (aws_mqtt5_packet_connect_storage_init(options_storage->connect, allocator, options->connect_options)) {
         goto error;
     }
 
@@ -3955,6 +3867,15 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_storage->client_termination_handler_user_data = options->client_termination_handler_user_data;
 
     s_apply_zero_valued_defaults_to_client_options_storage(options_storage);
+
+    /* must do this after zero-valued defaults are applied so that max reconnect is accurate */
+    if (options->host_resolution_override) {
+        options_storage->host_resolution_override = *options->host_resolution_override;
+    } else {
+        options_storage->host_resolution_override = aws_host_resolver_init_default_resolution_config();
+        options_storage->host_resolution_override.resolve_frequency_ns = aws_timestamp_convert(
+            options_storage->max_reconnect_delay_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    }
 
     return options_storage;
 

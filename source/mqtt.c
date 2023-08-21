@@ -5,11 +5,9 @@
 
 #include <aws/mqtt/mqtt.h>
 
-#include <aws/io/logging.h>
+#include <aws/http/http.h>
 
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
-#    include <aws/http/http.h>
-#endif
+#include <aws/io/logging.h>
 
 /*******************************************************************************
  * Topic Validation
@@ -216,6 +214,15 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT5_INVALID_OUTBOUND_TOPIC_ALIAS,
                 "Outgoing publish contained an invalid (too large or unknown) topic alias"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT5_INVALID_UTF8_STRING,
+                "Outbound packet contains invalid utf-8 data in a field that must be utf-8"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT,
+                "Mqtt5 connection was reset by the Mqtt3 adapter in order to guarantee correct connection configuration"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS,
+                "Resubscribe was called when there were no subscriptions"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
@@ -233,6 +240,7 @@ static struct aws_error_info_list s_error_list = {
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_GENERAL, "mqtt5-general", "Misc MQTT5 logging"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CLIENT, "mqtt5-client", "MQTT5 client and connections"),
             DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_CANARY, "mqtt5-canary", "MQTT5 canary logging"),
+            DEFINE_LOG_SUBJECT_INFO(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "mqtt5-to-mqtt3-adapter", "MQTT5-To-MQTT3 adapter logging"),
         };
 /* clang-format on */
 
@@ -250,9 +258,8 @@ void aws_mqtt_library_init(struct aws_allocator *allocator) {
     if (!s_mqtt_library_initialized) {
         s_mqtt_library_initialized = true;
         aws_io_library_init(allocator);
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
         aws_http_library_init(allocator);
-#endif
+
         aws_register_error_info(&s_error_list);
         aws_register_log_subject_info_list(&s_logging_subjects_list);
     }
@@ -264,9 +271,8 @@ void aws_mqtt_library_clean_up(void) {
         aws_thread_join_all_managed();
         aws_unregister_error_info(&s_error_list);
         aws_unregister_log_subject_info_list(&s_logging_subjects_list);
-#ifdef AWS_MQTT_WITH_WEBSOCKETS
+
         aws_http_library_clean_up();
-#endif
         aws_io_library_clean_up();
     }
 }

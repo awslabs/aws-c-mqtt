@@ -19,10 +19,12 @@
 #include <aws/io/retry_strategy.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 struct aws_allocator;
 struct aws_client_bootstrap;
+struct aws_host_resolution_config;
 struct aws_http_message;
-struct aws_input_stream;
 struct aws_mqtt5_client;
 struct aws_mqtt5_client_lifecycle_event;
 struct aws_tls_connection_options;
@@ -179,16 +181,10 @@ enum aws_mqtt5_extended_validation_and_flow_control_options {
     AWS_MQTT5_EVAFCO_NONE,
 
     /**
-     * Apply additional client-side validation and operational flow control that respects the
+     * Apply additional client-side operational flow control that respects the
      * default AWS IoT Core limits.
      *
-     * Currently applies the following additional validation:
-     *  (1) No more than 8 subscriptions per SUBSCRIBE packet
-     *  (2) Topics and topic filters have a maximum of 7 slashes (8 segments), not counting any AWS rules prefix
-     *  (3) Topics must be <= 256 bytes in length
-     *  (4) Client id must be <= 128 bytes in length
-     *
-     * Also applies the following flow control:
+     * Applies the following flow control:
      *  (1) Outbound throughput throttled to 512KB/s
      *  (2) Outbound publish TPS throttled to 100
      */
@@ -629,7 +625,7 @@ struct aws_mqtt5_client_options {
     /**
      * Controls how the client uses mqtt5 topic aliasing.  If NULL, zero-based defaults will be used.
      */
-    struct aws_mqtt5_client_topic_alias_options *topic_aliasing_options;
+    const struct aws_mqtt5_client_topic_alias_options *topic_aliasing_options;
 
     /**
      * Callback for received publish packets
@@ -655,6 +651,12 @@ struct aws_mqtt5_client_options {
      */
     aws_mqtt5_client_termination_completion_fn *client_termination_handler;
     void *client_termination_handler_user_data;
+
+    /**
+     * Options to override aspects of DNS resolution.  If unspecified, use a default that matches the regular
+     * configuration but changes the refresh frequency to a value that prevents DNS pinging.
+     */
+    struct aws_host_resolution_config *host_resolution_override;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -805,5 +807,6 @@ AWS_MQTT_API int aws_mqtt5_negotiated_settings_copy(
 AWS_MQTT_API void aws_mqtt5_negotiated_settings_clean_up(struct aws_mqtt5_negotiated_settings *negotiated_settings);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_MQTT_MQTT5_CLIENT_H */

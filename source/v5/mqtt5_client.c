@@ -12,6 +12,7 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/shared_constants.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
@@ -26,6 +27,7 @@
 
 #define AWS_MQTT5_IO_MESSAGE_DEFAULT_LENGTH 4096
 #define AWS_MQTT5_DEFAULT_CONNACK_PACKET_TIMEOUT_MS 10000
+#define DEFAULT_MQTT5_OPERATION_TABLE_SIZE 200
 
 const char *aws_mqtt5_client_state_to_c_string(enum aws_mqtt5_client_state state) {
     switch (state) {
@@ -155,14 +157,6 @@ static int s_aws_mqtt5_client_change_desired_state(
     struct aws_mqtt5_client *client,
     enum aws_mqtt5_client_state desired_state,
     struct aws_mqtt5_operation_disconnect *disconnect_operation);
-
-static uint64_t s_hash_uint16_t(const void *item) {
-    return *(uint16_t *)item;
-}
-
-static bool s_uint16_t_eq(const void *a, const void *b) {
-    return *(uint16_t *)a == *(uint16_t *)b;
-}
 
 static uint64_t s_aws_mqtt5_client_compute_operational_state_service_time(
     const struct aws_mqtt5_client_operational_state *client_operational_state,
@@ -910,7 +904,7 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
             .on_connection_setup = s_on_websocket_setup,
             .on_connection_shutdown = s_on_websocket_shutdown,
             .requested_event_loop = client->loop,
-        };
+            .host_resolution_config = &client->config->host_resolution_override};
 
         if (client->config->http_proxy_config != NULL) {
             websocket_options.proxy_options = &client->config->http_proxy_options;
@@ -962,8 +956,6 @@ static void s_websocket_handshake_transform_complete(
     task->handshake = handshake_request;
 
     aws_event_loop_schedule_task_now(client->loop, &task->task);
-
-    aws_mqtt5_client_release(client);
 }
 
 static int s_websocket_connect(struct aws_mqtt5_client *client) {
@@ -987,7 +979,11 @@ static int s_websocket_connect(struct aws_mqtt5_client *client) {
 
     AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: Transforming websocket handshake request.", (void *)client);
 
-    aws_mqtt5_client_acquire(client);
+    /*
+     * There is no need to inc the client's ref count here since this state (AWS_MCS_CONNECTING) is uninterruptible by
+     * the async destruction process.  Only a completion of the chain of connection establishment callbacks can cause
+     * this state to be left by the client.
+     */
     client->config->websocket_handshake_transform(
         handshake,
         client->config->websocket_handshake_transform_user_data,
@@ -1008,6 +1004,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
 
     client->current_state = AWS_MCS_CONNECTING;
     client->clean_disconnect_error_code = AWS_ERROR_SUCCESS;
+    client->should_reset_connection = false;
 
     s_aws_mqtt5_client_emit_connecting_lifecycle_event(client);
 
@@ -1026,6 +1023,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
         channel_options.shutdown_callback = &s_mqtt5_client_shutdown;
         channel_options.user_data = client;
         channel_options.requested_event_loop = client->loop;
+        channel_options.host_resolution_override_config = &client->config->host_resolution_override;
 
         if (client->config->http_proxy_config == NULL) {
             result = (*client->vtable->client_bootstrap_new_socket_channel_fn)(&channel_options);
@@ -1168,13 +1166,18 @@ static void s_change_current_state_to_mqtt_connect(struct aws_mqtt5_client *clie
     AWS_FATAL_ASSERT(client->operational_state.current_operation == NULL);
 
     client->current_state = AWS_MCS_MQTT_CONNECT;
+    if (client->should_reset_connection) {
+        s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT);
+        return;
+    }
+
     client->operational_state.pending_write_completion = false;
 
     aws_mqtt5_encoder_reset(&client->encoder);
     aws_mqtt5_decoder_reset(&client->decoder);
 
     bool resume_session = s_should_resume_session(client);
-    struct aws_mqtt5_packet_connect_view connect_view = client->config->connect.storage_view;
+    struct aws_mqtt5_packet_connect_view connect_view = client->config->connect->storage_view;
     connect_view.clean_start = !resume_session;
 
     if (aws_mqtt5_inbound_topic_alias_behavior_type_to_non_default(
@@ -2117,15 +2120,11 @@ struct aws_mqtt_change_desired_state_task {
     struct aws_mqtt5_operation_disconnect *disconnect_operation;
 };
 
-static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-
-    struct aws_mqtt_change_desired_state_task *change_state_task = arg;
-    struct aws_mqtt5_client *client = change_state_task->client;
-    enum aws_mqtt5_client_state desired_state = change_state_task->desired_state;
-    if (status != AWS_TASK_STATUS_RUN_READY) {
-        goto done;
-    }
+void aws_mqtt5_client_change_desired_state(
+    struct aws_mqtt5_client *client,
+    enum aws_mqtt5_client_state desired_state,
+    struct aws_mqtt5_operation_disconnect *disconnect_op) {
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     if (client->desired_state != desired_state) {
         AWS_LOGF_INFO(
@@ -2137,7 +2136,6 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
 
         client->desired_state = desired_state;
 
-        struct aws_mqtt5_operation_disconnect *disconnect_op = change_state_task->disconnect_operation;
         if (desired_state == AWS_MCS_STOPPED && disconnect_op != NULL) {
             s_aws_mqtt5_client_shutdown_channel_with_disconnect(
                 client, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, disconnect_op);
@@ -2145,6 +2143,19 @@ static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_ta
 
         s_reevaluate_service_task(client);
     }
+}
+
+static void s_change_state_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_change_desired_state_task *change_state_task = arg;
+    struct aws_mqtt5_client *client = change_state_task->client;
+    enum aws_mqtt5_client_state desired_state = change_state_task->desired_state;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    aws_mqtt5_client_change_desired_state(client, desired_state, change_state_task->disconnect_operation);
 
 done:
 
@@ -2268,51 +2279,51 @@ struct aws_mqtt5_submit_operation_task {
     struct aws_mqtt5_operation *operation;
 };
 
-static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-
-    int completion_error_code = AWS_ERROR_MQTT5_CLIENT_TERMINATED;
-    struct aws_mqtt5_submit_operation_task *submit_operation_task = arg;
+void aws_mqtt5_client_submit_operation_internal(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation,
+    bool is_terminated) {
 
     /*
      * Take a ref to the operation that represents the client taking ownership
      * If we subsequently reject it (task cancel or offline queue policy), then the operation completion
      * will undo this ref acquisition.
      */
-    aws_mqtt5_operation_acquire(submit_operation_task->operation);
+    aws_mqtt5_operation_acquire(operation);
 
-    if (status != AWS_TASK_STATUS_RUN_READY) {
-        goto error;
+    if (is_terminated) {
+        s_complete_operation(NULL, operation, AWS_ERROR_MQTT5_CLIENT_TERMINATED, AWS_MQTT5_PT_NONE, NULL);
+        return;
     }
 
     /*
      * If we're offline and this operation doesn't meet the requirements of the offline queue retention policy,
      * fail it immediately.
      */
-    struct aws_mqtt5_client *client = submit_operation_task->client;
-    struct aws_mqtt5_operation *operation = submit_operation_task->operation;
     if (client->current_state != AWS_MCS_CONNECTED) {
         if (!s_aws_mqtt5_operation_satisfies_offline_queue_retention_policy(
                 operation, client->config->offline_queue_behavior)) {
-            completion_error_code = AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY;
-            goto error;
+            s_complete_operation(
+                NULL, operation, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY, AWS_MQTT5_PT_NONE, NULL);
+            return;
         }
     }
 
     /* newly-submitted operations must have a 0 packet id */
-    aws_mqtt5_operation_set_packet_id(submit_operation_task->operation, 0);
+    aws_mqtt5_operation_set_packet_id(operation, 0);
 
-    s_enqueue_operation_back(submit_operation_task->client, submit_operation_task->operation);
-    aws_mqtt5_client_statistics_change_operation_statistic_state(
-        submit_operation_task->client, submit_operation_task->operation, AWS_MQTT5_OSS_INCOMPLETE);
+    s_enqueue_operation_back(client, operation);
+    aws_mqtt5_client_statistics_change_operation_statistic_state(client, operation, AWS_MQTT5_OSS_INCOMPLETE);
+}
 
-    goto done;
+static void s_mqtt5_submit_operation_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
 
-error:
+    struct aws_mqtt5_submit_operation_task *submit_operation_task = arg;
+    struct aws_mqtt5_client *client = submit_operation_task->client;
+    struct aws_mqtt5_operation *operation = submit_operation_task->operation;
 
-    s_complete_operation(NULL, submit_operation_task->operation, completion_error_code, AWS_MQTT5_PT_NONE, NULL);
-
-done:
+    aws_mqtt5_client_submit_operation_internal(client, operation, status != AWS_TASK_STATUS_RUN_READY);
 
     aws_mqtt5_operation_release(submit_operation_task->operation);
     aws_mqtt5_client_release(submit_operation_task->client);
@@ -2498,9 +2509,9 @@ int aws_mqtt5_client_operational_state_init(
     if (aws_hash_table_init(
             &client_operational_state->unacked_operations_table,
             allocator,
-            sizeof(struct aws_mqtt5_operation *),
-            s_hash_uint16_t,
-            s_uint16_t_eq,
+            DEFAULT_MQTT5_OPERATION_TABLE_SIZE,
+            aws_mqtt_hash_uint16_t,
+            aws_mqtt_compare_uint16_t_eq,
             NULL,
             NULL)) {
         return AWS_OP_ERR;
@@ -3312,4 +3323,26 @@ void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt
         (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.unacked_operation_count_atomic);
     stats->unacked_operation_size =
         (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.unacked_operation_size_atomic);
+}
+
+bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client) {
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
+
+    client->current_reconnect_delay_ms = client->config->min_reconnect_delay_ms;
+
+    switch (client->current_state) {
+        case AWS_MCS_MQTT_CONNECT:
+        case AWS_MCS_CONNECTED:
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT);
+            return true;
+
+        case AWS_MCS_CONNECTING:
+            client->should_reset_connection = true;
+            return true;
+
+        default:
+            break;
+    }
+
+    return false;
 }
