@@ -2996,13 +2996,17 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
             struct aws_mqtt5_operation *next_operation = NULL;
             while (!aws_linked_list_empty(&client_operational_state->queued_operations)) {
                 struct aws_linked_list_node *next_operation_node =
-                    aws_linked_list_pop_front(&client_operational_state->queued_operations);
+                    aws_linked_list_front(&client_operational_state->queued_operations);
                 struct aws_mqtt5_operation *operation =
                     AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
 
+                /* If this is a publish and we're throttled, just quit out of the loop. */
                 if (s_apply_publish_tps_flow_control(client, operation)) {
                     break;
                 }
+
+                /* Wait until flow control has passed before actually dequeuing the operation. */
+                aws_linked_list_pop_front(&client_operational_state->queued_operations);
 
                 if (!aws_mqtt5_operation_validate_vs_connection_settings(operation, client)) {
                     next_operation = operation;
