@@ -874,7 +874,6 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
         AWS_LS_MQTT_CLIENT,
         "id=%p: Last refcount on connection has been released, start destroying the connection.",
         (void *)connection);
-
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED) {
