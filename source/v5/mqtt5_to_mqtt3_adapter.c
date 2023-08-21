@@ -69,11 +69,11 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: Final destruction of mqtt3-to-5 adapter", (void *)adapter);
 
-    /* trigger the termination callback */
-    if (adapter->on_termination) {
-        adapter->on_termination(adapter->on_termination_user_data);
-        adapter->on_termination = NULL;
-        adapter->on_termination_user_data = NULL;
+    aws_mqtt_client_on_connection_termination_fn *termination_handler = NULL;
+    void *termination_handler_user_data = NULL;
+    if (adapter->on_termination != NULL) {
+        termination_handler = adapter->on_termination;
+        termination_handler_user_data = adapter->on_termination_user_data;
     }
 
     if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
@@ -97,6 +97,11 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
     aws_mem_release(adapter->allocator, adapter);
 
     aws_mem_release(destroy_task->allocator, destroy_task);
+
+    /* trigger the termination callback */
+    if (termination_handler) {
+        termination_handler(termination_handler_user_data);
+    }
 }
 
 static struct aws_mqtt_adapter_final_destroy_task *s_aws_mqtt_adapter_final_destroy_task_new(
