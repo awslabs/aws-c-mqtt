@@ -287,9 +287,9 @@ static void s_on_connection_termination_fn(void *userdata) {
 
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->connection_termination_calls += 1;
-    aws_mutex_unlock(&state_test_data->lock);
-
     state_test_data->connection_terminated = true;
+    aws_mutex_unlock(&state_test_data->lock);
+    aws_condition_variable_notify_one(&state_test_data->cvar);
 }
 
 /** sets up a unix domain socket server and socket options. Creates an mqtt connection configured to use
