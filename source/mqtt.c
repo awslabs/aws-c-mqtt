@@ -14,6 +14,9 @@
  ******************************************************************************/
 
 static bool s_is_valid_topic(const struct aws_byte_cursor *topic, bool is_filter) {
+    if (topic == NULL) {
+        return false;
+    }
 
     /* [MQTT-4.7.3-1] Check existance and length */
     if (!topic->ptr || !topic->len) {

@@ -1957,6 +1957,11 @@ static uint16_t s_aws_mqtt_client_connection_311_subscribe_multiple(
 
     AWS_PRECONDITION(connection);
 
+    if (topic_filters == NULL || aws_array_list_length(topic_filters) == 0) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return 0;
+    }
+
     struct subscribe_task_arg *task_arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
         return 0;
@@ -2919,6 +2924,11 @@ static uint16_t s_aws_mqtt_client_connection_311_publish(
         return 0;
     }
 
+    if (qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+        return 0;
+    }
+
     struct publish_task_arg *arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct publish_task_arg));
     if (!arg) {
         return 0;
@@ -2929,7 +2939,14 @@ static uint16_t s_aws_mqtt_client_connection_311_publish(
     arg->topic = aws_byte_cursor_from_string(arg->topic_string);
     arg->qos = qos;
     arg->retain = retain;
-    if (aws_byte_buf_init_copy_from_cursor(&arg->payload_buf, connection->allocator, *payload)) {
+
+    struct aws_byte_cursor payload_cursor;
+    AWS_ZERO_STRUCT(payload_cursor);
+    if (payload != NULL) {
+        payload_cursor = *payload;
+    }
+
+    if (aws_byte_buf_init_copy_from_cursor(&arg->payload_buf, connection->allocator, payload_cursor)) {
         goto handle_error;
     }
     arg->payload = aws_byte_cursor_from_buf(&arg->payload_buf);

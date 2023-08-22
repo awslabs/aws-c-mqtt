@@ -42,6 +42,7 @@ add_test_case(mqtt_topic_tree_unsubscribe)
 add_test_case(mqtt_topic_tree_duplicate_transactions)
 add_test_case(mqtt_topic_tree_transactions)
 add_test_case(mqtt_topic_validation)
+add_test_case(mqtt_topic_filter_validation)
 
 add_test_case(mqtt_connect_disconnect)
 add_test_case(mqtt_connect_set_will_login)
@@ -85,6 +86,10 @@ add_test_case(mqtt_connection_reconnection_backoff_stable)
 add_test_case(mqtt_connection_reconnection_backoff_unstable)
 add_test_case(mqtt_connection_reconnection_backoff_reset)
 add_test_case(mqtt_connection_reconnection_backoff_reset_after_disconnection)
+
+add_test_case(mqtt_validation_failure_publish_qos)
+add_test_case(mqtt_validation_failure_subscribe_empty)
+add_test_case(mqtt_validation_failure_unsubscribe_null)
 
 # Operation statistics tests
 add_test_case(mqtt_operation_statistics_simple_publish)

@@ -3737,3 +3737,135 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_connection_termination_callback_simple_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/*
+ * Verifies that calling publish with a bad qos results in a validation failure
+ */
+static int s_test_mqtt_validation_failure_publish_qos_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("a/b");
+    ASSERT_INT_EQUALS(
+        0,
+        aws_mqtt_client_connection_publish(
+            state_test_data->mqtt_connection,
+            &topic,
+            (enum aws_mqtt_qos)3,
+            true,
+            NULL,
+            s_on_op_complete,
+            state_test_data));
+    int error_code = aws_last_error();
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_INVALID_QOS, error_code);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_validation_failure_publish_qos,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_validation_failure_publish_qos_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/*
+ * Verifies that calling subscribe_multiple with no topics causes a validation failure
+ */
+static int s_test_mqtt_validation_failure_subscribe_empty_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    struct aws_array_list topic_filters;
+    size_t list_len = 2;
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, static_buf, list_len * sizeof(struct aws_mqtt_topic_subscription));
+    aws_array_list_init_static(&topic_filters, static_buf, list_len, sizeof(struct aws_mqtt_topic_subscription));
+
+    ASSERT_INT_EQUALS(
+        0,
+        aws_mqtt_client_connection_subscribe_multiple(
+            state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data));
+    int error_code = aws_last_error();
+    ASSERT_INT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, error_code);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_validation_failure_subscribe_empty,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_validation_failure_subscribe_empty_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/*
+ * Verifies that calling unsubscribe with a null topic causes a validation failure (not a crash)
+ */
+static int s_test_mqtt_validation_failure_unsubscribe_null_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    ASSERT_INT_EQUALS(
+        0,
+        aws_mqtt_client_connection_unsubscribe(
+            state_test_data->mqtt_connection, NULL, s_on_op_complete, state_test_data));
+    int error_code = aws_last_error();
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_INVALID_TOPIC, error_code);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_validation_failure_unsubscribe_null,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_validation_failure_unsubscribe_null_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)

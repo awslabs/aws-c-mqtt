@@ -316,18 +316,51 @@ static int s_mqtt_topic_validation_fn(struct aws_allocator *allocator, void *ctx
         struct aws_byte_cursor topic_cursor;                                                                           \
         topic_cursor.ptr = (uint8_t *)(topic);                                                                         \
         topic_cursor.len = strlen(topic);                                                                              \
-        ASSERT_##expected(aws_mqtt_is_valid_topic_filter(&topic_cursor));                                              \
+        ASSERT_##expected(aws_mqtt_is_valid_topic(&topic_cursor));                                                     \
     } while (false)
 
-    ASSERT_TOPIC_VALIDITY(TRUE, "#");
-    ASSERT_TOPIC_VALIDITY(TRUE, "sport/tennis/#");
+    ASSERT_TOPIC_VALIDITY(TRUE, "/");
+    ASSERT_TOPIC_VALIDITY(TRUE, "a/");
+    ASSERT_TOPIC_VALIDITY(TRUE, "/b");
+    ASSERT_TOPIC_VALIDITY(TRUE, "a/b/c");
+
+    ASSERT_TOPIC_VALIDITY(FALSE, "#");
+    ASSERT_TOPIC_VALIDITY(FALSE, "sport/tennis/#");
     ASSERT_TOPIC_VALIDITY(FALSE, "sport/tennis#");
     ASSERT_TOPIC_VALIDITY(FALSE, "sport/tennis/#/ranking");
-
-    ASSERT_TOPIC_VALIDITY(TRUE, "+");
-    ASSERT_TOPIC_VALIDITY(TRUE, "+/tennis/#");
-    ASSERT_TOPIC_VALIDITY(TRUE, "sport/+/player1");
+    ASSERT_TOPIC_VALIDITY(FALSE, "");
+    ASSERT_TOPIC_VALIDITY(FALSE, "+");
+    ASSERT_TOPIC_VALIDITY(FALSE, "+/tennis/#");
+    ASSERT_TOPIC_VALIDITY(FALSE, "sport/+/player1");
     ASSERT_TOPIC_VALIDITY(FALSE, "sport+");
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_topic_filter_validation, s_mqtt_topic_filter_validation_fn)
+static int s_mqtt_topic_filter_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+#define ASSERT_TOPIC_FILTER_VALIDITY(expected, topic_filter)                                                           \
+    do {                                                                                                               \
+        struct aws_byte_cursor topic_filter_cursor;                                                                    \
+        topic_filter_cursor.ptr = (uint8_t *)(topic_filter);                                                           \
+        topic_filter_cursor.len = strlen(topic_filter);                                                                \
+        ASSERT_##expected(aws_mqtt_is_valid_topic_filter(&topic_filter_cursor));                                       \
+    } while (false)
+
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "#");
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "sport/tennis/#");
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "sport/tennis#");
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "sport/tennis/#/ranking");
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "");
+
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "+/");
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "+");
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "+/tennis/#");
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "sport/+/player1");
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "sport+");
 
     return AWS_OP_SUCCESS;
 }
