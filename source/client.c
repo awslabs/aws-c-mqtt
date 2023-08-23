@@ -942,17 +942,17 @@ static int s_aws_mqtt_client_connection_311_set_will(
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
+    if (!aws_mqtt_is_valid_topic(topic)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Will topic is invalid", (void *)connection);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+    }
+
     int result = AWS_OP_ERR;
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Setting last will with topic \"" PRInSTR "\"",
         (void *)connection,
         AWS_BYTE_CURSOR_PRI(*topic));
-
-    if (!aws_mqtt_is_valid_topic(topic)) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Will topic is invalid", (void *)connection);
-        return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
-    }
 
     struct aws_byte_buf local_topic_buf;
     struct aws_byte_buf local_payload_buf;
@@ -1005,6 +1005,11 @@ static int s_aws_mqtt_client_connection_311_set_login(
     AWS_PRECONDITION(username);
     if (s_check_connection_state_for_configuration(connection)) {
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+
+    if (username != NULL && aws_mqtt_validate_utf8_text(*username) == AWS_OP_ERR) {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in username", (void *)connection);
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
     int result = AWS_OP_ERR;
@@ -1427,6 +1432,15 @@ static int s_aws_mqtt_client_connection_311_connect(
     const struct aws_mqtt_connection_options *connection_options) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    if (connection_options == NULL) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    if (aws_mqtt_validate_utf8_text(connection_options->client_id) == AWS_OP_ERR) {
+        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in client id", (void *)connection);
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
 
     /* TODO: Do we need to support resuming the connection if user connect to the same connection & endpoint and the
      * clean_session is false?

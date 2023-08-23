@@ -334,6 +334,8 @@ static int s_mqtt_topic_validation_fn(struct aws_allocator *allocator, void *ctx
     ASSERT_TOPIC_VALIDITY(FALSE, "sport/+/player1");
     ASSERT_TOPIC_VALIDITY(FALSE, "sport+");
 
+    ASSERT_TOPIC_VALIDITY(FALSE, "\x41/\xED\xBF\xBF/\x41");
+
     return AWS_OP_SUCCESS;
 }
 
@@ -361,6 +363,8 @@ static int s_mqtt_topic_filter_validation_fn(struct aws_allocator *allocator, vo
     ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "+/tennis/#");
     ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "sport/+/player1");
     ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "sport+");
+
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "\x41/\xED\xA0\x80/\x41");
 
     return AWS_OP_SUCCESS;
 }

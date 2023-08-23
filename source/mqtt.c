@@ -23,6 +23,10 @@ static bool s_is_valid_topic(const struct aws_byte_cursor *topic, bool is_filter
         return false;
     }
 
+    if (aws_mqtt_validate_utf8_text(*topic) == AWS_OP_ERR) {
+        return false;
+    }
+
     /* [MQTT-4.7.3-2] Check for the null character */
     if (memchr(topic->ptr, 0, topic->len)) {
         return false;
