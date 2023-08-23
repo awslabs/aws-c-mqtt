@@ -128,6 +128,11 @@ struct aws_mqtt_request {
 
     struct aws_channel_task outgoing_task;
 
+    /*
+     * The request send time. Currently used to push off keepalive packet.
+     */
+    uint64_t request_send_timestamp;
+
     /* How this operation is currently affecting the statistics of the connection */
     enum aws_mqtt_operation_statistic_state_flags statistic_state_flags;
     /* The encoded size of the packet - used for operation statistics tracking */
@@ -245,6 +250,8 @@ struct aws_mqtt_client_connection_311_impl {
     void *on_any_publish_ud;
     aws_mqtt_client_on_disconnect_fn *on_disconnect;
     void *on_disconnect_ud;
+    aws_mqtt_client_on_connection_termination_fn *on_termination;
+    void *on_termination_ud;
     aws_mqtt_on_operation_statistics_fn *on_any_operation_statistics;
     void *on_any_operation_statistics_ud;
 

@@ -30,6 +30,7 @@ enum aws_mqtt3_lifecycle_event_type {
     AWS_MQTT3_LET_DISCONNECTION_COMPLETE,
     AWS_MQTT3_LET_CONNECTION_SUCCESS,
     AWS_MQTT3_LET_CONNECTION_FAILURE,
+    AWS_MQTT3_LET_TERMINATION,
 };
 
 struct aws_mqtt3_lifecycle_event {
@@ -441,6 +442,22 @@ static void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_closed_handler(
     aws_condition_variable_notify_all(&fixture->signal);
 }
 
+static void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_termination_handler(void *userdata) {
+    struct aws_mqtt5_to_mqtt3_adapter_test_fixture *fixture = userdata;
+
+    /* record the event */
+    struct aws_mqtt3_lifecycle_event event;
+    AWS_ZERO_STRUCT(event);
+
+    event.type = AWS_MQTT3_LET_TERMINATION;
+    aws_high_res_clock_get_ticks(&event.timestamp);
+
+    aws_mutex_lock(&fixture->lock);
+    aws_array_list_push_back(&fixture->lifecycle_events, &event);
+    aws_mutex_unlock(&fixture->lock);
+    aws_condition_variable_notify_all(&fixture->signal);
+}
+
 static void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_interrupted_handler(
     struct aws_mqtt_client_connection *connection,
     int error_code,
@@ -602,6 +619,8 @@ int aws_mqtt5_to_mqtt3_adapter_test_fixture_init(
     aws_mutex_init(&fixture->lock);
     aws_condition_variable_init(&fixture->signal);
 
+    aws_mqtt_client_connection_set_connection_termination_handler(
+        fixture->connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_termination_handler, fixture);
     aws_mqtt_client_connection_set_connection_closed_handler(
         fixture->connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_closed_handler, fixture);
     aws_mqtt_client_connection_set_connection_interruption_handlers(
@@ -622,6 +641,8 @@ int aws_mqtt5_to_mqtt3_adapter_test_fixture_init(
 
 void aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(struct aws_mqtt5_to_mqtt3_adapter_test_fixture *fixture) {
     aws_mqtt_client_connection_release(fixture->connection);
+
+    s_wait_for_n_adapter_lifecycle_events(fixture, AWS_MQTT3_LET_TERMINATION, 1);
 
     aws_mqtt5_client_mock_test_fixture_clean_up(&fixture->mqtt5_fixture);
 

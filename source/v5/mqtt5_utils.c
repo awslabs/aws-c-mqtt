@@ -413,7 +413,7 @@ uint64_t aws_mqtt5_client_random_in_range(uint64_t from, uint64_t to) {
 
 static uint8_t s_aws_iot_core_rules_prefix[] = "$aws/rules/";
 
-struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(struct aws_byte_cursor topic_cursor) {
+static struct aws_byte_cursor s_aws_mqtt5_topic_skip_aws_iot_rules_prefix(struct aws_byte_cursor topic_cursor) {
     size_t prefix_length = AWS_ARRAY_SIZE(s_aws_iot_core_rules_prefix) - 1; /* skip 0-terminator */
 
     struct aws_byte_cursor rules_prefix = {
@@ -454,6 +454,65 @@ struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_rules_prefix(struct aws_byte
     return topic_cursor_copy;
 }
 
+static uint8_t s_shared_subscription_prefix[] = "$share";
+
+static bool s_is_not_hash_or_plus(uint8_t byte) {
+    return byte != '+' && byte != '#';
+}
+
+static struct aws_byte_cursor s_aws_mqtt5_topic_skip_shared_prefix(struct aws_byte_cursor topic_cursor) {
+    /* shared subscription filters must have an initial segment of "$share" */
+    struct aws_byte_cursor first_segment_cursor;
+    AWS_ZERO_STRUCT(first_segment_cursor);
+    if (!aws_byte_cursor_next_split(&topic_cursor, '/', &first_segment_cursor)) {
+        return topic_cursor;
+    }
+
+    struct aws_byte_cursor share_prefix_cursor = {
+        .ptr = s_shared_subscription_prefix,
+        .len = AWS_ARRAY_SIZE(s_shared_subscription_prefix) - 1, /* skip null terminator */
+    };
+
+    if (!aws_byte_cursor_eq_ignore_case(&share_prefix_cursor, &first_segment_cursor)) {
+        return topic_cursor;
+    }
+
+    /*
+     * The next segment must be non-empty and cannot include '#', '/', or '+'.  In this case we know it already
+     * does not include '/'
+     */
+    struct aws_byte_cursor second_segment_cursor = first_segment_cursor;
+    if (!aws_byte_cursor_next_split(&topic_cursor, '/', &second_segment_cursor)) {
+        return topic_cursor;
+    }
+
+    if (second_segment_cursor.len == 0 ||
+        !aws_byte_cursor_satisfies_pred(&second_segment_cursor, s_is_not_hash_or_plus)) {
+        return topic_cursor;
+    }
+
+    /*
+     * Everything afterwards must form a normal, valid topic filter.
+     */
+    struct aws_byte_cursor remaining_cursor = topic_cursor;
+    size_t remaining_length =
+        topic_cursor.ptr + topic_cursor.len - (second_segment_cursor.len + second_segment_cursor.ptr);
+    if (remaining_length == 0) {
+        return topic_cursor;
+    }
+
+    aws_byte_cursor_advance(&remaining_cursor, topic_cursor.len - remaining_length + 1);
+
+    return remaining_cursor;
+}
+
+struct aws_byte_cursor aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(struct aws_byte_cursor topic_cursor) {
+    struct aws_byte_cursor skip_shared = s_aws_mqtt5_topic_skip_shared_prefix(topic_cursor);
+    struct aws_byte_cursor skip_rules = s_aws_mqtt5_topic_skip_aws_iot_rules_prefix(skip_shared);
+
+    return skip_rules;
+}
+
 size_t aws_mqtt5_topic_get_segment_count(struct aws_byte_cursor topic_cursor) {
     size_t segment_count = 0;
 
@@ -468,12 +527,12 @@ size_t aws_mqtt5_topic_get_segment_count(struct aws_byte_cursor topic_cursor) {
 }
 
 bool aws_mqtt_is_valid_topic_filter_for_iot_core(struct aws_byte_cursor topic_filter_cursor) {
-    struct aws_byte_cursor post_rule_suffix = aws_mqtt5_topic_skip_aws_iot_rules_prefix(topic_filter_cursor);
+    struct aws_byte_cursor post_rule_suffix = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(topic_filter_cursor);
     return aws_mqtt5_topic_get_segment_count(post_rule_suffix) <= AWS_IOT_CORE_MAXIMUM_TOPIC_SEGMENTS;
 }
 
 bool aws_mqtt_is_valid_topic_for_iot_core(struct aws_byte_cursor topic_cursor) {
-    struct aws_byte_cursor post_rule_suffix = aws_mqtt5_topic_skip_aws_iot_rules_prefix(topic_cursor);
+    struct aws_byte_cursor post_rule_suffix = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(topic_cursor);
     if (aws_mqtt5_topic_get_segment_count(post_rule_suffix) > AWS_IOT_CORE_MAXIMUM_TOPIC_SEGMENTS) {
         return false;
     }
@@ -481,56 +540,12 @@ bool aws_mqtt_is_valid_topic_for_iot_core(struct aws_byte_cursor topic_cursor) {
     return post_rule_suffix.len <= AWS_IOT_CORE_MAXIMUM_TOPIC_LENGTH;
 }
 
-static uint8_t s_shared_subscription_prefix[] = "$share";
-
-static bool s_is_not_hash_or_plus(uint8_t byte) {
-    return byte != '+' && byte != '#';
-}
-
 /* $share/{ShareName}/{filter} */
 bool aws_mqtt_is_topic_filter_shared_subscription(struct aws_byte_cursor topic_cursor) {
-
-    /* shared subscription filters must have an initial segment of "$share" */
-    struct aws_byte_cursor first_segment_cursor;
-    AWS_ZERO_STRUCT(first_segment_cursor);
-    if (!aws_byte_cursor_next_split(&topic_cursor, '/', &first_segment_cursor)) {
+    struct aws_byte_cursor remaining_cursor = s_aws_mqtt5_topic_skip_shared_prefix(topic_cursor);
+    if (remaining_cursor.len == topic_cursor.len) {
         return false;
     }
-
-    struct aws_byte_cursor share_prefix_cursor = {
-        .ptr = s_shared_subscription_prefix,
-        .len = AWS_ARRAY_SIZE(s_shared_subscription_prefix) - 1, /* skip null terminator */
-    };
-
-    if (!aws_byte_cursor_eq_ignore_case(&share_prefix_cursor, &first_segment_cursor)) {
-        return false;
-    }
-
-    /*
-     * The next segment must be non-empty and cannot include '#', '/', or '+'.  In this case we know it already
-     * does not include '/'
-     */
-    struct aws_byte_cursor second_segment_cursor = first_segment_cursor;
-    if (!aws_byte_cursor_next_split(&topic_cursor, '/', &second_segment_cursor)) {
-        return false;
-    }
-
-    if (second_segment_cursor.len == 0 ||
-        !aws_byte_cursor_satisfies_pred(&second_segment_cursor, s_is_not_hash_or_plus)) {
-        return false;
-    }
-
-    /*
-     * Everything afterwards must form a normal, valid topic filter.
-     */
-    struct aws_byte_cursor remaining_cursor = topic_cursor;
-    size_t remaining_length =
-        topic_cursor.ptr + topic_cursor.len - (second_segment_cursor.len + second_segment_cursor.ptr);
-    if (remaining_length == 0) {
-        return false;
-    }
-
-    aws_byte_cursor_advance(&remaining_cursor, topic_cursor.len - remaining_length + 1);
 
     if (!aws_mqtt_is_valid_topic_filter(&remaining_cursor)) {
         return false;

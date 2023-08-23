@@ -208,41 +208,12 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
         if (operation->ack_timeout_timepoint_ns < now) {
             /* Timeout for this packet has been reached */
             aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
-
-            switch (operation->packet_type) {
-                case AWS_MQTT5_PT_SUBSCRIBE:
-                    /* SUBSCRIBE has timed out. */
-                    AWS_LOGF_INFO(
-                        AWS_LS_MQTT5_CLIENT,
-                        "id=%p: SUBSCRIBE packet with id:%d has timed out",
-                        (void *)client,
-                        packet_id);
-                    break;
-
-                case AWS_MQTT5_PT_UNSUBSCRIBE:
-                    /* UNSUBSCRIBE has timed out. */
-                    AWS_LOGF_INFO(
-                        AWS_LS_MQTT5_CLIENT,
-                        "id=%p: UNSUBSCRIBE packet with id:%d has timed out",
-                        (void *)client,
-                        packet_id);
-                    break;
-
-                case AWS_MQTT5_PT_PUBLISH:
-                    /* PUBLISH has timed out. */
-                    AWS_LOGF_INFO(
-                        AWS_LS_MQTT5_CLIENT,
-                        "id=%p: PUBLISH packet with id:%d has timed out",
-                        (void *)client,
-                        packet_id);
-
-                    aws_mqtt5_client_flow_control_state_on_puback(client);
-                    break;
-
-                default:
-                    /* something is wrong, there should be no other packet type in this linked list */
-                    break;
-            }
+            AWS_LOGF_INFO(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: %s packet with id:%d has timed out",
+                (void *)client,
+                aws_mqtt5_packet_type_to_c_string(operation->packet_type),
+                (int)packet_id);
 
             struct aws_hash_element *elem = NULL;
             aws_hash_table_find(&client->operational_state.unacked_operations_table, &packet_id, &elem);
@@ -3025,13 +2996,17 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
             struct aws_mqtt5_operation *next_operation = NULL;
             while (!aws_linked_list_empty(&client_operational_state->queued_operations)) {
                 struct aws_linked_list_node *next_operation_node =
-                    aws_linked_list_pop_front(&client_operational_state->queued_operations);
+                    aws_linked_list_front(&client_operational_state->queued_operations);
                 struct aws_mqtt5_operation *operation =
                     AWS_CONTAINER_OF(next_operation_node, struct aws_mqtt5_operation, node);
 
+                /* If this is a publish and we're throttled, just quit out of the loop. */
                 if (s_apply_publish_tps_flow_control(client, operation)) {
                     break;
                 }
+
+                /* Wait until flow control has passed before actually dequeuing the operation. */
+                aws_linked_list_pop_front(&client_operational_state->queued_operations);
 
                 if (!aws_mqtt5_operation_validate_vs_connection_settings(operation, client)) {
                     next_operation = operation;
