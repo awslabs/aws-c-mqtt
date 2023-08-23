@@ -95,14 +95,6 @@ AWS_EXTERN_C_BEGIN
 AWS_MQTT_API extern struct aws_byte_cursor g_aws_mqtt5_connect_protocol_cursor;
 
 /**
- * Validate utf-8 string under mqtt5 specs
- *
- * @param text
- * @return AWS_OP_SUCCESS if the text is validate, otherwise AWS_OP_ERR
- */
-AWS_MQTT_API int aws_mqtt5_validate_utf8_text(struct aws_byte_cursor text);
-
-/**
  * Simple helper function to compute the first byte of an MQTT packet encoding as a function of 4 bit flags
  * and the packet type.
  *

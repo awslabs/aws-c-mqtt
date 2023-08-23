@@ -4,7 +4,7 @@ include(AwsLibFuzzer)
 enable_testing()
 
 file(GLOB TEST_HDRS "v3/*.h v5/*.h")
-set(TEST_SRC v3/*.c v5/*.c)
+set(TEST_SRC v3/*.c v5/*.c *.c)
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)
@@ -112,7 +112,7 @@ add_test_case(mqtt5_topic_get_segment_count)
 add_test_case(mqtt5_shared_subscription_validation)
 
 # utf8 utility
-add_test_case(mqtt5_utf8_encoded_string_test)
+add_test_case(mqtt_utf8_encoded_string_test)
 
 # topic aliasing
 add_test_case(mqtt5_inbound_topic_alias_register_failure)

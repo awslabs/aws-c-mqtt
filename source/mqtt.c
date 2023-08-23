@@ -5,8 +5,8 @@
 
 #include <aws/mqtt/mqtt.h>
 
+#include <aws/common/encoding.h>
 #include <aws/http/http.h>
-
 #include <aws/io/logging.h>
 
 /*******************************************************************************
@@ -288,4 +288,38 @@ void aws_mqtt_fatal_assert_library_initialized(void) {
 
         AWS_FATAL_ASSERT(s_mqtt_library_initialized);
     }
+}
+
+/* UTF-8 encoded string validation respect to [MQTT-1.5.3-2]. */
+static int aws_mqtt_utf8_decoder(uint32_t codepoint, void *user_data) {
+    (void)user_data;
+    /* U+0000 - A UTF-8 Encoded String MUST NOT include an encoding of the null character U+0000. [MQTT-1.5.4-2]
+     * U+0001..U+001F control characters are not valid
+     */
+    if (AWS_UNLIKELY(codepoint <= 0x001F)) {
+        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
+    }
+
+    /* U+007F..U+009F control characters are not valid */
+    if (AWS_UNLIKELY((codepoint >= 0x007F) && (codepoint <= 0x009F))) {
+        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
+    }
+
+    /* Unicode non-characters are not valid: https://www.unicode.org/faq/private_use.html#nonchar1 */
+    if (AWS_UNLIKELY((codepoint & 0x00FFFF) >= 0x00FFFE)) {
+        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
+    }
+    if (AWS_UNLIKELY(codepoint >= 0xFDD0 && codepoint <= 0xFDEF)) {
+        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
+    }
+
+    return AWS_ERROR_SUCCESS;
+}
+
+static struct aws_utf8_decoder_options s_aws_mqtt_utf8_decoder_options = {
+    .on_codepoint = aws_mqtt_utf8_decoder,
+};
+
+int aws_mqtt_validate_utf8_text(struct aws_byte_cursor text) {
+    return aws_decode_utf8(text, &s_aws_mqtt_utf8_decoder_options);
 }
