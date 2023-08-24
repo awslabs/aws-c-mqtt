@@ -3874,7 +3874,9 @@ static struct aws_byte_cursor s_bad_client_id_utf8 = AWS_BYTE_CUR_INIT_FROM_STRI
 static struct aws_byte_cursor s_bad_username_utf8 = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\x41\x00\x41");
 static struct aws_byte_cursor s_bad_will_topic_utf8 = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\x41\xED\xBF\xBF");
 
-static int s_test_mqtt_validation_failure_connect_invalid_client_id_utf8_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_test_mqtt_validation_failure_connect_invalid_client_id_utf8_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
@@ -3906,7 +3908,8 @@ static int s_test_mqtt_validation_failure_invalid_will_topic_utf8_fn(struct aws_
     struct mqtt_connection_state_test *state_test_data = ctx;
 
     struct aws_byte_cursor will_topic_cursor = s_bad_will_topic_utf8;
-    ASSERT_FAILS(aws_mqtt_client_connection_set_will(state_test_data->mqtt_connection, &will_topic_cursor, AWS_MQTT_QOS_AT_MOST_ONCE, false, &will_topic_cursor));
+    ASSERT_FAILS(aws_mqtt_client_connection_set_will(
+        state_test_data->mqtt_connection, &will_topic_cursor, AWS_MQTT_QOS_AT_MOST_ONCE, false, &will_topic_cursor));
     int error_code = aws_last_error();
     ASSERT_INT_EQUALS(AWS_ERROR_MQTT_INVALID_TOPIC, error_code);
 
@@ -3917,6 +3920,27 @@ AWS_TEST_CASE_FIXTURE(
     mqtt_validation_failure_invalid_will_topic_utf8,
     s_setup_mqtt_server_fn,
     s_test_mqtt_validation_failure_invalid_will_topic_utf8_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+static int s_mqtt_validation_failure_invalid_will_qos_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_byte_cursor will_topic_cursor = aws_byte_cursor_from_c_str("a/b");
+
+    ASSERT_FAILS(aws_mqtt_client_connection_set_will(
+        state_test_data->mqtt_connection, &will_topic_cursor, 12, false, &will_topic_cursor));
+    int error_code = aws_last_error();
+    ASSERT_INT_EQUALS(AWS_ERROR_MQTT_INVALID_QOS, error_code);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_validation_failure_invalid_will_qos,
+    s_setup_mqtt_server_fn,
+    s_mqtt_validation_failure_invalid_will_qos_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
 

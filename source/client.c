@@ -947,6 +947,11 @@ static int s_aws_mqtt_client_connection_311_set_will(
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
     }
 
+    if (qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Will qos is invalid", (void *)connection);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+    }
+
     int result = AWS_OP_ERR;
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
@@ -1008,7 +1013,8 @@ static int s_aws_mqtt_client_connection_311_set_login(
     }
 
     if (username != NULL && aws_mqtt_validate_utf8_text(*username) == AWS_OP_ERR) {
-        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in username", (void *)connection);
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in username", (void *)connection);
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
@@ -1438,7 +1444,8 @@ static int s_aws_mqtt_client_connection_311_connect(
     }
 
     if (aws_mqtt_validate_utf8_text(connection_options->client_id) == AWS_OP_ERR) {
-        AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in client id", (void *)connection);
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in client id", (void *)connection);
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
