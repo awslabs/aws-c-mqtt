@@ -187,7 +187,9 @@ static int s_mqtt_mock_server_handler_process_packet(
             bool auto_ack = server->synced.auto_ack;
             aws_mutex_unlock(&server->synced.lock);
 
-            if (auto_ack) {
+            uint8_t qos = (publish_packet.fixed_header.flags >> 1) & 0x3;
+            // Do not send puback if qos0
+            if (auto_ack && qos != 0) {
                 struct aws_io_message *puback_msg =
                     aws_channel_acquire_message_from_pool(server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
                 struct aws_mqtt_packet_ack puback;

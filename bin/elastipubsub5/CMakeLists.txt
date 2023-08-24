@@ -15,7 +15,7 @@ target_include_directories(${ELASTIPUBSUB_MQTT5_PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
 
-target_link_libraries(${ELASTIPUBSUB_MQTT5_PROJECT_NAME} aws-c-mqtt)
+target_link_libraries(${ELASTIPUBSUB_MQTT5_PROJECT_NAME} PRIVATE aws-c-mqtt)
 
 if (BUILD_SHARED_LIBS AND NOT WIN32)
     message(INFO " elastiPUBSUB will be built with shared libs, but you may need to set LD_LIBRARY_PATH=${CMAKE_INSTALL_PREFIX}/lib to run the application")

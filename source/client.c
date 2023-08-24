@@ -36,6 +36,8 @@ static const uint64_t s_default_ping_timeout_ns = 3000000000;
 /* 20 minutes - This is the default (and max) for AWS IoT as of 2020.02.18 */
 static const uint16_t s_default_keep_alive_sec = 1200;
 
+#define DEFAULT_MQTT311_OPERATION_TABLE_SIZE 100
+
 static int s_mqtt_client_connect(
     struct aws_mqtt_client_connection_311_impl *connection,
     aws_mqtt_client_on_connection_complete_fn *on_connection_complete,
@@ -575,6 +577,8 @@ static void s_mqtt_client_init(
         goto handle_error;
     }
 
+    aws_mqtt311_decoder_reset_for_new_connection(&connection->thread_data.decoder);
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: Connection successfully opened, sending CONNECT packet", (void *)connection);
 
@@ -776,14 +780,6 @@ void aws_create_reconnect_task(struct aws_mqtt_client_connection_311_impl *conne
     }
 }
 
-static uint64_t s_hash_uint16_t(const void *item) {
-    return *(uint16_t *)item;
-}
-
-static bool s_uint16_t_eq(const void *a, const void *b) {
-    return *(uint16_t *)a == *(uint16_t *)b;
-}
-
 static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connection *base_connection) {
 
     struct aws_mqtt_client_connection_311_impl *connection = base_connection->impl;
@@ -797,6 +793,13 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
     AWS_ASSERT(!connection->slot);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Destroying connection", (void *)connection);
+
+    aws_mqtt_client_on_connection_termination_fn *termination_handler = NULL;
+    void *termination_handler_user_data = NULL;
+    if (connection->on_termination != NULL) {
+        termination_handler = connection->on_termination;
+        termination_handler_user_data = connection->on_termination_ud;
+    }
 
     /* If the reconnect_task isn't freed, free it */
     if (connection->reconnect_task) {
@@ -821,6 +824,8 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     /* Free all of the active subscriptions */
     aws_mqtt_topic_tree_clean_up(&connection->thread_data.subscriptions);
+
+    aws_mqtt311_decoder_clean_up(&connection->thread_data.decoder);
 
     aws_hash_table_clean_up(&connection->synced_data.outstanding_requests_table);
     /* clean up the pending_requests if it's not empty */
@@ -850,6 +855,10 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     /* Frees all allocated memory */
     aws_mem_release(connection->allocator, connection);
+
+    if (termination_handler != NULL) {
+        (*termination_handler)(termination_handler_user_data);
+    }
 }
 
 static void s_on_final_disconnect(struct aws_mqtt_client_connection *connection, void *userdata) {
@@ -1157,6 +1166,25 @@ static int s_aws_mqtt_client_connection_311_set_on_any_publish_handler(
 
     connection->on_any_publish = on_any_publish;
     connection->on_any_publish_ud = on_any_publish_ud;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_mqtt_client_connection_311_set_connection_termination_handler(
+    void *impl,
+    aws_mqtt_client_on_connection_termination_fn *on_termination,
+    void *on_termination_ud) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    AWS_PRECONDITION(connection);
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection termination handler", (void *)connection);
+
+    connection->on_termination = on_termination;
+    connection->on_termination_ud = on_termination_ud;
 
     return AWS_OP_SUCCESS;
 }
@@ -3165,6 +3193,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .set_connection_interruption_handlers_fn = s_aws_mqtt_client_connection_311_set_connection_interruption_handlers,
     .set_connection_closed_handler_fn = s_aws_mqtt_client_connection_311_set_connection_closed_handler,
     .set_on_any_publish_handler_fn = s_aws_mqtt_client_connection_311_set_on_any_publish_handler,
+    .set_connection_termination_handler_fn = s_aws_mqtt_client_connection_311_set_connection_termination_handler,
     .connect_fn = s_aws_mqtt_client_connection_311_connect,
     .reconnect_fn = s_aws_mqtt_client_connection_311_reconnect,
     .disconnect_fn = s_aws_mqtt_client_connection_311_disconnect,
@@ -3197,6 +3226,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     aws_ref_count_init(
         &connection->ref_count, connection, (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
     connection->client = aws_mqtt_client_acquire(client);
+
     AWS_ZERO_STRUCT(connection->synced_data);
     connection->synced_data.state = AWS_MQTT_CLIENT_STATE_DISCONNECTED;
     connection->reconnect_timeouts.min_sec = 1;
@@ -3215,6 +3245,12 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
             aws_error_name(aws_last_error()));
         goto failed_init_mutex;
     }
+
+    struct aws_mqtt311_decoder_options config = {
+        .packet_handlers = aws_mqtt311_get_default_packet_handlers(),
+        .handler_user_data = connection,
+    };
+    aws_mqtt311_decoder_init(&connection->thread_data.decoder, client->allocator, &config);
 
     if (aws_mqtt_topic_tree_init(&connection->thread_data.subscriptions, connection->allocator)) {
 
@@ -3242,9 +3278,9 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     if (aws_hash_table_init(
             &connection->synced_data.outstanding_requests_table,
             connection->allocator,
-            sizeof(struct aws_mqtt_request *),
-            s_hash_uint16_t,
-            s_uint16_t_eq,
+            DEFAULT_MQTT311_OPERATION_TABLE_SIZE,
+            aws_mqtt_hash_uint16_t,
+            aws_mqtt_compare_uint16_t_eq,
             NULL,
             NULL)) {
 

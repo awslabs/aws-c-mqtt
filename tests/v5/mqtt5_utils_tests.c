@@ -17,41 +17,64 @@ static int s_mqtt5_topic_skip_rules_prefix_fn(struct aws_allocator *allocator, v
     struct aws_byte_cursor expected_cursor;
 
     /* nothing should be skipped */
-    skip_cursor = aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("dont/skip/anything"));
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("dont/skip/anything"));
     expected_cursor = aws_byte_cursor_from_c_str("dont/skip/anything");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
-    skip_cursor = aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str(""));
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str(""));
     expected_cursor = aws_byte_cursor_from_c_str("");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
-    skip_cursor = aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("/"));
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("/"));
     expected_cursor = aws_byte_cursor_from_c_str("/");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
-    skip_cursor = aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("$aws"));
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("$aws"));
     expected_cursor = aws_byte_cursor_from_c_str("$aws");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
-    skip_cursor = aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("$aws/rules"));
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("$aws/rules"));
     expected_cursor = aws_byte_cursor_from_c_str("$aws/rules");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
-    skip_cursor = aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("$aws/rules/"));
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("$aws/rules/"));
     expected_cursor = aws_byte_cursor_from_c_str("$aws/rules/");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
-    skip_cursor = aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("$aws/rules/rulename"));
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("$aws/rules/rulename"));
     expected_cursor = aws_byte_cursor_from_c_str("$aws/rules/rulename");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("$share"));
+    expected_cursor = aws_byte_cursor_from_c_str("$share");
+    ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
+
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("$share/"));
+    expected_cursor = aws_byte_cursor_from_c_str("$share/");
+    ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
+
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("$share/share-name"));
+    expected_cursor = aws_byte_cursor_from_c_str("$share/share-name");
+    ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
+
     /* prefix should be skipped */
-    skip_cursor = aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("$aws/rules/rulename/"));
+    skip_cursor =
+        aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(aws_byte_cursor_from_c_str("$aws/rules/rulename/"));
     expected_cursor = aws_byte_cursor_from_c_str("");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
-    skip_cursor =
-        aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("$aws/rules/some-rule/segment1/segment2"));
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(
+        aws_byte_cursor_from_c_str("$aws/rules/some-rule/segment1/segment2"));
+    expected_cursor = aws_byte_cursor_from_c_str("segment1/segment2");
+    ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
+
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(
+        aws_byte_cursor_from_c_str("$share/share-name/segment1/segment2"));
+    expected_cursor = aws_byte_cursor_from_c_str("segment1/segment2");
+    ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
+
+    skip_cursor = aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(
+        aws_byte_cursor_from_c_str("$share/share-name/$aws/rules/some-rule/segment1/segment2"));
     expected_cursor = aws_byte_cursor_from_c_str("segment1/segment2");
     ASSERT_TRUE(aws_byte_cursor_eq(&skip_cursor, &expected_cursor));
 
@@ -76,12 +99,12 @@ static int s_mqtt5_topic_get_segment_count_fn(struct aws_allocator *allocator, v
 
     ASSERT_INT_EQUALS(
         2,
-        aws_mqtt5_topic_get_segment_count(aws_mqtt5_topic_skip_aws_iot_rules_prefix(
+        aws_mqtt5_topic_get_segment_count(aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(
             aws_byte_cursor_from_c_str("$aws/rules/some-rule/segment1/segment2"))));
     ASSERT_INT_EQUALS(
         1,
-        aws_mqtt5_topic_get_segment_count(
-            aws_mqtt5_topic_skip_aws_iot_rules_prefix(aws_byte_cursor_from_c_str("$aws/rules/some-rule/segment1"))));
+        aws_mqtt5_topic_get_segment_count(aws_mqtt5_topic_skip_aws_iot_core_uncounted_prefix(
+            aws_byte_cursor_from_c_str("$aws/rules/some-rule/segment1"))));
 
     return AWS_OP_SUCCESS;
 }

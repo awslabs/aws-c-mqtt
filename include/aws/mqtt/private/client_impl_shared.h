@@ -62,6 +62,11 @@ struct aws_mqtt_client_connection_vtable {
         aws_mqtt_client_publish_received_fn *on_any_publish,
         void *on_any_publish_ud);
 
+    int (*set_connection_termination_handler_fn)(
+        void *impl,
+        aws_mqtt_client_on_connection_termination_fn *on_termination,
+        void *on_termination_ud);
+
     int (*connect_fn)(void *impl, const struct aws_mqtt_connection_options *connection_options);
 
     int (*reconnect_fn)(void *impl, aws_mqtt_client_on_connection_complete_fn *on_connection_complete, void *userdata);
@@ -108,5 +113,11 @@ struct aws_mqtt_client_connection {
     struct aws_mqtt_client_connection_vtable *vtable;
     void *impl;
 };
+
+AWS_MQTT_API uint64_t aws_mqtt_hash_uint16_t(const void *item);
+
+AWS_MQTT_API bool aws_mqtt_compare_uint16_t_eq(const void *a, const void *b);
+
+AWS_MQTT_API bool aws_mqtt_byte_cursor_hash_equality(const void *a, const void *b);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */

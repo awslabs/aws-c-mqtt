@@ -10,6 +10,7 @@
 
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/fixed_header.h>
+#include <aws/mqtt/private/mqtt311_decoder.h>
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/hash_table.h>
@@ -126,6 +127,11 @@ struct aws_mqtt_request {
     struct aws_mqtt_client_connection_311_impl *connection;
 
     struct aws_channel_task outgoing_task;
+
+    /*
+     * The request send time. Currently used to push off keepalive packet.
+     */
+    uint64_t request_send_timestamp;
 
     /* How this operation is currently affecting the statistics of the connection */
     enum aws_mqtt_operation_statistic_state_flags statistic_state_flags;
@@ -244,6 +250,8 @@ struct aws_mqtt_client_connection_311_impl {
     void *on_any_publish_ud;
     aws_mqtt_client_on_disconnect_fn *on_disconnect;
     void *on_disconnect_ud;
+    aws_mqtt_client_on_connection_termination_fn *on_termination;
+    void *on_termination_ud;
     aws_mqtt_on_operation_statistics_fn *on_any_operation_statistics;
     void *on_any_operation_statistics_ud;
 
@@ -261,8 +269,7 @@ struct aws_mqtt_client_connection_311_impl {
 
     /* Only the event-loop thread may touch this data */
     struct {
-        /* If an incomplete packet arrives, store the data here. */
-        struct aws_byte_buf pending_packet;
+        struct aws_mqtt311_decoder decoder;
 
         bool waiting_on_ping_response;
 
@@ -415,5 +422,7 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
     struct aws_mqtt_client_connection_311_impl *connection,
     struct aws_mqtt_request *request,
     enum aws_mqtt_operation_statistic_state_flags new_state_flags);
+
+AWS_MQTT_API const struct aws_mqtt_client_connection_packet_handlers *aws_mqtt311_get_default_packet_handlers(void);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */
