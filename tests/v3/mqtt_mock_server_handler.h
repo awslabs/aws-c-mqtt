@@ -35,6 +35,7 @@ struct mqtt_decoded_packet {
     struct aws_byte_cursor publish_payload;    /* PUBLISH payload */
     struct aws_array_list sub_topic_filters;   /* list of aws_mqtt_subscription for SUBSCRIBE */
     struct aws_array_list unsub_topic_filters; /* list of aws_byte_cursor for UNSUBSCRIBE */
+    bool duplicate;                            /* PUBLISH only */
 
     /* index of the received packet, indicating when it's received by the server */
     size_t index;
@@ -54,6 +55,19 @@ int mqtt_mock_server_send_publish(
     bool dup,
     enum aws_mqtt_qos qos,
     bool retain);
+
+/**
+ * Mock server sends a publish packet back to client with user-controlled packet id
+ */
+int mqtt_mock_server_send_publish_by_id(
+    struct aws_channel_handler *handler,
+    uint16_t packet_id,
+    struct aws_byte_cursor *topic,
+    struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain);
+
 /**
  * Set max number of PINGRESP that mock server will send back to client
  */

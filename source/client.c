@@ -2830,6 +2830,8 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
 
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
+    } else {
+        aws_mqtt_packet_publish_set_dup(&task_arg->publish);
     }
 
     struct aws_io_message *message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->publish.fixed_header);
