@@ -7,7 +7,6 @@
 
 #include <aws/common/byte_buf.h>
 #include <aws/common/device_random.h>
-#include <aws/common/encoding.h>
 #include <inttypes.h>
 
 uint8_t aws_mqtt5_compute_fixed_header_byte1(enum aws_mqtt5_packet_type packet_type, uint8_t flags) {
@@ -119,24 +118,6 @@ int aws_mqtt5_negotiated_settings_init(
 
     if (aws_byte_buf_append_dynamic(&negotiated_settings->client_id_storage, client_id)) {
         return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-int aws_mqtt5_negotiated_settings_copy(
-    const struct aws_mqtt5_negotiated_settings *source,
-    struct aws_mqtt5_negotiated_settings *dest) {
-    aws_mqtt5_negotiated_settings_clean_up(dest);
-
-    *dest = *source;
-    AWS_ZERO_STRUCT(dest->client_id_storage);
-
-    if (source->client_id_storage.allocator != NULL) {
-        return aws_byte_buf_init_copy_from_cursor(
-            &dest->client_id_storage,
-            source->client_id_storage.allocator,
-            aws_byte_cursor_from_buf(&source->client_id_storage));
     }
 
     return AWS_OP_SUCCESS;
@@ -552,38 +533,4 @@ bool aws_mqtt_is_topic_filter_shared_subscription(struct aws_byte_cursor topic_c
     }
 
     return true;
-}
-
-/* UTF-8 encoded string validation respect to [MQTT-1.5.3-2]. */
-static int aws_mqtt5_utf8_decoder(uint32_t codepoint, void *user_data) {
-    (void)user_data;
-    /* U+0000 - A UTF-8 Encoded String MUST NOT include an encoding of the null character U+0000. [MQTT-1.5.4-2]
-     * U+0001..U+001F control characters are not valid
-     */
-    if (AWS_UNLIKELY(codepoint <= 0x001F)) {
-        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
-    }
-
-    /* U+007F..U+009F control characters are not valid */
-    if (AWS_UNLIKELY((codepoint >= 0x007F) && (codepoint <= 0x009F))) {
-        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
-    }
-
-    /* Unicode non-characters are not valid: https://www.unicode.org/faq/private_use.html#nonchar1 */
-    if (AWS_UNLIKELY((codepoint & 0x00FFFF) >= 0x00FFFE)) {
-        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
-    }
-    if (AWS_UNLIKELY(codepoint >= 0xFDD0 && codepoint <= 0xFDEF)) {
-        return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
-    }
-
-    return AWS_ERROR_SUCCESS;
-}
-
-struct aws_utf8_decoder_options g_aws_mqtt5_utf8_decoder_options = {
-    .on_codepoint = aws_mqtt5_utf8_decoder,
-};
-
-int aws_mqtt5_validate_utf8_text(struct aws_byte_cursor text) {
-    return aws_decode_utf8(text, &g_aws_mqtt5_utf8_decoder_options);
 }
