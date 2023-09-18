@@ -942,17 +942,22 @@ static int s_aws_mqtt_client_connection_311_set_will(
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
+    if (!aws_mqtt_is_valid_topic(topic)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Will topic is invalid", (void *)connection);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
+    }
+
+    if (qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Will qos is invalid", (void *)connection);
+        return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+    }
+
     int result = AWS_OP_ERR;
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Setting last will with topic \"" PRInSTR "\"",
         (void *)connection,
         AWS_BYTE_CURSOR_PRI(*topic));
-
-    if (!aws_mqtt_is_valid_topic(topic)) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Will topic is invalid", (void *)connection);
-        return aws_raise_error(AWS_ERROR_MQTT_INVALID_TOPIC);
-    }
 
     struct aws_byte_buf local_topic_buf;
     struct aws_byte_buf local_payload_buf;
@@ -1005,6 +1010,12 @@ static int s_aws_mqtt_client_connection_311_set_login(
     AWS_PRECONDITION(username);
     if (s_check_connection_state_for_configuration(connection)) {
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+
+    if (username != NULL && aws_mqtt_validate_utf8_text(*username) == AWS_OP_ERR) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in username", (void *)connection);
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
     int result = AWS_OP_ERR;
@@ -1427,6 +1438,16 @@ static int s_aws_mqtt_client_connection_311_connect(
     const struct aws_mqtt_connection_options *connection_options) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    if (connection_options == NULL) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    if (aws_mqtt_validate_utf8_text(connection_options->client_id) == AWS_OP_ERR) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in client id", (void *)connection);
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
 
     /* TODO: Do we need to support resuming the connection if user connect to the same connection & endpoint and the
      * clean_session is false?
@@ -1956,6 +1977,11 @@ static uint16_t s_aws_mqtt_client_connection_311_subscribe_multiple(
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
     AWS_PRECONDITION(connection);
+
+    if (topic_filters == NULL || aws_array_list_length(topic_filters) == 0) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return 0;
+    }
 
     struct subscribe_task_arg *task_arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct subscribe_task_arg));
     if (!task_arg) {
@@ -2804,6 +2830,8 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
 
             return AWS_MQTT_CLIENT_REQUEST_ERROR;
         }
+    } else {
+        aws_mqtt_packet_publish_set_dup(&task_arg->publish);
     }
 
     struct aws_io_message *message = mqtt_get_message_for_packet(task_arg->connection, &task_arg->publish.fixed_header);
@@ -2919,6 +2947,11 @@ static uint16_t s_aws_mqtt_client_connection_311_publish(
         return 0;
     }
 
+    if (qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
+        return 0;
+    }
+
     struct publish_task_arg *arg = aws_mem_calloc(connection->allocator, 1, sizeof(struct publish_task_arg));
     if (!arg) {
         return 0;
@@ -2929,7 +2962,14 @@ static uint16_t s_aws_mqtt_client_connection_311_publish(
     arg->topic = aws_byte_cursor_from_string(arg->topic_string);
     arg->qos = qos;
     arg->retain = retain;
-    if (aws_byte_buf_init_copy_from_cursor(&arg->payload_buf, connection->allocator, *payload)) {
+
+    struct aws_byte_cursor payload_cursor;
+    AWS_ZERO_STRUCT(payload_cursor);
+    if (payload != NULL) {
+        payload_cursor = *payload;
+    }
+
+    if (aws_byte_buf_init_copy_from_cursor(&arg->payload_buf, connection->allocator, payload_cursor)) {
         goto handle_error;
     }
     arg->payload = aws_byte_cursor_from_buf(&arg->payload_buf);

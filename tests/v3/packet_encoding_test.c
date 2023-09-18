@@ -390,6 +390,58 @@ static int s_test_connect_password_init(struct packet_test_fixture *fixture) {
 }
 PACKET_TEST_NAME(CONNECT, connect_password, connect, &s_test_connect_password_init, NULL, &s_test_connect_eq)
 
+static int s_test_connect_all_init(struct packet_test_fixture *fixture) {
+    /* Init packet */
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_init(
+        fixture->in_packet, aws_byte_cursor_from_array(s_client_id, CLIENT_ID_LEN), false, 0));
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_will(
+        fixture->in_packet,
+        aws_byte_cursor_from_array(s_topic_name, TOPIC_NAME_LEN),
+        AWS_MQTT_QOS_EXACTLY_ONCE,
+        true /*retain*/,
+        aws_byte_cursor_from_array(s_payload, PAYLOAD_LEN)));
+    ASSERT_SUCCESS(aws_mqtt_packet_connect_add_credentials(
+        fixture->in_packet,
+        aws_byte_cursor_from_array(s_username, USERNAME_LEN),
+        aws_byte_cursor_from_array(s_password, PASSWORD_LEN)));
+
+    /* Init buffer */
+    /* clang-format off */
+    uint8_t header[] = {
+        AWS_MQTT_PACKET_CONNECT << 4,   /* Packet type */
+        10 + (2 + CLIENT_ID_LEN) + (2 + TOPIC_NAME_LEN) + (2 + PAYLOAD_LEN) + (2 + USERNAME_LEN) + (2 + PASSWORD_LEN), /* Remaining length */
+        0, 4, 'M', 'Q', 'T', 'T',       /* Protocol name */
+        4,                              /* Protocol level */
+                                        /* Connect Flags: */
+        (1 << 2)                        /*   Will flag, bit 2 */
+        | (AWS_MQTT_QOS_EXACTLY_ONCE << 3)/* Will QoS, bits 4-3 */
+        | (1 << 5)                      /*   Will Retain, bit 5 */
+        | (1 << 7) | (1 << 6),            /* username bit 7, password bit 6 */
+        0, 0,                           /* Keep alive */
+    };
+    /* clang-format on */
+
+    aws_byte_buf_write(&fixture->buffer, header, sizeof(header));
+    /* client identifier */
+    aws_byte_buf_write_be16(&fixture->buffer, CLIENT_ID_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_client_id, CLIENT_ID_LEN);
+    /* will topic */
+    aws_byte_buf_write_be16(&fixture->buffer, TOPIC_NAME_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_topic_name, TOPIC_NAME_LEN);
+    /* will payload */
+    aws_byte_buf_write_be16(&fixture->buffer, PAYLOAD_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_payload, PAYLOAD_LEN);
+    /* username */
+    aws_byte_buf_write_be16(&fixture->buffer, USERNAME_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_username, USERNAME_LEN);
+    /* password */
+    aws_byte_buf_write_be16(&fixture->buffer, PASSWORD_LEN);
+    aws_byte_buf_write(&fixture->buffer, s_password, PASSWORD_LEN);
+
+    return AWS_OP_SUCCESS;
+}
+PACKET_TEST_NAME(CONNECT, connect_all, connect, &s_test_connect_all_init, NULL, &s_test_connect_eq)
+
 /*****************************************************************************/
 /* Connack                                                                   */
 
@@ -789,6 +841,90 @@ PACKET_TEST_CONNETION(PINGREQ, pingreq)
 PACKET_TEST_CONNETION(PINGRESP, pingresp)
 PACKET_TEST_CONNETION(DISCONNECT, disconnect)
 #undef PACKET_TEST_CONNETION
+
+static int s_mqtt_packet_connack_decode_failure_reserved_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_buf encoded_packet;
+    aws_byte_buf_init(&encoded_packet, allocator, 1024);
+
+    struct aws_mqtt_packet_connack connack;
+    ASSERT_SUCCESS(aws_mqtt_packet_connack_init(&connack, true, AWS_MQTT_CONNECT_SERVER_UNAVAILABLE));
+
+    ASSERT_SUCCESS(aws_mqtt_packet_connack_encode(&encoded_packet, &connack));
+
+    struct aws_byte_cursor decode_cursor = aws_byte_cursor_from_buf(&encoded_packet);
+    struct aws_mqtt_packet_connack decoded_connack;
+    ASSERT_SUCCESS(aws_mqtt_packet_connack_decode(&decode_cursor, &decoded_connack));
+
+    /* mess up the fixed header reserved bits */
+    encoded_packet.buffer[0] |= 0x01;
+
+    decode_cursor = aws_byte_cursor_from_buf(&encoded_packet);
+    ASSERT_FAILS(aws_mqtt_packet_connack_decode(&decode_cursor, &decoded_connack));
+
+    aws_byte_buf_clean_up(&encoded_packet);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_packet_connack_decode_failure_reserved, s_mqtt_packet_connack_decode_failure_reserved_fn)
+
+static int s_mqtt_packet_ack_decode_failure_reserved_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_buf encoded_packet;
+    aws_byte_buf_init(&encoded_packet, allocator, 1024);
+
+    struct aws_mqtt_packet_ack puback;
+    ASSERT_SUCCESS(aws_mqtt_packet_puback_init(&puback, 5));
+
+    ASSERT_SUCCESS(aws_mqtt_packet_ack_encode(&encoded_packet, &puback));
+
+    struct aws_byte_cursor decode_cursor = aws_byte_cursor_from_buf(&encoded_packet);
+    struct aws_mqtt_packet_ack decoded_ack;
+    ASSERT_SUCCESS(aws_mqtt_packet_ack_decode(&decode_cursor, &decoded_ack));
+
+    /* mess up the fixed header reserved bits */
+    encoded_packet.buffer[0] |= 0x0F;
+
+    decode_cursor = aws_byte_cursor_from_buf(&encoded_packet);
+    ASSERT_FAILS(aws_mqtt_packet_ack_decode(&decode_cursor, &decoded_ack));
+
+    aws_byte_buf_clean_up(&encoded_packet);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_packet_ack_decode_failure_reserved, s_mqtt_packet_ack_decode_failure_reserved_fn)
+
+static int s_mqtt_packet_pingresp_decode_failure_reserved_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_byte_buf encoded_packet;
+    aws_byte_buf_init(&encoded_packet, allocator, 1024);
+
+    struct aws_mqtt_packet_connection pingresp;
+    ASSERT_SUCCESS(aws_mqtt_packet_pingresp_init(&pingresp));
+
+    ASSERT_SUCCESS(aws_mqtt_packet_connection_encode(&encoded_packet, &pingresp));
+
+    struct aws_byte_cursor decode_cursor = aws_byte_cursor_from_buf(&encoded_packet);
+    struct aws_mqtt_packet_connection decoded_pingresp;
+    ASSERT_SUCCESS(aws_mqtt_packet_connection_decode(&decode_cursor, &decoded_pingresp));
+
+    /* mess up the fixed header reserved bits */
+    encoded_packet.buffer[0] |= 0x08;
+
+    decode_cursor = aws_byte_cursor_from_buf(&encoded_packet);
+    ASSERT_FAILS(aws_mqtt_packet_connection_decode(&decode_cursor, &decoded_pingresp));
+
+    aws_byte_buf_clean_up(&encoded_packet);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_packet_pingresp_decode_failure_reserved, s_mqtt_packet_pingresp_decode_failure_reserved_fn)
 
 #ifdef _MSC_VER
 #    pragma warning(pop)

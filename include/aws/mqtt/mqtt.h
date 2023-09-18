@@ -101,8 +101,17 @@ AWS_EXTERN_C_BEGIN
 
 AWS_MQTT_API
 bool aws_mqtt_is_valid_topic(const struct aws_byte_cursor *topic);
+
 AWS_MQTT_API
 bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter);
+
+/**
+ * Validate utf-8 string under mqtt specs
+ *
+ * @param text
+ * @return AWS_OP_SUCCESS if the text is validate, otherwise AWS_OP_ERR
+ */
+AWS_MQTT_API int aws_mqtt_validate_utf8_text(struct aws_byte_cursor text);
 
 /**
  * Initializes internal datastructures used by aws-c-mqtt.
