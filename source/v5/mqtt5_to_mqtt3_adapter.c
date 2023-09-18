@@ -2215,7 +2215,7 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_fn(
             topic_filter = record->subscription_view.topic_filter;
         }
 
-        if ( reason_code_count > 0) {
+        if (reason_code_count > 0) {
             granted_qos = s_convert_mqtt5_suback_reason_code_to_mqtt3_granted_qos(suback->reason_codes[0]);
         }
 
@@ -2234,8 +2234,7 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_fn(
             "id=%p: mqtt3-to-5-adapter, completing multi-topic subscribe",
             (void *)adapter);
 
-        AWS_VARIABLE_LENGTH_ARRAY(
-            struct aws_mqtt_topic_subscription, multi_sub_subscription_buf, reason_code_count);
+        AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt_topic_subscription, multi_sub_subscription_buf, reason_code_count);
         AWS_VARIABLE_LENGTH_ARRAY(
             struct aws_mqtt_topic_subscription *, multi_sub_subscription_ptr_buf, reason_code_count);
         struct aws_mqtt_topic_subscription *subscription_ptr =
