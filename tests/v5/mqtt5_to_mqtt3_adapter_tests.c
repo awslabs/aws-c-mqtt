@@ -2687,7 +2687,7 @@ static int s_mqtt5to3_adapter_subscribe_single_success_fn(struct aws_allocator *
 AWS_TEST_CASE(mqtt5to3_adapter_subscribe_single_success, s_mqtt5to3_adapter_subscribe_single_success_fn)
 
 /*
- * This function tests receiving a subscribe acknowlege after disconnecting from
+ * This function tests receiving a subscribe acknowledge after disconnecting from
  * the server.
  * it expects a AWS_MQTT_QOS_FAILURE return
  */

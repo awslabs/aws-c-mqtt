@@ -2187,93 +2187,98 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_fn(
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *subscribe_op = complete_ctx;
     struct aws_mqtt_client_connection_5_impl *adapter = subscribe_op->base.adapter;
-    size_t reason_code_count = 0;
 
-    if (suback != NULL) {
-        reason_code_count = suback->reason_code_count;
-    }
-
-    if (subscribe_op->on_suback != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
-            "id=%p: mqtt3-to-5-adapter, completing single-topic subscribe",
-            (void *)adapter);
-
-        struct aws_byte_cursor topic_filter;
-        AWS_ZERO_STRUCT(topic_filter);
-
-        enum aws_mqtt_qos granted_qos = AWS_MQTT_QOS_AT_MOST_ONCE;
-        if (suback == NULL) {
-            granted_qos = AWS_MQTT_QOS_FAILURE;
+    if (suback == NULL) {
+        if (subscribe_op->on_suback != NULL) {
+            (*subscribe_op->on_suback)(
+                &adapter->base,
+                subscribe_op->base.id,
+                NULL,
+                AWS_MQTT_QOS_FAILURE,
+                error_code,
+                subscribe_op->on_suback_user_data);
         }
-
-        size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
-        if (subscription_count > 0) {
-            struct aws_mqtt_subscription_set_subscription_record *record = NULL;
-            aws_array_list_get_at(&subscribe_op->subscriptions, &record, 0);
-
-            topic_filter = record->subscription_view.topic_filter;
+        if (subscribe_op->on_multi_suback != NULL) {
+            (*subscribe_op->on_multi_suback)(
+                &adapter->base, subscribe_op->base.id, NULL, error_code, subscribe_op->on_multi_suback_user_data);
         }
+    } else {
+        if (subscribe_op->on_suback != NULL) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+                "id=%p: mqtt3-to-5-adapter, completing single-topic subscribe",
+                (void *)adapter);
 
-        if (reason_code_count > 0) {
-            granted_qos = s_convert_mqtt5_suback_reason_code_to_mqtt3_granted_qos(suback->reason_codes[0]);
-        }
+            struct aws_byte_cursor topic_filter;
+            AWS_ZERO_STRUCT(topic_filter);
 
-        (*subscribe_op->on_suback)(
-            &adapter->base,
-            subscribe_op->base.id,
-            &topic_filter,
-            granted_qos,
-            error_code,
-            subscribe_op->on_suback_user_data);
-    }
+            enum aws_mqtt_qos granted_qos = AWS_MQTT_QOS_AT_MOST_ONCE;
 
-    if (subscribe_op->on_multi_suback != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
-            "id=%p: mqtt3-to-5-adapter, completing multi-topic subscribe",
-            (void *)adapter);
-
-        AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt_topic_subscription, multi_sub_subscription_buf, reason_code_count);
-        AWS_VARIABLE_LENGTH_ARRAY(
-            struct aws_mqtt_topic_subscription *, multi_sub_subscription_ptr_buf, reason_code_count);
-        struct aws_mqtt_topic_subscription *subscription_ptr =
-            (struct aws_mqtt_topic_subscription *)multi_sub_subscription_buf;
-
-        struct aws_array_list multi_sub_list;
-        aws_array_list_init_static(
-            &multi_sub_list,
-            multi_sub_subscription_ptr_buf,
-            reason_code_count,
-            sizeof(struct aws_mqtt_topic_subscription *));
-
-        size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
-
-        for (size_t i = 0; i < reason_code_count; ++i) {
-            struct aws_mqtt_topic_subscription *subscription = subscription_ptr + i;
-            AWS_ZERO_STRUCT(*subscription);
-
-            subscription->qos = s_convert_mqtt5_suback_reason_code_to_mqtt3_granted_qos(suback->reason_codes[i]);
-
-            if (i < subscription_count) {
+            size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
+            if (subscription_count > 0) {
                 struct aws_mqtt_subscription_set_subscription_record *record = NULL;
-                aws_array_list_get_at(&subscribe_op->subscriptions, &record, i);
+                aws_array_list_get_at(&subscribe_op->subscriptions, &record, 0);
 
-                subscription->topic = record->subscription_view.topic_filter;
-                subscription->on_publish = record->subscription_view.on_publish_received;
-                subscription->on_publish_ud = record->subscription_view.callback_user_data;
-                subscription->on_cleanup = record->subscription_view.on_cleanup;
+                topic_filter = record->subscription_view.topic_filter;
+            }
+            granted_qos = s_convert_mqtt5_suback_reason_code_to_mqtt3_granted_qos(suback->reason_codes[0]);
+            (*subscribe_op->on_suback)(
+                &adapter->base,
+                subscribe_op->base.id,
+                &topic_filter,
+                granted_qos,
+                error_code,
+                subscribe_op->on_suback_user_data);
+        }
+
+        if (subscribe_op->on_multi_suback != NULL) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+                "id=%p: mqtt3-to-5-adapter, completing multi-topic subscribe",
+                (void *)adapter);
+
+            AWS_VARIABLE_LENGTH_ARRAY(
+                struct aws_mqtt_topic_subscription, multi_sub_subscription_buf, suback->reason_code_count);
+            AWS_VARIABLE_LENGTH_ARRAY(
+                struct aws_mqtt_topic_subscription *, multi_sub_subscription_ptr_buf, suback->reason_code_count);
+            struct aws_mqtt_topic_subscription *subscription_ptr =
+                (struct aws_mqtt_topic_subscription *)multi_sub_subscription_buf;
+
+            struct aws_array_list multi_sub_list;
+            aws_array_list_init_static(
+                &multi_sub_list,
+                multi_sub_subscription_ptr_buf,
+                suback->reason_code_count,
+                sizeof(struct aws_mqtt_topic_subscription *));
+
+            size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
+
+            for (size_t i = 0; i < suback->reason_code_count; ++i) {
+                struct aws_mqtt_topic_subscription *subscription = subscription_ptr + i;
+                AWS_ZERO_STRUCT(*subscription);
+
+                subscription->qos = s_convert_mqtt5_suback_reason_code_to_mqtt3_granted_qos(suback->reason_codes[i]);
+
+                if (i < subscription_count) {
+                    struct aws_mqtt_subscription_set_subscription_record *record = NULL;
+                    aws_array_list_get_at(&subscribe_op->subscriptions, &record, i);
+
+                    subscription->topic = record->subscription_view.topic_filter;
+                    subscription->on_publish = record->subscription_view.on_publish_received;
+                    subscription->on_publish_ud = record->subscription_view.callback_user_data;
+                    subscription->on_cleanup = record->subscription_view.on_cleanup;
+                }
+
+                aws_array_list_push_back(&multi_sub_list, &subscription);
             }
 
-            aws_array_list_push_back(&multi_sub_list, &subscription);
+            (*subscribe_op->on_multi_suback)(
+                &adapter->base,
+                subscribe_op->base.id,
+                &multi_sub_list,
+                error_code,
+                subscribe_op->on_multi_suback_user_data);
         }
-
-        (*subscribe_op->on_multi_suback)(
-            &adapter->base,
-            subscribe_op->base.id,
-            &multi_sub_list,
-            error_code,
-            subscribe_op->on_multi_suback_user_data);
     }
 
     aws_mqtt5_to_mqtt3_adapter_operation_table_remove_operation(
