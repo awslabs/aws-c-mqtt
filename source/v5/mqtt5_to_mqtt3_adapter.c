@@ -2190,6 +2190,10 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_fn(
 
     if (suback == NULL) {
         if (subscribe_op->on_suback != NULL) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+                "id=%p: mqtt3-to-5-adapter, completing single-topic subscribe",
+                (void *)adapter);
             (*subscribe_op->on_suback)(
                 &adapter->base,
                 subscribe_op->base.id,
@@ -2199,6 +2203,10 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_fn(
                 subscribe_op->on_suback_user_data);
         }
         if (subscribe_op->on_multi_suback != NULL) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+                "id=%p: mqtt3-to-5-adapter, completing multi-topic subscribe",
+                (void *)adapter);
             (*subscribe_op->on_multi_suback)(
                 &adapter->base, subscribe_op->base.id, NULL, error_code, subscribe_op->on_multi_suback_user_data);
         }
