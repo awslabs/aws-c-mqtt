@@ -2769,7 +2769,9 @@ static int s_mqtt5to3_adapter_subscribe_single_success_null_suback_fn(struct aws
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(mqtt5to3_adapter_subscribe_single_success_null_suback, s_mqtt5to3_adapter_subscribe_single_success_null_suback_fn)
+AWS_TEST_CASE(
+    mqtt5to3_adapter_subscribe_single_success_null_suback,
+    s_mqtt5to3_adapter_subscribe_single_success_null_suback_fn)
 
 static void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete(
     struct aws_mqtt_client_connection *connection,
