@@ -2187,7 +2187,7 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_fn(
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *subscribe_op = complete_ctx;
     struct aws_mqtt_client_connection_5_impl *adapter = subscribe_op->base.adapter;
-    int reason_code_count = 0;
+    size_t reason_code_count = 0;
 
     if (suback != NULL) {
         reason_code_count = suback->reason_code_count;
