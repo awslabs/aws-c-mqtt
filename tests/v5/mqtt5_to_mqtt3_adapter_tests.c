@@ -2691,16 +2691,13 @@ AWS_TEST_CASE(mqtt5to3_adapter_subscribe_single_success, s_mqtt5to3_adapter_subs
  * the server.
  * it expects a AWS_MQTT_QOS_FAILURE return
  */
-static int s_mqtt5to3_adapter_subscribe_single_success_null_suback_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt5to3_adapter_subscribe_single_null_suback_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options test_options;
     aws_mqtt5_client_test_init_default_options(&test_options);
-
-    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        s_mqtt5_mock_server_handle_subscribe_suback_success;
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
         .client_options = &test_options.client_options,
@@ -2769,9 +2766,7 @@ static int s_mqtt5to3_adapter_subscribe_single_success_null_suback_fn(struct aws
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(
-    mqtt5to3_adapter_subscribe_single_success_null_suback,
-    s_mqtt5to3_adapter_subscribe_single_success_null_suback_fn)
+AWS_TEST_CASE(mqtt5to3_adapter_subscribe_single_success_null_suback, s_mqtt5to3_adapter_subscribe_single_null_suback_fn)
 
 static void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete(
     struct aws_mqtt_client_connection *connection,
