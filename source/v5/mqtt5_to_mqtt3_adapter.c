@@ -2200,7 +2200,6 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_fn(
 
         enum aws_mqtt_qos granted_qos = AWS_MQTT_QOS_AT_MOST_ONCE;
 
-        aws_array_list_get_at(&subscribe_op->subscriptions, &record, 0);
         size_t subscription_count = aws_array_list_length(&subscribe_op->subscriptions);
         if (subscription_count > 0) {
             aws_array_list_get_at(&subscribe_op->subscriptions, &record, 0);
