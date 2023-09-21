@@ -2909,9 +2909,6 @@ static int s_mqtt5to3_adapter_subscribe_multi_null_suback_fn(struct aws_allocato
     struct mqtt5_client_test_options test_options;
     aws_mqtt5_client_test_init_default_options(&test_options);
 
-    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        s_mqtt5_mock_server_handle_subscribe_suback_success;
-
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
         .client_options = &test_options.client_options,
         .server_function_table = &test_options.server_function_table,
