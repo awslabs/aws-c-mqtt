@@ -2734,7 +2734,7 @@ static int s_mqtt5to3_adapter_subscribe_single_null_suback_fn(struct aws_allocat
     struct aws_mqtt_topic_subscription expected_subs[1] = {
         {
             .topic = topic,
-            .qos = AWS_MQTT_QOS_FAILURE,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
         },
     };
 
