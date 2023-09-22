@@ -2785,7 +2785,8 @@ static void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_com
         .error_code = error_code,
     };
 
-    if (error_code == AWS_ERROR_SUCCESS) {
+    // The subscription would return subscription data regardless of error code
+    if (topic_subacks) {
         size_t granted_count = aws_array_list_length(topic_subacks);
 
         aws_array_list_init_dynamic(
@@ -2956,6 +2957,12 @@ static int s_mqtt5to3_adapter_subscribe_multi_null_suback_fn(struct aws_allocato
             .error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP,
         },
     };
+
+    aws_array_list_init_static_from_initialized(
+        &expected_events[0].granted_subscriptions,
+        (void *)subscriptions,
+        2,
+        sizeof(struct aws_mqtt_topic_subscription));
 
     aws_mqtt_client_connection_disconnect(
         connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_disconnection_complete, &fixture);

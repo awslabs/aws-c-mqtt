@@ -619,7 +619,8 @@ static void s_on_multi_suback(
 
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->subscribe_completed = true;
-    if (!error_code) {
+    // The suback would return the subscription data regardless of error_code
+    if (topic_subacks) {
         size_t length = aws_array_list_length(topic_subacks);
         for (size_t i = 0; i < length; ++i) {
             struct aws_mqtt_topic_subscription *subscription = NULL;
