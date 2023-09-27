@@ -582,9 +582,7 @@ static void s_on_suback(
     struct mqtt_connection_state_test *state_test_data = userdata;
 
     aws_mutex_lock(&state_test_data->lock);
-    if (!error_code) {
-        aws_array_list_push_back(&state_test_data->qos_returned, &qos);
-    }
+    aws_array_list_push_back(&state_test_data->qos_returned, &qos);
     state_test_data->subscribe_completed = true;
     state_test_data->subscribe_complete_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
