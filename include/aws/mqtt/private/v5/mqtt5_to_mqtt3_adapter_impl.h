@@ -62,9 +62,15 @@ enum aws_mqtt5_to_mqtt3_adapter_operation_type {
     AWS_MQTT5TO3_AOT_UNSUBSCRIBE,
 };
 
+struct aws_mqtt5_to_mqtt3_adapter_operation_vtable {
+    void (*fail_fn)(void *impl, int error_code);
+};
+
 struct aws_mqtt5_to_mqtt3_adapter_operation_base {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
+    const struct aws_mqtt5_to_mqtt3_adapter_operation_vtable *vtable;
+
     void *impl;
 
     /*
@@ -225,15 +231,6 @@ struct aws_mqtt_client_connection_5_impl {
     struct aws_event_loop *loop;
 
     /*
-     * An event-loop-internal flag that we can read to check to see if we're in the scope of a callback
-     * that has already locked the adapter's lock.  Can only be referenced from the event loop thread.
-     *
-     * We use the flag to avoid deadlock in a few cases where we can re-enter the adapter logic from within a callback.
-     * It also provides a nice solution for the fact that we cannot safely upgrade a read lock to a write lock.
-     */
-    bool in_synchronous_callback;
-
-    /*
      * The current adapter state based on the sequence of connect(), disconnect(), and connection completion events.
      * This affects how the adapter reacts to incoming mqtt5 events.  Under certain conditions, we may change
      * this state value based on unexpected events (stopping the mqtt5 client underneath the adapter, for example)
@@ -259,23 +256,6 @@ struct aws_mqtt_client_connection_5_impl {
      * Once the internal ref count drops to zero, the adapter may be destroyed synchronously.
      */
     struct aws_ref_count internal_refs;
-
-    /*
-     * We use the adapter lock to guarantee that we can synchronously sever all callbacks from the mqtt5 client even
-     * though adapter shutdown is an asynchronous process.  This means the lock is held during callbacks which is a
-     * departure from our normal usage patterns.  We prevent deadlock (due to logical re-entry) by using the
-     * in_synchronous_callback flag.
-     *
-     * We hold a read lock when invoking callbacks and a write lock when setting terminated from false to true.
-     */
-    struct aws_rw_lock lock;
-
-    /*
-     * Synchronized data protected by the adapter lock.
-     */
-    struct {
-        bool terminated;
-    } synced_data;
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_table operational_state;
 
