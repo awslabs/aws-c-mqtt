@@ -788,6 +788,20 @@ AWS_MQTT_API int aws_mqtt5_negotiated_settings_init(
     const struct aws_byte_cursor *client_id);
 
 /**
+ * Makes an owning copy of a negotiated settings structure.
+ *
+ * @param source settings to copy from
+ * @param dest settings to copy into.  Must be in a zeroed or initialized state because it gets clean up
+ *  called on it as the first step of the copy process.
+ * @return success/failure
+ *
+ * Used in downstream.
+ */
+AWS_MQTT_API int aws_mqtt5_negotiated_settings_copy(
+    const struct aws_mqtt5_negotiated_settings *source,
+    struct aws_mqtt5_negotiated_settings *dest);
+
+/**
  * Clean up owned memory in negotiated_settings
  *
  * @param negotiated_settings settings to clean up
