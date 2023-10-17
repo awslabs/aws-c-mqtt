@@ -123,6 +123,24 @@ int aws_mqtt5_negotiated_settings_init(
     return AWS_OP_SUCCESS;
 }
 
+int aws_mqtt5_negotiated_settings_copy(
+    const struct aws_mqtt5_negotiated_settings *source,
+    struct aws_mqtt5_negotiated_settings *dest) {
+    aws_mqtt5_negotiated_settings_clean_up(dest);
+
+    *dest = *source;
+    AWS_ZERO_STRUCT(dest->client_id_storage);
+
+    if (source->client_id_storage.allocator != NULL) {
+        return aws_byte_buf_init_copy_from_cursor(
+            &dest->client_id_storage,
+            source->client_id_storage.allocator,
+            aws_byte_cursor_from_buf(&source->client_id_storage));
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_mqtt5_negotiated_settings_apply_client_id(
     struct aws_mqtt5_negotiated_settings *negotiated_settings,
     const struct aws_byte_cursor *client_id) {
