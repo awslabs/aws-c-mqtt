@@ -1987,10 +1987,10 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, invoking publish API", (void *)adapter);
-    int result = s_check_adapter_termination_status(adapter);
-    if (result) {
-        return result;
+    if (s_check_adapter_termination_status(adapter)) {
+        return 0;
     }
+
     /* check qos */
     if (qos < 0 || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
         AWS_LOGF_ERROR(
@@ -2452,9 +2452,8 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
         "id=%p: mqtt3-to-5-adapter, single-topic subscribe API invoked",
         (void *)adapter);
 
-    int result = s_check_adapter_termination_status(adapter);
-    if (result) {
-        return result;
+    if (s_check_adapter_termination_status(adapter)) {
+        return 0;
     }
 
     struct aws_mqtt_topic_subscription subscription = {
@@ -2527,10 +2526,10 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, multi-topic subscribe API invoked", (void *)adapter);
-    int result = s_check_adapter_termination_status(adapter);
-    if (result) {
-        return result;
+    if (s_check_adapter_termination_status(adapter)) {
+        return 0;
     }
+
     if (topic_filters == NULL || aws_array_list_length(topic_filters) == 0) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter multi-topic subscribe empty", (void *)adapter);
@@ -2737,10 +2736,10 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, unsubscribe called", (void *)adapter);
-    int result = s_check_adapter_termination_status(adapter);
-    if (result) {
-        return result;
+    if (s_check_adapter_termination_status(adapter)) {
+        return 0;
     }
+
     if (!aws_mqtt_is_valid_topic_filter(topic_filter)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_TO_MQTT3_ADAPTER,

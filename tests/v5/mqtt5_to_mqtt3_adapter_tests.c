@@ -2496,12 +2496,64 @@ void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete(
     (void)packet_id;
     (void)topic;
 
-    /* Test if the callback could handle the connection operations correctly */
-    if (connection) {
-        aws_mqtt_client_connection_set_reconnect_timeout(connection, 10, 20);
-    }
+    struct aws_mqtt5_to_mqtt3_adapter_test_fixture *fixture = userdata;
+
+    struct aws_mqtt3_operation_event operation_event = {
+        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+        .error_code = error_code,
+    };
+
+    aws_array_list_init_dynamic(
+        &operation_event.granted_subscriptions,
+        fixture->mqtt5_fixture.allocator,
+        1,
+        sizeof(struct aws_mqtt_topic_subscription));
+
+    aws_byte_buf_init_copy_from_cursor(&operation_event.topic_storage, fixture->mqtt5_fixture.allocator, *topic);
+
+    /*
+     * technically it's not safe to persist the topic cursor but they way the tests are built, the cursor will stay
+     * valid until the events are checked (as long as we don't delete the subscription internally)
+     */
+    struct aws_mqtt_topic_subscription sub = {
+        .topic = aws_byte_cursor_from_buf(&operation_event.topic_storage),
+        .qos = qos,
+    };
+    aws_array_list_push_back(&operation_event.granted_subscriptions, (void *)&sub);
+
+    aws_mutex_lock(&fixture->lock);
+    aws_array_list_push_back(&fixture->operation_events, &operation_event);
+    aws_mutex_unlock(&fixture->lock);
+    aws_condition_variable_notify_all(&fixture->signal);
+}
+
+void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete_with_connection_operation(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    const struct aws_byte_cursor *topic,
+    enum aws_mqtt_qos qos,
+    int error_code,
+    void *userdata) {
+
+    (void)connection;
+    (void)packet_id;
+    (void)topic;
 
     struct aws_mqtt5_to_mqtt3_adapter_test_fixture *fixture = userdata;
+
+    /* Do a connection operation in callback */
+    aws_mqtt_client_connection_publish(
+        connection,
+        topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        NULL,
+        s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
+        fixture);
+
+    /* Do a connection config setup in callback */
+    aws_mqtt_client_connection_set_reconnect_timeout(
+        connection, RECONNECT_TEST_MIN_BACKOFF, RECONNECT_TEST_MAX_BACKOFF);
 
     struct aws_mqtt3_operation_event operation_event = {
         .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
@@ -4335,3 +4387,174 @@ static int s_mqtt5to3_adapter_operation_callbacks_after_shutdown_fn(struct aws_a
 AWS_TEST_CASE(
     mqtt5to3_adapter_operation_callbacks_after_shutdown,
     s_mqtt5to3_adapter_operation_callbacks_after_shutdown_fn)
+
+static int s_mqtt5to3_adapter_test_operations_in_completion_callback_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_mqtt5_mock_server_handle_subscribe_suback_success;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        aws_mqtt5_mock_server_handle_publish_puback;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_to_mqtt3_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt5_to_mqtt3_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("derp");
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete_with_connection_operation,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
+
+    /*
+     * We will do a publish in
+     * `s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete_with_connection_operation` Manually wait for
+     * the publish finish and add a PUBLISH event to the `expected_events`.
+     */
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
+
+    struct aws_mqtt_topic_subscription expected_subs[1] = {
+        {
+            .topic = topic,
+            .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        },
+    };
+
+    struct aws_mqtt3_operation_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+        {
+            .type = AWS_MQTT3_OET_PUBLISH_COMPLETE,
+            .error_code = AWS_ERROR_SUCCESS,
+        }};
+    aws_array_list_init_static_from_initialized(
+        &expected_events[0].granted_subscriptions,
+        (void *)expected_subs,
+        1,
+        sizeof(struct aws_mqtt_topic_subscription));
+
+    ASSERT_SUCCESS(s_aws_mqtt5_to_mqtt3_adapter_test_fixture_verify_operation_sequence(
+        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5to3_adapter_test_operations_in_completion_callback,
+    s_mqtt5to3_adapter_test_operations_in_completion_callback_fn)
+
+static int s_mqtt5to3_adapter_test_operations_in_failed_completion_callback_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] = NULL;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_to_mqtt3_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt5_to_mqtt3_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("hello/world");
+
+    aws_mqtt_client_connection_subscribe(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_topic_specific_publish,
+        &fixture,
+        NULL,
+        s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete_with_connection_operation,
+        &fixture);
+
+    aws_mqtt_client_connection_release(connection);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_TERMINATION, 1);
+    fixture.connection = NULL;
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
+
+    struct aws_mqtt3_operation_event failed_ops[] = {{
+        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+        .error_code = AWS_ERROR_MQTT_CONNECTION_DESTROYED,
+    }};
+
+    struct aws_mqtt_topic_subscription failed_subscriptions[] = {
+        {
+            .topic = topic,
+            .qos = AWS_MQTT_QOS_FAILURE,
+        },
+    };
+
+    aws_array_list_init_static_from_initialized(
+        &failed_ops[0].granted_subscriptions,
+        (void *)failed_subscriptions,
+        AWS_ARRAY_SIZE(failed_subscriptions),
+        sizeof(struct aws_mqtt_topic_subscription));
+
+    ASSERT_SUCCESS(s_aws_mqtt5_to_mqtt3_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(failed_ops), failed_ops));
+
+    aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5to3_adapter_test_operations_in_failed_completion_callback_fn,
+    s_mqtt5to3_adapter_test_operations_in_failed_completion_callback_fn)
