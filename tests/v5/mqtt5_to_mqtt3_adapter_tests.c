@@ -4450,14 +4450,8 @@ static int s_mqtt5to3_adapter_test_operations_in_completion_callback_fn(struct a
     };
 
     struct aws_mqtt3_operation_event expected_events[] = {
-        {
-            .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
-            .error_code = AWS_ERROR_SUCCESS,
-        },
-        {
-            .type = AWS_MQTT3_OET_PUBLISH_COMPLETE,
-            .error_code = AWS_ERROR_SUCCESS,
-        }};
+        {.type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, .error_code = AWS_ERROR_SUCCESS},
+        {.type = AWS_MQTT3_OET_PUBLISH_COMPLETE, .error_code = AWS_ERROR_SUCCESS}};
     aws_array_list_init_static_from_initialized(
         &expected_events[0].granted_subscriptions,
         (void *)expected_subs,
