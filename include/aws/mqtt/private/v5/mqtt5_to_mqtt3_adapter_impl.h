@@ -257,6 +257,12 @@ struct aws_mqtt_client_connection_5_impl {
      */
     struct aws_ref_count internal_refs;
 
+    /*
+     * Set to true if the adapter is in destroying process (internal_ref is 0). The adapter would prevent any
+     * operations if set to true/
+     */
+    bool is_terminated;
+
     struct aws_mqtt5_to_mqtt3_adapter_operation_table operational_state;
 
     struct aws_mqtt_subscription_set *subscriptions;
