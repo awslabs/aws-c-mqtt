@@ -60,10 +60,10 @@ struct aws_mqtt_adapter_final_destroy_task {
     struct aws_mqtt_client_connection *connection;
 };
 
-/* Check the adapter status. Prevent further operations if the adapter is in destroy process. */
-static int s_check_adapter_termination_status(struct aws_mqtt_client_connection_5_impl *adapter) {
+/* Check the adapter termination status. Prevent further operations if the adapter is in destroy process. */
+static int s_check_adapter_destroy_status(struct aws_mqtt_client_connection_5_impl *adapter) {
 
-    if (adapter->is_terminated) {
+    if (adapter->is_destroying) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Adapter destroy requested, stop creating any new operations or update from adapter.",
@@ -79,7 +79,7 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
 
     struct aws_mqtt_adapter_final_destroy_task *destroy_task = arg;
     struct aws_mqtt_client_connection_5_impl *adapter = destroy_task->connection->impl;
-    adapter->is_terminated = true;
+    adapter->is_destroying = true;
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: Final destruction of mqtt3-to-5 adapter", (void *)adapter);
 
@@ -188,7 +188,7 @@ static int s_aws_mqtt_client_connection_5_disconnect(
     void *on_disconnect_user_data) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -326,8 +326,7 @@ static int s_validate_adapter_connection_options(
         }
     }
 
-    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval
-     */
+    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
     if (!aws_mqtt5_client_keep_alive_options_are_valid(
             connection_options->keep_alive_time_secs, connection_options->ping_timeout_ms)) {
         AWS_LOGF_ERROR(
@@ -345,12 +344,12 @@ static int s_aws_mqtt_client_connection_5_connect(
     const struct aws_mqtt_connection_options *connection_options) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
-    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval
-     */
+
+    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
     if (s_validate_adapter_connection_options(connection_options, adapter)) {
         return AWS_OP_ERR;
     }
@@ -434,9 +433,10 @@ static void s_aws_mqtt5_to_mqtt3_adapter_lifecycle_handler(const struct aws_mqtt
             /*
              * The MQTT311 interface only cares about connection failures when it's the initial connection attempt
              * after a call to connect().  Since an adapter connect() can sever an existing connection (with an
-             * error code of AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT) we only react to connection
-             * failures if (1) the error code is not AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT and (2)
-             * we're in the FIRST_CONNECT state
+             * error code of AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT) we only react to connection failures
+             * if
+             *   (1) the error code is not AWS_ERROR_MQTT_CONNECTION_RESET_FOR_ADAPTER_CONNECT and
+             *   (2) we're in the FIRST_CONNECT state
              *
              * Only if both of these are true should we invoke the connection completion callback with a failure and
              * put the adapter into the "disconnected" state, simulating the way the 311 client stops after an
@@ -823,7 +823,7 @@ static int s_aws_mqtt_client_connection_5_set_interruption_handlers(
     aws_mqtt_client_on_connection_resumed_fn *on_resumed,
     void *on_resumed_user_data) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -909,7 +909,7 @@ static int s_aws_mqtt_client_connection_5_set_connection_result_handlers(
     aws_mqtt_client_on_connection_failure_fn *on_connection_failure,
     void *on_connection_failure_user_data) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -987,7 +987,7 @@ static int s_aws_mqtt_client_connection_5_set_on_closed_handler(
     aws_mqtt_client_on_connection_closed_fn *on_closed,
     void *on_closed_user_data) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1059,7 +1059,7 @@ static int s_aws_mqtt_client_connection_5_set_termination_handler(
     aws_mqtt_client_on_connection_termination_fn *on_termination,
     void *on_termination_ud) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1133,7 +1133,7 @@ static int s_aws_mqtt_client_connection_5_set_on_any_publish_handler(
     aws_mqtt_client_publish_received_fn *on_any_publish,
     void *on_any_publish_user_data) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1208,7 +1208,7 @@ static int s_aws_mqtt_client_connection_5_set_reconnect_timeout(
     uint64_t min_timeout,
     uint64_t max_timeout) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1298,7 +1298,7 @@ static int s_aws_mqtt_client_connection_5_set_http_proxy_options(
     struct aws_http_proxy_options *proxy_options) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1420,7 +1420,7 @@ static int s_aws_mqtt_client_connection_5_use_websockets(
     (void)validator_user_data;
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1490,7 +1490,7 @@ static int s_aws_mqtt_client_connection_5_set_host_resolution_options(
     const struct aws_host_resolution_config *host_resolution_config) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1611,7 +1611,7 @@ static int s_aws_mqtt_client_connection_5_set_will(
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1747,7 +1747,7 @@ static int s_aws_mqtt_client_connection_5_set_login(
     const struct aws_byte_cursor *password) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -1987,7 +1987,7 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, invoking publish API", (void *)adapter);
-    if (s_check_adapter_termination_status(adapter)) {
+    if (s_check_adapter_destroy_status(adapter)) {
         return 0;
     }
 
@@ -2452,7 +2452,7 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
         "id=%p: mqtt3-to-5-adapter, single-topic subscribe API invoked",
         (void *)adapter);
 
-    if (s_check_adapter_termination_status(adapter)) {
+    if (s_check_adapter_destroy_status(adapter)) {
         return 0;
     }
 
@@ -2526,7 +2526,7 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, multi-topic subscribe API invoked", (void *)adapter);
-    if (s_check_adapter_termination_status(adapter)) {
+    if (s_check_adapter_destroy_status(adapter)) {
         return 0;
     }
 
@@ -2736,7 +2736,7 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, unsubscribe called", (void *)adapter);
-    if (s_check_adapter_termination_status(adapter)) {
+    if (s_check_adapter_destroy_status(adapter)) {
         return 0;
     }
 
@@ -2825,7 +2825,7 @@ static int s_aws_mqtt_client_connection_5_get_stats(
     struct aws_mqtt_connection_operation_statistics *stats) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
-    int result = s_check_adapter_termination_status(adapter);
+    int result = s_check_adapter_destroy_status(adapter);
     if (result) {
         return result;
     }
@@ -2971,7 +2971,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new_from_mqtt5_cli
     adapter->client = aws_mqtt5_client_acquire(client);
     adapter->loop = client->loop;
     adapter->adapter_state = AWS_MQTT_AS_STAY_DISCONNECTED;
-    adapter->is_terminated = false;
+    adapter->is_destroying = false;
 
     aws_ref_count_init(&adapter->external_refs, adapter, s_aws_mqtt5_to_mqtt3_adapter_on_zero_external_refs);
     aws_ref_count_init(&adapter->internal_refs, adapter, s_aws_mqtt5_to_mqtt3_adapter_on_zero_internal_refs);
