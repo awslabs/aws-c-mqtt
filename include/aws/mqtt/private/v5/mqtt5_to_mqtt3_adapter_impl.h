@@ -259,9 +259,9 @@ struct aws_mqtt_client_connection_5_impl {
 
     /*
      * Set to true if the adapter is in destroying process (internal_ref is 0). The adapter would prevent any
-     * operations if set to true/
+     * operations if `is_destroying` set to true
      */
-    bool is_terminated;
+    bool is_destroying;
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_table operational_state;
 
