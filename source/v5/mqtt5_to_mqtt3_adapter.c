@@ -76,21 +76,6 @@ static void s_mqtt_adapter_final_destroy_task_fn(struct aws_task *task, void *ar
         termination_handler_user_data = adapter->on_termination_user_data;
     }
 
-    if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
-        /*
-         * If the mqtt5 client is pointing to us for websocket transform, then erase that.  The callback
-         * is invoked from our pinned event loop so this is safe.
-         *
-         * TODO: It is possible that multiple adapters may have sequentially side-affected the websocket handshake.
-         * For now, in that case, subsequent connection attempts will probably not succeed.
-         */
-        adapter->client->config->websocket_handshake_transform = NULL;
-        adapter->client->config->websocket_handshake_transform_user_data = NULL;
-    }
-
-    aws_mqtt_subscription_set_destroy(adapter->subscriptions);
-    aws_mqtt5_to_mqtt3_adapter_operation_table_clean_up(&adapter->operational_state);
-
     adapter->client = aws_mqtt5_client_release(adapter->client);
 
     aws_mem_release(adapter->allocator, adapter);
@@ -1718,6 +1703,21 @@ static void s_aws_mqtt5_to_mqtt3_adapter_on_zero_internal_refs(void *context) {
 
 static void s_aws_mqtt5_to_mqtt3_adapter_on_listener_detached(void *context) {
     struct aws_mqtt_client_connection_5_impl *adapter = context;
+
+    if (adapter->client->config->websocket_handshake_transform_user_data == adapter) {
+        /*
+         * If the mqtt5 client is pointing to us for websocket transform, then erase that.  The callback
+         * is invoked from our pinned event loop so this is safe.
+         *
+         * TODO: It is possible that multiple adapters may have sequentially side-affected the websocket handshake.
+         * For now, in that case, subsequent connection attempts will probably not succeed.
+         */
+        adapter->client->config->websocket_handshake_transform = NULL;
+        adapter->client->config->websocket_handshake_transform_user_data = NULL;
+    }
+
+    aws_mqtt_subscription_set_destroy(adapter->subscriptions);
+    aws_mqtt5_to_mqtt3_adapter_operation_table_clean_up(&adapter->operational_state);
 
     /*
      * Release the single internal reference that we started with.  Only ephemeral references for cross-thread
