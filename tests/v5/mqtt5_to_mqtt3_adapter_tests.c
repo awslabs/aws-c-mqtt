@@ -2496,6 +2496,11 @@ void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete(
     (void)packet_id;
     (void)topic;
 
+    /* Test if the callback could handle the connection operations correctly */
+    if (connection) {
+        aws_mqtt_client_connection_set_reconnect_timeout(connection, 10, 20);
+    }
+
     struct aws_mqtt5_to_mqtt3_adapter_test_fixture *fixture = userdata;
 
     struct aws_mqtt3_operation_event operation_event = {
