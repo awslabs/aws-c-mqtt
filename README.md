@@ -4,7 +4,7 @@ C99 implementation of the MQTT 3.1.1 specification.
 
 ## License
 
-This library is licensed under the Apache 2.0 License. 
+This library is licensed under the Apache 2.0 License.
 
 ## Usage
 
@@ -203,6 +203,55 @@ the wire. For QoS 1, as soon as PUBACK comes back. For QoS 2, PUBCOMP. `topic` a
 ```c
 int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
 ```
-Sends a PINGREQ packet to the server. 
+Sends a PINGREQ packet to the server.
+
+### Reference Count
+You’re never allowed to use an object after you release it, even if it is happens in callbacks from different thread.
+Example:
+```c
+// Create a client connection.
+struct aws_mqtt_client_connection * connection = aws_mqtt_client_connection_new(client);
+
+// Here we use a simple flag to do a quick demonstration. In a real life sample, you would need a way to validate if the connection is released cross the threads
+bool connection_valid = true;
+
+// Setup a callback function
+static void s_on_suback(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    const struct aws_byte_cursor *topic,
+    enum aws_mqtt_qos qos,
+    int error_code,
+    void *userdata) {
+
+    // The callback might be invoked from a different thread. Always validate the flag to make sure the reference is not released before you access the connection.
+    if(connection_valid)
+    {
+        // Do operations if we have access to the `connection`
+        aws_mqtt_client_connection_set_reconnect_timeout( connection, 10, 20);
+    }
+    else
+    {
+        // You should not access `connection` here if you released the connection reference
+    }
+}
+
+// Client operations
+aws_mqtt_client_connection_subscribe(connection, &subscribed_topic,
+    AWS_MQTT_QOS_AT_LEAST_ONCE,
+    s_on_publish_received,
+    state_test_data,
+    NULL,
+    s_on_suback,
+    state_test_data);
+
+
+// Prepare to release the connection
+connection_valid = false;
+aws_mqtt_client_connection_release(connection);
+// You should not access `connection` after this point
+
+```
+
 
 [aws-c-io]: https://github.com/awslabs/aws-c-io
