@@ -344,31 +344,37 @@ typedef void(aws_mqtt5_client_termination_completion_fn)(void *complete_ctx);
 /* operation completion options structures */
 
 /**
- * Completion callback options for the Publish operation
+ * Completion options for the Publish operation
  */
 struct aws_mqtt5_publish_completion_options {
     aws_mqtt5_publish_completion_fn *completion_callback;
     void *completion_user_data;
+
+    uint32_t ack_timeout_seconds_override;
 };
 
 /**
- * Completion callback options for the Subscribe operation
+ * Completion options for the Subscribe operation
  */
 struct aws_mqtt5_subscribe_completion_options {
     aws_mqtt5_subscribe_completion_fn *completion_callback;
     void *completion_user_data;
+
+    uint32_t ack_timeout_seconds_override;
 };
 
 /**
- * Completion callback options for the Unsubscribe operation
+ * Completion options for the Unsubscribe operation
  */
 struct aws_mqtt5_unsubscribe_completion_options {
     aws_mqtt5_unsubscribe_completion_fn *completion_callback;
     void *completion_user_data;
+
+    uint32_t ack_timeout_seconds_override;
 };
 
 /**
- * Public completion callback options for the a DISCONNECT operation
+ * Completion options for the a DISCONNECT operation
  */
 struct aws_mqtt5_disconnect_completion_options {
     aws_mqtt5_disconnect_completion_fn *completion_callback;

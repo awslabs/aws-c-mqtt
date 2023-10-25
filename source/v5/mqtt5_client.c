@@ -172,6 +172,13 @@ static void s_complete_operation(
     const void *view) {
     if (client != NULL) {
         aws_mqtt5_client_statistics_change_operation_statistic_state(client, operation, AWS_MQTT5_OSS_NONE);
+        if (aws_priority_queue_node_is_in_queue(&operation->priority_queue_node)) {
+            struct aws_mqtt5_operation *queued_operation = NULL;
+            aws_priority_queue_remove(
+                &client->operational_state.operations_by_ack_timeout,
+                &queued_operation,
+                &operation->priority_queue_node);
+        }
     }
 
     aws_mqtt5_operation_complete(operation, error_code, packet_type, view);
@@ -197,43 +204,46 @@ static void s_complete_operation_list(
 }
 
 static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
-    if (client->config->ack_timeout_seconds == 0) {
-        return;
-    }
+    struct aws_priority_queue *timeout_queue = &client->operational_state.operations_by_ack_timeout;
 
-    struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
-    while (node != aws_linked_list_end(&client->operational_state.unacked_operations)) {
-        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
-        node = aws_linked_list_next(node);
-        if (operation->ack_timeout_timepoint_ns < now) {
-            /* Timeout for this packet has been reached */
-            aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(operation);
-            AWS_LOGF_INFO(
-                AWS_LS_MQTT5_CLIENT,
-                "id=%p: %s packet with id:%d has timed out",
-                (void *)client,
-                aws_mqtt5_packet_type_to_c_string(operation->packet_type),
-                (int)packet_id);
+    bool done = aws_priority_queue_size(timeout_queue) == 0;
+    while (!done) {
+        struct aws_mqtt5_operation **next_operation_by_timeout_ptr = NULL;
+        aws_priority_queue_top(timeout_queue, (void **)&next_operation_by_timeout_ptr);
+        AWS_FATAL_ASSERT(next_operation_by_timeout_ptr != NULL);
+        struct aws_mqtt5_operation *next_operation_by_timeout = *next_operation_by_timeout_ptr;
+        AWS_FATAL_ASSERT(next_operation_by_timeout != NULL);
 
-            struct aws_hash_element *elem = NULL;
-            aws_hash_table_find(&client->operational_state.unacked_operations_table, &packet_id, &elem);
-
-            if (elem == NULL || elem->value == NULL) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_CLIENT,
-                    "id=%p: timeout for unknown operation with id %d",
-                    (void *)client,
-                    (int)packet_id);
-                return;
-            }
-
-            aws_linked_list_remove(&operation->node);
-            aws_hash_table_remove(&client->operational_state.unacked_operations_table, &packet_id, NULL, NULL);
-
-            s_complete_operation(client, operation, AWS_ERROR_MQTT_TIMEOUT, AWS_MQTT5_PT_NONE, NULL);
-        } else {
+        if (next_operation_by_timeout->ack_timeout_timepoint_ns > now) {
             break;
         }
+
+        /* Ack timeout for this operation has been reached */
+        aws_priority_queue_pop(timeout_queue, &next_operation_by_timeout);
+
+        aws_mqtt5_packet_id_t packet_id = aws_mqtt5_operation_get_packet_id(next_operation_by_timeout);
+        AWS_LOGF_INFO(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: %s packet with id:%d has timed out",
+            (void *)client,
+            aws_mqtt5_packet_type_to_c_string(next_operation_by_timeout->packet_type),
+            (int)packet_id);
+
+        struct aws_hash_element *elem = NULL;
+        aws_hash_table_find(&client->operational_state.unacked_operations_table, &packet_id, &elem);
+
+        if (elem == NULL || elem->value == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_CLIENT, "id=%p: timeout for unknown operation with id %d", (void *)client, (int)packet_id);
+            return;
+        }
+
+        aws_linked_list_remove(&next_operation_by_timeout->node);
+        aws_hash_table_remove(&client->operational_state.unacked_operations_table, &packet_id, NULL, NULL);
+
+        s_complete_operation(client, next_operation_by_timeout, AWS_ERROR_MQTT_TIMEOUT, AWS_MQTT5_PT_NONE, NULL);
+
+        done = aws_priority_queue_size(timeout_queue) == 0;
     }
 }
 
@@ -424,6 +434,16 @@ static uint64_t s_min_non_0_64(uint64_t a, uint64_t b) {
     return aws_min_u64(a, b);
 }
 
+static uint64_t s_get_unacked_operation_timeout_to_next_service_time(struct aws_mqtt5_client *client) {
+    if (aws_priority_queue_size(&client->operational_state.operations_by_ack_timeout) > 0) {
+        struct aws_mqtt5_operation **operation = NULL;
+        aws_priority_queue_top(&client->operational_state.operations_by_ack_timeout, (void **)&operation);
+        return (*operation)->ack_timeout_timepoint_ns;
+    }
+
+    return 0;
+}
+
 static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_client *client, uint64_t now) {
 
     /* ping and ping timeout */
@@ -432,13 +452,7 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
         next_service_time = aws_min_u64(next_service_time, client->next_ping_timeout_time);
     }
 
-    /* unacked operations timeout */
-    if (client->config->ack_timeout_seconds != 0 &&
-        !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
-        struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
-        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
-        next_service_time = aws_min_u64(next_service_time, operation->ack_timeout_timepoint_ns);
-    }
+    next_service_time = s_min_non_0_64(next_service_time, s_get_unacked_operation_timeout_to_next_service_time(client));
 
     if (client->desired_state != AWS_MCS_CONNECTED) {
         next_service_time = now;
@@ -456,15 +470,7 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
 }
 
 static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_mqtt5_client *client, uint64_t now) {
-    uint64_t ack_timeout_time = 0;
-
-    /* unacked operations timeout */
-    if (client->config->ack_timeout_seconds != 0 &&
-        !aws_linked_list_empty(&client->operational_state.unacked_operations)) {
-        struct aws_linked_list_node *node = aws_linked_list_begin(&client->operational_state.unacked_operations);
-        struct aws_mqtt5_operation *operation = AWS_CONTAINER_OF(node, struct aws_mqtt5_operation, node);
-        ack_timeout_time = operation->ack_timeout_timepoint_ns;
-    }
+    uint64_t ack_timeout_time = s_get_unacked_operation_timeout_to_next_service_time(client);
 
     uint64_t operation_processing_time =
         s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
@@ -587,8 +593,10 @@ static void s_aws_mqtt5_client_operational_state_reset(
     s_complete_operation_list(client, &client_operational_state->unacked_operations, completion_error_code);
 
     if (is_final) {
+        aws_priority_queue_clean_up(&client_operational_state->operations_by_ack_timeout);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
     } else {
+        aws_priority_queue_clear(&client->operational_state.operations_by_ack_timeout);
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
     }
 }
@@ -2497,6 +2505,19 @@ int aws_mqtt5_operation_bind_packet_id(
     return AWS_OP_ERR;
 }
 
+static int s_compare_operation_timeouts(const void *a, const void *b) {
+    const struct aws_mqtt5_operation *operation_a = a;
+    const struct aws_mqtt5_operation *operation_b = b;
+
+    if (operation_a->ack_timeout_timepoint_ns < operation_b->ack_timeout_timepoint_ns) {
+        return -1;
+    } else if (operation_a->ack_timeout_timepoint_ns > operation_b->ack_timeout_timepoint_ns) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 int aws_mqtt5_client_operational_state_init(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     struct aws_allocator *allocator,
@@ -2514,6 +2535,15 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_compare_uint16_t_eq,
             NULL,
             NULL)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_priority_queue_init_dynamic(
+            &client_operational_state->operations_by_ack_timeout,
+            allocator,
+            100,
+            sizeof(struct aws_mqtt5_operation *),
+            s_compare_operation_timeouts)) {
         return AWS_OP_ERR;
     }
 
@@ -2631,6 +2661,7 @@ void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5
         client, &operations_to_fail, AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY);
 
     aws_hash_table_clear(&client->operational_state.unacked_operations_table);
+    aws_priority_queue_clear(&client->operational_state.operations_by_ack_timeout);
 
     /*
      * Prevents inbound resolution on the highly unlikely, illegal server behavior of sending a PUBLISH before
@@ -3065,10 +3096,24 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                     break;
                 }
 
-                if (client->config->ack_timeout_seconds != 0) {
+                uint32_t ack_timeout_seconds = aws_mqtt5_operation_get_ack_timeout_override(current_operation);
+                if (ack_timeout_seconds == 0) {
+                    ack_timeout_seconds = client->config->ack_timeout_seconds;
+                }
+
+                if (ack_timeout_seconds > 0) {
                     current_operation->ack_timeout_timepoint_ns =
-                        now + aws_timestamp_convert(
-                                  client->config->ack_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+                        now + aws_timestamp_convert(ack_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+                } else {
+                    current_operation->ack_timeout_timepoint_ns = UINT64_MAX;
+                }
+
+                if (aws_priority_queue_push_ref(
+                        &client_operational_state->operations_by_ack_timeout,
+                        (void *)&current_operation,
+                        &current_operation->priority_queue_node)) {
+                    operational_error_code = aws_last_error();
+                    break;
                 }
 
                 aws_linked_list_push_back(&client_operational_state->unacked_operations, &current_operation->node);

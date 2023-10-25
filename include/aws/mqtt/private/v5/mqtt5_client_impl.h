@@ -259,6 +259,12 @@ struct aws_mqtt5_client_operational_state {
     struct aws_linked_list write_completion_operations;
 
     /*
+     * heap of operation pointers where the timeout is the sort value.  Elements are added/removed from this
+     * data structure in exact synchronization with unacked_operations_table.
+     */
+    struct aws_priority_queue operations_by_ack_timeout;
+
+    /*
      * Is there an io message in transit (to the socket) that has not invoked its write completion callback yet?
      * The client implementation only allows one in-transit message at a time, and so if this is true, we don't
      * send additional ones/

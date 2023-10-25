@@ -42,6 +42,8 @@ struct aws_mqtt5_operation_vtable {
     int (*aws_mqtt5_operation_validate_vs_connection_settings_fn)(
         const void *operation_packet_view,
         const struct aws_mqtt5_client *client);
+
+    uint32_t (*aws_mqtt5_operation_get_ack_timeout_override_fn)(const struct aws_mqtt5_operation *operation);
 };
 
 /* Flags that indicate the way in which an operation is currently affecting the statistics of the client */
@@ -64,6 +66,7 @@ struct aws_mqtt5_operation {
     const struct aws_mqtt5_operation_vtable *vtable;
     struct aws_ref_count ref_count;
     uint64_t ack_timeout_timepoint_ns;
+    struct aws_priority_queue_node priority_queue_node;
     struct aws_linked_list_node node;
 
     enum aws_mqtt5_packet_type packet_type;
@@ -207,6 +210,8 @@ AWS_MQTT_API aws_mqtt5_packet_id_t *aws_mqtt5_operation_get_packet_id_address(
 AWS_MQTT_API int aws_mqtt5_operation_validate_vs_connection_settings(
     const struct aws_mqtt5_operation *operation,
     const struct aws_mqtt5_client *client);
+
+AWS_MQTT_API uint32_t aws_mqtt5_operation_get_ack_timeout_override(const struct aws_mqtt5_operation *operation);
 
 /* Connect */
 
