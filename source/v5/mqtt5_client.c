@@ -2506,8 +2506,11 @@ int aws_mqtt5_operation_bind_packet_id(
 }
 
 static int s_compare_operation_timeouts(const void *a, const void *b) {
-    const struct aws_mqtt5_operation *operation_a = a;
-    const struct aws_mqtt5_operation *operation_b = b;
+    const struct aws_mqtt5_operation **operation_a_ptr = (void *)a;
+    const struct aws_mqtt5_operation *operation_a = *operation_a_ptr;
+
+    const struct aws_mqtt5_operation **operation_b_ptr = (void *)b;
+    const struct aws_mqtt5_operation *operation_b = *operation_b_ptr;
 
     if (operation_a->ack_timeout_timepoint_ns < operation_b->ack_timeout_timepoint_ns) {
         return -1;
