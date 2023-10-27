@@ -619,7 +619,7 @@ static void s_aws_mqtt5_to_mqtt3_adapter_update_config_on_connect(
     config->ping_timeout_ms = connect_task->ping_timeout_ms;
 
     /* Override timeout, rounding up as necessary */
-    config->ack_timeout_seconds = aws_timestamp_convert(
+    config->ack_timeout_seconds = (uint32_t)aws_timestamp_convert(
         connect_task->protocol_operation_timeout_ms + AWS_TIMESTAMP_MILLIS - 1,
         AWS_TIMESTAMP_MILLIS,
         AWS_TIMESTAMP_SECS,
