@@ -214,6 +214,7 @@ static void s_check_timeouts(struct aws_mqtt5_client *client, uint64_t now) {
         struct aws_mqtt5_operation *next_operation_by_timeout = *next_operation_by_timeout_ptr;
         AWS_FATAL_ASSERT(next_operation_by_timeout != NULL);
 
+        // If the top of the heap hasn't timed out than nothing has
         if (next_operation_by_timeout->ack_timeout_timepoint_ns > now) {
             break;
         }

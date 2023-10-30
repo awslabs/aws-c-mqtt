@@ -6156,6 +6156,8 @@ static void s_timeout_test_publish_completion_fn(
     const void *packet,
     int error_code,
     void *complete_ctx) {
+    (void)packet_type;
+    (void)packet;
 
     s_add_completion_callback(complete_ctx, AWS_MQTT5_PT_PUBLISH, error_code);
 }
@@ -6164,6 +6166,7 @@ static void s_timeout_test_subscribe_completion_fn(
     const struct aws_mqtt5_packet_suback_view *suback,
     int error_code,
     void *complete_ctx) {
+    (void)suback;
 
     s_add_completion_callback(complete_ctx, AWS_MQTT5_PT_SUBSCRIBE, error_code);
 }
@@ -6172,6 +6175,7 @@ static void s_timeout_test_unsubscribe_completion_fn(
     const struct aws_mqtt5_packet_unsuback_view *unsuback,
     int error_code,
     void *complete_ctx) {
+    (void)unsuback;
 
     s_add_completion_callback(complete_ctx, AWS_MQTT5_PT_UNSUBSCRIBE, error_code);
 }
