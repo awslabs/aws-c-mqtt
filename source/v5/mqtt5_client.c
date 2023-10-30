@@ -423,7 +423,11 @@ static uint64_t s_compute_next_service_time_client_mqtt_connect(struct aws_mqtt5
     return aws_min_u64(client->next_mqtt_connect_packet_timeout_time, operation_processing_time);
 }
 
-static uint64_t s_min_non_0_64(uint64_t a, uint64_t b) {
+/*
+ * Returns the minimum of two numbers, ignoring zero.  Zero is returned only if both are zero.  Useful when we're
+ * computing (next service) timepoints and zero means "no timepoint"
+ */
+static uint64_t s_min_non_zero_u64(uint64_t a, uint64_t b) {
     if (a == 0) {
         return b;
     }
@@ -435,7 +439,10 @@ static uint64_t s_min_non_0_64(uint64_t a, uint64_t b) {
     return aws_min_u64(a, b);
 }
 
-static uint64_t s_get_unacked_operation_timeout_to_next_service_time(struct aws_mqtt5_client *client) {
+/*
+ * If there are unacked operations, returns the earliest point in time that one could timeout.
+ */
+static uint64_t s_get_unacked_operation_timeout_for_next_service_time(struct aws_mqtt5_client *client) {
     if (aws_priority_queue_size(&client->operational_state.operations_by_ack_timeout) > 0) {
         struct aws_mqtt5_operation **operation = NULL;
         aws_priority_queue_top(&client->operational_state.operations_by_ack_timeout, (void **)&operation);
@@ -453,7 +460,8 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
         next_service_time = aws_min_u64(next_service_time, client->next_ping_timeout_time);
     }
 
-    next_service_time = s_min_non_0_64(next_service_time, s_get_unacked_operation_timeout_to_next_service_time(client));
+    next_service_time =
+        s_min_non_zero_u64(next_service_time, s_get_unacked_operation_timeout_for_next_service_time(client));
 
     if (client->desired_state != AWS_MCS_CONNECTED) {
         next_service_time = now;
@@ -462,21 +470,21 @@ static uint64_t s_compute_next_service_time_client_connected(struct aws_mqtt5_cl
     uint64_t operation_processing_time =
         s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
 
-    next_service_time = s_min_non_0_64(operation_processing_time, next_service_time);
+    next_service_time = s_min_non_zero_u64(operation_processing_time, next_service_time);
 
     /* reset reconnect delay interval */
-    next_service_time = s_min_non_0_64(client->next_reconnect_delay_reset_time_ns, next_service_time);
+    next_service_time = s_min_non_zero_u64(client->next_reconnect_delay_reset_time_ns, next_service_time);
 
     return next_service_time;
 }
 
 static uint64_t s_compute_next_service_time_client_clean_disconnect(struct aws_mqtt5_client *client, uint64_t now) {
-    uint64_t ack_timeout_time = s_get_unacked_operation_timeout_to_next_service_time(client);
+    uint64_t ack_timeout_time = s_get_unacked_operation_timeout_for_next_service_time(client);
 
     uint64_t operation_processing_time =
         s_aws_mqtt5_client_compute_operational_state_service_time(&client->operational_state, now);
 
-    return s_min_non_0_64(ack_timeout_time, operation_processing_time);
+    return s_min_non_zero_u64(ack_timeout_time, operation_processing_time);
 }
 
 static uint64_t s_compute_next_service_time_client_channel_shutdown(struct aws_mqtt5_client *client, uint64_t now) {
@@ -2506,6 +2514,9 @@ int aws_mqtt5_operation_bind_packet_id(
     return AWS_OP_ERR;
 }
 
+/*
+ * Priority queue comparison function for ack timeout processing
+ */
 static int s_compare_operation_timeouts(const void *a, const void *b) {
     const struct aws_mqtt5_operation **operation_a_ptr = (void *)a;
     const struct aws_mqtt5_operation *operation_a = *operation_a_ptr;
