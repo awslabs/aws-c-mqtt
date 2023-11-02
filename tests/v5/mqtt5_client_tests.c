@@ -6372,3 +6372,100 @@ static int s_mqtt5_client_dynamic_operation_timeout_fn(struct aws_allocator *all
 }
 
 AWS_TEST_CASE(mqtt5_client_dynamic_operation_timeout, s_mqtt5_client_dynamic_operation_timeout_fn)
+
+#define DYNAMIC_TIMEOUT_DEFAULT_SECONDS 2
+
+/*
+ * Checks that using a override operation timeout of zero results in using the client's default timeout
+ */
+static int s_mqtt5_client_dynamic_operation_timeout_default_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+    test_options.client_options.ack_timeout_seconds = DYNAMIC_TIMEOUT_DEFAULT_SECONDS;
+
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        s_aws_mqtt5_mock_server_handle_timeout_publish;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct mqtt5_dynamic_operation_timeout_test_context context;
+    s_mqtt5_dynamic_operation_timeout_test_context_init(&context, allocator, &test_context);
+
+    struct mqtt5_operation_timeout_completion_callback expected_callbacks[] = {
+        {
+            .type = AWS_MQTT5_PT_PUBLISH,
+            .error_code = AWS_ERROR_MQTT_TIMEOUT,
+        },
+    };
+
+    context.expected_callbacks = expected_callbacks;
+    context.expected_callback_count = AWS_ARRAY_SIZE(expected_callbacks);
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    aws_wait_for_connected_lifecycle_event(&test_context);
+
+    uint64_t operation_start = 0;
+    aws_high_res_clock_get_ticks(&operation_start);
+
+    struct aws_byte_cursor topic = {
+        .ptr = s_topic,
+        .len = AWS_ARRAY_SIZE(s_topic) - 1,
+    };
+
+    struct aws_mqtt5_packet_publish_view qos1_publish = {
+        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
+        .topic = topic,
+    };
+
+    struct aws_mqtt5_publish_completion_options qos1_publish_options = {
+        .completion_callback = s_timeout_test_publish_completion_fn,
+        .completion_user_data = &context,
+        .ack_timeout_seconds_override = 0,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_publish(client, &qos1_publish, &qos1_publish_options));
+
+    s_wait_for_all_operation_timeouts(&context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    aws_wait_for_stopped_lifecycle_event(&test_context);
+
+    aws_mutex_lock(&test_context.lock);
+    s_mqtt5_dynamic_operation_timeout_test_context_callback_sequence_equals_expected(&context);
+    aws_mutex_unlock(&test_context.lock);
+
+    /*
+     * Finally, do a minimum time elapsed check:
+     */
+    for (size_t i = 0; i < context.expected_callback_count; ++i) {
+        struct mqtt5_operation_timeout_completion_callback *callback = NULL;
+        aws_array_list_get_at_ptr(&context.completion_callbacks, (void **)&callback, i);
+
+        uint64_t delta_ns = callback->timepoint_ns - operation_start;
+        ASSERT_TRUE(
+            delta_ns >=
+            aws_timestamp_convert(DYNAMIC_TIMEOUT_DEFAULT_SECONDS, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+    }
+
+    s_mqtt5_dynamic_operation_timeout_test_context_cleanup(&context);
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_dynamic_operation_timeout_default, s_mqtt5_client_dynamic_operation_timeout_default_fn)
