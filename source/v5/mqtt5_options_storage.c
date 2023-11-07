@@ -309,11 +309,20 @@ int aws_mqtt5_operation_validate_vs_connection_settings(
     return AWS_OP_SUCCESS;
 }
 
+uint32_t aws_mqtt5_operation_get_ack_timeout_override(const struct aws_mqtt5_operation *operation) {
+    if (operation->vtable->aws_mqtt5_operation_get_ack_timeout_override_fn != NULL) {
+        return (*operation->vtable->aws_mqtt5_operation_get_ack_timeout_override_fn)(operation);
+    }
+
+    return 0;
+}
+
 static struct aws_mqtt5_operation_vtable s_empty_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = NULL,
     .aws_mqtt5_operation_set_packet_id_fn = NULL,
     .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
     .aws_mqtt5_operation_validate_vs_connection_settings_fn = NULL,
+    .aws_mqtt5_operation_get_ack_timeout_override_fn = NULL,
 };
 
 /*********************************************************************************************************************
@@ -820,6 +829,7 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     connect_op->base.vtable = &s_empty_operation_vtable;
     connect_op->base.packet_type = AWS_MQTT5_PT_CONNECT;
     aws_ref_count_init(&connect_op->base.ref_count, connect_op, s_destroy_operation_connect);
+    aws_priority_queue_node_init(&connect_op->base.priority_queue_node);
     connect_op->base.impl = connect_op;
 
     if (aws_mqtt5_packet_connect_storage_init(&connect_op->options_storage, allocator, connect_options)) {
@@ -1502,6 +1512,7 @@ static struct aws_mqtt5_operation_vtable s_disconnect_operation_vtable = {
     .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
     .aws_mqtt5_operation_validate_vs_connection_settings_fn =
         s_aws_mqtt5_packet_disconnect_view_validate_vs_connection_settings,
+    .aws_mqtt5_operation_get_ack_timeout_override_fn = NULL,
 };
 
 struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
@@ -1525,6 +1536,7 @@ struct aws_mqtt5_operation_disconnect *aws_mqtt5_operation_disconnect_new(
     disconnect_op->base.vtable = &s_disconnect_operation_vtable;
     disconnect_op->base.packet_type = AWS_MQTT5_PT_DISCONNECT;
     aws_ref_count_init(&disconnect_op->base.ref_count, disconnect_op, s_destroy_operation_disconnect);
+    aws_priority_queue_node_init(&disconnect_op->base.priority_queue_node);
     disconnect_op->base.impl = disconnect_op;
 
     if (aws_mqtt5_packet_disconnect_storage_init(&disconnect_op->options_storage, allocator, disconnect_options)) {
@@ -2063,13 +2075,18 @@ static aws_mqtt5_packet_id_t *s_aws_mqtt5_operation_publish_get_packet_id_addres
     return &publish_op->options_storage.storage_view.packet_id;
 }
 
+static uint32_t s_aws_mqtt5_operation_publish_get_ack_timeout_override(const struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_operation_publish *publish_op = operation->impl;
+    return publish_op->completion_options.ack_timeout_seconds_override;
+}
+
 static struct aws_mqtt5_operation_vtable s_publish_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_publish_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_publish_set_packet_id,
     .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_publish_get_packet_id_address,
     .aws_mqtt5_operation_validate_vs_connection_settings_fn =
         s_aws_mqtt5_packet_publish_view_validate_vs_connection_settings,
-};
+    .aws_mqtt5_operation_get_ack_timeout_override_fn = s_aws_mqtt5_operation_publish_get_ack_timeout_override};
 
 static void s_destroy_operation_publish(void *object) {
     if (object == NULL) {
@@ -2115,6 +2132,7 @@ struct aws_mqtt5_operation_publish *aws_mqtt5_operation_publish_new(
     publish_op->base.vtable = &s_publish_operation_vtable;
     publish_op->base.packet_type = AWS_MQTT5_PT_PUBLISH;
     aws_ref_count_init(&publish_op->base.ref_count, publish_op, s_destroy_operation_publish);
+    aws_priority_queue_node_init(&publish_op->base.priority_queue_node);
     publish_op->base.impl = publish_op;
 
     if (aws_mqtt5_packet_publish_storage_init(&publish_op->options_storage, allocator, publish_options)) {
@@ -2285,6 +2303,7 @@ struct aws_mqtt5_operation_puback *aws_mqtt5_operation_puback_new(
     puback_op->base.vtable = &s_empty_operation_vtable;
     puback_op->base.packet_type = AWS_MQTT5_PT_PUBACK;
     aws_ref_count_init(&puback_op->base.ref_count, puback_op, s_destroy_operation_puback);
+    aws_priority_queue_node_init(&puback_op->base.priority_queue_node);
     puback_op->base.impl = puback_op;
 
     if (aws_mqtt5_packet_puback_storage_init(&puback_op->options_storage, allocator, puback_options)) {
@@ -2523,11 +2542,18 @@ static aws_mqtt5_packet_id_t *s_aws_mqtt5_operation_unsubscribe_get_packet_id_ad
     return &unsubscribe_op->options_storage.storage_view.packet_id;
 }
 
+static uint32_t s_aws_mqtt5_operation_unsubscribe_get_ack_timeout_override(
+    const struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_operation_unsubscribe *unsubscribe_op = operation->impl;
+    return unsubscribe_op->completion_options.ack_timeout_seconds_override;
+}
+
 static struct aws_mqtt5_operation_vtable s_unsubscribe_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_unsubscribe_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_unsubscribe_set_packet_id,
     .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_unsubscribe_get_packet_id_address,
     .aws_mqtt5_operation_validate_vs_connection_settings_fn = NULL,
+    .aws_mqtt5_operation_get_ack_timeout_override_fn = s_aws_mqtt5_operation_unsubscribe_get_ack_timeout_override,
 };
 
 static void s_destroy_operation_unsubscribe(void *object) {
@@ -2574,6 +2600,7 @@ struct aws_mqtt5_operation_unsubscribe *aws_mqtt5_operation_unsubscribe_new(
     unsubscribe_op->base.vtable = &s_unsubscribe_operation_vtable;
     unsubscribe_op->base.packet_type = AWS_MQTT5_PT_UNSUBSCRIBE;
     aws_ref_count_init(&unsubscribe_op->base.ref_count, unsubscribe_op, s_destroy_operation_unsubscribe);
+    aws_priority_queue_node_init(&unsubscribe_op->base.priority_queue_node);
     unsubscribe_op->base.impl = unsubscribe_op;
 
     if (aws_mqtt5_packet_unsubscribe_storage_init(&unsubscribe_op->options_storage, allocator, unsubscribe_options)) {
@@ -2906,11 +2933,17 @@ static aws_mqtt5_packet_id_t *s_aws_mqtt5_operation_subscribe_get_packet_id_addr
     return &subscribe_op->options_storage.storage_view.packet_id;
 }
 
+static uint32_t s_aws_mqtt5_operation_subscribe_get_ack_timeout_override(const struct aws_mqtt5_operation *operation) {
+    struct aws_mqtt5_operation_subscribe *subscribe_op = operation->impl;
+    return subscribe_op->completion_options.ack_timeout_seconds_override;
+}
+
 static struct aws_mqtt5_operation_vtable s_subscribe_operation_vtable = {
     .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_subscribe_complete,
     .aws_mqtt5_operation_set_packet_id_fn = s_aws_mqtt5_operation_subscribe_set_packet_id,
     .aws_mqtt5_operation_get_packet_id_address_fn = s_aws_mqtt5_operation_subscribe_get_packet_id_address,
     .aws_mqtt5_operation_validate_vs_connection_settings_fn = NULL,
+    .aws_mqtt5_operation_get_ack_timeout_override_fn = s_aws_mqtt5_operation_subscribe_get_ack_timeout_override,
 };
 
 static void s_destroy_operation_subscribe(void *object) {
@@ -2957,6 +2990,7 @@ struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
     subscribe_op->base.vtable = &s_subscribe_operation_vtable;
     subscribe_op->base.packet_type = AWS_MQTT5_PT_SUBSCRIBE;
     aws_ref_count_init(&subscribe_op->base.ref_count, subscribe_op, s_destroy_operation_subscribe);
+    aws_priority_queue_node_init(&subscribe_op->base.priority_queue_node);
     subscribe_op->base.impl = subscribe_op;
 
     if (aws_mqtt5_packet_subscribe_storage_init(&subscribe_op->options_storage, allocator, subscribe_options)) {
@@ -3292,6 +3326,7 @@ struct aws_mqtt5_operation_pingreq *aws_mqtt5_operation_pingreq_new(struct aws_a
     pingreq_op->base.vtable = &s_empty_operation_vtable;
     pingreq_op->base.packet_type = AWS_MQTT5_PT_PINGREQ;
     aws_ref_count_init(&pingreq_op->base.ref_count, pingreq_op, s_destroy_operation_pingreq);
+    aws_priority_queue_node_init(&pingreq_op->base.priority_queue_node);
     pingreq_op->base.impl = pingreq_op;
 
     return pingreq_op;
