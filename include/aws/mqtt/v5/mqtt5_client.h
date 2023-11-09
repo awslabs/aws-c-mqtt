@@ -89,13 +89,12 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
     AWS_MQTT5_COTABT_USER,
 
     /**
-     * Client fails any user-specified topic aliasing and acts on the outbound alias set as an LRU cache.
+     * Client ignores any user-specified topic aliasing and acts on the outbound alias set as an LRU cache.
      */
     AWS_MQTT5_COTABT_LRU,
 
     /**
-     * Completely disable outbound topic aliasing.  Attempting to set a topic alias on a PUBLISH results in
-     * an error.
+     * Completely disable outbound topic aliasing.
      */
     AWS_MQTT5_COTABT_DISABLED
 };

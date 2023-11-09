@@ -5842,18 +5842,6 @@ static int s_do_mqtt5_client_outbound_alias_failure_test(
     return AWS_OP_SUCCESS;
 }
 
-static int s_mqtt5_client_outbound_alias_disabled_failure_alias_set_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    ASSERT_SUCCESS(s_do_mqtt5_client_outbound_alias_failure_test(allocator, AWS_MQTT5_COTABT_DISABLED));
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(
-    mqtt5_client_outbound_alias_disabled_failure_alias_set,
-    s_mqtt5_client_outbound_alias_disabled_failure_alias_set_fn)
-
 static int s_mqtt5_client_outbound_alias_user_failure_empty_topic_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -5865,16 +5853,6 @@ static int s_mqtt5_client_outbound_alias_user_failure_empty_topic_fn(struct aws_
 AWS_TEST_CASE(
     mqtt5_client_outbound_alias_user_failure_empty_topic,
     s_mqtt5_client_outbound_alias_user_failure_empty_topic_fn)
-
-static int s_mqtt5_client_outbound_alias_lru_failure_alias_set_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    ASSERT_SUCCESS(s_do_mqtt5_client_outbound_alias_failure_test(allocator, AWS_MQTT5_COTABT_LRU));
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(mqtt5_client_outbound_alias_lru_failure_alias_set, s_mqtt5_client_outbound_alias_lru_failure_alias_set_fn)
 
 struct outbound_alias_publish {
     struct aws_byte_cursor topic;
