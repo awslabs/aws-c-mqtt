@@ -5818,7 +5818,7 @@ static int s_do_mqtt5_client_outbound_alias_failure_test(
         .topic_alias = &topic_alias,
     };
 
-    if (behavior_type == AWS_MQTT5_COTABT_USER) {
+    if (behavior_type == AWS_MQTT5_COTABT_MANUAL) {
         AWS_ZERO_STRUCT(packet_publish_view.topic);
     }
 
@@ -5842,17 +5842,17 @@ static int s_do_mqtt5_client_outbound_alias_failure_test(
     return AWS_OP_SUCCESS;
 }
 
-static int s_mqtt5_client_outbound_alias_user_failure_empty_topic_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt5_client_outbound_alias_manual_failure_empty_topic_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_do_mqtt5_client_outbound_alias_failure_test(allocator, AWS_MQTT5_COTABT_USER));
+    ASSERT_SUCCESS(s_do_mqtt5_client_outbound_alias_failure_test(allocator, AWS_MQTT5_COTABT_MANUAL));
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(
-    mqtt5_client_outbound_alias_user_failure_empty_topic,
-    s_mqtt5_client_outbound_alias_user_failure_empty_topic_fn)
+    mqtt5_client_outbound_alias_manual_failure_empty_topic,
+    s_mqtt5_client_outbound_alias_manual_failure_empty_topic_fn)
 
 struct outbound_alias_publish {
     struct aws_byte_cursor topic;
@@ -6013,7 +6013,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_topic_a, "topic/a");
 AWS_STATIC_STRING_FROM_LITERAL(s_topic_b, "b/topic");
 AWS_STATIC_STRING_FROM_LITERAL(s_topic_c, "topic/c");
 
-static int s_mqtt5_client_outbound_alias_user_success_a_b_ar_br_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt5_client_outbound_alias_manual_success_a_b_ar_br_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct outbound_alias_publish test_publishes[] = {
@@ -6024,14 +6024,14 @@ static int s_mqtt5_client_outbound_alias_user_success_a_b_ar_br_fn(struct aws_al
     };
 
     ASSERT_SUCCESS(s_perform_outbound_alias_sequence_test(
-        allocator, AWS_MQTT5_COTABT_USER, test_publishes, AWS_ARRAY_SIZE(test_publishes)));
+        allocator, AWS_MQTT5_COTABT_MANUAL, test_publishes, AWS_ARRAY_SIZE(test_publishes)));
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(
-    mqtt5_client_outbound_alias_user_success_a_b_ar_br,
-    s_mqtt5_client_outbound_alias_user_success_a_b_ar_br_fn)
+    mqtt5_client_outbound_alias_manual_success_a_b_ar_br,
+    s_mqtt5_client_outbound_alias_manual_success_a_b_ar_br_fn)
 
 static int s_mqtt5_client_outbound_alias_lru_success_a_b_c_br_cr_a_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

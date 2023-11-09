@@ -86,7 +86,7 @@ enum aws_mqtt5_client_outbound_topic_alias_behavior_type {
      * topic alias mappings unpredictably.  The client will properly use the alias when the current connection
      * has seen the alias binding already.
      */
-    AWS_MQTT5_COTABT_USER,
+    AWS_MQTT5_COTABT_MANUAL,
 
     /**
      * Client ignores any user-specified topic aliasing and acts on the outbound alias set as an LRU cache.
@@ -161,7 +161,7 @@ struct aws_mqtt5_client_topic_alias_options {
      * disabled, this setting has no effect.
      *
      * Behaviorally, this value overrides anything present in the topic_alias_maximum field of
-     * the CONNECT packet options.  We intentionally don't bind that field to managed clients to reduce
+     * the CONNECT packet options.
      */
     uint16_t inbound_alias_cache_size;
 };
