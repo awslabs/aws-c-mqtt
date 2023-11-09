@@ -211,6 +211,15 @@ AWS_MQTT_API const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_strin
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior);
 
 /**
+ * Checks an outbound aliasing behavior type value for validity
+ *
+ * @param outbound_aliasing_behavior value to check
+ * @return true if this is a valid value, false otherwise
+ */
+AWS_MQTT_API bool aws_mqtt5_outbound_topic_alias_behavior_type_validate(
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior);
+
+/**
  * Converts an outbound topic aliasing behavior type value to a final non-default value.
  *
  * @param outbound_aliasing_behavior type of outbound topic aliasing behavior
@@ -227,6 +236,15 @@ AWS_MQTT_API enum aws_mqtt5_client_outbound_topic_alias_behavior_type
  * @return short string describing the inbound topic aliasing behavior
  */
 AWS_MQTT_API const char *aws_mqtt5_inbound_topic_alias_behavior_type_to_c_string(
+    enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_aliasing_behavior);
+
+/**
+ * Checks an inbound aliasing behavior type value for validity
+ *
+ * @param inbound_aliasing_behavior value to check
+ * @return true if this is a valid value, false otherwise
+ */
+AWS_MQTT_API bool aws_mqtt5_inbound_topic_alias_behavior_type_validate(
     enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_aliasing_behavior);
 
 /**

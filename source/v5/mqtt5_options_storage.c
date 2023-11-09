@@ -3392,6 +3392,20 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
         return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
     }
 
+    if (options->topic_aliasing_options != NULL) {
+        if (!aws_mqtt5_outbound_topic_alias_behavior_type_validate(
+                options->topic_aliasing_options->outbound_topic_alias_behavior)) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid outbound topic alias behavior type value");
+            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+        }
+
+        if (!aws_mqtt5_inbound_topic_alias_behavior_type_validate(
+                options->topic_aliasing_options->inbound_topic_alias_behavior)) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid inbound topic alias behavior type value");
+            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+        }
+    }
+
     return AWS_OP_SUCCESS;
 }
 
