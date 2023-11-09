@@ -1743,30 +1743,6 @@ static int s_aws_mqtt5_packet_publish_view_validate_vs_connection_settings(
             return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
         }
 
-        if (publish_view->topic_alias != NULL) {
-            const struct aws_mqtt5_client_options_storage *client_options = client->config;
-            if (client_options->topic_aliasing_options.outbound_topic_alias_behavior != AWS_MQTT5_COTABT_USER) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_publish_view - topic alias set but outbound topic alias behavior has not "
-                    "been set to user controlled",
-                    (void *)publish_view);
-                return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
-            }
-
-            if (*publish_view->topic_alias > settings->topic_alias_maximum_to_server) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT5_GENERAL,
-                    "id=%p: aws_mqtt5_packet_publish_view - outbound topic alias (%d) exceeds server's topic alias "
-                    "maximum "
-                    "(%d)",
-                    (void *)publish_view,
-                    (int)(*publish_view->topic_alias),
-                    (int)settings->topic_alias_maximum_to_server);
-                return aws_raise_error(AWS_ERROR_MQTT5_PUBLISH_OPTIONS_VALIDATION);
-            }
-        }
-
         if (publish_view->retain && settings->retain_available == false) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_GENERAL,
@@ -3414,6 +3390,20 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
             options->connect_options->keep_alive_interval_seconds, options->ping_timeout_ms)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
         return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+    }
+
+    if (options->topic_aliasing_options != NULL) {
+        if (!aws_mqtt5_outbound_topic_alias_behavior_type_validate(
+                options->topic_aliasing_options->outbound_topic_alias_behavior)) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid outbound topic alias behavior type value");
+            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+        }
+
+        if (!aws_mqtt5_inbound_topic_alias_behavior_type_validate(
+                options->topic_aliasing_options->inbound_topic_alias_behavior)) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid inbound topic alias behavior type value");
+            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+        }
     }
 
     return AWS_OP_SUCCESS;

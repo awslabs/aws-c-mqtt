@@ -177,11 +177,11 @@ AWS_TEST_CASE(
     mqtt5_outbound_topic_alias_disabled_resolve_failure,
     s_mqtt5_outbound_topic_alias_disabled_resolve_failure_fn)
 
-static int s_mqtt5_outbound_topic_alias_user_resolve_success_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt5_outbound_topic_alias_manual_resolve_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver =
-        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_USER);
+        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_MANUAL);
     ASSERT_NOT_NULL(resolver);
 
     aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
@@ -253,13 +253,15 @@ static int s_mqtt5_outbound_topic_alias_user_resolve_success_fn(struct aws_alloc
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(mqtt5_outbound_topic_alias_user_resolve_success, s_mqtt5_outbound_topic_alias_user_resolve_success_fn)
+AWS_TEST_CASE(mqtt5_outbound_topic_alias_manual_resolve_success, s_mqtt5_outbound_topic_alias_manual_resolve_success_fn)
 
-static int s_mqtt5_outbound_topic_alias_user_resolve_failure_zero_alias_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt5_outbound_topic_alias_manual_resolve_failure_zero_alias_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)ctx;
 
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver =
-        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_USER);
+        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_MANUAL);
     ASSERT_NOT_NULL(resolver);
 
     aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
@@ -283,16 +285,16 @@ static int s_mqtt5_outbound_topic_alias_user_resolve_failure_zero_alias_fn(struc
 }
 
 AWS_TEST_CASE(
-    mqtt5_outbound_topic_alias_user_resolve_failure_zero_alias,
-    s_mqtt5_outbound_topic_alias_user_resolve_failure_zero_alias_fn)
+    mqtt5_outbound_topic_alias_manual_resolve_failure_zero_alias,
+    s_mqtt5_outbound_topic_alias_manual_resolve_failure_zero_alias_fn)
 
-static int s_mqtt5_outbound_topic_alias_user_resolve_failure_too_big_alias_fn(
+static int s_mqtt5_outbound_topic_alias_manual_resolve_failure_too_big_alias_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)ctx;
 
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver =
-        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_USER);
+        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_MANUAL);
     ASSERT_NOT_NULL(resolver);
 
     aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
@@ -316,14 +318,14 @@ static int s_mqtt5_outbound_topic_alias_user_resolve_failure_too_big_alias_fn(
 }
 
 AWS_TEST_CASE(
-    mqtt5_outbound_topic_alias_user_resolve_failure_too_big_alias,
-    s_mqtt5_outbound_topic_alias_user_resolve_failure_too_big_alias_fn)
+    mqtt5_outbound_topic_alias_manual_resolve_failure_too_big_alias,
+    s_mqtt5_outbound_topic_alias_manual_resolve_failure_too_big_alias_fn)
 
-static int s_mqtt5_outbound_topic_alias_user_reset_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt5_outbound_topic_alias_manual_reset_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct aws_mqtt5_outbound_topic_alias_resolver *resolver =
-        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_USER);
+        aws_mqtt5_outbound_topic_alias_resolver_new(allocator, AWS_MQTT5_COTABT_MANUAL);
     ASSERT_NOT_NULL(resolver);
 
     aws_mqtt5_outbound_topic_alias_resolver_reset(resolver, 5);
@@ -367,7 +369,7 @@ static int s_mqtt5_outbound_topic_alias_user_reset_fn(struct aws_allocator *allo
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(mqtt5_outbound_topic_alias_user_reset, s_mqtt5_outbound_topic_alias_user_reset_fn)
+AWS_TEST_CASE(mqtt5_outbound_topic_alias_manual_reset, s_mqtt5_outbound_topic_alias_manual_reset_fn)
 
 static int s_mqtt5_outbound_topic_alias_lru_zero_size_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

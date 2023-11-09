@@ -1271,39 +1271,6 @@ AWS_CONNECTION_SETTINGS_VALIDATION_FAILURE_TEST3(
     s_packet_size_init_settings_success_fn,
     s_packet_size_init_settings_failure_fn)
 
-static const uint16_t s_topic_alias = 5;
-
-static struct aws_mqtt5_packet_publish_view s_exceeds_topic_alias_maximum_publish_view = {
-    .topic =
-        {
-            .ptr = s_good_topic,
-            .len = AWS_ARRAY_SIZE(s_good_topic) - 1,
-        },
-    .topic_alias = &s_topic_alias,
-};
-
-static struct aws_mqtt5_client_options_storage s_dummy_client_options;
-
-static void s_topic_alias_init_settings_success_fn(struct aws_mqtt5_client *dummy_client) {
-    AWS_ZERO_STRUCT(s_dummy_client_options);
-    s_dummy_client_options.topic_aliasing_options.outbound_topic_alias_behavior = AWS_MQTT5_COTABT_USER;
-
-    dummy_client->config = &s_dummy_client_options;
-    dummy_client->negotiated_settings.maximum_packet_size_to_server = 100;
-    dummy_client->negotiated_settings.topic_alias_maximum_to_server = 10;
-}
-
-static void s_topic_alias_init_settings_failure_fn(struct aws_mqtt5_client *dummy_client) {
-    dummy_client->negotiated_settings.topic_alias_maximum_to_server = 2;
-}
-
-AWS_CONNECTION_SETTINGS_VALIDATION_FAILURE_TEST3(
-    publish,
-    exceeds_topic_alias_maximum,
-    s_exceeds_topic_alias_maximum_publish_view,
-    s_topic_alias_init_settings_success_fn,
-    s_topic_alias_init_settings_failure_fn)
-
 static struct aws_mqtt5_packet_publish_view s_exceeds_maximum_qos_publish_view = {
     .topic =
         {

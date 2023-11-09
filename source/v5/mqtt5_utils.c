@@ -289,7 +289,7 @@ enum aws_mqtt5_client_session_behavior_type aws_mqtt5_client_session_behavior_ty
 const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
     enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior) {
     switch (aws_mqtt5_outbound_topic_alias_behavior_type_to_non_default(outbound_aliasing_behavior)) {
-        case AWS_MQTT5_COTABT_USER:
+        case AWS_MQTT5_COTABT_MANUAL:
             return "User-controlled outbound topic aliasing behavior";
         case AWS_MQTT5_COTABT_LRU:
             return "LRU caching outbound topic aliasing behavior";
@@ -299,6 +299,13 @@ const char *aws_mqtt5_outbound_topic_alias_behavior_type_to_c_string(
         default:
             return "Unknown outbound topic aliasing behavior";
     }
+}
+
+bool aws_mqtt5_outbound_topic_alias_behavior_type_validate(
+    enum aws_mqtt5_client_outbound_topic_alias_behavior_type outbound_aliasing_behavior) {
+
+    return outbound_aliasing_behavior >= AWS_MQTT5_COTABT_DEFAULT &&
+           outbound_aliasing_behavior <= AWS_MQTT5_COTABT_DISABLED;
 }
 
 enum aws_mqtt5_client_outbound_topic_alias_behavior_type aws_mqtt5_outbound_topic_alias_behavior_type_to_non_default(
@@ -320,6 +327,13 @@ const char *aws_mqtt5_inbound_topic_alias_behavior_type_to_c_string(
         default:
             return "Unknown inbound topic aliasing behavior";
     }
+}
+
+bool aws_mqtt5_inbound_topic_alias_behavior_type_validate(
+    enum aws_mqtt5_client_inbound_topic_alias_behavior_type inbound_aliasing_behavior) {
+
+    return inbound_aliasing_behavior >= AWS_MQTT5_CITABT_DEFAULT &&
+           inbound_aliasing_behavior <= AWS_MQTT5_CITABT_DISABLED;
 }
 
 enum aws_mqtt5_client_inbound_topic_alias_behavior_type aws_mqtt5_inbound_topic_alias_behavior_type_to_non_default(
