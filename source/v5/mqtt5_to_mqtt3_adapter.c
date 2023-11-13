@@ -1880,6 +1880,7 @@ struct aws_mqtt5_to_mqtt3_adapter_operation_publish *aws_mqtt5_to_mqtt3_adapter_
     struct aws_mqtt5_publish_completion_options publish_completion_options = {
         .completion_callback = s_aws_mqtt5_to_mqtt3_adapter_publish_completion_fn,
         .completion_user_data = publish_op,
+        .ack_timeout_seconds_override = options->ack_timeout_seconds_override,
     };
 
     publish_op->publish_op = aws_mqtt5_operation_publish_new(
@@ -1924,7 +1925,8 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
     bool retain,
     const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
-    void *userdata) {
+    void *userdata,
+    struct aws_mqtt_publish_options *publish_options) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, invoking publish API", (void *)adapter);
@@ -1951,7 +1953,7 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
         payload_cursor = *payload;
     }
 
-    struct aws_mqtt5_to_mqtt3_adapter_publish_options publish_options = {
+    struct aws_mqtt5_to_mqtt3_adapter_publish_options adapter_publish_options = {
         .adapter = adapter,
         .topic = topic_cursor,
         .qos = qos,
@@ -1959,10 +1961,11 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
         .payload = payload_cursor,
         .on_complete = on_complete,
         .on_complete_userdata = userdata,
+        .ack_timeout_seconds_override = (publish_options != NULL) ? (uint32_t) aws_timestamp_convert(publish_options->protocol_operation_timeout_ms_override, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL) : 0,
     };
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_publish *operation =
-        aws_mqtt5_to_mqtt3_adapter_operation_new_publish(adapter->allocator, &publish_options);
+        aws_mqtt5_to_mqtt3_adapter_operation_new_publish(adapter->allocator, &adapter_publish_options);
     if (operation == NULL) {
         return 0;
     }
@@ -2183,7 +2186,8 @@ static int s_validate_adapter_subscribe_options(
 static int s_aws_mqtt5_to_mqtt3_adapter_build_subscribe(
     struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *subscribe_op,
     size_t subscription_count,
-    struct aws_mqtt_topic_subscription *subscriptions) {
+    struct aws_mqtt_topic_subscription *subscriptions,
+    uint32_t ack_timeout_seconds_override) {
     struct aws_allocator *allocator = subscribe_op->base.allocator;
 
     /* make persistent adapter sub array */
@@ -2228,6 +2232,7 @@ static int s_aws_mqtt5_to_mqtt3_adapter_build_subscribe(
     struct aws_mqtt5_subscribe_completion_options subscribe_completion_options = {
         .completion_callback = s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_fn,
         .completion_user_data = subscribe_op,
+        .ack_timeout_seconds_override = ack_timeout_seconds_override,
     };
 
     subscribe_op->subscribe_op = aws_mqtt5_operation_subscribe_new(
@@ -2277,7 +2282,7 @@ struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *aws_mqtt5_to_mqtt3_adapte
      */
     if (options->subscription_count > 0) {
         if (s_aws_mqtt5_to_mqtt3_adapter_build_subscribe(
-                subscribe_op, options->subscription_count, options->subscriptions)) {
+                subscribe_op, options->subscription_count, options->subscriptions, options->ack_timeout_seconds_override)) {
             goto error;
         }
     }
@@ -2286,6 +2291,12 @@ struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *aws_mqtt5_to_mqtt3_adapte
     subscribe_op->on_suback_user_data = options->on_suback_user_data;
     subscribe_op->on_multi_suback = options->on_multi_suback;
     subscribe_op->on_multi_suback_user_data = options->on_multi_suback_user_data;
+
+    /*
+     * Redundant when subscribing but necessary when resubscribing because the operation doesn't get created
+     * until later.
+     */
+    subscribe_op->ack_timeout_seconds_override = options->ack_timeout_seconds_override;
 
     return subscribe_op;
 
@@ -2298,7 +2309,8 @@ error:
 
 static int s_aws_mqtt5_to_mqtt3_adapter_build_resubscribe(
     struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *subscribe_op,
-    struct aws_array_list *full_subscriptions) {
+    struct aws_array_list *full_subscriptions,
+    uint32_t ack_timeout_seconds_override) {
     size_t subscription_count = aws_array_list_length(full_subscriptions);
 
     AWS_VARIABLE_LENGTH_ARRAY(struct aws_mqtt_topic_subscription, multi_sub_subscriptions, subscription_count);
@@ -2314,7 +2326,7 @@ static int s_aws_mqtt5_to_mqtt3_adapter_build_resubscribe(
         multi_sub_subscriptions[i].on_publish_ud = existing_subscription->callback_user_data;
     }
 
-    return s_aws_mqtt5_to_mqtt3_adapter_build_subscribe(subscribe_op, subscription_count, multi_sub_subscriptions);
+    return s_aws_mqtt5_to_mqtt3_adapter_build_subscribe(subscribe_op, subscription_count, multi_sub_subscriptions, ack_timeout_seconds_override);
 }
 
 void s_adapter_subscribe_submission_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -2330,7 +2342,7 @@ void s_adapter_subscribe_submission_fn(struct aws_task *task, void *arg, enum aw
     if (operation->subscribe_op == NULL) {
         aws_mqtt_subscription_set_get_subscriptions(adapter->subscriptions, &full_subscriptions);
         size_t subscription_count = aws_array_list_length(&full_subscriptions);
-        if (subscription_count == 0 || s_aws_mqtt5_to_mqtt3_adapter_build_resubscribe(operation, &full_subscriptions)) {
+        if (subscription_count == 0 || s_aws_mqtt5_to_mqtt3_adapter_build_resubscribe(operation, &full_subscriptions, operation->ack_timeout_seconds_override)) {
             /* There's either nothing to do (no subscriptions) or we failed to build the op (should never happen) */
             int error_code = aws_last_error();
             if (subscription_count == 0) {
@@ -2382,7 +2394,8 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
     aws_mqtt_suback_fn *on_suback,
-    void *on_suback_user_data) {
+    void *on_suback_user_data,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
     AWS_LOGF_DEBUG(
@@ -2398,16 +2411,17 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe(
         .on_publish_ud = on_publish_ud,
     };
 
-    struct aws_mqtt5_to_mqtt3_adapter_subscribe_options subscribe_options = {
+    struct aws_mqtt5_to_mqtt3_adapter_subscribe_options adapter_subscribe_options = {
         .adapter = adapter,
         .subscriptions = &subscription,
         .subscription_count = 1,
         .on_suback = on_suback,
         .on_suback_user_data = on_suback_user_data,
+        .ack_timeout_seconds_override = (subscribe_options != NULL) ? (uint32_t) aws_timestamp_convert(subscribe_options->protocol_operation_timeout_ms_override, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL) : 0
     };
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *operation =
-        aws_mqtt5_to_mqtt3_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options, adapter);
+        aws_mqtt5_to_mqtt3_adapter_operation_new_subscribe(adapter->allocator, &adapter_subscribe_options, adapter);
     if (operation == NULL) {
         return 0;
     }
@@ -2454,7 +2468,8 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
     void *impl,
     const struct aws_array_list *topic_filters,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_user_data) {
+    void *on_suback_user_data,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
@@ -2470,16 +2485,17 @@ static uint16_t s_aws_mqtt_client_connection_5_subscribe_multiple(
 
     struct aws_mqtt_topic_subscription *subscriptions = topic_filters->data;
 
-    struct aws_mqtt5_to_mqtt3_adapter_subscribe_options subscribe_options = {
+    struct aws_mqtt5_to_mqtt3_adapter_subscribe_options adapter_subscribe_options = {
         .adapter = adapter,
         .subscriptions = subscriptions,
         .subscription_count = aws_array_list_length(topic_filters),
         .on_multi_suback = on_suback,
         .on_multi_suback_user_data = on_suback_user_data,
+        .ack_timeout_seconds_override = (subscribe_options != NULL) ? (uint32_t) aws_timestamp_convert(subscribe_options->protocol_operation_timeout_ms_override, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL) : 0,
     };
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *operation =
-        aws_mqtt5_to_mqtt3_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options, adapter);
+        aws_mqtt5_to_mqtt3_adapter_operation_new_subscribe(adapter->allocator, &adapter_subscribe_options, adapter);
     if (operation == NULL) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -2616,6 +2632,7 @@ struct aws_mqtt5_to_mqtt3_adapter_operation_unsubscribe *aws_mqtt5_to_mqtt3_adap
     struct aws_mqtt5_unsubscribe_completion_options unsubscribe_completion_options = {
         .completion_callback = s_aws_mqtt5_to_mqtt3_adapter_unsubscribe_completion_fn,
         .completion_user_data = unsubscribe_op,
+        .ack_timeout_seconds_override = options->ack_timeout_seconds_override,
     };
 
     unsubscribe_op->unsubscribe_op = aws_mqtt5_operation_unsubscribe_new(
@@ -2662,7 +2679,8 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
     void *impl,
     const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
-    void *on_unsuback_user_data) {
+    void *on_unsuback_user_data,
+    struct aws_mqtt_unsubscribe_options *unsubscribe_options) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
@@ -2677,15 +2695,16 @@ static uint16_t s_aws_mqtt_client_connection_5_unsubscribe(
         return 0;
     }
 
-    struct aws_mqtt5_to_mqtt3_adapter_unsubscribe_options unsubscribe_options = {
+    struct aws_mqtt5_to_mqtt3_adapter_unsubscribe_options adapter_unsubscribe_options = {
         .adapter = adapter,
         .topic_filter = *topic_filter,
         .on_unsuback = on_unsuback,
         .on_unsuback_user_data = on_unsuback_user_data,
+        .ack_timeout_seconds_override = (unsubscribe_options != NULL) ? (uint32_t)aws_timestamp_convert(unsubscribe_options->protocol_operation_timeout_ms_override, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL) : 0,
     };
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_unsubscribe *operation =
-        aws_mqtt5_to_mqtt3_adapter_operation_new_unsubscribe(adapter->allocator, &unsubscribe_options);
+        aws_mqtt5_to_mqtt3_adapter_operation_new_unsubscribe(adapter->allocator, &adapter_unsubscribe_options);
     if (operation == NULL) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
@@ -2786,7 +2805,8 @@ static int s_aws_mqtt_client_connection_5_get_stats(
 static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
     void *impl,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_user_data) {
+    void *on_suback_user_data,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
@@ -2795,16 +2815,17 @@ static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
         "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics invoked",
         (void *)adapter);
 
-    struct aws_mqtt5_to_mqtt3_adapter_subscribe_options subscribe_options = {
+    struct aws_mqtt5_to_mqtt3_adapter_subscribe_options adapter_subscribe_options = {
         .adapter = adapter,
         .subscriptions = NULL,
         .subscription_count = 0,
         .on_multi_suback = on_suback,
         .on_multi_suback_user_data = on_suback_user_data,
+        .ack_timeout_seconds_override = (subscribe_options != NULL) ? (uint32_t) aws_timestamp_convert(subscribe_options->protocol_operation_timeout_ms_override, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL) : 0,
     };
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe *operation =
-        aws_mqtt5_to_mqtt3_adapter_operation_new_subscribe(adapter->allocator, &subscribe_options, adapter);
+        aws_mqtt5_to_mqtt3_adapter_operation_new_subscribe(adapter->allocator, &adapter_subscribe_options, adapter);
     if (operation == NULL) {
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(

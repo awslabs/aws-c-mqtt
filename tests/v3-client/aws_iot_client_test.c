@@ -214,7 +214,7 @@ static void s_on_connection_resumed(
     printf("CONNECTION RESUMED return_code=%d session_present=%d\n", return_code, session_present);
     if (!session_present) {
         printf("RESUBSCRIBING...");
-        uint16_t packet_id = aws_mqtt_resubscribe_existing_topics(connection, s_on_resubscribed, NULL);
+        uint16_t packet_id = aws_mqtt_resubscribe_existing_topics(connection, s_on_resubscribed, NULL, NULL);
         AWS_FATAL_ASSERT(packet_id);
     }
 }
@@ -406,7 +406,8 @@ int main(int argc, char **argv) {
         &tester,
         NULL,
         s_mqtt_on_suback,
-        &tester);
+        &tester,
+        NULL);
 
     s_wait_on_tester_predicate(&tester, s_received_on_suback_pred);
 
@@ -423,7 +424,8 @@ int main(int argc, char **argv) {
             false,
             &payload_cur,
             &s_on_puback,
-            &tester);
+            &tester,
+            NULL);
 
         /* Keep the service endpoint from throttling the connection */
         if (i != 0 && i % 100 == 0) {

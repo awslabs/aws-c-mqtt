@@ -1972,7 +1972,8 @@ static uint16_t s_aws_mqtt_client_connection_311_subscribe_multiple(
     void *impl,
     const struct aws_array_list *topic_filters,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_ud) {
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
@@ -2143,7 +2144,8 @@ static uint16_t s_aws_mqtt_client_connection_311_subscribe(
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
     aws_mqtt_suback_fn *on_suback,
-    void *on_suback_ud) {
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
@@ -2430,7 +2432,8 @@ clean_up:
 static uint16_t s_aws_mqtt_311_resubscribe_existing_topics(
     void *impl,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_ud) {
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
@@ -2666,7 +2669,8 @@ static uint16_t s_aws_mqtt_client_connection_311_unsubscribe(
     void *impl,
     const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
-    void *on_unsuback_ud) {
+    void *on_unsuback_ud,
+    struct aws_mqtt_unsubscribe_options *unsubscribe_options) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
@@ -2936,7 +2940,8 @@ static uint16_t s_aws_mqtt_client_connection_311_publish(
     bool retain,
     const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
-    void *userdata) {
+    void *userdata,
+    struct aws_mqtt_publish_options *publish_options) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 

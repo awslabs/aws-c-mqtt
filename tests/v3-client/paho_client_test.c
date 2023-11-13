@@ -360,7 +360,8 @@ int main(int argc, char **argv) {
         true,
         &payload_cur,
         &s_mqtt_on_puback,
-        &tester);
+        &tester,
+        NULL);
 
     /* Wait for puback */
     s_wait_on_tester_predicate(&tester, s_received_pub_ack_pred);
@@ -395,6 +396,7 @@ int main(int argc, char **argv) {
         &tester,
         NULL,
         NULL,
+        NULL,
         NULL);
 
     /* Wait for PUBLISH */
@@ -404,7 +406,7 @@ int main(int argc, char **argv) {
 
     struct aws_byte_cursor topic_filter =
         aws_byte_cursor_from_array(aws_string_bytes(s_subscribe_topic), s_subscribe_topic->len);
-    aws_mqtt_client_connection_unsubscribe(tester.connection, &topic_filter, &s_mqtt_on_unsuback, &tester);
+    aws_mqtt_client_connection_unsubscribe(tester.connection, &topic_filter, &s_mqtt_on_unsuback, &tester, NULL);
 
     /* Wait for UNSUBACK */
     s_wait_on_tester_predicate(&tester, s_received_unsub_ack_pred);

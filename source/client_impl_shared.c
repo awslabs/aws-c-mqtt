@@ -149,9 +149,10 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
     struct aws_mqtt_client_connection *connection,
     const struct aws_array_list *topic_filters,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_ud) {
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
-    return (*connection->vtable->subscribe_multiple_fn)(connection->impl, topic_filters, on_suback, on_suback_ud);
+    return (*connection->vtable->subscribe_multiple_fn)(connection->impl, topic_filters, on_suback, on_suback_ud, subscribe_options);
 }
 
 uint16_t aws_mqtt_client_connection_subscribe(
@@ -162,27 +163,30 @@ uint16_t aws_mqtt_client_connection_subscribe(
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
     aws_mqtt_suback_fn *on_suback,
-    void *on_suback_ud) {
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
     return (*connection->vtable->subscribe_fn)(
-        connection->impl, topic_filter, qos, on_publish, on_publish_ud, on_ud_cleanup, on_suback, on_suback_ud);
+        connection->impl, topic_filter, qos, on_publish, on_publish_ud, on_ud_cleanup, on_suback, on_suback_ud, subscribe_options);
 }
 
 uint16_t aws_mqtt_resubscribe_existing_topics(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_ud) {
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options) {
 
-    return (*connection->vtable->resubscribe_existing_topics_fn)(connection->impl, on_suback, on_suback_ud);
+    return (*connection->vtable->resubscribe_existing_topics_fn)(connection->impl, on_suback, on_suback_ud, subscribe_options);
 }
 
 uint16_t aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
-    void *on_unsuback_ud) {
+    void *on_unsuback_ud,
+    struct aws_mqtt_unsubscribe_options *unsubscribe_options) {
 
-    return (*connection->vtable->unsubscribe_fn)(connection->impl, topic_filter, on_unsuback, on_unsuback_ud);
+    return (*connection->vtable->unsubscribe_fn)(connection->impl, topic_filter, on_unsuback, on_unsuback_ud, unsubscribe_options);
 }
 
 uint16_t aws_mqtt_client_connection_publish(
@@ -192,9 +196,10 @@ uint16_t aws_mqtt_client_connection_publish(
     bool retain,
     const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
-    void *userdata) {
+    void *userdata,
+    struct aws_mqtt_publish_options *publish_options) {
 
-    return (*connection->vtable->publish_fn)(connection->impl, topic, qos, retain, payload, on_complete, userdata);
+    return (*connection->vtable->publish_fn)(connection->impl, topic, qos, retain, payload, on_complete, userdata, publish_options);
 }
 
 int aws_mqtt_client_connection_get_stats(

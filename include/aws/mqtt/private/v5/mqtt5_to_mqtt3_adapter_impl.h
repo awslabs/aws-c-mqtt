@@ -27,6 +27,8 @@ struct aws_mqtt5_to_mqtt3_adapter_publish_options {
 
     aws_mqtt_op_complete_fn *on_complete;
     void *on_complete_userdata;
+
+    uint32_t ack_timeout_seconds_override;
 };
 
 /*
@@ -45,6 +47,8 @@ struct aws_mqtt5_to_mqtt3_adapter_subscribe_options {
 
     aws_mqtt_suback_multi_fn *on_multi_suback;
     void *on_multi_suback_user_data;
+
+    uint32_t ack_timeout_seconds_override;
 };
 
 struct aws_mqtt5_to_mqtt3_adapter_unsubscribe_options {
@@ -54,6 +58,8 @@ struct aws_mqtt5_to_mqtt3_adapter_unsubscribe_options {
 
     aws_mqtt_op_complete_fn *on_unsuback;
     void *on_unsuback_user_data;
+
+    uint32_t ack_timeout_seconds_override;
 };
 
 enum aws_mqtt5_to_mqtt3_adapter_operation_type {
@@ -125,6 +131,12 @@ struct aws_mqtt5_to_mqtt3_adapter_operation_subscribe {
 
     aws_mqtt_suback_multi_fn *on_multi_suback;
     void *on_multi_suback_user_data;
+
+    /*
+     * Resusbscribe does not instantiate its mqtt5 subscribe operation until we're across a thread boundary, so
+     * we store the timeout override here during that interval.
+     */
+    uint32_t ack_timeout_seconds_override;
 };
 
 struct aws_mqtt5_to_mqtt3_adapter_operation_unsubscribe {

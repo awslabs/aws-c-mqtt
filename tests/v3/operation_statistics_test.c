@@ -527,7 +527,8 @@ static int s_test_mqtt_operation_statistics_simple_publish(struct aws_allocator 
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
@@ -609,7 +610,8 @@ static int s_test_mqtt_operation_statistics_offline_publish(struct aws_allocator
             false,
             &payload,
             s_on_op_complete,
-            state_test_data);
+            state_test_data,
+            NULL);
         ASSERT_TRUE(packet > 0);
 
         if (i == 0) {
@@ -711,7 +713,8 @@ static int s_test_mqtt_operation_statistics_disconnect_publish(struct aws_alloca
             false,
             &payload,
             s_on_op_complete,
-            state_test_data);
+            state_test_data,
+            NULL);
         ASSERT_TRUE(packet > 0);
     }
 
@@ -803,7 +806,8 @@ static int s_test_mqtt_operation_statistics_reconnect_publish(struct aws_allocat
         false,
         &payload,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(pub_packet_id_1 > 0);
     s_wait_for_ops_completed(state_test_data);
 
@@ -843,7 +847,8 @@ static int s_test_mqtt_operation_statistics_reconnect_publish(struct aws_allocat
         false,
         &payload,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(pub_packet_id_2 > 0);
     s_wait_for_ops_completed(state_test_data);
 
@@ -870,7 +875,8 @@ static int s_test_mqtt_operation_statistics_reconnect_publish(struct aws_allocat
         false,
         &payload,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(pub_packet_id_3 > 0);
     s_wait_for_ops_completed(state_test_data);
 
@@ -934,7 +940,8 @@ static int s_test_mqtt_operation_statistics_simple_subscribe(struct aws_allocato
         state_test_data,
         NULL,
         s_operation_statistics_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
@@ -1013,7 +1020,7 @@ static int s_test_mqtt_operation_statistics_simple_unsubscribe(struct aws_alloca
 
     /* Send a subscribe packet */
     uint16_t packet_id_1 = aws_mqtt_client_connection_unsubscribe(
-        state_test_data->mqtt_connection, &unsub_topic, s_on_op_complete, state_test_data);
+        state_test_data->mqtt_connection, &unsub_topic, s_on_op_complete, state_test_data, NULL);
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
@@ -1094,7 +1101,8 @@ static int s_test_mqtt_operation_statistics_simple_resubscribe(struct aws_alloca
         state_test_data,
         NULL,
         s_operation_statistics_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(sub_packet_id_1 > 0);
     uint16_t sub_packet_id_2 = aws_mqtt_client_connection_subscribe(
         state_test_data->mqtt_connection,
@@ -1104,7 +1112,8 @@ static int s_test_mqtt_operation_statistics_simple_resubscribe(struct aws_alloca
         state_test_data,
         NULL,
         s_operation_statistics_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(sub_packet_id_2 > 0);
     uint16_t sub_packet_id_3 = aws_mqtt_client_connection_subscribe(
         state_test_data->mqtt_connection,
@@ -1114,7 +1123,8 @@ static int s_test_mqtt_operation_statistics_simple_resubscribe(struct aws_alloca
         state_test_data,
         NULL,
         s_operation_statistics_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(sub_packet_id_3 > 0);
 
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
@@ -1148,7 +1158,7 @@ static int s_test_mqtt_operation_statistics_simple_resubscribe(struct aws_alloca
     aws_mutex_unlock(&state_test_data->lock);
     /* unsubscribe to the first topic */
     uint16_t unsub_packet_id = aws_mqtt_client_connection_unsubscribe(
-        state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data);
+        state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data, NULL);
     ASSERT_TRUE(unsub_packet_id > 0);
     s_wait_for_ops_completed(state_test_data);
 
@@ -1170,7 +1180,7 @@ static int s_test_mqtt_operation_statistics_simple_resubscribe(struct aws_alloca
 
     /* Resubscribes to topic_2 & topic_3 (Note: we do not need a callback for the purpose of this test) */
     uint16_t resub_packet_id =
-        aws_mqtt_resubscribe_existing_topics(state_test_data->mqtt_connection, NULL, state_test_data);
+        aws_mqtt_resubscribe_existing_topics(state_test_data->mqtt_connection, NULL, state_test_data, NULL);
     ASSERT_TRUE(resub_packet_id > 0);
 
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it
@@ -1269,7 +1279,8 @@ static int s_test_mqtt_operation_statistics_simple_callback(struct aws_allocator
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* Wait a little bit to allow the code to put the packet into the socket from the queue, allowing it

@@ -2169,7 +2169,8 @@ static int s_mqtt5to3_adapter_publish_failure_invalid_fn(struct aws_allocator *a
         false,
         &payload,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
 
@@ -2232,7 +2233,8 @@ static int s_mqtt5to3_adapter_publish_failure_offline_queue_policy_fn(struct aws
         false,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
 
@@ -2290,7 +2292,8 @@ static int s_mqtt5to3_adapter_publish_success_qos0_fn(struct aws_allocator *allo
         false,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
 
@@ -2349,7 +2352,8 @@ static int s_mqtt5to3_adapter_publish_success_qos1_fn(struct aws_allocator *allo
         false,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
 
@@ -2409,7 +2413,8 @@ static int s_mqtt5to3_adapter_publish_no_ack_fn(struct aws_allocator *allocator,
         false,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
 
@@ -2468,7 +2473,8 @@ static int s_mqtt5to3_adapter_publish_interrupted_fn(struct aws_allocator *alloc
         false,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     /*
      * wait for a little bit, we aren't going to get a response, shutdown while the operation is still pending
@@ -2652,7 +2658,8 @@ static int s_mqtt5to3_adapter_subscribe_single_success_fn(struct aws_allocator *
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
@@ -2729,7 +2736,8 @@ static int s_mqtt5to3_adapter_subscribe_single_null_suback_fn(struct aws_allocat
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     struct aws_mqtt_topic_subscription expected_subs[1] = {
         {
@@ -2869,7 +2877,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_success_fn(struct aws_allocator *a
         connection,
         &subscription_list,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
@@ -2948,7 +2957,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_null_suback_fn(struct aws_allocato
         connection,
         &subscription_list,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     struct aws_mqtt3_operation_event expected_events[] = {
         {
@@ -3042,7 +3052,8 @@ static int s_mqtt5to3_adapter_subscribe_single_failure_fn(struct aws_allocator *
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
@@ -3117,7 +3128,8 @@ static int s_mqtt5to3_adapter_subscribe_single_invalid_fn(struct aws_allocator *
             &fixture,
             NULL,
             s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-            &fixture));
+            &fixture,
+            NULL));
 
     aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
@@ -3177,7 +3189,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_failure_fn(struct aws_allocator *a
         connection,
         &subscription_list,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
@@ -3257,7 +3270,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_invalid_fn(struct aws_allocator *a
             connection,
             &subscription_list,
             s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete,
-            &fixture));
+            &fixture,
+            NULL));
 
     aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
@@ -3313,7 +3327,8 @@ static int s_mqtt5to3_adapter_subscribe_single_publish_fn(struct aws_allocator *
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
@@ -3326,7 +3341,8 @@ static int s_mqtt5to3_adapter_subscribe_single_publish_fn(struct aws_allocator *
         false,
         &payload,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_SUBSCRIBED, 1);
@@ -3413,7 +3429,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_overlapping_publish_fn(struct aws_
                  &fixture,
                  NULL,
                  s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-                 &fixture));
+                 &fixture,
+                 NULL));
 
     ASSERT_TRUE(
         0 != aws_mqtt_client_connection_subscribe(
@@ -3424,7 +3441,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_overlapping_publish_fn(struct aws_
                  &fixture,
                  NULL,
                  s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-                 &fixture));
+                 &fixture,
+                 NULL));
 
     ASSERT_TRUE(
         0 != aws_mqtt_client_connection_subscribe(
@@ -3435,7 +3453,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_overlapping_publish_fn(struct aws_
                  &fixture,
                  NULL,
                  s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-                 &fixture));
+                 &fixture,
+                 NULL));
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 3);
 
@@ -3449,7 +3468,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_overlapping_publish_fn(struct aws_
         false,
         &payload1,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
     aws_mqtt_client_connection_publish(
         connection,
         &topic3,
@@ -3457,7 +3477,8 @@ static int s_mqtt5to3_adapter_subscribe_multi_overlapping_publish_fn(struct aws_
         false,
         &payload2,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 2);
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 2);
@@ -3578,7 +3599,8 @@ static int s_mqtt5to3_adapter_unsubscribe_success_fn(struct aws_allocator *alloc
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
@@ -3591,7 +3613,8 @@ static int s_mqtt5to3_adapter_unsubscribe_success_fn(struct aws_allocator *alloc
         false,
         &payload,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 1);
@@ -3618,7 +3641,7 @@ static int s_mqtt5to3_adapter_unsubscribe_success_fn(struct aws_allocator *alloc
         &fixture, AWS_ARRAY_SIZE(expected_events_before), expected_events_before));
 
     aws_mqtt_client_connection_unsubscribe(
-        connection, &topic, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture);
+        connection, &topic, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE, 1);
 
@@ -3629,7 +3652,8 @@ static int s_mqtt5to3_adapter_unsubscribe_success_fn(struct aws_allocator *alloc
         false,
         &payload,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture,
+        NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 2);
 
@@ -3724,7 +3748,7 @@ static int s_mqtt5to3_adapter_unsubscribe_failure_fn(struct aws_allocator *alloc
     struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("hello/world");
 
     aws_mqtt_client_connection_unsubscribe(
-        connection, &topic, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture);
+        connection, &topic, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE, 1);
 
@@ -3781,7 +3805,7 @@ static int s_mqtt5to3_adapter_unsubscribe_invalid_fn(struct aws_allocator *alloc
     ASSERT_INT_EQUALS(
         0,
         aws_mqtt_client_connection_unsubscribe(
-            connection, &topic, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture));
+            connection, &topic, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture, NULL));
 
     aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
@@ -3840,7 +3864,7 @@ static int s_mqtt5to3_adapter_unsubscribe_overlapped_fn(struct aws_allocator *al
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture, NULL);
 
     aws_mqtt_client_connection_subscribe(
         connection,
@@ -3850,7 +3874,7 @@ static int s_mqtt5to3_adapter_unsubscribe_overlapped_fn(struct aws_allocator *al
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 2);
 
@@ -3863,7 +3887,7 @@ static int s_mqtt5to3_adapter_unsubscribe_overlapped_fn(struct aws_allocator *al
         false,
         &payload1,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 1);
@@ -3892,7 +3916,7 @@ static int s_mqtt5to3_adapter_unsubscribe_overlapped_fn(struct aws_allocator *al
 
     /* drop the wildcard subscription and publish again, should only get one more publish received subscribed */
     aws_mqtt_client_connection_unsubscribe(
-        connection, &topic2, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture);
+        connection, &topic2, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_UNSUBSCRIBE_COMPLETE, 1);
 
@@ -3903,7 +3927,7 @@ static int s_mqtt5to3_adapter_unsubscribe_overlapped_fn(struct aws_allocator *al
         false,
         &payload1,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 2);
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_RECEIVED_ANY, 2);
@@ -4011,7 +4035,7 @@ static int s_mqtt5to3_adapter_get_stats_fn(struct aws_allocator *allocator, void
         false,
         &payload,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture, NULL);
     aws_mqtt_client_connection_publish(
         connection,
         &topic,
@@ -4019,7 +4043,7 @@ static int s_mqtt5to3_adapter_get_stats_fn(struct aws_allocator *allocator, void
         false,
         &payload,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture, NULL);
     aws_mqtt_client_connection_publish(
         connection,
         &topic,
@@ -4027,7 +4051,7 @@ static int s_mqtt5to3_adapter_get_stats_fn(struct aws_allocator *allocator, void
         false,
         &payload,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture, NULL);
 
     aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
 
@@ -4087,7 +4111,7 @@ static int s_mqtt5to3_adapter_resubscribe_nothing_fn(struct aws_allocator *alloc
     s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
 
     aws_mqtt_resubscribe_existing_topics(
-        connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete, &fixture);
+        connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete, &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
@@ -4157,7 +4181,7 @@ static int s_mqtt5to3_adapter_resubscribe_something_fn(struct aws_allocator *all
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture, NULL);
 
     aws_mqtt_client_connection_subscribe(
         connection,
@@ -4167,7 +4191,7 @@ static int s_mqtt5to3_adapter_resubscribe_something_fn(struct aws_allocator *all
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture, NULL);
 
     aws_mqtt_client_connection_subscribe(
         connection,
@@ -4177,12 +4201,12 @@ static int s_mqtt5to3_adapter_resubscribe_something_fn(struct aws_allocator *all
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 3);
 
     aws_mqtt_resubscribe_existing_topics(
-        connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete, &fixture);
+        connection, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_multi_complete, &fixture, NULL);
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 4);
 
@@ -4265,7 +4289,7 @@ static int s_mqtt5to3_adapter_operation_callbacks_after_shutdown_fn(struct aws_a
         &fixture,
         NULL,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_subscribe_complete,
-        &fixture);
+        &fixture, NULL);
 
     struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload 1!");
 
@@ -4276,10 +4300,10 @@ static int s_mqtt5to3_adapter_operation_callbacks_after_shutdown_fn(struct aws_a
         false,
         &payload1,
         s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
-        &fixture);
+        &fixture, NULL);
 
     aws_mqtt_client_connection_unsubscribe(
-        connection, &topic2, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture);
+        connection, &topic2, s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_unsubscribe_complete, &fixture, NULL);
 
     aws_mqtt_client_connection_release(connection);
 

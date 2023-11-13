@@ -1168,7 +1168,8 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
         state_test_data,
         NULL,
         s_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id > 0);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1296,7 +1297,8 @@ static int s_test_mqtt_subscribe_incoming_dup_fn(struct aws_allocator *allocator
         state_test_data,
         NULL,
         s_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id > 0);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1438,7 +1440,8 @@ static int s_test_mqtt_connect_subscribe_fail_from_broker_fn(struct aws_allocato
         state_test_data,
         NULL,
         s_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id > 0);
 
     ASSERT_SUCCESS(mqtt_mock_server_send_single_suback(state_test_data->mock_server, packet_id, AWS_MQTT_QOS_FAILURE));
@@ -1506,7 +1509,7 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
     aws_array_list_push_back(&topic_filters, &sub2);
 
     uint16_t packet_id = aws_mqtt_client_connection_subscribe_multiple(
-        state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data);
+        state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data, NULL);
     ASSERT_TRUE(packet_id > 0);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1657,7 +1660,7 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
     aws_array_list_push_back(&topic_filters, &sub2);
 
     uint16_t sub_packet_id = aws_mqtt_client_connection_subscribe_multiple(
-        state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data);
+        state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data, NULL);
     ASSERT_TRUE(sub_packet_id > 0);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1690,7 +1693,7 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
     aws_mutex_unlock(&state_test_data->lock);
     /* unsubscribe to the first topic */
     uint16_t unsub_packet_id = aws_mqtt_client_connection_unsubscribe(
-        state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data);
+        state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data, NULL);
     ASSERT_TRUE(unsub_packet_id > 0);
     /* Even when the UNSUBACK has not received, the client will not invoke the on_pub callback for that topic */
     ASSERT_SUCCESS(mqtt_mock_server_send_publish(
@@ -1836,7 +1839,7 @@ static int s_test_mqtt_resubscribe_fn(struct aws_allocator *allocator, void *ctx
     aws_array_list_push_back(&topic_filters, &sub3);
 
     uint16_t sub_packet_id = aws_mqtt_client_connection_subscribe_multiple(
-        state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data);
+        state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data, NULL);
     ASSERT_TRUE(sub_packet_id > 0);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
@@ -1848,7 +1851,7 @@ static int s_test_mqtt_resubscribe_fn(struct aws_allocator *allocator, void *ctx
     aws_mutex_unlock(&state_test_data->lock);
     /* unsubscribe to the first topic */
     uint16_t unsub_packet_id = aws_mqtt_client_connection_unsubscribe(
-        state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data);
+        state_test_data->mqtt_connection, &sub_topic_1, s_on_op_complete, state_test_data, NULL);
     ASSERT_TRUE(unsub_packet_id > 0);
 
     s_wait_for_ops_completed(state_test_data);
@@ -1871,7 +1874,7 @@ static int s_test_mqtt_resubscribe_fn(struct aws_allocator *allocator, void *ctx
 
     /* resubscribes to topic_2 & topic_3 */
     uint16_t resub_packet_id =
-        aws_mqtt_resubscribe_existing_topics(state_test_data->mqtt_connection, s_on_multi_suback, state_test_data);
+        aws_mqtt_resubscribe_existing_topics(state_test_data->mqtt_connection, s_on_multi_suback, state_test_data, NULL);
     ASSERT_TRUE(resub_packet_id > 0);
     s_wait_for_subscribe_to_complete(state_test_data);
 
@@ -1935,7 +1938,8 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
     uint16_t packet_id_2 = aws_mqtt_client_connection_publish(
         state_test_data->mqtt_connection,
@@ -1944,7 +1948,8 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
         false,
         &payload_2,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_2 > 0);
 
     /* Null payload case */
@@ -1955,7 +1960,8 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
         false,
         NULL,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_3 > 0);
 
     s_wait_for_ops_completed(state_test_data);
@@ -2034,7 +2040,8 @@ static int s_test_mqtt_publish_payload_fn(struct aws_allocator *allocator, void 
         false,
         &payload_curser,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id > 0);
 
     /* clean up the payload buf, as user don't need to manage the buf and keep it valid until publish completes */
@@ -2119,7 +2126,8 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
             false,
             &payload_1,
             s_on_op_complete,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
     ASSERT_TRUE(
         aws_mqtt_client_connection_publish(
             state_test_data->mqtt_connection,
@@ -2128,7 +2136,8 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
             false,
             &payload_2,
             s_on_op_complete,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
 
     aws_mutex_lock(&state_test_data->lock);
     ASSERT_FALSE(state_test_data->connection_resumed);
@@ -2235,7 +2244,8 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
             false,
             &payload_1,
             s_on_op_complete,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
     ASSERT_TRUE(
         aws_mqtt_client_connection_publish(
             state_test_data->mqtt_connection,
@@ -2244,7 +2254,8 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
             false,
             &payload_2,
             s_on_op_complete,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
 
     ASSERT_SUCCESS(
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
@@ -2311,7 +2322,8 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
 
     s_wait_for_reconnect_to_complete(state_test_data);
@@ -2401,7 +2413,7 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
     uint16_t packet_ids[5];
 
     packet_ids[0] = aws_mqtt_client_connection_publish(
-        state_test_data->mqtt_connection, &pub_topic, AWS_MQTT_QOS_AT_LEAST_ONCE, false, &payload_1, NULL, NULL);
+        state_test_data->mqtt_connection, &pub_topic, AWS_MQTT_QOS_AT_LEAST_ONCE, false, &payload_1, NULL, NULL, NULL);
     ASSERT_TRUE(packet_ids[0] > 0);
 
     packet_ids[1] = aws_mqtt_client_connection_subscribe(
@@ -2412,18 +2424,19 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
         state_test_data,
         NULL,
         s_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_ids[1] > 0);
 
     packet_ids[2] = aws_mqtt_client_connection_publish(
-        state_test_data->mqtt_connection, &pub_topic, AWS_MQTT_QOS_AT_LEAST_ONCE, false, &payload_2, NULL, NULL);
+        state_test_data->mqtt_connection, &pub_topic, AWS_MQTT_QOS_AT_LEAST_ONCE, false, &payload_2, NULL, NULL, NULL);
     ASSERT_TRUE(packet_ids[2] > 0);
 
-    packet_ids[3] = aws_mqtt_client_connection_unsubscribe(state_test_data->mqtt_connection, &sub_topic, NULL, NULL);
+    packet_ids[3] = aws_mqtt_client_connection_unsubscribe(state_test_data->mqtt_connection, &sub_topic, NULL, NULL, NULL);
     ASSERT_TRUE(packet_ids[3] > 0);
 
     packet_ids[4] = aws_mqtt_client_connection_publish(
-        state_test_data->mqtt_connection, &pub_topic, AWS_MQTT_QOS_AT_LEAST_ONCE, false, &payload_3, NULL, NULL);
+        state_test_data->mqtt_connection, &pub_topic, AWS_MQTT_QOS_AT_LEAST_ONCE, false, &payload_3, NULL, NULL, NULL);
     ASSERT_TRUE(packet_ids[4] > 0);
 
     /* Wait for 1 sec. ensure all the publishes have been received by the server */
@@ -2494,7 +2507,8 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* publish should complete after the shutdown */
@@ -2564,7 +2578,8 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
     /* make another subscribe */
     uint16_t packet_id_2 = aws_mqtt_client_connection_subscribe(
@@ -2575,7 +2590,8 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
         NULL,
         NULL,
         s_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_2 > 0);
 
     /* wait for reconnect */
@@ -2662,7 +2678,8 @@ static int s_test_mqtt_connection_not_resend_packets_on_healthy_connection_fn(
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
     /* make another subscribe */
     uint16_t packet_id_2 = aws_mqtt_client_connection_subscribe(
@@ -2673,7 +2690,8 @@ static int s_test_mqtt_connection_not_resend_packets_on_healthy_connection_fn(
         NULL,
         NULL,
         s_on_suback,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_2 > 0);
 
     /* Wait for 3 sec. ensure no duplicate requests will be sent */
@@ -2724,7 +2742,8 @@ static int s_test_mqtt_connection_destory_pending_requests_fn(struct aws_allocat
             false,
             &payload,
             s_on_op_complete,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
     ASSERT_TRUE(
         aws_mqtt_client_connection_subscribe(
             state_test_data->mqtt_connection,
@@ -2734,7 +2753,8 @@ static int s_test_mqtt_connection_destory_pending_requests_fn(struct aws_allocat
             state_test_data,
             NULL,
             s_on_suback,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
 
     return AWS_OP_SUCCESS;
 }
@@ -2778,7 +2798,8 @@ static int s_test_mqtt_clean_session_not_retry_fn(struct aws_allocator *allocato
             false,
             &payload,
             s_on_op_complete,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
     ASSERT_TRUE(
         aws_mqtt_client_connection_subscribe(
             state_test_data->mqtt_connection,
@@ -2788,7 +2809,8 @@ static int s_test_mqtt_clean_session_not_retry_fn(struct aws_allocator *allocato
             state_test_data,
             NULL,
             s_on_suback,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
     aws_mutex_unlock(&state_test_data->lock);
@@ -2845,7 +2867,8 @@ static int s_test_mqtt_clean_session_discard_previous_fn(struct aws_allocator *a
             false,
             &payload,
             s_on_op_complete,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
     ASSERT_TRUE(
         aws_mqtt_client_connection_subscribe(
             state_test_data->mqtt_connection,
@@ -2855,7 +2878,8 @@ static int s_test_mqtt_clean_session_discard_previous_fn(struct aws_allocator *a
             state_test_data,
             NULL,
             s_on_suback,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     s_wait_for_connection_to_complete(state_test_data);
@@ -2917,7 +2941,8 @@ static int s_test_mqtt_clean_session_keep_next_session_fn(struct aws_allocator *
             false,
             &payload,
             s_on_op_complete,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
     ASSERT_TRUE(
         aws_mqtt_client_connection_subscribe(
             state_test_data->mqtt_connection,
@@ -2927,7 +2952,8 @@ static int s_test_mqtt_clean_session_keep_next_session_fn(struct aws_allocator *
             state_test_data,
             NULL,
             s_on_suback,
-            state_test_data) > 0);
+            state_test_data,
+            NULL) > 0);
     s_wait_for_connection_to_complete(state_test_data);
     struct aws_channel_handler *handler = state_test_data->mock_server;
 
@@ -2994,7 +3020,8 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* publish should complete after the shutdown */
@@ -3048,7 +3075,7 @@ static int s_test_mqtt_connection_unsub_timeout_fn(struct aws_allocator *allocat
 
     /* unsubscribe to the first topic */
     uint16_t unsub_packet_id = aws_mqtt_client_connection_unsubscribe(
-        state_test_data->mqtt_connection, &pub_topic, s_on_op_complete, state_test_data);
+        state_test_data->mqtt_connection, &pub_topic, s_on_op_complete, state_test_data, NULL);
     ASSERT_TRUE(unsub_packet_id > 0);
 
     /* publish should complete after the shutdown */
@@ -3110,7 +3137,8 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_connection_lost_reset_tim
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
 
     /* sleep for 2 sec, close the connection */
@@ -3631,7 +3659,8 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
             false,
             &payload_1,
             s_on_op_complete,
-            state_test_data);
+            state_test_data,
+            NULL);
         ASSERT_TRUE(packet_id > 0);
 
         aws_thread_current_sleep(500000000); /* Sleep 0.5 seconds to avoid spamming*/
@@ -3700,7 +3729,8 @@ static int s_test_mqtt_connection_ping_noack_fn(struct aws_allocator *allocator,
             false,
             &payload_1,
             s_on_op_complete,
-            state_test_data);
+            state_test_data,
+            NULL);
         ASSERT_TRUE(packet_id > 0);
 
         aws_thread_current_sleep(500000000); /* Sleep 0.5 seconds to avoid spamming*/
@@ -3772,7 +3802,8 @@ static int s_test_mqtt_connection_ping_basic_scenario_fn(struct aws_allocator *a
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
     s_wait_for_ops_completed(state_test_data);
     /* Publish packet written at 3 seconds */
@@ -3850,7 +3881,8 @@ static int s_test_mqtt_connection_ping_double_scenario_fn(struct aws_allocator *
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_1 > 0);
     s_wait_for_ops_completed(state_test_data);
     /* Publish packet written at 3 seconds */
@@ -3875,7 +3907,8 @@ static int s_test_mqtt_connection_ping_double_scenario_fn(struct aws_allocator *
         false,
         &payload_1,
         s_on_op_complete,
-        state_test_data);
+        state_test_data,
+        NULL);
     ASSERT_TRUE(packet_id_2 > 0);
     s_wait_for_ops_completed(state_test_data);
     /* Publish packet written at 2 seconds (relative to PING that was scheduled above) */
@@ -3959,7 +3992,8 @@ static int s_test_mqtt_validation_failure_publish_qos_fn(struct aws_allocator *a
             true,
             NULL,
             s_on_op_complete,
-            state_test_data));
+            state_test_data,
+            NULL));
     int error_code = aws_last_error();
     ASSERT_INT_EQUALS(AWS_ERROR_MQTT_INVALID_QOS, error_code);
 
@@ -4004,7 +4038,7 @@ static int s_test_mqtt_validation_failure_subscribe_empty_fn(struct aws_allocato
     ASSERT_INT_EQUALS(
         0,
         aws_mqtt_client_connection_subscribe_multiple(
-            state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data));
+            state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data, NULL));
     int error_code = aws_last_error();
     ASSERT_INT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, error_code);
 
@@ -4044,7 +4078,7 @@ static int s_test_mqtt_validation_failure_unsubscribe_null_fn(struct aws_allocat
     ASSERT_INT_EQUALS(
         0,
         aws_mqtt_client_connection_unsubscribe(
-            state_test_data->mqtt_connection, NULL, s_on_op_complete, state_test_data));
+            state_test_data->mqtt_connection, NULL, s_on_op_complete, state_test_data, NULL));
     int error_code = aws_last_error();
     ASSERT_INT_EQUALS(AWS_ERROR_MQTT_INVALID_TOPIC, error_code);
 

@@ -77,7 +77,8 @@ struct aws_mqtt_client_connection_vtable {
         void *impl,
         const struct aws_array_list *topic_filters,
         aws_mqtt_suback_multi_fn *on_suback,
-        void *on_suback_ud);
+        void *on_suback_ud,
+        struct aws_mqtt_subscribe_options *subscribe_options);
 
     uint16_t (*subscribe_fn)(
         void *impl,
@@ -87,15 +88,17 @@ struct aws_mqtt_client_connection_vtable {
         void *on_publish_ud,
         aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
         aws_mqtt_suback_fn *on_suback,
-        void *on_suback_ud);
+        void *on_suback_ud,
+        struct aws_mqtt_subscribe_options *subscribe_options);
 
-    uint16_t (*resubscribe_existing_topics_fn)(void *impl, aws_mqtt_suback_multi_fn *on_suback, void *on_suback_ud);
+    uint16_t (*resubscribe_existing_topics_fn)(void *impl, aws_mqtt_suback_multi_fn *on_suback, void *on_suback_ud, struct aws_mqtt_subscribe_options *subscribe_options);
 
     uint16_t (*unsubscribe_fn)(
         void *impl,
         const struct aws_byte_cursor *topic_filter,
         aws_mqtt_op_complete_fn *on_unsuback,
-        void *on_unsuback_ud);
+        void *on_unsuback_ud,
+        struct aws_mqtt_unsubscribe_options *unsubscribe_options);
 
     uint16_t (*publish_fn)(
         void *impl,
@@ -104,7 +107,8 @@ struct aws_mqtt_client_connection_vtable {
         bool retain,
         const struct aws_byte_cursor *payload,
         aws_mqtt_op_complete_fn *on_complete,
-        void *userdata);
+        void *userdata,
+        struct aws_mqtt_publish_options *publish_options);
 
     int (*get_stats_fn)(void *impl, struct aws_mqtt_connection_operation_statistics *stats);
 };

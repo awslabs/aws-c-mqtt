@@ -434,7 +434,8 @@ static void s_establish_subscriptions(struct app_ctx *app_ctx) {
             app_ctx,
             s_on_subscribe_removed,
             s_on_subscribe_complete,
-            connection_data);
+            connection_data,
+            NULL);
 
         if (id == 0) {
             if (aws_mqtt_client_connection_disconnect(
@@ -574,7 +575,8 @@ static void s_publish(struct app_ctx *app_ctx) {
             false,
             &payload_cursor,
             s_on_publish_complete,
-            app_ctx);
+            app_ctx,
+            NULL);
 
         if (id == 0) {
             ++failed_publishes;

@@ -267,6 +267,42 @@ struct aws_mqtt_connection_options {
 };
 
 /**
+ * Additional publish options that are not directly part of the base API.  New publish options should always go
+ * here.
+ */
+struct aws_mqtt_publish_options {
+    /**
+     * An override value for the connection-wide protocol operation timeout setting.  If this is zero, then the
+     * connection's timeout value is used.
+     */
+    uint32_t protocol_operation_timeout_ms_override;
+};
+
+/**
+ * Additional subscribe options that are not directly part of the base API.  New subscribe options should always go
+ * here.
+ */
+struct aws_mqtt_subscribe_options {
+    /**
+     * An override value for the connection-wide protocol operation timeout setting.  If this is zero, then the
+     * connection's timeout value is used.
+     */
+    uint32_t protocol_operation_timeout_ms_override;
+};
+
+/**
+ * Additional unsubscribe options that are not directly part of the base API.  New unsubscribe options should always go
+ * here.
+ */
+struct aws_mqtt_unsubscribe_options {
+    /**
+     * An override value for the connection-wide protocol operation timeout setting.  If this is zero, then the
+     * connection's timeout value is used.
+     */
+    uint32_t protocol_operation_timeout_ms_override;
+};
+
+/**
  * Contains some simple statistics about the current state of the connection's queue of operations
  */
 struct aws_mqtt_connection_operation_statistics {
@@ -595,7 +631,8 @@ uint16_t aws_mqtt_client_connection_subscribe_multiple(
     struct aws_mqtt_client_connection *connection,
     const struct aws_array_list *topic_filters,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_ud);
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options);
 
 /**
  * Subscribe to a single topic filter. on_publish will be called when a PUBLISH matching topic_filter is received.
@@ -621,7 +658,8 @@ uint16_t aws_mqtt_client_connection_subscribe(
     void *on_publish_ud,
     aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
     aws_mqtt_suback_fn *on_suback,
-    void *on_suback_ud);
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options);
 
 /**
  * Resubscribe to all topics currently subscribed to. This is to help when resuming a connection with a clean session.
@@ -637,7 +675,8 @@ AWS_MQTT_API
 uint16_t aws_mqtt_resubscribe_existing_topics(
     struct aws_mqtt_client_connection *connection,
     aws_mqtt_suback_multi_fn *on_suback,
-    void *on_suback_ud);
+    void *on_suback_ud,
+    struct aws_mqtt_subscribe_options *subscribe_options);
 
 /**
  * Unsubscribe to a topic filter.
@@ -655,7 +694,8 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     aws_mqtt_op_complete_fn *on_unsuback,
-    void *on_unsuback_ud);
+    void *on_unsuback_ud,
+    struct aws_mqtt_unsubscribe_options *unsubscribe_options);
 
 /**
  * Send a PUBLISH packet over connection.
@@ -680,7 +720,8 @@ uint16_t aws_mqtt_client_connection_publish(
     bool retain,
     const struct aws_byte_cursor *payload,
     aws_mqtt_op_complete_fn *on_complete,
-    void *userdata);
+    void *userdata,
+    struct aws_mqtt_publish_options *publish_options);
 
 /**
  * Queries the connection's internal statistics for incomplete/unacked operations.
