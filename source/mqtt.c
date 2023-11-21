@@ -230,6 +230,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS,
                 "Resubscribe was called when there were no subscriptions"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_CONNECTION_SUBSCRIBE_FAILURE,
+                "MQTT subscribe operation failed"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
