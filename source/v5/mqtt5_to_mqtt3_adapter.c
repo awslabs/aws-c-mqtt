@@ -2854,6 +2854,12 @@ error:
     return 0;
 }
 
+enum aws_mqtt311_impl_type s_aws_mqtt_client_connection_5_get_impl(void *impl) {
+    (void)impl;
+
+    return AWS_MQTT311_IT_5_ADAPTER_IMPL;
+}
+
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_vtable = {
     .acquire_fn = s_aws_mqtt_client_connection_5_acquire,
     .release_fn = s_aws_mqtt_client_connection_5_release,
@@ -2877,6 +2883,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .unsubscribe_fn = s_aws_mqtt_client_connection_5_unsubscribe,
     .publish_fn = s_aws_mqtt_client_connection_5_publish,
     .get_stats_fn = s_aws_mqtt_client_connection_5_get_stats,
+    .get_impl_type = s_aws_mqtt_client_connection_5_get_impl,
 };
 
 static struct aws_mqtt_client_connection_vtable *s_aws_mqtt_client_connection_5_vtable_ptr =
