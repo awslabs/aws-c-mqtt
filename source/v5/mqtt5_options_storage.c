@@ -3603,7 +3603,7 @@ void aws_mqtt5_client_options_storage_log(
             log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_client_options_storage http proxy port set to %" PRIu16,
+            "id=%p: aws_mqtt5_client_options_storage http proxy port set to %" PRIu32,
             (void *)options_storage,
             options_storage->http_proxy_options.port);
 
