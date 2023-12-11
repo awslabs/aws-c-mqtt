@@ -141,7 +141,7 @@ struct aws_mqtt5_client_options_storage {
     struct aws_allocator *allocator;
 
     struct aws_string *host_name;
-    uint16_t port;
+    uint32_t port;
     struct aws_client_bootstrap *bootstrap;
     struct aws_socket_options socket_options;
 
