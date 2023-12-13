@@ -6,7 +6,6 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/io/retry_strategy.h>
