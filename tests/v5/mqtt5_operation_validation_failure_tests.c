@@ -1113,6 +1113,7 @@ static struct aws_mqtt5_client_options s_good_client_options = {
             .ptr = s_server_reference,
             .len = AWS_ARRAY_SIZE(s_server_reference) - 1,
         },
+    .port = 1883,
     .socket_options = &s_good_socket_options,
     .connect_options = &s_good_connect,
     .ping_timeout_ms = 5000,
@@ -1182,6 +1183,15 @@ AWS_CLIENT_CREATION_VALIDATION_FAILURE(
     invalid_keep_alive,
     s_good_client_options,
     s_make_invalid_keep_alive_client_options)
+
+static void s_make_invalid_port_client_options(struct aws_mqtt5_client_options *options) {
+    options->port = 0xFFFFFFFF;
+}
+
+AWS_CLIENT_CREATION_VALIDATION_FAILURE(
+    invalid_port,
+    s_good_client_options,
+    s_make_invalid_port_client_options)
 
 #define AWS_CONNECTION_SETTINGS_VALIDATION_FAILURE_TEST_PREFIX(packet_type, failure_reason, init_success_settings_fn)  \
     static int s_mqtt5_operation_##packet_type##_connection_settings_validation_failure_##failure_reason##_fn(         \
