@@ -37,7 +37,7 @@ struct app_ctx {
     struct aws_mutex lock;
     struct aws_condition_variable signal;
     struct aws_uri uri;
-    uint16_t port;
+    uint32_t port;
     const char *cacert;
     const char *cert;
     const char *key;

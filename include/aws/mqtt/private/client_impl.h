@@ -199,7 +199,7 @@ struct aws_mqtt_client_connection_311_impl {
 
     /* The host information, changed by user when state is AWS_MQTT_CLIENT_STATE_DISCONNECTED */
     struct aws_string *host_name;
-    uint16_t port;
+    uint32_t port;
     struct aws_tls_connection_options tls_options;
     struct aws_socket_options socket_options;
     struct aws_http_proxy_config *http_proxy_config;

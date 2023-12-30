@@ -254,7 +254,7 @@ struct aws_mqtt_topic_subscription {
  */
 struct aws_mqtt_connection_options {
     struct aws_byte_cursor host_name;
-    uint16_t port;
+    uint32_t port;
     struct aws_socket_options *socket_options;
     struct aws_tls_connection_options *tls_options;
     struct aws_byte_cursor client_id;

@@ -3356,14 +3356,20 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
         }
     }
 
+    if (aws_socket_validate_port_for_connect(
+            options->port, options->socket_options ? options->socket_options->domain : AWS_SOCKET_IPV4)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid port in mqtt5 client configuration");
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+    }
+
     if (options->http_proxy_options != NULL) {
         if (options->http_proxy_options->host.len == 0) {
             AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "proxy host name not set in mqtt5 client configuration");
             return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
         }
 
-        if (options->http_proxy_options->port == 0) {
-            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "proxy port not set in mqtt5 client configuration");
+        if (aws_socket_validate_port_for_connect(options->http_proxy_options->port, AWS_SOCKET_IPV4)) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid proxy port in mqtt5 client configuration");
             return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
         }
     }
@@ -3542,7 +3548,7 @@ void aws_mqtt5_client_options_storage_log(
         log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage port set to %" PRIu16,
+        "id=%p: aws_mqtt5_client_options_storage port set to %" PRIu32,
         (void *)options_storage,
         options_storage->port);
 
@@ -3603,7 +3609,7 @@ void aws_mqtt5_client_options_storage_log(
             log_handle,
             level,
             AWS_LS_MQTT5_GENERAL,
-            "id=%p: aws_mqtt5_client_options_storage http proxy port set to %" PRIu16,
+            "id=%p: aws_mqtt5_client_options_storage http proxy port set to %" PRIu32,
             (void *)options_storage,
             options_storage->http_proxy_options.port);
 

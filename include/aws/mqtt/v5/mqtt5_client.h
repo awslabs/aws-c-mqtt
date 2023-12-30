@@ -526,7 +526,7 @@ struct aws_mqtt5_client_options {
     /**
      * Port to establish mqtt connections to
      */
-    uint16_t port;
+    uint32_t port;
 
     /**
      * Client bootstrap to use whenever this client establishes a connection
