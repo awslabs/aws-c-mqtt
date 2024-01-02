@@ -1,0 +1,64 @@
+version: 0.2
+env:
+  shell: bash
+  variables:
+    CANARY_DURATION: 25200
+    CANARY_THREADS: 3
+    CANARY_TPS: 50
+    CANARY_CLIENT_COUNT: 10
+    CANARY_LOG_FILE: 'canary_log.txt'
+    CANARY_LOG_LEVEL: 'ERROR'
+    BUILDER_VERSION: v0.9.40
+    BUILDER_SOURCE: releases
+    BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
+    PACKAGE_NAME: 'aws-c-mqtt'
+    CANARY_TEST_EXE_PATH: build/install/bin/mqtt5canary
+    CANARY_SERVER_ARN: Mqtt5MosquittoSever
+    CANARY_BUILD_S3_DST: mqtt5-canary/s3
+
+phases:
+  install:
+    commands:
+      # install c++ dev libraries for codebuild environment.
+      - sudo yum update -y
+      - sudo yum groupinstall "Development Tools" -y
+      # Install necessary lib for canary wrapper
+      - sudo yum install gcc python3-dev -y
+      - sudo yum install pip -y
+      - python3 -m pip install psutil
+      - python3 -m pip install boto3
+      # Install Cmake3
+      - wget https://cmake.org/files/v3.18/cmake-3.18.0.tar.gz
+      - tar -xvzf cmake-3.18.0.tar.gz
+      - cd cmake-3.18.0
+      - ./bootstrap
+      - make
+      - sudo make install
+      - cd ..
+  build:
+    commands:
+      - export CANNARY_TEST_EXE=$CODEBUILD_SRC_DIR/$CANARY_TEST_EXE_PATH
+      - echo $CANNARY_TEST_EXE
+      - export ENDPOINT=$(aws secretsmanager get-secret-value --secret-id "$CANARY_SERVER_ARN" --query "SecretString" | cut -f2 -d":" | sed -e 's/[\\\"\}]//g')
+      - export S3_DST=$(aws secretsmanager get-secret-value --secret-id "$CANARY_BUILD_S3_DST" --query "SecretString" | cut -f2,3 -d":" | sed -e 's/[\\\"\}]//g')
+      - export GIT_HASH=$(git rev-parse HEAD)
+      # Build library and test
+      - python3 -c "from urllib.request import urlretrieve; urlretrieve('$BUILDER_HOST/$BUILDER_SOURCE/$BUILDER_VERSION/builder.pyz?run=$CODEBUILD_BUILD_ID', 'builder.pyz')"
+      - python3 builder.pyz build -p aws-c-mqtt
+      # Canary related:
+      # ==========
+      - echo run canary test through wrapper
+      # Start canary
+      - python3 codebuild/CanaryWrapper.py --canary_executable $CANNARY_TEST_EXE --canary_arguments "-s ${CANARY_DURATION} -t ${CANARY_THREADS} -T ${CANARY_TPS} -C ${CANARY_CLIENT_COUNT} -l ${CANARY_LOG_FILE} -v ${CANARY_LOG_LEVEL} endpoint ${ENDPOINT}" --git_hash ${GIT_HASH} --git_repo_name $PACKAGE_NAME --codebuild_log_path $CODEBUILD_LOG_PATH
+      - aws s3 cp ./${CANARY_LOG_FILE} ${S3_DST}log/${GIT_HASH}/
+      # Upload built canary test build result to s3 bucket
+      - zip -r latestBuild.zip build/install
+      - aws s3 cp ./latestBuild.zip ${S3_DST}build/latest
+      # Upload latest source to S3 bucket
+      - find * -type f ! -perm +r -exec zip latestSnapshot.zip {} +
+      - aws s3 cp ./latestSnapshot.zip ${S3_DST}source/latest
+      # ==========
+
+  post_build:
+    commands:
+      - echo Build completed on `date`

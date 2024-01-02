@@ -1,14 +1,22 @@
 include(CMakeFindDependencyMacro)
 
-find_dependency(aws-c-io)
+find_dependency(aws-c-http)
 
-if (@MQTT_WITH_WEBSOCKETS@)
-    find_dependency(aws-c-http)
-endif()
+macro(aws_load_targets type)
+    include(${CMAKE_CURRENT_LIST_DIR}/${type}/@PROJECT_NAME@-targets.cmake)
+endmacro()
 
-if (BUILD_SHARED_LIBS)
-    include(${CMAKE_CURRENT_LIST_DIR}/shared/@PROJECT_NAME@-targets.cmake)
+# try to load the lib follow BUILD_SHARED_LIBS. Fall back if not exist.
+if(BUILD_SHARED_LIBS)
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/shared")
+        aws_load_targets(shared)
+    else()
+        aws_load_targets(static)
+    endif()
 else()
-    include(${CMAKE_CURRENT_LIST_DIR}/static/@PROJECT_NAME@-targets.cmake)
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/static")
+        aws_load_targets(static)
+    else()
+        aws_load_targets(shared)
+    endif()
 endif()
-

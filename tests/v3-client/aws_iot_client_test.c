@@ -23,8 +23,6 @@
 #include <aws/common/thread.h>
 #include <aws/common/uuid.h>
 
-#include <aws/testing/aws_test_harness.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef WIN32
@@ -351,7 +349,7 @@ int s_initialize_test(
     return AWS_OP_SUCCESS;
 }
 
-int s_cleanup_test(struct test_context *tester) {
+static void s_cleanup_test(struct test_context *tester) {
     aws_tls_connection_options_clean_up(&tester->tls_connection_options);
 
     aws_mqtt_client_connection_release(tester->connection);
@@ -372,8 +370,6 @@ int s_cleanup_test(struct test_context *tester) {
     aws_condition_variable_clean_up(&tester->signal);
 
     aws_mqtt_library_clean_up();
-
-    return AWS_OP_SUCCESS;
 }
 
 int main(int argc, char **argv) {
@@ -437,15 +433,15 @@ int main(int argc, char **argv) {
 
     s_wait_on_tester_predicate(&tester, s_all_packets_received_cond);
 
-    ASSERT_UINT_EQUALS(PUBLISHES, tester.packets_gotten);
+    AWS_FATAL_ASSERT(PUBLISHES == tester.packets_gotten);
 
     aws_mqtt_client_connection_disconnect(tester.connection, s_mqtt_on_disconnect, &tester);
 
     s_wait_on_tester_predicate(&tester, s_received_on_disconnect_pred);
 
-    ASSERT_SUCCESS(s_cleanup_test(&tester));
+    s_cleanup_test(&tester);
 
-    ASSERT_UINT_EQUALS(0, aws_mem_tracer_count(allocator));
+    AWS_FATAL_ASSERT(0 == aws_mem_tracer_count(allocator));
     allocator = aws_mem_tracer_destroy(allocator);
 
     return AWS_OP_SUCCESS;

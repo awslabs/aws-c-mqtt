@@ -20,7 +20,7 @@ static size_t s_sizeof_encoded_buffer(struct aws_byte_cursor *buf) {
 static int s_encode_buffer(struct aws_byte_buf *buf, const struct aws_byte_cursor cur) {
 
     AWS_PRECONDITION(buf);
-    AWS_PRECONDITION(cur.ptr && cur.len);
+    AWS_PRECONDITION(aws_byte_cursor_is_valid(&cur));
 
     /* Make sure the buffer isn't too big */
     if (cur.len > UINT16_MAX) {
@@ -584,7 +584,7 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
     /*************************************************************************/
     /* Payload                                                               */
     packet->payload = aws_byte_cursor_advance(cur, payload_size);
-    if (packet->payload.len == 0) {
+    if (packet->payload.len != payload_size) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -593,6 +593,10 @@ int aws_mqtt_packet_publish_decode(struct aws_byte_cursor *cur, struct aws_mqtt_
 
 bool aws_mqtt_packet_publish_get_dup(const struct aws_mqtt_packet_publish *packet) {
     return packet->fixed_header.flags & (1 << 3); /* bit 3 */
+}
+
+void aws_mqtt_packet_publish_set_dup(struct aws_mqtt_packet_publish *packet) {
+    packet->fixed_header.flags |= 0x08;
 }
 
 enum aws_mqtt_qos aws_mqtt_packet_publish_get_qos(const struct aws_mqtt_packet_publish *packet) {

@@ -28,6 +28,7 @@ struct mqtt_mock_server_handler {
 
         size_t ping_resp_avail;
         size_t pubacks_received;
+        size_t ping_received;
         size_t connacks_avail;
         bool auto_ack;
 
@@ -111,6 +112,7 @@ static int s_mqtt_mock_server_handler_process_packet(
             size_t ping_resp_available = 0;
             aws_mutex_lock(&server->synced.lock);
             ping_resp_available = server->synced.ping_resp_avail > 0 ? server->synced.ping_resp_avail-- : 0;
+            server->synced.ping_received += 1;
             aws_mutex_unlock(&server->synced.lock);
 
             if (ping_resp_available) {
@@ -185,7 +187,9 @@ static int s_mqtt_mock_server_handler_process_packet(
             bool auto_ack = server->synced.auto_ack;
             aws_mutex_unlock(&server->synced.lock);
 
-            if (auto_ack) {
+            uint8_t qos = (publish_packet.fixed_header.flags >> 1) & 0x3;
+            // Do not send puback if qos0
+            if (auto_ack && qos != 0) {
                 struct aws_io_message *puback_msg =
                     aws_channel_acquire_message_from_pool(server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
                 struct aws_mqtt_packet_ack puback;
@@ -305,8 +309,9 @@ static struct mqtt_mock_server_send_args *s_mqtt_send_args_create(struct mqtt_mo
     return args;
 }
 
-int mqtt_mock_server_send_publish(
+int mqtt_mock_server_send_publish_by_id(
     struct aws_channel_handler *handler,
+    uint16_t packet_id,
     struct aws_byte_cursor *topic,
     struct aws_byte_cursor *payload,
     bool dup,
@@ -317,17 +322,29 @@ int mqtt_mock_server_send_publish(
 
     struct mqtt_mock_server_send_args *args = s_mqtt_send_args_create(server);
 
-    aws_mutex_lock(&server->synced.lock);
-    uint16_t id = qos == 0 ? 0 : ++server->synced.last_packet_id;
-    aws_mutex_unlock(&server->synced.lock);
-
     struct aws_mqtt_packet_publish publish;
-    ASSERT_SUCCESS(aws_mqtt_packet_publish_init(&publish, retain, qos, dup, *topic, id, *payload));
+    ASSERT_SUCCESS(aws_mqtt_packet_publish_init(&publish, retain, qos, dup, *topic, packet_id, *payload));
     ASSERT_SUCCESS(aws_mqtt_packet_publish_encode(&args->data, &publish));
 
     aws_channel_schedule_task_now(server->slot->channel, &args->task);
 
     return AWS_OP_SUCCESS;
+}
+
+int mqtt_mock_server_send_publish(
+    struct aws_channel_handler *handler,
+    struct aws_byte_cursor *topic,
+    struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain) {
+
+    struct mqtt_mock_server_handler *server = handler->impl;
+    aws_mutex_lock(&server->synced.lock);
+    uint16_t id = qos == 0 ? 0 : ++server->synced.last_packet_id;
+    aws_mutex_unlock(&server->synced.lock);
+
+    return mqtt_mock_server_send_publish_by_id(handler, id, topic, payload, dup, qos, retain);
 }
 
 int mqtt_mock_server_send_single_suback(
@@ -703,6 +720,7 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
                 packet->packet_identifier = publish_packet.packet_identifier;
                 packet->topic_name = publish_packet.topic_name;
                 packet->publish_payload = publish_packet.payload;
+                packet->duplicate = aws_mqtt_packet_publish_get_dup(&publish_packet);
                 break;
             }
             case AWS_MQTT_PACKET_PUBACK: {
@@ -724,4 +742,12 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler) {
     server->synced.decoded_index = length;
     aws_mutex_unlock(&server->synced.lock);
     return AWS_OP_SUCCESS;
+}
+
+size_t mqtt_mock_server_get_ping_count(struct aws_channel_handler *handler) {
+    struct mqtt_mock_server_handler *server = handler->impl;
+    aws_mutex_lock(&server->synced.lock);
+    size_t count = server->synced.ping_received;
+    aws_mutex_unlock(&server->synced.lock);
+    return count;
 }

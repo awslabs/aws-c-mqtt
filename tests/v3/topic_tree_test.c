@@ -141,6 +141,12 @@ static int s_mqtt_topic_tree_unsubscribe_fn(struct aws_allocator *allocator, voi
 
     ASSERT_SUCCESS(aws_mqtt_topic_tree_insert(
         &tree, topic_a_a_a, AWS_MQTT_QOS_AT_MOST_ONCE, &on_publish, s_string_clean_up, topic_a_a_a));
+    /* At this moment, the topic_a_a was not inserted. Though the remove returns a success, the topic_a_a_a should still
+     * remained in the tree.
+     * The test is inspired by the ticket: https://github.com/awslabs/aws-crt-nodejs/issues/405. There was a crash when
+     * we unsubscribe from an unsubscribed parent topic.
+     * We fixed the issue in https://github.com/awslabs/aws-c-mqtt/pull/297 */
+    ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a));
     ASSERT_SUCCESS(aws_mqtt_topic_tree_remove(&tree, &s_topic_a_a_a));
     /* Re-create, it was nuked by remove. */
     topic_a_a_a = aws_string_new_from_array(allocator, s_topic_a_a_a.ptr, s_topic_a_a_a.len);
@@ -310,18 +316,55 @@ static int s_mqtt_topic_validation_fn(struct aws_allocator *allocator, void *ctx
         struct aws_byte_cursor topic_cursor;                                                                           \
         topic_cursor.ptr = (uint8_t *)(topic);                                                                         \
         topic_cursor.len = strlen(topic);                                                                              \
-        ASSERT_##expected(aws_mqtt_is_valid_topic_filter(&topic_cursor));                                              \
+        ASSERT_##expected(aws_mqtt_is_valid_topic(&topic_cursor));                                                     \
     } while (false)
 
-    ASSERT_TOPIC_VALIDITY(TRUE, "#");
-    ASSERT_TOPIC_VALIDITY(TRUE, "sport/tennis/#");
+    ASSERT_TOPIC_VALIDITY(TRUE, "/");
+    ASSERT_TOPIC_VALIDITY(TRUE, "a/");
+    ASSERT_TOPIC_VALIDITY(TRUE, "/b");
+    ASSERT_TOPIC_VALIDITY(TRUE, "a/b/c");
+
+    ASSERT_TOPIC_VALIDITY(FALSE, "#");
+    ASSERT_TOPIC_VALIDITY(FALSE, "sport/tennis/#");
     ASSERT_TOPIC_VALIDITY(FALSE, "sport/tennis#");
     ASSERT_TOPIC_VALIDITY(FALSE, "sport/tennis/#/ranking");
-
-    ASSERT_TOPIC_VALIDITY(TRUE, "+");
-    ASSERT_TOPIC_VALIDITY(TRUE, "+/tennis/#");
-    ASSERT_TOPIC_VALIDITY(TRUE, "sport/+/player1");
+    ASSERT_TOPIC_VALIDITY(FALSE, "");
+    ASSERT_TOPIC_VALIDITY(FALSE, "+");
+    ASSERT_TOPIC_VALIDITY(FALSE, "+/tennis/#");
+    ASSERT_TOPIC_VALIDITY(FALSE, "sport/+/player1");
     ASSERT_TOPIC_VALIDITY(FALSE, "sport+");
+
+    ASSERT_TOPIC_VALIDITY(FALSE, "\x41/\xED\xBF\xBF/\x41");
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_topic_filter_validation, s_mqtt_topic_filter_validation_fn)
+static int s_mqtt_topic_filter_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+#define ASSERT_TOPIC_FILTER_VALIDITY(expected, topic_filter)                                                           \
+    do {                                                                                                               \
+        struct aws_byte_cursor topic_filter_cursor;                                                                    \
+        topic_filter_cursor.ptr = (uint8_t *)(topic_filter);                                                           \
+        topic_filter_cursor.len = strlen(topic_filter);                                                                \
+        ASSERT_##expected(aws_mqtt_is_valid_topic_filter(&topic_filter_cursor));                                       \
+    } while (false)
+
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "#");
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "sport/tennis/#");
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "sport/tennis#");
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "sport/tennis/#/ranking");
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "");
+
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "+/");
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "+");
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "+/tennis/#");
+    ASSERT_TOPIC_FILTER_VALIDITY(TRUE, "sport/+/player1");
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "sport+");
+
+    ASSERT_TOPIC_FILTER_VALIDITY(FALSE, "\x41/\xED\xA0\x80/\x41");
 
     return AWS_OP_SUCCESS;
 }

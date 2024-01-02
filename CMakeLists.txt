@@ -1,10 +1,13 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-mqtt C)
 
-option(MQTT_WITH_WEBSOCKETS "Enable MQTT connections over websockets. Requires aws-c-http. " ON)
-
 if (POLICY CMP0069)
     cmake_policy(SET CMP0069 NEW) # Enable LTO/IPO if available in the compiler, see AwsCFlags
+endif()
+
+option(ASSERT_LOCK_HELD "Enable ASSERT_SYNCED_DATA_LOCK_HELD for checking thread issue" OFF)
+if (ASSERT_LOCK_HELD)
+    add_definitions(-DASSERT_LOCK_HELD)
 endif()
 
 if (DEFINED CMAKE_PREFIX_PATH)
@@ -43,8 +46,13 @@ file(GLOB AWS_MQTT_HEADERS
         "include/aws/mqtt/*.h"
         )
 
+file(GLOB AWS_MQTT5_HEADERS
+        "include/aws/mqtt/v5/*.h"
+        )
+
 file(GLOB AWS_MQTT_PRIV_HEADERS
         "include/aws/mqtt/private/*.h"
+        "include/aws/mqtt/private/v5/*.h"
         )
 
 file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
@@ -53,11 +61,16 @@ file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
 
 file(GLOB AWS_MQTT_SRC
         "source/*.c"
+        "source/v5/*.c"
         )
 
 file(GLOB MQTT_HEADERS
         ${AWS_MQTT_HEADERS}
         ${AWS_MQTT_PRIV_HEADERS}
+        )
+
+file(GLOB AWS_MQTT5_HEADERS
+        ${AWS_MQTT5_HEADERS}
         )
 
 file(GLOB MQTT_SRC
@@ -67,7 +80,7 @@ file(GLOB MQTT_SRC
 add_library(${PROJECT_NAME} ${MQTT_HEADERS} ${MQTT_SRC})
 aws_set_common_properties(${PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_MQTT")
-aws_check_headers(${PROJECT_NAME} ${MQTT_HEADERS})
+aws_check_headers(${PROJECT_NAME} ${AWS_MQTT_HEADERS} ${AWS_MQTT5_HEADERS})
 
 aws_add_sanitizers(${PROJECT_NAME})
 
@@ -78,17 +91,13 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-aws_use_package(aws-c-io)
-
-if (MQTT_WITH_WEBSOCKETS)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_MQTT_WITH_WEBSOCKETS")
-    aws_use_package(aws-c-http)
-endif ()
+aws_use_package(aws-c-http)
 
 target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
 install(FILES ${AWS_MQTT_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt" COMPONENT Development)
+install(FILES ${AWS_MQTT5_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/v5" COMPONENT Development)
 install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/testing/mqtt" COMPONENT Development)
 install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/private" COMPONENT Development)
 
@@ -116,5 +125,7 @@ if (BUILD_TESTING)
     add_subdirectory(tests)
     if (NOT CMAKE_CROSSCOMPILING )
         add_subdirectory(bin/elastipubsub)
+        add_subdirectory(bin/elastipubsub5)
+        add_subdirectory(bin/mqtt5canary)
     endif()
 endif ()
