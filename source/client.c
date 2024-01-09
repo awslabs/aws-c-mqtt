@@ -1946,8 +1946,7 @@ static void s_subscribe_complete(
             err |= aws_array_list_get_at(&task_arg->topics, &topic, i);
             struct aws_mqtt_topic_subscription *subscription = &topic->request;
             // If subscribe complete with error, set the qos value to AWS_MQTT_QOS_FAILURE
-            if(error_code != AWS_OP_SUCCESS)
-            {
+            if (error_code != AWS_OP_SUCCESS) {
                 subscription->qos = AWS_MQTT_QOS_FAILURE;
             }
             err |= aws_array_list_push_back(&cb_list, &subscription);
@@ -1958,17 +1957,11 @@ static void s_subscribe_complete(
     } else if (task_arg->on_suback.single) {
         // The topic->request.qos should be already updated to returned qos
         enum aws_mqtt_qos returned_qos = topic->request.qos;
-        if (error_code != AWS_OP_SUCCESS)
-        {
+        if (error_code != AWS_OP_SUCCESS) {
             returned_qos = AWS_MQTT_QOS_FAILURE;
         }
         task_arg->on_suback.single(
-            &connection->base,
-            packet_id,
-            &topic->request.topic,
-            returned_qos,
-            error_code,
-            task_arg->on_suback_ud);
+            &connection->base, packet_id, &topic->request.topic, returned_qos, error_code, task_arg->on_suback_ud);
     }
     for (size_t i = 0; i < list_len; i++) {
         aws_array_list_get_at(&task_arg->topics, &topic, i);
@@ -2134,17 +2127,10 @@ static void s_subscribe_single_complete(
         aws_mqtt_suback_fn *suback = task_arg->on_suback.single;
         // The topic->request.qos should be already updated to returned qos
         enum aws_mqtt_qos returned_qos = topic->request.qos;
-        if (error_code != AWS_OP_SUCCESS)
-        {
+        if (error_code != AWS_OP_SUCCESS) {
             returned_qos = AWS_MQTT_QOS_FAILURE;
         }
-        suback(
-            &connection->base,
-            packet_id,
-            &topic->request.topic,
-            returned_qos,
-            error_code,
-            task_arg->on_suback_ud);
+        suback(&connection->base, packet_id, &topic->request.topic, returned_qos, error_code, task_arg->on_suback_ud);
     }
     s_task_topic_release(topic);
     aws_array_list_clean_up(&task_arg->topics);
