@@ -1945,17 +1945,28 @@ static void s_subscribe_complete(
         for (size_t i = 0; i < list_len; i++) {
             err |= aws_array_list_get_at(&task_arg->topics, &topic, i);
             struct aws_mqtt_topic_subscription *subscription = &topic->request;
+            // If subscribe complete with error, set the qos value to AWS_MQTT_QOS_FAILURE
+            if(error_code != AWS_OP_SUCCESS)
+            {
+                subscription->qos = AWS_MQTT_QOS_FAILURE;
+            }
             err |= aws_array_list_push_back(&cb_list, &subscription);
         }
         AWS_ASSUME(!err);
         task_arg->on_suback.multi(&connection->base, packet_id, &cb_list, error_code, task_arg->on_suback_ud);
         aws_array_list_clean_up(&cb_list);
     } else if (task_arg->on_suback.single) {
+        // The topic->request.qos should be already updated to returned qos
+        enum aws_mqtt_qos returned_qos = topic->request.qos;
+        if (error_code != AWS_OP_SUCCESS)
+        {
+            returned_qos = AWS_MQTT_QOS_FAILURE;
+        }
         task_arg->on_suback.single(
             &connection->base,
             packet_id,
             &topic->request.topic,
-            topic->request.qos,
+            returned_qos,
             error_code,
             task_arg->on_suback_ud);
     }
@@ -2121,11 +2132,17 @@ static void s_subscribe_single_complete(
     if (task_arg->on_suback.single) {
         AWS_ASSUME(aws_string_is_valid(topic->filter));
         aws_mqtt_suback_fn *suback = task_arg->on_suback.single;
+        // The topic->request.qos should be already updated to returned qos
+        enum aws_mqtt_qos returned_qos = topic->request.qos;
+        if (error_code != AWS_OP_SUCCESS)
+        {
+            returned_qos = AWS_MQTT_QOS_FAILURE;
+        }
         suback(
             &connection->base,
             packet_id,
             &topic->request.topic,
-            topic->request.qos,
+            returned_qos,
             error_code,
             task_arg->on_suback_ud);
     }

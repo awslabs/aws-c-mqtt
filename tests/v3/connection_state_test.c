@@ -399,13 +399,15 @@ static int s_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_
     if (!setup_result) {
         struct mqtt_connection_state_test *state_test_data = ctx;
 
-        s_received_publish_packet_list_clean_up(&state_test_data->published_messages);
-        s_received_publish_packet_list_clean_up(&state_test_data->any_published_messages);
-        aws_array_list_clean_up(&state_test_data->qos_returned);
         aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
 
         s_wait_for_termination_to_complete(state_test_data);
         ASSERT_UINT_EQUALS(1, state_test_data->connection_termination_calls);
+
+        // Clean up the state_test_data after the client is terminated.
+        s_received_publish_packet_list_clean_up(&state_test_data->published_messages);
+        s_received_publish_packet_list_clean_up(&state_test_data->any_published_messages);
+        aws_array_list_clean_up(&state_test_data->qos_returned);
 
         aws_mqtt_client_release(state_test_data->mqtt_client);
         aws_client_bootstrap_release(state_test_data->client_bootstrap);
@@ -582,9 +584,8 @@ static void s_on_suback(
     struct mqtt_connection_state_test *state_test_data = userdata;
 
     aws_mutex_lock(&state_test_data->lock);
-    if (!error_code) {
-        aws_array_list_push_back(&state_test_data->qos_returned, &qos);
-    }
+    aws_array_list_push_back(&state_test_data->qos_returned, &qos);
+
     state_test_data->subscribe_completed = true;
     state_test_data->subscribe_complete_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
@@ -619,14 +620,14 @@ static void s_on_multi_suback(
 
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->subscribe_completed = true;
-    if (!error_code) {
-        size_t length = aws_array_list_length(topic_subacks);
-        for (size_t i = 0; i < length; ++i) {
-            struct aws_mqtt_topic_subscription *subscription = NULL;
-            aws_array_list_get_at(topic_subacks, &subscription, i);
-            aws_array_list_push_back(&state_test_data->qos_returned, &subscription->qos);
-        }
+
+    size_t length = aws_array_list_length(topic_subacks);
+    for (size_t i = 0; i < length; ++i) {
+        struct aws_mqtt_topic_subscription *subscription = NULL;
+        aws_array_list_get_at(topic_subacks, &subscription, i);
+        aws_array_list_push_back(&state_test_data->qos_returned, &subscription->qos);
     }
+
     aws_mutex_unlock(&state_test_data->lock);
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
