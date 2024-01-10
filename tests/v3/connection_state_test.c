@@ -1465,6 +1465,76 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
+/* Subscribe to a topic and release the client, the subscribe should fail */
+static int s_test_mqtt_connect_subscribe_fail_after_client_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .protocol_operation_timeout_ms = 3000,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    struct aws_byte_cursor sub_topic = aws_byte_cursor_from_c_str("/test/topic");
+
+    uint16_t packet_id = aws_mqtt_client_connection_subscribe(
+        state_test_data->mqtt_connection,
+        &sub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        s_on_publish_received,
+        state_test_data,
+        NULL,
+        s_on_suback,
+        state_test_data);
+    ASSERT_TRUE(packet_id > 0);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
+
+    s_wait_for_termination_to_complete(state_test_data);
+    ASSERT_UINT_EQUALS(1, state_test_data->connection_termination_calls);
+    state_test_data->mqtt_connection = NULL;
+
+    /* Check the subscribe has been completed after shutdown */
+    s_wait_for_subscribe_to_complete(state_test_data);
+
+    size_t length = aws_array_list_length(&state_test_data->qos_returned);
+    ASSERT_UINT_EQUALS(1, length);
+    uint8_t qos = 0;
+    ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 0));
+    ASSERT_UINT_EQUALS(AWS_MQTT_QOS_FAILURE, qos);
+    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_TIMEOUT);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connect_subscribe_fail_after_client_shutdown,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connect_subscribe_fail_after_client_shutdown_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
 /* Subscribe to multiple topics prior to connection, make a CONNECT, have the server send PUBLISH messages,
  * make sure they're received, then send a DISCONNECT. */
 static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void *ctx) {
