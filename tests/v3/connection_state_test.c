@@ -292,6 +292,22 @@ static void s_on_connection_termination_fn(void *userdata) {
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
 
+/**
+ * Release/terminate the connection, the `mqtt_connection` would be set to NULL after the function call.
+ * The function would set the `connection_terminated` flag so the termination step would be skipped in cleanup.
+ */
+static void s_terminate_connection(void *arg) {
+    struct mqtt_connection_state_test *state_test_data = arg;
+    aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
+
+    s_wait_for_termination_to_complete(state_test_data);
+    // Set `connection_terminated` flag to skip the termination in `s_clean_up_mqtt_server_fn`
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->mqtt_connection = NULL;
+    state_test_data->connection_terminated = true;
+    aws_mutex_unlock(&state_test_data->lock);
+}
+
 /** sets up a unix domain socket server and socket options. Creates an mqtt connection configured to use
  * the domain socket.
  */
@@ -628,6 +644,7 @@ static void s_on_multi_suback(
         aws_array_list_push_back(&state_test_data->qos_returned, &subscription->qos);
     }
 
+    state_test_data->subscribe_complete_error = error_code;
     aws_mutex_unlock(&state_test_data->lock);
     aws_condition_variable_notify_one(&state_test_data->cvar);
 }
@@ -1488,10 +1505,6 @@ static int s_test_mqtt_connect_subscribe_fail_after_client_shutdown_fn(struct aw
     /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
     mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
 
-    aws_mutex_lock(&state_test_data->lock);
-    state_test_data->expected_ops_completed = 1;
-    aws_mutex_unlock(&state_test_data->lock);
-
     struct aws_byte_cursor sub_topic = aws_byte_cursor_from_c_str("/test/topic");
 
     uint16_t packet_id = aws_mqtt_client_connection_subscribe(
@@ -1509,11 +1522,7 @@ static int s_test_mqtt_connect_subscribe_fail_after_client_shutdown_fn(struct aw
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
 
-    aws_mqtt_client_connection_release(state_test_data->mqtt_connection);
-
-    s_wait_for_termination_to_complete(state_test_data);
-    ASSERT_UINT_EQUALS(1, state_test_data->connection_termination_calls);
-    state_test_data->mqtt_connection = NULL;
+    s_terminate_connection(state_test_data);
 
     /* Check the subscribe has been completed after shutdown */
     s_wait_for_subscribe_to_complete(state_test_data);
@@ -1523,7 +1532,7 @@ static int s_test_mqtt_connect_subscribe_fail_after_client_shutdown_fn(struct aw
     uint8_t qos = 0;
     ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 0));
     ASSERT_UINT_EQUALS(AWS_MQTT_QOS_FAILURE, qos);
-    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_TIMEOUT);
+    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_CONNECTION_DESTROYED);
 
     return AWS_OP_SUCCESS;
 }
@@ -1682,6 +1691,86 @@ AWS_TEST_CASE_FIXTURE(
     mqtt_connect_subscribe_multi,
     s_setup_mqtt_server_fn,
     s_test_mqtt_subscribe_multi_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/* Subscribe to multiple topics prior to connection, make a CONNECT, have the server send PUBLISH messages,
+ * make sure they're received, then send a DISCONNECT. */
+static int s_test_mqtt_subscribe_multi_fail_after_client_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = s_on_connection_complete_fn,
+    };
+
+    struct aws_byte_cursor sub_topic_1 = aws_byte_cursor_from_c_str("/test/topic1");
+    struct aws_byte_cursor sub_topic_2 = aws_byte_cursor_from_c_str("/test/topic2");
+
+    struct aws_mqtt_topic_subscription sub1 = {
+        .topic = sub_topic_1,
+        .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        .on_publish = s_on_publish_received,
+        .on_cleanup = NULL,
+        .on_publish_ud = state_test_data,
+    };
+    struct aws_mqtt_topic_subscription sub2 = {
+        .topic = sub_topic_2,
+        .qos = AWS_MQTT_QOS_AT_LEAST_ONCE,
+        .on_publish = s_on_publish_received,
+        .on_cleanup = NULL,
+        .on_publish_ud = state_test_data,
+    };
+
+    struct aws_array_list topic_filters;
+    size_t list_len = 2;
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, static_buf, list_len * sizeof(struct aws_mqtt_topic_subscription));
+    aws_array_list_init_static(&topic_filters, static_buf, list_len, sizeof(struct aws_mqtt_topic_subscription));
+
+    aws_array_list_push_back(&topic_filters, &sub1);
+    aws_array_list_push_back(&topic_filters, &sub2);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    s_wait_for_connection_to_complete(state_test_data);
+
+    /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    uint16_t packet_id = aws_mqtt_client_connection_subscribe_multiple(
+        state_test_data->mqtt_connection, &topic_filters, s_on_multi_suback, state_test_data);
+    ASSERT_TRUE(packet_id > 0);
+
+    ASSERT_SUCCESS(
+        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
+    s_wait_for_disconnect_to_complete(state_test_data);
+
+    s_terminate_connection(state_test_data);
+
+    /* Check the subscribe has been completed after shutdown */
+    s_wait_for_subscribe_to_complete(state_test_data);
+
+    /* Check the subscribe returned QoS is expected */
+    size_t length = aws_array_list_length(&state_test_data->qos_returned);
+    ASSERT_UINT_EQUALS(2, length);
+    uint8_t qos = 0;
+    ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 0));
+    ASSERT_UINT_EQUALS(AWS_MQTT_QOS_FAILURE, qos);
+    ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 1));
+    ASSERT_UINT_EQUALS(AWS_MQTT_QOS_FAILURE, qos);
+    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_CONNECTION_DESTROYED);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connect_subscribe_multi_fail_after_client_shutdown,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_subscribe_multi_fail_after_client_shutdown_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
 
