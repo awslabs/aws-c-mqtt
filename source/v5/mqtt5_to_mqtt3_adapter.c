@@ -199,7 +199,7 @@ struct aws_mqtt_adapter_connect_task {
     struct aws_mqtt_client_connection_5_impl *adapter;
 
     struct aws_byte_buf host_name;
-    uint16_t port;
+    uint32_t port;
     struct aws_socket_options socket_options;
     struct aws_tls_connection_options *tls_options_ptr;
     struct aws_tls_connection_options tls_options;

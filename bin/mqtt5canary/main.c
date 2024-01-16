@@ -45,7 +45,7 @@ struct app_ctx {
     struct aws_mutex lock;
     struct aws_condition_variable signal;
     struct aws_uri uri;
-    uint16_t port;
+    uint32_t port;
     const char *cacert;
     const char *cert;
     const char *key;
@@ -181,7 +181,7 @@ static void s_parse_options(
                 ctx->use_websockets = true;
                 break;
             case 'p':
-                ctx->port = (uint16_t)atoi(aws_cli_optarg);
+                ctx->port = (uint32_t)atoi(aws_cli_optarg);
                 break;
             case 't':
                 tester_options->elg_max_threads = (uint16_t)atoi(aws_cli_optarg);

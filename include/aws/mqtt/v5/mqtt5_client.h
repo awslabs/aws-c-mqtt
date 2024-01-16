@@ -6,14 +6,6 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-/**
- * DEVELOPER PREVIEW DISCLAIMER
- *
- * MQTT5 support is currently in **developer preview**.  We encourage feedback at all times, but feedback during the
- * preview window is especially valuable in shaping the final product.  During the preview period we may make
- * backwards-incompatible changes to the public API, but in general, this is something we will try our best to avoid.
- */
-
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/io/retry_strategy.h>
@@ -534,7 +526,7 @@ struct aws_mqtt5_client_options {
     /**
      * Port to establish mqtt connections to
      */
-    uint16_t port;
+    uint32_t port;
 
     /**
      * Client bootstrap to use whenever this client establishes a connection
