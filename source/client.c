@@ -1956,12 +1956,16 @@ static void s_subscribe_complete(
         aws_array_list_clean_up(&cb_list);
     } else if (task_arg->on_suback.single) {
         // The topic->request.qos should be already updated to returned qos
-        enum aws_mqtt_qos returned_qos = topic->request.qos;
         if (error_code != AWS_OP_SUCCESS) {
-            returned_qos = AWS_MQTT_QOS_FAILURE;
+            topic->request.qos = AWS_MQTT_QOS_FAILURE;
         }
         task_arg->on_suback.single(
-            &connection->base, packet_id, &topic->request.topic, returned_qos, error_code, task_arg->on_suback_ud);
+            &connection->base,
+            packet_id,
+            &topic->request.topic,
+            topic->request.qos,
+            error_code,
+            task_arg->on_suback_ud);
     }
     for (size_t i = 0; i < list_len; i++) {
         aws_array_list_get_at(&task_arg->topics, &topic, i);

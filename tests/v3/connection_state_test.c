@@ -1482,7 +1482,7 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-/* Subscribe to a topic and release the client, the subscribe should fail */
+/* Subscribe to a topic and release the client, the subscription should fail */
 static int s_test_mqtt_connect_subscribe_fail_after_client_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
@@ -1694,8 +1694,7 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
-/* Subscribe to multiple topics prior to connection, make a CONNECT, have the server send PUBLISH messages,
- * make sure they're received, then send a DISCONNECT. */
+/* Disable the Subscribe to multiple topics and release the client without server acks, the subscribe should fail */
 static int s_test_mqtt_subscribe_multi_fail_after_client_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
