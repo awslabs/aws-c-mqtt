@@ -63,7 +63,7 @@ struct aws_mqtt_protocol_adapter_options {
 
 struct aws_mqtt_protocol_adapter_vtable {
 
-    void (*aws_mqtt_protocol_adapter_release_fn)(void *);
+    void (*aws_mqtt_protocol_adapter_delete_fn)(void *);
 
     int (*aws_mqtt_protocol_adapter_subscribe_fn)(void *, struct aws_protocol_adapter_subscribe_options *);
 
@@ -83,7 +83,7 @@ AWS_MQTT_API struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_fro
 
 AWS_MQTT_API struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(struct aws_allocator *allocator, struct aws_mqtt_protocol_adapter_options *options, struct aws_mqtt5_client *client);
 
-AWS_MQTT_API void aws_mqtt_protocol_adapter_release(struct aws_mqtt_protocol_adapter *adapter);
+AWS_MQTT_API void aws_mqtt_protocol_adapter_delete(struct aws_mqtt_protocol_adapter *adapter);
 
 AWS_MQTT_API int aws_mqtt_protocol_adapter_subscribe(struct aws_mqtt_protocol_adapter *adapter, struct aws_protocol_adapter_subscribe_options *options);
 
