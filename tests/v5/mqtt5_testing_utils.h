@@ -218,6 +218,11 @@ int aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success(
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data);
 
+int aws_mqtt5_mock_server_send_packet(
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    enum aws_mqtt5_packet_type packet_type,
+    void *packet);
+
 extern const struct aws_string *g_default_client_id;
 
 #define RECONNECT_TEST_MIN_BACKOFF 500

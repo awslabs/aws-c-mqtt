@@ -10,7 +10,6 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
-#include <aws/mqtt/client.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
@@ -18,38 +17,11 @@
 
 #include <aws/testing/aws_test_harness.h>
 
-#include <inttypes.h>
 #include <math.h>
-
-#define TEST_IO_MESSAGE_LENGTH 4096
 
 static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_time, double percentage) {
     double actual_percent = 1.0 - (double)actual_time / (double)expected_time;
     return fabs(actual_percent) <= percentage;
-}
-
-int aws_mqtt5_mock_server_send_packet(
-    struct aws_mqtt5_server_mock_connection_context *connection,
-    enum aws_mqtt5_packet_type packet_type,
-    void *packet) {
-    aws_mqtt5_encoder_append_packet_encoding(&connection->encoder, packet_type, packet);
-
-    struct aws_io_message *message = aws_channel_acquire_message_from_pool(
-        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, TEST_IO_MESSAGE_LENGTH);
-    if (message == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    enum aws_mqtt5_encoding_result result =
-        aws_mqtt5_encoder_encode_to_buffer(&connection->encoder, &message->message_data);
-    AWS_FATAL_ASSERT(result == AWS_MQTT5_ER_FINISHED);
-
-    if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-        aws_mem_release(message->allocator, message);
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
 }
 
 int aws_mqtt5_mock_server_handle_connect_always_succeed(

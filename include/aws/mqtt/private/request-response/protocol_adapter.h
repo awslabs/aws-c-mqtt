@@ -28,20 +28,21 @@ struct aws_protocol_adapter_publish_options {
     struct aws_byte_cursor topic;
     struct aws_byte_cursor payload;
 
-    void (*completion_callback_fn)(int, void *);
+    void (*completion_callback_fn)(bool, void *);
     void *user_data;
     uint32_t ack_timeout_seconds;
 };
 
-enum aws_protocol_adapter_subscription_status_update {
-    AWS_PASS_ESTABLISHMENT_SUCCESS,
-    AWS_PASS_ESTABLISHMENT_FAILURE,
-    AWS_PASS_REMOVED
+enum aws_protocol_adapter_subscription_event_type {
+    AWS_PASET_SUBSCRIBE_SUCCESS,
+    AWS_PASET_SUBSCRIBE_FAILURE,
+    AWS_PASET_UNSUBSCRIBE_SUCCESS,
+    AWS_PASET_UNSUBSCRIBE_FAILURE,
 };
 
-struct aws_protocol_adapter_subscription_status_update_event {
+struct aws_protocol_adapter_subscription_event {
     struct aws_byte_cursor topic_filter;
-    enum aws_protocol_adapter_subscription_status_update status_update;
+    enum aws_protocol_adapter_subscription_event_type event_type;
 };
 
 struct aws_protocol_adapter_incoming_publish_event {
@@ -49,14 +50,26 @@ struct aws_protocol_adapter_incoming_publish_event {
     struct aws_byte_cursor payload;
 };
 
-typedef void(aws_protocol_adapter_subscription_status_fn)(struct aws_protocol_adapter_subscription_status_update_event *update, void *user_data);
+enum aws_protocol_adapter_connection_event_type {
+    AWS_PACET_OFFLINE,
+    AWS_PACET_ONLINE,
+};
+
+struct aws_protocol_adapter_connection_event {
+    enum aws_protocol_adapter_connection_event_type event_type;
+    bool rejoined_session;
+};
+
+typedef void(aws_protocol_adapter_subscription_event_fn)(struct aws_protocol_adapter_subscription_event *event, void *user_data);
 typedef void(aws_protocol_adapter_incoming_publish_fn)(struct aws_protocol_adapter_incoming_publish_event *publish, void *user_data);
 typedef void(aws_protocol_adapter_terminate_callback_fn)(void *user_data);
+typedef void(aws_protocol_adapter_connection_event_fn)(struct aws_protocol_adapter_connection_event *event, void *user_data);
 
 struct aws_mqtt_protocol_adapter_options {
-    aws_protocol_adapter_subscription_status_fn *subscription_status_update_callback;
+    aws_protocol_adapter_subscription_event_fn *subscription_event_callback;
     aws_protocol_adapter_incoming_publish_fn *incoming_publish_callback;
     aws_protocol_adapter_terminate_callback_fn *terminate_callback;
+    aws_protocol_adapter_connection_event_fn *connection_event_callback;
 
     void *user_data;
 };

@@ -442,6 +442,11 @@ add_test_case(mqtt_subscription_set_publish_single_level_wildcards)
 add_test_case(mqtt_subscription_set_publish_multi_level_wildcards)
 add_test_case(mqtt_subscription_set_get_subscriptions)
 
+add_test_case(request_response_mqtt5_protocol_adapter_subscribe_success)
+#add_test_case(request_response_mqtt5_protocol_adapter_subscribe_failure_error_code)
+#add_test_case(request_response_mqtt5_protocol_adapter_subscribe_failure_reason_code)
+#add_test_case(request_response_mqtt5_protocol_adapter_subscribe_failure_timeout)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)
