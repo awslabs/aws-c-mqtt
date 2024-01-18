@@ -58,12 +58,14 @@ struct aws_request_response_mqtt5_adapter_test_fixture {
     struct aws_array_list connection_events;
     struct aws_array_list subscription_events;
 
+    bool adapter_terminated;
+
     struct aws_mutex lock;
     struct aws_condition_variable signal;
 };
 
 
-static void s_rr_mqtt5_protocol_adapter_subscription_event(struct aws_protocol_adapter_subscription_event *event, void *user_data) {
+static void s_rr_mqtt5_protocol_adapter_test_on_subscription_event(struct aws_protocol_adapter_subscription_event *event, void *user_data) {
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture = user_data;
 
     struct request_response_protocol_adapter_subscription_event_record record = {
@@ -77,17 +79,40 @@ static void s_rr_mqtt5_protocol_adapter_subscription_event(struct aws_protocol_a
     aws_condition_variable_notify_all(&fixture->signal);
 }
 
-static void s_rr_mqtt5_protocol_adapter_incoming_publish(struct aws_protocol_adapter_incoming_publish_event *publish, void *user_data) {
+static void s_rr_mqtt5_protocol_adapter_test_on_incoming_publish(struct aws_protocol_adapter_incoming_publish_event *publish, void *user_data) {
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture = user_data;
 
+    struct request_response_protocol_adapter_incoming_publish_event_record record;
+    AWS_ZERO_STRUCT(record);
+    s_request_response_protocol_adapter_incoming_publish_event_record_init(&record, fixture->allocator, publish->topic, publish->payload);
+
+    aws_mutex_lock(&fixture->lock);
+    aws_array_list_push_back(&fixture->incoming_publish_events, &record);
+    aws_mutex_unlock(&fixture->lock);
+    aws_condition_variable_notify_all(&fixture->signal);
 }
 
-static void s_rr_mqtt5_protocol_adapter_terminate_callback(void *user_data) {
+static void s_rr_mqtt5_protocol_adapter_test_on_terminate_callback(void *user_data) {
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture = user_data;
+
+    aws_mutex_lock(&fixture->lock);
+    fixture->adapter_terminated = true;
+    aws_mutex_unlock(&fixture->lock);
+    aws_condition_variable_notify_all(&fixture->signal);
 }
 
-static void s_rr_mqtt5_protocol_adapter_connection_event(struct aws_protocol_adapter_connection_event *event, void *user_data) {
+static void s_rr_mqtt5_protocol_adapter_test_on_connection_event(struct aws_protocol_adapter_connection_event *event, void *user_data) {
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture = user_data;
+
+    struct request_response_protocol_adapter_connection_event_record record = {
+        .event_type = event->event_type,
+        .rejoined_session = event->rejoined_session
+    };
+
+    aws_mutex_lock(&fixture->lock);
+    aws_array_list_push_back(&fixture->connection_events, &record);
+    aws_mutex_unlock(&fixture->lock);
+    aws_condition_variable_notify_all(&fixture->signal);
 }
 
 static int s_aws_request_response_mqtt5_adapter_test_fixture_init(
@@ -104,10 +129,10 @@ static int s_aws_request_response_mqtt5_adapter_test_fixture_init(
     }
 
     struct aws_mqtt_protocol_adapter_options protocol_adapter_options = {
-        .subscription_event_callback = s_rr_mqtt5_protocol_adapter_subscription_event,
-        .incoming_publish_callback = s_rr_mqtt5_protocol_adapter_incoming_publish,
-        .terminate_callback = s_rr_mqtt5_protocol_adapter_terminate_callback,
-        .connection_event_callback = s_rr_mqtt5_protocol_adapter_connection_event,
+        .subscription_event_callback = s_rr_mqtt5_protocol_adapter_test_on_subscription_event,
+        .incoming_publish_callback = s_rr_mqtt5_protocol_adapter_test_on_incoming_publish,
+        .terminate_callback = s_rr_mqtt5_protocol_adapter_test_on_terminate_callback,
+        .connection_event_callback = s_rr_mqtt5_protocol_adapter_test_on_connection_event,
         .user_data = fixture
     };
 
@@ -124,9 +149,36 @@ static int s_aws_request_response_mqtt5_adapter_test_fixture_init(
     return AWS_OP_SUCCESS;
 }
 
+static bool s_is_adapter_terminated(void *context) {
+    struct aws_request_response_mqtt5_adapter_test_fixture *fixture = context;
+
+    return fixture->adapter_terminated;
+}
+
 static void s_aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(struct aws_request_response_mqtt5_adapter_test_fixture *fixture) {
+    aws_mqtt_protocol_adapter_delete(fixture->protocol_adapter);
+
+    aws_mutex_lock(&fixture->lock);
+    aws_condition_variable_wait_pred(&fixture->signal, &fixture->signal, s_is_adapter_terminated, fixture);
+    aws_mutex_unlock(&fixture->lock);
 
     aws_mqtt5_client_mock_test_fixture_clean_up(&fixture->mqtt5_fixture);
+
+    for (size_t i = 0; i < aws_array_list_length(&fixture->subscription_events); ++i) {
+        struct request_response_protocol_adapter_subscription_event_record record;
+        aws_array_list_get_at(&fixture->subscription_events, &record, i);
+        s_request_response_protocol_adapter_incoming_subscription_event_record_cleanup(&record);
+    }
+    aws_array_list_clean_up(&fixture->subscription_events);
+
+    for (size_t i = 0; i < aws_array_list_length(&fixture->incoming_publish_events); ++i) {
+        struct request_response_protocol_adapter_incoming_publish_event_record record;
+        aws_array_list_get_at(&fixture->incoming_publish_events, &record, i);
+        s_request_response_protocol_adapter_incoming_publish_event_record_cleanup(&record);
+    }
+    aws_array_list_clean_up(&fixture->incoming_publish_events);
+
+    aws_array_list_clean_up(&fixture->connection_events);
 
     aws_mutex_clean_up(&fixture->lock);
     aws_condition_variable_clean_up(&fixture->signal);
