@@ -48,7 +48,7 @@ struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(struct 
 struct aws_mqtt_protocol_adapter_5_impl {
     struct aws_allocator *allocator;
     struct aws_mqtt_protocol_adapter base;
-    struct aws_protocol_adapter_weak_ref *callback_ref;
+    struct aws_weak_ref *callback_ref;
     struct aws_mqtt_protocol_adapter_options config;
 
     struct aws_event_loop *loop;
@@ -68,10 +68,10 @@ struct aws_mqtt_protocol_adapter_5_subscription_op_data {
     struct aws_allocator *allocator;
 
     struct aws_byte_buf topic_filter;
-    struct aws_protocol_adapter_weak_ref *callback_ref;
+    struct aws_weak_ref *callback_ref;
 };
 
-static struct aws_mqtt_protocol_adapter_5_subscription_op_data *s_aws_mqtt_protocol_adapter_5_subscription_op_data_new(struct aws_allocator *allocator, struct aws_byte_cursor topic_filter, struct aws_protocol_adapter_weak_ref *callback_ref) {
+static struct aws_mqtt_protocol_adapter_5_subscription_op_data *s_aws_mqtt_protocol_adapter_5_subscription_op_data_new(struct aws_allocator *allocator, struct aws_byte_cursor topic_filter, struct aws_weak_ref *callback_ref) {
     struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_subscription_op_data));
 
     subscribe_data->allocator = allocator;
@@ -207,13 +207,13 @@ error:
 
 struct aws_mqtt_protocol_adapter_5_publish_op_data {
     struct aws_allocator *allocator;
-    struct aws_protocol_adapter_weak_ref *callback_ref;
+    struct aws_weak_ref *callback_ref;
 
     void (*completion_callback_fn)(bool, void *);
     void *user_data;
 };
 
-static struct aws_mqtt_protocol_adapter_5_publish_op_data *s_aws_mqtt_protocol_adapter_5_publish_op_data_new(struct aws_allocator *allocator, const struct aws_protocol_adapter_publish_options *publish_options, struct aws_protocol_adapter_weak_ref *callback_ref) {
+static struct aws_mqtt_protocol_adapter_5_publish_op_data *s_aws_mqtt_protocol_adapter_5_publish_op_data_new(struct aws_allocator *allocator, const struct aws_protocol_adapter_publish_options *publish_options, struct aws_weak_ref *callback_ref) {
     struct aws_mqtt_protocol_adapter_5_publish_op_data *publish_data = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_publish_op_data));
 
     publish_data->allocator = allocator;
@@ -347,8 +347,6 @@ static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mqtt5_vtable =
 };
 
 struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(struct aws_allocator *allocator, struct aws_mqtt_protocol_adapter_options *options, struct aws_mqtt5_client *client) {
-    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
-
     struct aws_mqtt_protocol_adapter_5_impl *adapter = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_impl));
 
     adapter->allocator = allocator;
@@ -373,7 +371,7 @@ struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(struct aw
 
     adapter->listener = aws_mqtt5_listener_new(allocator, &listener_options);
 
-    return adapter;
+    return &adapter->base;
 }
 
 void aws_mqtt_protocol_adapter_delete(struct aws_mqtt_protocol_adapter *adapter) {

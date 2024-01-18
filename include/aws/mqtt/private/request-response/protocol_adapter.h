@@ -6,6 +6,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/exports.h>
 
 #include <aws/common/byte_buf.h>

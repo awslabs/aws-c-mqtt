@@ -1864,7 +1864,7 @@ static void s_wait_for_suback_received(struct aws_mqtt5_client_mock_test_fixture
     aws_mutex_unlock(&test_context->lock);
 }
 
-static int s_aws_mqtt5_server_send_suback_on_subscribe(
+int aws_mqtt5_server_send_suback_on_subscribe(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -1892,7 +1892,7 @@ static int s_mqtt5_client_subscribe_success_fn(struct aws_allocator *allocator, 
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        s_aws_mqtt5_server_send_suback_on_subscribe;
+        aws_mqtt5_server_send_suback_on_subscribe;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
@@ -3241,7 +3241,7 @@ static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqt
     test_options.client_options.publish_received_handler_user_data = &full_test_context;
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        s_aws_mqtt5_server_send_suback_on_subscribe;
+        aws_mqtt5_server_send_suback_on_subscribe;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
         aws_mqtt5_mock_server_handle_publish_puback_and_forward;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
@@ -4139,7 +4139,7 @@ static int s_mqtt5_client_statistics_subscribe_fn(struct aws_allocator *allocato
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        s_aws_mqtt5_server_send_suback_on_subscribe;
+        aws_mqtt5_server_send_suback_on_subscribe;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
