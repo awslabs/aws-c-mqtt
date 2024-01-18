@@ -319,16 +319,52 @@ static void s_wait_for_incoming_publish_events_contains(struct aws_request_respo
     aws_mutex_unlock(&fixture->lock);
 }
 
-static int s_request_response_mqtt5_protocol_adapter_subscribe_success_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+enum protocol_adapter_operation_test_type {
+    PAOTT_SUCCESS,
+    PAOTT_FAILURE_TIMEOUT,
+    PAOTT_FAILURE_REASON_CODE,
+    PAOTT_FAILURE_ERROR_CODE,
+};
 
+static enum aws_mqtt5_suback_reason_code s_failed_suback_reason_codes[] = {
+    AWS_MQTT5_SARC_NOT_AUTHORIZED,
+};
+
+static int s_aws_mqtt5_server_send_failed_suback_on_subscribe(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet;
+
+    struct aws_mqtt5_packet_suback_view suback_view = {
+        .packet_id = subscribe_view->packet_id,
+        .reason_code_count = AWS_ARRAY_SIZE(s_failed_suback_reason_codes),
+        .reason_codes = s_failed_suback_reason_codes,
+    };
+
+    return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view);
+}
+
+static int s_do_request_response_mqtt5_protocol_adapter_subscribe_test(struct aws_allocator *allocator, enum protocol_adapter_operation_test_type test_type) {
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options test_options;
     aws_mqtt5_client_test_init_default_options(&test_options);
 
-    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        aws_mqtt5_server_send_suback_on_subscribe;
+    if (test_type == PAOTT_SUCCESS) {
+        test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+            aws_mqtt5_server_send_suback_on_subscribe;
+    } else if (test_type == PAOTT_FAILURE_REASON_CODE) {
+        test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+            s_aws_mqtt5_server_send_failed_suback_on_subscribe;
+    }
+
+    if (test_type == PAOTT_FAILURE_ERROR_CODE) {
+        test_options.client_options.offline_queue_behavior = AWS_MQTT5_COQBT_FAIL_ALL_ON_DISCONNECT;
+    }
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options mqtt5_test_fixture_options = {
         .client_options = &test_options.client_options,
@@ -339,19 +375,22 @@ static int s_request_response_mqtt5_protocol_adapter_subscribe_success_fn(struct
     ASSERT_SUCCESS(s_aws_request_response_mqtt5_adapter_test_fixture_init(&fixture, allocator, &mqtt5_test_fixture_options));
 
     struct aws_mqtt5_client *client = fixture.mqtt5_fixture.client;
-    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
 
-    aws_wait_for_connected_lifecycle_event(&fixture.mqtt5_fixture);
+    if (test_type != PAOTT_FAILURE_ERROR_CODE) {
+        ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+        aws_wait_for_connected_lifecycle_event(&fixture.mqtt5_fixture);
+    }
 
     struct request_response_protocol_adapter_subscription_event_record expected_outcome = {
-        .event_type = AWS_PASET_SUBSCRIBE_SUCCESS,
+        .event_type = (test_type == PAOTT_SUCCESS) ? AWS_PASET_SUBSCRIBE_SUCCESS : AWS_PASET_SUBSCRIBE_FAILURE,
     };
 
     aws_byte_buf_init_copy_from_cursor(&expected_outcome.topic_filter, allocator, aws_byte_cursor_from_c_str("hello/world"));
 
     struct aws_protocol_adapter_subscribe_options subscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
-        .ack_timeout_seconds = 5,
+        .ack_timeout_seconds = 2,
     };
 
     aws_mqtt_protocol_adapter_subscribe(fixture.protocol_adapter, &subscribe_options);
@@ -367,6 +406,50 @@ static int s_request_response_mqtt5_protocol_adapter_subscribe_success_fn(struct
     return AWS_OP_SUCCESS;
 }
 
+static int s_request_response_mqtt5_protocol_adapter_subscribe_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_subscribe_test(allocator, PAOTT_SUCCESS));
+
+    return AWS_OP_SUCCESS;
+}
+
 AWS_TEST_CASE(
     request_response_mqtt5_protocol_adapter_subscribe_success,
     s_request_response_mqtt5_protocol_adapter_subscribe_success_fn)
+
+static int s_request_response_mqtt5_protocol_adapter_subscribe_failure_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_subscribe_test(allocator, PAOTT_FAILURE_TIMEOUT));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt5_protocol_adapter_subscribe_failure_timeout,
+    s_request_response_mqtt5_protocol_adapter_subscribe_failure_timeout_fn)
+
+static int s_request_response_mqtt5_protocol_adapter_subscribe_failure_reason_code_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_subscribe_test(allocator, PAOTT_FAILURE_REASON_CODE));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt5_protocol_adapter_subscribe_failure_reason_code,
+    s_request_response_mqtt5_protocol_adapter_subscribe_failure_reason_code_fn)
+
+static int s_request_response_mqtt5_protocol_adapter_subscribe_failure_error_code_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_subscribe_test(allocator, PAOTT_FAILURE_ERROR_CODE));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt5_protocol_adapter_subscribe_failure_error_code,
+    s_request_response_mqtt5_protocol_adapter_subscribe_failure_error_code_fn)
