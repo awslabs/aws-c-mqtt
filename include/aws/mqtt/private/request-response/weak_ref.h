@@ -26,6 +26,10 @@
  * eventstream RPC connection.  We use a single weak ref to the protocol adapter and zero its opaque value when
  * the protocol adapter is destroyed.  Operation callbacks that subsequently resolve can then short circuit and do
  * nothing rather than call into garbage and crash.
+ *
+ * We use this rather than explicitly tracking and zeroing all pending operations (like the 3-to-5 adapter does)
+ * because this approach is simpler and our usage does not require any of these callbacks to be invoked once the
+ * request-response client is destroyed.
  */
 struct aws_weak_ref;
 
