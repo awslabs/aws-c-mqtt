@@ -228,6 +228,16 @@ int aws_mqtt5_server_send_suback_on_subscribe(
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data);
 
+int aws_mqtt5_mock_server_handle_connect_honor_session_unconditional(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data);
+
+void aws_wait_for_n_lifecycle_events(
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture,
+    enum aws_mqtt5_client_lifecycle_event_type event_type,
+    size_t expected_event_count);
+
 extern const struct aws_string *g_default_client_id;
 
 #define RECONNECT_TEST_MIN_BACKOFF 500

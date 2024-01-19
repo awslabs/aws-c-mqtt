@@ -6,8 +6,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/exports.h>
+#include <aws/mqtt/mqtt.h>
 
 #include <aws/common/byte_buf.h>
 
@@ -61,10 +61,14 @@ struct aws_protocol_adapter_connection_event {
     bool rejoined_session;
 };
 
-typedef void(aws_protocol_adapter_subscription_event_fn)(struct aws_protocol_adapter_subscription_event *event, void *user_data);
-typedef void(aws_protocol_adapter_incoming_publish_fn)(struct aws_protocol_adapter_incoming_publish_event *publish, void *user_data);
+typedef void(
+    aws_protocol_adapter_subscription_event_fn)(struct aws_protocol_adapter_subscription_event *event, void *user_data);
+typedef void(aws_protocol_adapter_incoming_publish_fn)(
+    struct aws_protocol_adapter_incoming_publish_event *publish,
+    void *user_data);
 typedef void(aws_protocol_adapter_terminate_callback_fn)(void *user_data);
-typedef void(aws_protocol_adapter_connection_event_fn)(struct aws_protocol_adapter_connection_event *event, void *user_data);
+typedef void(
+    aws_protocol_adapter_connection_event_fn)(struct aws_protocol_adapter_connection_event *event, void *user_data);
 
 struct aws_mqtt_protocol_adapter_options {
     aws_protocol_adapter_subscription_event_fn *subscription_event_callback;
@@ -93,17 +97,29 @@ struct aws_mqtt_protocol_adapter {
 
 AWS_EXTERN_C_BEGIN
 
-AWS_MQTT_API struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(struct aws_allocator *allocator, struct aws_mqtt_protocol_adapter_options *options, struct aws_mqtt_client_connection *connection);
+AWS_MQTT_API struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_protocol_adapter_options *options,
+    struct aws_mqtt_client_connection *connection);
 
-AWS_MQTT_API struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(struct aws_allocator *allocator, struct aws_mqtt_protocol_adapter_options *options, struct aws_mqtt5_client *client);
+AWS_MQTT_API struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_protocol_adapter_options *options,
+    struct aws_mqtt5_client *client);
 
 AWS_MQTT_API void aws_mqtt_protocol_adapter_delete(struct aws_mqtt_protocol_adapter *adapter);
 
-AWS_MQTT_API int aws_mqtt_protocol_adapter_subscribe(struct aws_mqtt_protocol_adapter *adapter, struct aws_protocol_adapter_subscribe_options *options);
+AWS_MQTT_API int aws_mqtt_protocol_adapter_subscribe(
+    struct aws_mqtt_protocol_adapter *adapter,
+    struct aws_protocol_adapter_subscribe_options *options);
 
-AWS_MQTT_API int aws_mqtt_protocol_adapter_unsubscribe(struct aws_mqtt_protocol_adapter *adapter, struct aws_protocol_adapter_unsubscribe_options *options);
+AWS_MQTT_API int aws_mqtt_protocol_adapter_unsubscribe(
+    struct aws_mqtt_protocol_adapter *adapter,
+    struct aws_protocol_adapter_unsubscribe_options *options);
 
-AWS_MQTT_API int aws_mqtt_protocol_adapter_publish(struct aws_mqtt_protocol_adapter *adapter, struct aws_protocol_adapter_publish_options *options);
+AWS_MQTT_API int aws_mqtt_protocol_adapter_publish(
+    struct aws_mqtt_protocol_adapter *adapter,
+    struct aws_protocol_adapter_publish_options *options);
 
 AWS_EXTERN_C_END
 

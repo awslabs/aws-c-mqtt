@@ -26,5 +26,4 @@ AWS_MQTT_API void aws_weak_ref_zero_reference(struct aws_weak_ref *weak_ref);
 
 AWS_EXTERN_C_END
 
-
 #endif /* AWS_MQTT_PRIVATE_REQUEST_RESPONSE_WEAK_REF_H */

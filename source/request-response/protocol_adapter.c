@@ -21,9 +21,9 @@
  *
  * Entries are not tracked with the exception of eventstream impl which needs the stream handles to close.
  * A subscribe failure should not trigger an unsubscribe, only notify the status callback.
- * Subscription event callback should be {subscribe_success, subscribe_failure, unsubscribe_success, unsubscribe_failure}.
- * The sub manager is responsible for calling Unsubscribe on all its entries when shutting down (before releasing
- *   hold of the adapter).
+ * Subscription event callback should be {subscribe_success, subscribe_failure, unsubscribe_success,
+ * unsubscribe_failure}. The sub manager is responsible for calling Unsubscribe on all its entries when shutting down
+ * (before releasing hold of the adapter).
  *
  * How do we know not to retry unsubscribe failures because a subscribe came in?  Well, we don't retry failures; let
  * the manager make that decision.  No retry when the weak ref is zeroed either.  The potential for things to go wrong
@@ -33,8 +33,10 @@
  * decide what to do.
  */
 
-
-struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(struct aws_allocator *allocator, struct aws_mqtt_protocol_adapter_options *options, struct aws_mqtt_client_connection *connection) {
+struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_protocol_adapter_options *options,
+    struct aws_mqtt_client_connection *connection) {
     (void)allocator;
     (void)options;
     (void)connection;
@@ -71,8 +73,12 @@ struct aws_mqtt_protocol_adapter_5_subscription_op_data {
     struct aws_weak_ref *callback_ref;
 };
 
-static struct aws_mqtt_protocol_adapter_5_subscription_op_data *s_aws_mqtt_protocol_adapter_5_subscription_op_data_new(struct aws_allocator *allocator, struct aws_byte_cursor topic_filter, struct aws_weak_ref *callback_ref) {
-    struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_subscription_op_data));
+static struct aws_mqtt_protocol_adapter_5_subscription_op_data *s_aws_mqtt_protocol_adapter_5_subscription_op_data_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor topic_filter,
+    struct aws_weak_ref *callback_ref) {
+    struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_subscription_op_data));
 
     subscribe_data->allocator = allocator;
     subscribe_data->callback_ref = aws_weak_ref_acquire(callback_ref);
@@ -81,7 +87,8 @@ static struct aws_mqtt_protocol_adapter_5_subscription_op_data *s_aws_mqtt_proto
     return subscribe_data;
 }
 
-static void s_aws_mqtt_protocol_adapter_5_subscription_op_data_delete(struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data) {
+static void s_aws_mqtt_protocol_adapter_5_subscription_op_data_delete(
+    struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data) {
     aws_weak_ref_release(subscribe_data->callback_ref);
     aws_byte_buf_clean_up(&subscribe_data->topic_filter);
 
@@ -90,9 +97,10 @@ static void s_aws_mqtt_protocol_adapter_5_subscription_op_data_delete(struct aws
 
 /* Subscribe */
 
-static void s_protocol_adapter_5_subscribe_completion(const struct aws_mqtt5_packet_suback_view *suback,
-                                                      int error_code,
-                                                      void *complete_ctx) {
+static void s_protocol_adapter_5_subscribe_completion(
+    const struct aws_mqtt5_packet_suback_view *suback,
+    int error_code,
+    void *complete_ctx) {
     struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data = complete_ctx;
     struct aws_mqtt_protocol_adapter_5_impl *adapter = aws_weak_ref_get_reference(subscribe_data->callback_ref);
 
@@ -100,7 +108,8 @@ static void s_protocol_adapter_5_subscribe_completion(const struct aws_mqtt5_pac
         goto done;
     }
 
-    bool success = error_code == AWS_ERROR_SUCCESS && suback != NULL && suback->reason_code_count == 1 && suback->reason_codes[0] <= AWS_MQTT5_SARC_GRANTED_QOS_2;
+    bool success = error_code == AWS_ERROR_SUCCESS && suback != NULL && suback->reason_code_count == 1 &&
+                   suback->reason_codes[0] <= AWS_MQTT5_SARC_GRANTED_QOS_2;
 
     struct aws_protocol_adapter_subscription_event subscribe_event = {
         .topic_filter = aws_byte_cursor_from_buf(&subscribe_data->topic_filter),
@@ -117,7 +126,9 @@ done:
 int s_aws_mqtt_protocol_adapter_5_subscribe(void *impl, struct aws_protocol_adapter_subscribe_options *options) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = impl;
 
-    struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data = s_aws_mqtt_protocol_adapter_5_subscription_op_data_new(adapter->allocator, options->topic_filter, adapter->callback_ref);
+    struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data =
+        s_aws_mqtt_protocol_adapter_5_subscription_op_data_new(
+            adapter->allocator, options->topic_filter, adapter->callback_ref);
 
     struct aws_mqtt5_subscription_view subscription_view = {
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
@@ -150,9 +161,10 @@ error:
 
 /* Unsubscribe */
 
-static void s_protocol_adapter_5_unsubscribe_completion(const struct aws_mqtt5_packet_unsuback_view *unsuback,
-                                                      int error_code,
-                                                      void *complete_ctx) {
+static void s_protocol_adapter_5_unsubscribe_completion(
+    const struct aws_mqtt5_packet_unsuback_view *unsuback,
+    int error_code,
+    void *complete_ctx) {
     struct aws_mqtt_protocol_adapter_5_subscription_op_data *unsubscribe_data = complete_ctx;
     struct aws_mqtt_protocol_adapter_5_impl *adapter = aws_weak_ref_get_reference(unsubscribe_data->callback_ref);
 
@@ -160,7 +172,8 @@ static void s_protocol_adapter_5_unsubscribe_completion(const struct aws_mqtt5_p
         goto done;
     }
 
-    bool success = error_code == AWS_ERROR_SUCCESS && unsuback != NULL && unsuback->reason_code_count == 1 && unsuback->reason_codes[0] < 128;
+    bool success = error_code == AWS_ERROR_SUCCESS && unsuback != NULL && unsuback->reason_code_count == 1 &&
+                   unsuback->reason_codes[0] < 128;
 
     struct aws_protocol_adapter_subscription_event unsubscribe_event = {
         .topic_filter = aws_byte_cursor_from_buf(&unsubscribe_data->topic_filter),
@@ -177,7 +190,9 @@ done:
 int s_aws_mqtt_protocol_adapter_5_unsubscribe(void *impl, struct aws_protocol_adapter_unsubscribe_options *options) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = impl;
 
-    struct aws_mqtt_protocol_adapter_5_subscription_op_data *unsubscribe_data = s_aws_mqtt_protocol_adapter_5_subscription_op_data_new(adapter->allocator, options->topic_filter, adapter->callback_ref);
+    struct aws_mqtt_protocol_adapter_5_subscription_op_data *unsubscribe_data =
+        s_aws_mqtt_protocol_adapter_5_subscription_op_data_new(
+            adapter->allocator, options->topic_filter, adapter->callback_ref);
 
     struct aws_mqtt5_packet_unsubscribe_view unsubscribe_view = {
         .topic_filters = &options->topic_filter,
@@ -213,8 +228,12 @@ struct aws_mqtt_protocol_adapter_5_publish_op_data {
     void *user_data;
 };
 
-static struct aws_mqtt_protocol_adapter_5_publish_op_data *s_aws_mqtt_protocol_adapter_5_publish_op_data_new(struct aws_allocator *allocator, const struct aws_protocol_adapter_publish_options *publish_options, struct aws_weak_ref *callback_ref) {
-    struct aws_mqtt_protocol_adapter_5_publish_op_data *publish_data = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_publish_op_data));
+static struct aws_mqtt_protocol_adapter_5_publish_op_data *s_aws_mqtt_protocol_adapter_5_publish_op_data_new(
+    struct aws_allocator *allocator,
+    const struct aws_protocol_adapter_publish_options *publish_options,
+    struct aws_weak_ref *callback_ref) {
+    struct aws_mqtt_protocol_adapter_5_publish_op_data *publish_data =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_publish_op_data));
 
     publish_data->allocator = allocator;
     publish_data->callback_ref = aws_weak_ref_acquire(callback_ref);
@@ -224,7 +243,8 @@ static struct aws_mqtt_protocol_adapter_5_publish_op_data *s_aws_mqtt_protocol_a
     return publish_data;
 }
 
-static void s_aws_mqtt_protocol_adapter_5_publish_op_data_delete(struct aws_mqtt_protocol_adapter_5_publish_op_data *publish_data) {
+static void s_aws_mqtt_protocol_adapter_5_publish_op_data_delete(
+    struct aws_mqtt_protocol_adapter_5_publish_op_data *publish_data) {
     aws_weak_ref_release(publish_data->callback_ref);
 
     aws_mem_release(publish_data->allocator, publish_data);
@@ -259,13 +279,11 @@ done:
 
 int s_aws_mqtt_protocol_adapter_5_publish(void *impl, struct aws_protocol_adapter_publish_options *options) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = impl;
-    struct aws_mqtt_protocol_adapter_5_publish_op_data *publish_data = s_aws_mqtt_protocol_adapter_5_publish_op_data_new(adapter->allocator, options, adapter->callback_ref);
+    struct aws_mqtt_protocol_adapter_5_publish_op_data *publish_data =
+        s_aws_mqtt_protocol_adapter_5_publish_op_data_new(adapter->allocator, options, adapter->callback_ref);
 
     struct aws_mqtt5_packet_publish_view publish_view = {
-        .topic = options->topic,
-        .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
-        .payload = options->payload
-    };
+        .topic = options->topic, .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE, .payload = options->payload};
 
     struct aws_mqtt5_publish_completion_options completion_options = {
         .ack_timeout_seconds_override = options->ack_timeout_seconds,
@@ -286,13 +304,13 @@ error:
     return AWS_OP_ERR;
 }
 
-static bool s_protocol_adapter_mqtt5_listener_publish_received(const struct aws_mqtt5_packet_publish_view *publish, void *user_data) {
+static bool s_protocol_adapter_mqtt5_listener_publish_received(
+    const struct aws_mqtt5_packet_publish_view *publish,
+    void *user_data) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = user_data;
 
     struct aws_protocol_adapter_incoming_publish_event publish_event = {
-        .topic = publish->topic,
-        .payload = publish->payload
-    };
+        .topic = publish->topic, .payload = publish->payload};
 
     (*adapter->config.incoming_publish_callback)(&publish_event, adapter->config.user_data);
 
@@ -346,8 +364,12 @@ static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mqtt5_vtable =
     .aws_mqtt_protocol_adapter_publish_fn = s_aws_mqtt_protocol_adapter_5_publish,
 };
 
-struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(struct aws_allocator *allocator, struct aws_mqtt_protocol_adapter_options *options, struct aws_mqtt5_client *client) {
-    struct aws_mqtt_protocol_adapter_5_impl *adapter = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_impl));
+struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_protocol_adapter_options *options,
+    struct aws_mqtt5_client *client) {
+    struct aws_mqtt_protocol_adapter_5_impl *adapter =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_impl));
 
     adapter->allocator = allocator;
     adapter->base.impl = adapter;
@@ -359,12 +381,11 @@ struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(struct aw
 
     struct aws_mqtt5_listener_config listener_options = {
         .client = client,
-        .listener_callbacks = {
-            .listener_publish_received_handler = s_protocol_adapter_mqtt5_listener_publish_received,
-            .listener_publish_received_handler_user_data = adapter,
-            .lifecycle_event_handler = s_protocol_adapter_mqtt5_lifecycle_event_callback,
-            .lifecycle_event_handler_user_data = adapter
-        },
+        .listener_callbacks =
+            {.listener_publish_received_handler = s_protocol_adapter_mqtt5_listener_publish_received,
+             .listener_publish_received_handler_user_data = adapter,
+             .lifecycle_event_handler = s_protocol_adapter_mqtt5_lifecycle_event_callback,
+             .lifecycle_event_handler_user_data = adapter},
         .termination_callback = s_protocol_adapter_mqtt5_listener_termination_callback,
         .termination_callback_user_data = adapter,
     };
@@ -378,14 +399,20 @@ void aws_mqtt_protocol_adapter_delete(struct aws_mqtt_protocol_adapter *adapter)
     (*adapter->vtable->aws_mqtt_protocol_adapter_delete_fn)(adapter->impl);
 }
 
-int aws_mqtt_protocol_adapter_subscribe(struct aws_mqtt_protocol_adapter *adapter, struct aws_protocol_adapter_subscribe_options *options) {
+int aws_mqtt_protocol_adapter_subscribe(
+    struct aws_mqtt_protocol_adapter *adapter,
+    struct aws_protocol_adapter_subscribe_options *options) {
     return (*adapter->vtable->aws_mqtt_protocol_adapter_subscribe_fn)(adapter->impl, options);
 }
 
-int aws_mqtt_protocol_adapter_unsubscribe(struct aws_mqtt_protocol_adapter *adapter, struct aws_protocol_adapter_unsubscribe_options *options) {
+int aws_mqtt_protocol_adapter_unsubscribe(
+    struct aws_mqtt_protocol_adapter *adapter,
+    struct aws_protocol_adapter_unsubscribe_options *options) {
     return (*adapter->vtable->aws_mqtt_protocol_adapter_unsubscribe_fn)(adapter->impl, options);
 }
 
-int aws_mqtt_protocol_adapter_publish(struct aws_mqtt_protocol_adapter *adapter, struct aws_protocol_adapter_publish_options *options) {
+int aws_mqtt_protocol_adapter_publish(
+    struct aws_mqtt_protocol_adapter *adapter,
+    struct aws_protocol_adapter_publish_options *options) {
     return (*adapter->vtable->aws_mqtt_protocol_adapter_publish_fn)(adapter->impl, options);
 }

@@ -2710,7 +2710,7 @@ static int s_aws_mqtt5_mock_server_handle_connect_honor_session_after_success(
     return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
 }
 
-static int s_aws_mqtt5_mock_server_handle_connect_honor_session_unconditional(
+int aws_mqtt5_mock_server_handle_connect_honor_session_unconditional(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -2752,7 +2752,7 @@ static bool s_received_n_lifecycle_events(void *arg) {
     return matching_events >= context->expected_event_count;
 }
 
-static void s_wait_for_n_lifecycle_events(
+void aws_wait_for_n_lifecycle_events(
     struct aws_mqtt5_client_mock_test_fixture *test_fixture,
     enum aws_mqtt5_client_lifecycle_event_type event_type,
     size_t expected_event_count) {
@@ -2809,7 +2809,7 @@ static int s_do_mqtt5_client_session_resumption_test(
 
     test_options.client_options.session_behavior = session_behavior;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
-        s_aws_mqtt5_mock_server_handle_connect_honor_session_unconditional;
+        aws_mqtt5_mock_server_handle_connect_honor_session_unconditional;
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
         .client_options = &test_options.client_options,
@@ -2823,7 +2823,7 @@ static int s_do_mqtt5_client_session_resumption_test(
 
     for (size_t i = 0; i < SESSION_RESUMPTION_CONNECT_COUNT; ++i) {
         ASSERT_SUCCESS(aws_mqtt5_client_start(client));
-        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_CONNECTION_SUCCESS, i + 1);
+        aws_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_CONNECTION_SUCCESS, i + 1);
 
         /* not technically truly safe to query depending on memory model.  Remove if it becomes a problem. */
         bool expected_rejoined_session = s_compute_expected_rejoined_session(session_behavior, i);
@@ -2832,7 +2832,7 @@ static int s_do_mqtt5_client_session_resumption_test(
         /* can't use stop as that wipes session state */
         aws_channel_shutdown(test_context.server_channel, AWS_ERROR_UNKNOWN);
 
-        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_DISCONNECTION, i + 1);
+        aws_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_DISCONNECTION, i + 1);
     }
 
     struct aws_mqtt5_packet_connect_storage clean_start_connect_storage;
