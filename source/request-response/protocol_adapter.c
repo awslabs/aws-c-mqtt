@@ -310,7 +310,9 @@ static bool s_protocol_adapter_mqtt5_listener_publish_received(
     struct aws_mqtt_protocol_adapter_5_impl *adapter = user_data;
 
     struct aws_protocol_adapter_incoming_publish_event publish_event = {
-        .topic = publish->topic, .payload = publish->payload};
+        .topic = publish->topic,
+        .payload = publish->payload,
+    };
 
     (*adapter->config.incoming_publish_callback)(&publish_event, adapter->config.user_data);
 
@@ -382,10 +384,12 @@ struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(
     struct aws_mqtt5_listener_config listener_options = {
         .client = client,
         .listener_callbacks =
-            {.listener_publish_received_handler = s_protocol_adapter_mqtt5_listener_publish_received,
-             .listener_publish_received_handler_user_data = adapter,
-             .lifecycle_event_handler = s_protocol_adapter_mqtt5_lifecycle_event_callback,
-             .lifecycle_event_handler_user_data = adapter},
+            {
+                .listener_publish_received_handler = s_protocol_adapter_mqtt5_listener_publish_received,
+                .listener_publish_received_handler_user_data = adapter,
+                .lifecycle_event_handler = s_protocol_adapter_mqtt5_lifecycle_event_callback,
+                .lifecycle_event_handler_user_data = adapter,
+            },
         .termination_callback = s_protocol_adapter_mqtt5_listener_termination_callback,
         .termination_callback_user_data = adapter,
     };
