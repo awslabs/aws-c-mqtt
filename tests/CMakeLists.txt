@@ -3,8 +3,8 @@ include(AwsTestHarness)
 include(AwsLibFuzzer)
 enable_testing()
 
-file(GLOB TEST_HDRS "v3/*.h v5/*.h")
-set(TEST_SRC v3/*.c v5/*.c *.c)
+file(GLOB TEST_HDRS "v3/*.h" "v5/*.h" "request-response/*.h")
+set(TEST_SRC "v3/*.c" "v5/*.c" "request-response/*.c" "*.c")
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 add_test_case(mqtt_packet_puback)

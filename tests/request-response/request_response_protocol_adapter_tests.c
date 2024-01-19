@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include "v5/mqtt5_testing_utils.h"
+#include "../v5/mqtt5_testing_utils.h"
 #include <aws/common/common.h>
 
 #include "aws/mqtt/private/request-response/protocol_adapter.h"
