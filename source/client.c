@@ -259,6 +259,7 @@ static void s_mqtt_client_shutdown(
     (void)channel;
 
     struct aws_mqtt_client_connection_311_impl *connection = user_data;
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection->loop));
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Channel has been shutdown with error code %d", (void *)connection, error_code);
@@ -800,6 +801,8 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
         termination_handler = connection->on_termination;
         termination_handler_user_data = connection->on_termination_ud;
     }
+
+    aws_mqtt311_callback_set_manager_clean_up(&connection->callback_manager);
 
     /* If the reconnect_task isn't freed, free it */
     if (connection->reconnect_task) {
@@ -3350,6 +3353,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->handler.alloc = connection->allocator;
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
     connection->handler.impl = connection;
+
+    aws_mqtt311_callback_set_manager_init(&connection->callback_manager, connection->allocator, connection);
 
     return &connection->base;
 
