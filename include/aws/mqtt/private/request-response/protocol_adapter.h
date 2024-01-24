@@ -21,7 +21,7 @@ struct aws_mqtt5_client;
  * Valid protocol clients include the CRT MQTT5 client, the CRT MQTT311 client, and an eventstream RPC connection
  * that belongs to a Greengrass IPC client.  Each of these protocol clients has a different (or even implicit)
  * contract for carrying out pub-sub operations.  The protocol adapter abstracts these details with a simple,
- * minimal interface based on the requirements identigied in the request-response design documents.
+ * minimal interface based on the requirements identified in the request-response design documents.
  */
 
 /*
@@ -132,7 +132,7 @@ struct aws_mqtt_protocol_adapter_options {
 
 struct aws_mqtt_protocol_adapter_vtable {
 
-    void (*aws_mqtt_protocol_adapter_delete_fn)(void *);
+    void (*aws_mqtt_protocol_adapter_destroy_fn)(void *);
 
     int (*aws_mqtt_protocol_adapter_subscribe_fn)(void *, struct aws_protocol_adapter_subscribe_options *);
 
@@ -168,7 +168,7 @@ AWS_MQTT_API struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_fro
  * Destroys a request-response protocol adapter.  Destruction is an asynchronous process and the caller must
  * wait for the termination callback to be invoked before assuming that no further callbacks will be invoked.
  */
-AWS_MQTT_API void aws_mqtt_protocol_adapter_delete(struct aws_mqtt_protocol_adapter *adapter);
+AWS_MQTT_API void aws_mqtt_protocol_adapter_destroy(struct aws_mqtt_protocol_adapter *adapter);
 
 /*
  * Asks the adapted protocol client to perform an MQTT subscribe operation
