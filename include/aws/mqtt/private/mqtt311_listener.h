@@ -23,20 +23,17 @@ typedef void(aws_mqtt311_listener_termination_completion_fn)(void *complete_ctx)
  *
  * All the callbacks that are supported here are invoked only on the 311 connection's event loop.  With the
  * add/remove callback set also on the event loop, everything is correctly serialized without data races.
+ *
+ * We only listen to connection-resumed because the only connection-level event we care about is a failure
+ * to rejoin a session (which invalidates all subscriptions that were considered valid)
  */
 struct aws_mqtt311_callback_set {
 
     /* Called from s_packet_handler_publish which is event-loop invoked */
     aws_mqtt_client_publish_received_fn *publish_received_handler;
 
-    /* Called from s_mqtt_client_shutdown which is event-loop invoked */
-    aws_mqtt_client_on_connection_interrupted_fn *connection_interrupted_handler;
-
     /* Called from s_packet_handler_connack which is event-loop invoked */
-    aws_mqtt_client_on_connection_interrupted_fn *connection_resumed_handler;
-
-    /* Also called from s_packet_handler_connack which is event-loop invoked */
-    aws_mqtt_client_on_connection_success_fn *connection_success_handler;
+    aws_mqtt_client_on_connection_resumed_fn *connection_resumed_handler;
 
     void *user_data;
 };
@@ -164,17 +161,12 @@ void aws_mqtt311_callback_set_manager_on_publish_received(
     enum aws_mqtt_qos qos,
     bool retain);
 
-AWS_MQTT_API
-void aws_mqtt311_callback_set_manager_on_connection_interrupted(
-    struct aws_mqtt311_callback_set_manager *manager);
 
 AWS_MQTT_API
 void aws_mqtt311_callback_set_manager_on_connection_resumed(
-    struct aws_mqtt311_callback_set_manager *manager);
-
-AWS_MQTT_API
-void aws_mqtt311_callback_set_manager_on_connection_success(
-    struct aws_mqtt311_callback_set_manager *manager);
+    struct aws_mqtt311_callback_set_manager *manager,
+    enum aws_mqtt_connect_return_code return_code,
+    bool rejoined_session);
 
 AWS_EXTERN_C_END
 

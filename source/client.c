@@ -3223,7 +3223,7 @@ static void s_aws_mqtt_client_connection_311_release(void *impl) {
     aws_ref_count_release(&connection->ref_count);
 }
 
-enum aws_mqtt311_impl_type s_aws_mqtt_client_connection_3_get_impl(void *impl) {
+enum aws_mqtt311_impl_type s_aws_mqtt_client_connection_3_get_impl(const void *impl) {
     (void)impl;
 
     return AWS_MQTT311_IT_311_CONNECTION_IMPL;
@@ -3354,7 +3354,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
     connection->handler.impl = connection;
 
-    aws_mqtt311_callback_set_manager_init(&connection->callback_manager, connection->allocator, connection);
+    aws_mqtt311_callback_set_manager_init(&connection->callback_manager, connection->allocator, &connection->base);
 
     return &connection->base;
 

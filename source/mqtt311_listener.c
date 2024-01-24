@@ -13,6 +13,14 @@
 
 #include <inttypes.h>
 
+static struct aws_event_loop *s_mqtt_client_connection_get_event_loop(const struct aws_mqtt_client_connection *connection) {
+    AWS_FATAL_ASSERT(aws_mqtt_client_connection_get_impl_type(connection) == AWS_MQTT311_IT_311_CONNECTION_IMPL);
+
+    struct aws_mqtt_client_connection_311_impl *connection_impl = connection->impl;
+
+    return connection_impl->loop;
+}
+
 struct aws_mqtt311_listener {
     struct aws_allocator *allocator;
 
@@ -81,9 +89,8 @@ static void s_mqtt311_listener_terminate_task_fn(struct aws_task *task, void *ar
 
 static void s_aws_mqtt311_listener_on_zero_ref_count(void *context) {
     struct aws_mqtt311_listener *listener = context;
-    struct aws_mqtt_client_connection_311_impl *connection_impl = listener->config.connection->impl;
 
-    aws_event_loop_schedule_task_now(connection_impl->loop, &listener->terminate_task);
+    aws_event_loop_schedule_task_now(s_mqtt_client_connection_get_event_loop(listener->config.connection), &listener->terminate_task);
 }
 
 struct aws_mqtt311_listener *aws_mqtt311_listener_new(
@@ -97,7 +104,6 @@ struct aws_mqtt311_listener *aws_mqtt311_listener_new(
         return NULL;
     }
 
-    struct aws_mqtt_client_connection_311_impl *connection_impl = config->connection->impl;
     struct aws_mqtt311_listener *listener = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt311_listener));
 
     listener->allocator = allocator;
@@ -110,7 +116,7 @@ struct aws_mqtt311_listener *aws_mqtt311_listener_new(
     aws_task_init(&listener->terminate_task, s_mqtt311_listener_terminate_task_fn, listener, "Mqtt311ListenerTerminate");
 
     aws_mqtt311_listener_acquire(listener);
-    aws_event_loop_schedule_task_now(connection_impl->loop, &listener->initialize_task);
+    aws_event_loop_schedule_task_now(s_mqtt_client_connection_get_event_loop(config->connection), &listener->initialize_task);
 
     return listener;
 }
@@ -184,11 +190,11 @@ static struct aws_mqtt311_callback_set_entry *s_new_311_callback_set_entry(
     return entry;
 }
 
-uint64_t aws_mqtt5_callback_set_manager_push_front(
+uint64_t aws_mqtt311_callback_set_manager_push_front(
     struct aws_mqtt311_callback_set_manager *manager,
     struct aws_mqtt311_callback_set *callback_set) {
 
-    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(manager->client->loop));
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(s_mqtt_client_connection_get_event_loop(manager->connection)));
 
     struct aws_mqtt311_callback_set_entry *entry = s_new_311_callback_set_entry(manager, callback_set);
 
@@ -199,7 +205,7 @@ uint64_t aws_mqtt5_callback_set_manager_push_front(
 
 void aws_mqtt311_callback_set_manager_remove(struct aws_mqtt311_callback_set_manager *manager, uint64_t callback_set_id) {
 
-    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(manager->client->loop));
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(s_mqtt_client_connection_get_event_loop(manager->connection)));
 
     struct aws_linked_list_node *node = aws_linked_list_begin(&manager->callback_set_entries);
     while (node != aws_linked_list_end(&manager->callback_set_entries)) {
@@ -233,19 +239,37 @@ void aws_mqtt311_callback_set_manager_on_publish_received(
     enum aws_mqtt_qos qos,
     bool retain) {
 
-}
+    struct aws_mqtt_client_connection_311_impl *connection_impl = manager->connection->impl;
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection_impl->loop));
 
-void aws_mqtt311_callback_set_manager_on_connection_interrupted(
-    struct aws_mqtt311_callback_set_manager *manager) {
+    struct aws_linked_list_node *node = aws_linked_list_begin(&manager->callback_set_entries);
+    while (node != aws_linked_list_end(&manager->callback_set_entries)) {
+        struct aws_mqtt311_callback_set_entry *entry = AWS_CONTAINER_OF(node, struct aws_mqtt311_callback_set_entry, node);
+        node = aws_linked_list_next(node);
 
+        struct aws_mqtt311_callback_set *callback_set = &entry->callbacks;
+        if (callback_set->publish_received_handler != NULL) {
+            (*callback_set->publish_received_handler)(manager->connection, topic, payload, dup, qos, retain, callback_set->user_data);
+        }
+    }
 }
 
 void aws_mqtt311_callback_set_manager_on_connection_resumed(
-    struct aws_mqtt311_callback_set_manager *manager) {
+    struct aws_mqtt311_callback_set_manager *manager,
+    enum aws_mqtt_connect_return_code return_code,
+    bool rejoined_session) {
 
-}
+    struct aws_mqtt_client_connection_311_impl *connection_impl = manager->connection->impl;
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection_impl->loop));
 
-void aws_mqtt311_callback_set_manager_on_connection_success(
-    struct aws_mqtt311_callback_set_manager *manager) {
+    struct aws_linked_list_node *node = aws_linked_list_begin(&manager->callback_set_entries);
+    while (node != aws_linked_list_end(&manager->callback_set_entries)) {
+        struct aws_mqtt311_callback_set_entry *entry = AWS_CONTAINER_OF(node, struct aws_mqtt311_callback_set_entry, node);
+        node = aws_linked_list_next(node);
 
+        struct aws_mqtt311_callback_set *callback_set = &entry->callbacks;
+        if (callback_set->connection_resumed_handler != NULL) {
+            (*callback_set->connection_resumed_handler)(manager->connection, return_code, rejoined_session, callback_set->user_data);
+        }
+    }
 }
