@@ -241,7 +241,8 @@ static int s_packet_handler_connack(struct aws_byte_cursor message_cursor, void 
 
         MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_resumed, connack.connect_return_code, connack.session_present);
 
-        aws_mqtt311_callback_set_manager_on_connection_resumed(&connection->callback_manager, connack.connect_return_code, connack.session_present);
+        aws_mqtt311_callback_set_manager_on_connection_resumed(
+            &connection->callback_manager, connack.connect_return_code, connack.session_present);
     } else {
 
         aws_create_reconnect_task(connection);
@@ -293,7 +294,8 @@ static int s_packet_handler_publish(struct aws_byte_cursor message_cursor, void 
 
     MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_any_publish, &publish.topic_name, &publish.payload, dup, qos, retain);
 
-    aws_mqtt311_callback_set_manager_on_publish_received(&connection->callback_manager, &publish.topic_name, &publish.payload, dup, qos, retain);
+    aws_mqtt311_callback_set_manager_on_publish_received(
+        &connection->callback_manager, &publish.topic_name, &publish.payload, dup, qos, retain);
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,

@@ -1,7 +1,7 @@
 /**
-* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-* SPDX-License-Identifier: Apache-2.0.
-*/
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
 
 #ifndef AWS_C_MQTT_MQTT311_TESTING_UTILS_H
 #define AWS_C_MQTT_MQTT311_TESTING_UTILS_H

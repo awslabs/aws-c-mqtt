@@ -1,7 +1,7 @@
 /**
-* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-* SPDX-License-Identifier: Apache-2.0.
-*/
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
 
 #include "mqtt311_testing_utils.h"
 
@@ -13,7 +13,6 @@
 #include <aws/testing/aws_test_harness.h>
 
 #include "mqtt_mock_server_handler.h"
-
 
 static void s_on_incoming_channel_setup_fn(
     struct aws_server_bootstrap *bootstrap,
@@ -427,7 +426,6 @@ void aws_test311_wait_for_disconnect_to_complete(struct mqtt_connection_state_te
     state_test_data->server_disconnect_completed = false;
     aws_mutex_unlock(&state_test_data->lock);
 }
-
 
 static bool s_is_any_publish_received(void *arg) {
     struct mqtt_connection_state_test *state_test_data = arg;

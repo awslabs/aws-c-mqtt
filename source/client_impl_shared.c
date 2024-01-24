@@ -204,7 +204,8 @@ int aws_mqtt_client_connection_get_stats(
     return (*connection->vtable->get_stats_fn)(connection->impl, stats);
 }
 
-enum aws_mqtt311_impl_type aws_mqtt_client_connection_get_impl_type(const struct aws_mqtt_client_connection *connection) {
+enum aws_mqtt311_impl_type aws_mqtt_client_connection_get_impl_type(
+    const struct aws_mqtt_client_connection *connection) {
     return (*connection->vtable->get_impl_type)(connection->impl);
 }
 

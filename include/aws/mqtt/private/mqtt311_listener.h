@@ -54,7 +54,6 @@ struct aws_mqtt311_callback_set_manager {
     uint64_t next_callback_set_entry_id;
 };
 
-
 /**
  * Configuration options for MQTT311 listener objects.
  */
@@ -109,7 +108,6 @@ AWS_MQTT_API struct aws_mqtt311_listener *aws_mqtt311_listener_acquire(struct aw
  */
 AWS_MQTT_API struct aws_mqtt311_listener *aws_mqtt311_listener_release(struct aws_mqtt311_listener *listener);
 
-
 /**
  * Initializes a callback set manager
  */
@@ -144,7 +142,9 @@ uint64_t aws_mqtt311_callback_set_manager_push_front(
  * May only be called on the client's event loop thread.
  */
 AWS_MQTT_API
-void aws_mqtt311_callback_set_manager_remove(struct aws_mqtt311_callback_set_manager *manager, uint64_t callback_set_id);
+void aws_mqtt311_callback_set_manager_remove(
+    struct aws_mqtt311_callback_set_manager *manager,
+    uint64_t callback_set_id);
 
 /**
  * Walks the incoming publish handler chain for an MQTT311 connection.  The chain's callbacks will be invoked
@@ -160,7 +160,6 @@ void aws_mqtt311_callback_set_manager_on_publish_received(
     bool dup,
     enum aws_mqtt_qos qos,
     bool retain);
-
 
 AWS_MQTT_API
 void aws_mqtt311_callback_set_manager_on_connection_resumed(
