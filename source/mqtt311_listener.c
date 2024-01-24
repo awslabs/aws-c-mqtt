@@ -15,7 +15,7 @@
 
 static struct aws_event_loop *s_mqtt_client_connection_get_event_loop(
     const struct aws_mqtt_client_connection *connection) {
-    AWS_FATAL_ASSERT(aws_mqtt_client_connection_get_impl_type(connection) == AWS_MQTT311_IT_311_CONNECTION_IMPL);
+    AWS_FATAL_ASSERT(aws_mqtt_client_connection_get_impl_type(connection) == AWS_MQTT311_IT_311_CONNECTION);
 
     struct aws_mqtt_client_connection_311_impl *connection_impl = connection->impl;
 
@@ -102,7 +102,7 @@ struct aws_mqtt311_listener *aws_mqtt311_listener_new(
         return NULL;
     }
 
-    if (aws_mqtt_client_connection_get_impl_type(config->connection) != AWS_MQTT311_IT_311_CONNECTION_IMPL) {
+    if (aws_mqtt_client_connection_get_impl_type(config->connection) != AWS_MQTT311_IT_311_CONNECTION) {
         return NULL;
     }
 

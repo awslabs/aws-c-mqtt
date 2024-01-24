@@ -458,6 +458,9 @@ add_test_case(request_response_mqtt5_protocol_adapter_connection_event_sequence)
 add_test_case(request_response_mqtt5_protocol_adapter_incoming_publish)
 add_test_case(request_response_mqtt5_protocol_adapter_shutdown_while_pending)
 
+add_test_case(mqtt311_listener_session_events)
+#add_test_case(mqtt311_listener_publish_events)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)
