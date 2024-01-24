@@ -90,19 +90,10 @@ struct aws_protocol_adapter_incoming_publish_event {
 };
 
 /*
- * Describes the type of connection event emitted by the protocol adapter
+ * An event emitted by the protocol adapter whenever the protocol client successfully reconnects to the broker.
  */
-enum aws_protocol_adapter_connection_event_type {
-    AWS_PACET_OFFLINE,
-    AWS_PACET_ONLINE,
-};
-
-/*
- * An event emitted by the protocol adapter whenever the protocol client encounters a change in connectivity state.
- */
-struct aws_protocol_adapter_connection_event {
-    enum aws_protocol_adapter_connection_event_type event_type;
-    bool rejoined_session;
+struct aws_protocol_adapter_session_event {
+    bool joined_session;
 };
 
 typedef void(
@@ -111,8 +102,7 @@ typedef void(aws_protocol_adapter_incoming_publish_fn)(
     struct aws_protocol_adapter_incoming_publish_event *publish,
     void *user_data);
 typedef void(aws_protocol_adapter_terminate_callback_fn)(void *user_data);
-typedef void(
-    aws_protocol_adapter_connection_event_fn)(struct aws_protocol_adapter_connection_event *event, void *user_data);
+typedef void(aws_protocol_adapter_session_event_fn)(struct aws_protocol_adapter_session_event *event, void *user_data);
 
 /*
  * Set of callbacks invoked by the protocol adapter.  These must all be set.
@@ -121,7 +111,7 @@ struct aws_mqtt_protocol_adapter_options {
     aws_protocol_adapter_subscription_event_fn *subscription_event_callback;
     aws_protocol_adapter_incoming_publish_fn *incoming_publish_callback;
     aws_protocol_adapter_terminate_callback_fn *terminate_callback;
-    aws_protocol_adapter_connection_event_fn *connection_event_callback;
+    aws_protocol_adapter_session_event_fn *session_event_callback;
 
     /*
      * User data to pass into all singleton protocol adapter callbacks.  Likely either the request-response client

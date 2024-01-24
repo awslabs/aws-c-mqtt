@@ -322,21 +322,15 @@ static bool s_protocol_adapter_mqtt5_listener_publish_received(
 static void s_protocol_adapter_mqtt5_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = event->user_data;
 
-    if (event->event_type != AWS_MQTT5_CLET_CONNECTION_SUCCESS && event->event_type != AWS_MQTT5_CLET_DISCONNECTION) {
+    if (event->event_type != AWS_MQTT5_CLET_CONNECTION_SUCCESS) {
         return;
     }
 
-    bool is_connection_success = event->event_type == AWS_MQTT5_CLET_CONNECTION_SUCCESS;
-
-    struct aws_protocol_adapter_connection_event connection_event = {
-        .event_type = is_connection_success ? AWS_PACET_ONLINE : AWS_PACET_OFFLINE,
+    struct aws_protocol_adapter_session_event session_event = {
+        .joined_session = event->settings->rejoined_session,
     };
 
-    if (is_connection_success) {
-        connection_event.rejoined_session = event->settings->rejoined_session;
-    }
-
-    (*adapter->config.connection_event_callback)(&connection_event, adapter->config.user_data);
+    (*adapter->config.session_event_callback)(&session_event, adapter->config.user_data);
 }
 
 static void s_protocol_adapter_mqtt5_listener_termination_callback(void *user_data) {
