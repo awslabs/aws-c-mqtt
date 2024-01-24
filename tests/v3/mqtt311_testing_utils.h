@@ -85,34 +85,34 @@ struct mqtt_connection_state_test {
 
 AWS_EXTERN_C_BEGIN
 
-AWS_MQTT_API int aws_test311_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx);
+int aws_test311_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx);
 
-AWS_MQTT_API int aws_test311_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_result, void *ctx);
+int aws_test311_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int setup_result, void *ctx);
 
-AWS_MQTT_API void aws_test311_wait_for_interrupt_to_complete(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_interrupt_to_complete(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_wait_for_reconnect_to_complete(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_reconnect_to_complete(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_wait_for_connection_to_succeed(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_connection_to_succeed(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_wait_for_connection_to_fail(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_connection_to_fail(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_on_connection_complete_fn(
+void aws_test311_on_connection_complete_fn(
     struct aws_mqtt_client_connection *connection,
     int error_code,
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *userdata);
 
-AWS_MQTT_API void aws_test311_wait_for_connection_to_complete(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_connection_to_complete(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_on_disconnect_fn(struct aws_mqtt_client_connection *connection, void *userdata);
+void aws_test311_on_disconnect_fn(struct aws_mqtt_client_connection *connection, void *userdata);
 
-AWS_MQTT_API void aws_test311_wait_for_disconnect_to_complete(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_disconnect_to_complete(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_wait_for_any_publish(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_any_publish(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_on_publish_received(
+void aws_test311_on_publish_received(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
@@ -121,9 +121,9 @@ AWS_MQTT_API void aws_test311_on_publish_received(
     bool retain,
     void *userdata);
 
-AWS_MQTT_API void aws_test311_wait_for_publish(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_publish(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_on_suback(
+void aws_test311_on_suback(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
     const struct aws_byte_cursor *topic,
@@ -131,24 +131,24 @@ AWS_MQTT_API void aws_test311_on_suback(
     int error_code,
     void *userdata);
 
-AWS_MQTT_API void aws_test311_wait_for_subscribe_to_complete(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_subscribe_to_complete(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_on_multi_suback(
+void aws_test311_on_multi_suback(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
     const struct aws_array_list *topic_subacks,
     int error_code,
     void *userdata);
 
-AWS_MQTT_API void aws_test311_on_op_complete(
+void aws_test311_on_op_complete(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
     int error_code,
     void *userdata);
 
-AWS_MQTT_API void aws_test311_wait_for_ops_completed(struct mqtt_connection_state_test *state_test_data);
+void aws_test311_wait_for_ops_completed(struct mqtt_connection_state_test *state_test_data);
 
-AWS_MQTT_API void aws_test311_on_connection_termination_fn(void *userdata);
+void aws_test311_on_connection_termination_fn(void *userdata);
 
 AWS_EXTERN_C_END
 
