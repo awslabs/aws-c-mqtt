@@ -31,11 +31,6 @@ static void s_request_response_protocol_adapter_incoming_publish_event_record_cl
     aws_byte_buf_clean_up(&record->payload);
 }
 
-struct request_response_protocol_adapter_connection_event_record {
-    enum aws_protocol_adapter_connection_event_type event_type;
-    bool rejoined_session;
-};
-
 struct request_response_protocol_adapter_subscription_event_record {
     enum aws_protocol_adapter_subscription_event_type event_type;
     struct aws_byte_buf topic_filter;
@@ -61,7 +56,7 @@ struct aws_request_response_mqtt5_adapter_test_fixture {
     struct aws_mqtt_protocol_adapter *protocol_adapter;
 
     struct aws_array_list incoming_publish_events;
-    struct aws_array_list connection_events;
+    struct aws_array_list session_events;
     struct aws_array_list subscription_events;
     struct aws_array_list publish_results;
 
@@ -111,16 +106,13 @@ static void s_rr_mqtt5_protocol_adapter_test_on_terminate_callback(void *user_da
     aws_condition_variable_notify_all(&fixture->signal);
 }
 
-static void s_rr_mqtt5_protocol_adapter_test_on_connection_event(
-    struct aws_protocol_adapter_connection_event *event,
+static void s_rr_mqtt5_protocol_adapter_test_on_session_event(
+    struct aws_protocol_adapter_session_event *event,
     void *user_data) {
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture = user_data;
 
-    struct request_response_protocol_adapter_connection_event_record record = {
-        .event_type = event->event_type, .rejoined_session = event->rejoined_session};
-
     aws_mutex_lock(&fixture->lock);
-    aws_array_list_push_back(&fixture->connection_events, &record);
+    aws_array_list_push_back(&fixture->session_events, event);
     aws_mutex_unlock(&fixture->lock);
     aws_condition_variable_notify_all(&fixture->signal);
 }
@@ -151,7 +143,7 @@ static int s_aws_request_response_mqtt5_adapter_test_fixture_init(
         .subscription_event_callback = s_rr_mqtt5_protocol_adapter_test_on_subscription_event,
         .incoming_publish_callback = s_rr_mqtt5_protocol_adapter_test_on_incoming_publish,
         .terminate_callback = s_rr_mqtt5_protocol_adapter_test_on_terminate_callback,
-        .connection_event_callback = s_rr_mqtt5_protocol_adapter_test_on_connection_event,
+        .session_event_callback = s_rr_mqtt5_protocol_adapter_test_on_session_event,
         .user_data = fixture};
 
     fixture->protocol_adapter =
@@ -164,10 +156,7 @@ static int s_aws_request_response_mqtt5_adapter_test_fixture_init(
         10,
         sizeof(struct request_response_protocol_adapter_incoming_publish_event_record));
     aws_array_list_init_dynamic(
-        &fixture->connection_events,
-        allocator,
-        10,
-        sizeof(struct request_response_protocol_adapter_connection_event_record));
+        &fixture->session_events, allocator, 10, sizeof(struct aws_protocol_adapter_session_event));
     aws_array_list_init_dynamic(
         &fixture->subscription_events,
         allocator,
@@ -220,7 +209,7 @@ static void s_aws_request_response_mqtt5_adapter_test_fixture_clean_up(
     }
     aws_array_list_clean_up(&fixture->incoming_publish_events);
 
-    aws_array_list_clean_up(&fixture->connection_events);
+    aws_array_list_clean_up(&fixture->session_events);
     aws_array_list_clean_up(&fixture->publish_results);
 
     aws_mutex_clean_up(&fixture->lock);
@@ -272,24 +261,23 @@ static void s_wait_for_subscription_events_contains(
     aws_mutex_unlock(&fixture->lock);
 }
 
-struct test_connection_event_wait_context {
-    struct request_response_protocol_adapter_connection_event_record *expected_event;
+struct test_session_event_wait_context {
+    struct aws_protocol_adapter_session_event *expected_event;
     size_t expected_count;
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture;
 };
 
-static bool s_do_connection_events_contain(void *context) {
-    struct test_connection_event_wait_context *wait_context = context;
+static bool s_do_session_events_contain(void *context) {
+    struct test_session_event_wait_context *wait_context = context;
 
     size_t found = 0;
 
-    size_t num_events = aws_array_list_length(&wait_context->fixture->connection_events);
+    size_t num_events = aws_array_list_length(&wait_context->fixture->session_events);
     for (size_t i = 0; i < num_events; ++i) {
-        struct request_response_protocol_adapter_connection_event_record record;
-        aws_array_list_get_at(&wait_context->fixture->connection_events, &record, i);
+        struct aws_protocol_adapter_session_event record;
+        aws_array_list_get_at(&wait_context->fixture->session_events, &record, i);
 
-        if (record.event_type == wait_context->expected_event->event_type &&
-            record.rejoined_session == wait_context->expected_event->rejoined_session) {
+        if (record.joined_session == wait_context->expected_event->joined_session) {
             ++found;
         }
     }
@@ -297,19 +285,19 @@ static bool s_do_connection_events_contain(void *context) {
     return found >= wait_context->expected_count;
 }
 
-static void s_wait_for_connection_events_contains(
+static void s_wait_for_session_events_contains(
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture,
-    struct request_response_protocol_adapter_connection_event_record *expected_event,
+    struct aws_protocol_adapter_session_event *expected_event,
     size_t expected_count) {
 
-    struct test_connection_event_wait_context context = {
+    struct test_session_event_wait_context context = {
         .expected_event = expected_event,
         .expected_count = expected_count,
         .fixture = fixture,
     };
 
     aws_mutex_lock(&fixture->lock);
-    aws_condition_variable_wait_pred(&fixture->signal, &fixture->lock, s_do_connection_events_contain, &context);
+    aws_condition_variable_wait_pred(&fixture->signal, &fixture->lock, s_do_session_events_contain, &context);
     aws_mutex_unlock(&fixture->lock);
 }
 
@@ -818,11 +806,9 @@ AWS_TEST_CASE(
     request_response_mqtt5_protocol_adapter_publish_failure_error_code,
     s_request_response_mqtt5_protocol_adapter_publish_failure_error_code_fn)
 
-static int s_request_response_mqtt5_protocol_adapter_connection_event_sequence_fn(
+static int s_do_request_response_mqtt5_protocol_adapter_session_event_test(
     struct aws_allocator *allocator,
-    void *ctx) {
-    (void)ctx;
-
+    bool rejoin_session) {
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options test_options;
@@ -830,7 +816,7 @@ static int s_request_response_mqtt5_protocol_adapter_connection_event_sequence_f
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
         aws_mqtt5_mock_server_handle_connect_honor_session_unconditional;
-    test_options.client_options.session_behavior = AWS_MQTT5_CSBT_REJOIN_POST_SUCCESS;
+    test_options.client_options.session_behavior = rejoin_session ? AWS_MQTT5_CSBT_REJOIN_ALWAYS : AWS_MQTT5_CSBT_CLEAN;
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options mqtt5_test_fixture_options = {
         .client_options = &test_options.client_options,
@@ -843,31 +829,15 @@ static int s_request_response_mqtt5_protocol_adapter_connection_event_sequence_f
 
     struct aws_mqtt5_client *client = fixture.mqtt5_fixture.client;
 
-    struct request_response_protocol_adapter_connection_event_record online_record1 = {
-        .event_type = AWS_PACET_ONLINE,
-        .rejoined_session = false,
+    struct aws_protocol_adapter_session_event expected_session_record = {
+        .joined_session = rejoin_session,
     };
 
     ASSERT_SUCCESS(aws_mqtt5_client_start(client));
-    s_wait_for_connection_events_contains(&fixture, &online_record1, 1);
-
-    struct request_response_protocol_adapter_connection_event_record offline_record = {
-        .event_type = AWS_PACET_OFFLINE,
-    };
+    s_wait_for_session_events_contains(&fixture, &expected_session_record, 1);
 
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
-    s_wait_for_connection_events_contains(&fixture, &offline_record, 1);
-
-    struct request_response_protocol_adapter_connection_event_record online_record2 = {
-        .event_type = AWS_PACET_ONLINE,
-        .rejoined_session = true,
-    };
-
-    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
-    s_wait_for_connection_events_contains(&fixture, &online_record2, 1);
-
-    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
-    s_wait_for_connection_events_contains(&fixture, &offline_record, 2);
+    aws_wait_for_stopped_lifecycle_event(&fixture.mqtt5_fixture);
 
     s_aws_request_response_mqtt5_adapter_test_fixture_clean_up(&fixture);
 
@@ -876,9 +846,29 @@ static int s_request_response_mqtt5_protocol_adapter_connection_event_sequence_f
     return AWS_OP_SUCCESS;
 }
 
+static int s_request_response_mqtt5_protocol_adapter_session_event_no_rejoin_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    return s_do_request_response_mqtt5_protocol_adapter_session_event_test(allocator, false);
+}
+
 AWS_TEST_CASE(
-    request_response_mqtt5_protocol_adapter_connection_event_sequence,
-    s_request_response_mqtt5_protocol_adapter_connection_event_sequence_fn)
+    request_response_mqtt5_protocol_adapter_session_event_no_rejoin,
+    s_request_response_mqtt5_protocol_adapter_session_event_no_rejoin_fn)
+
+static int s_request_response_mqtt5_protocol_adapter_session_event_rejoin_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    return s_do_request_response_mqtt5_protocol_adapter_session_event_test(allocator, true);
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt5_protocol_adapter_session_event_rejoin,
+    s_request_response_mqtt5_protocol_adapter_session_event_rejoin_fn)
 
 static int s_request_response_mqtt5_protocol_adapter_incoming_publish_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
