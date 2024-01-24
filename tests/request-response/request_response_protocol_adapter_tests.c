@@ -190,7 +190,7 @@ static bool s_is_adapter_terminated(void *context) {
 static void s_aws_request_response_mqtt5_adapter_test_fixture_destroy_adapters(
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture) {
     if (fixture->protocol_adapter != NULL) {
-        aws_mqtt_protocol_adapter_delete(fixture->protocol_adapter);
+        aws_mqtt_protocol_adapter_destroy(fixture->protocol_adapter);
 
         aws_mutex_lock(&fixture->lock);
         aws_condition_variable_wait_pred(&fixture->signal, &fixture->lock, s_is_adapter_terminated, fixture);

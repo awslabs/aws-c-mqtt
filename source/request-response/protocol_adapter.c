@@ -58,7 +58,7 @@ struct aws_mqtt_protocol_adapter_5_impl {
     struct aws_mqtt5_listener *listener;
 };
 
-static void s_aws_mqtt_protocol_adapter_5_delete(void *impl) {
+static void s_aws_mqtt_protocol_adapter_5_destroy(void *impl) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = impl;
 
     // all the real cleanup is done in the listener termination callback
@@ -87,7 +87,7 @@ static struct aws_mqtt_protocol_adapter_5_subscription_op_data *s_aws_mqtt_proto
     return subscribe_data;
 }
 
-static void s_aws_mqtt_protocol_adapter_5_subscription_op_data_delete(
+static void s_aws_mqtt_protocol_adapter_5_subscription_op_data_destroy(
     struct aws_mqtt_protocol_adapter_5_subscription_op_data *subscribe_data) {
     aws_weak_ref_release(subscribe_data->callback_ref);
     aws_byte_buf_clean_up(&subscribe_data->topic_filter);
@@ -120,7 +120,7 @@ static void s_protocol_adapter_5_subscribe_completion(
 
 done:
 
-    s_aws_mqtt_protocol_adapter_5_subscription_op_data_delete(subscribe_data);
+    s_aws_mqtt_protocol_adapter_5_subscription_op_data_destroy(subscribe_data);
 }
 
 int s_aws_mqtt_protocol_adapter_5_subscribe(void *impl, struct aws_protocol_adapter_subscribe_options *options) {
@@ -154,7 +154,7 @@ int s_aws_mqtt_protocol_adapter_5_subscribe(void *impl, struct aws_protocol_adap
 
 error:
 
-    s_aws_mqtt_protocol_adapter_5_subscription_op_data_delete(subscribe_data);
+    s_aws_mqtt_protocol_adapter_5_subscription_op_data_destroy(subscribe_data);
 
     return AWS_OP_ERR;
 }
@@ -184,7 +184,7 @@ static void s_protocol_adapter_5_unsubscribe_completion(
 
 done:
 
-    s_aws_mqtt_protocol_adapter_5_subscription_op_data_delete(unsubscribe_data);
+    s_aws_mqtt_protocol_adapter_5_subscription_op_data_destroy(unsubscribe_data);
 }
 
 int s_aws_mqtt_protocol_adapter_5_unsubscribe(void *impl, struct aws_protocol_adapter_unsubscribe_options *options) {
@@ -213,7 +213,7 @@ int s_aws_mqtt_protocol_adapter_5_unsubscribe(void *impl, struct aws_protocol_ad
 
 error:
 
-    s_aws_mqtt_protocol_adapter_5_subscription_op_data_delete(unsubscribe_data);
+    s_aws_mqtt_protocol_adapter_5_subscription_op_data_destroy(unsubscribe_data);
 
     return AWS_OP_ERR;
 }
@@ -243,7 +243,7 @@ static struct aws_mqtt_protocol_adapter_5_publish_op_data *s_aws_mqtt_protocol_a
     return publish_data;
 }
 
-static void s_aws_mqtt_protocol_adapter_5_publish_op_data_delete(
+static void s_aws_mqtt_protocol_adapter_5_publish_op_data_destroy(
     struct aws_mqtt_protocol_adapter_5_publish_op_data *publish_data) {
     aws_weak_ref_release(publish_data->callback_ref);
 
@@ -274,7 +274,7 @@ static void s_protocol_adapter_5_publish_completion(
 
 done:
 
-    s_aws_mqtt_protocol_adapter_5_publish_op_data_delete(publish_data);
+    s_aws_mqtt_protocol_adapter_5_publish_op_data_destroy(publish_data);
 }
 
 int s_aws_mqtt_protocol_adapter_5_publish(void *impl, struct aws_protocol_adapter_publish_options *options) {
@@ -299,7 +299,7 @@ int s_aws_mqtt_protocol_adapter_5_publish(void *impl, struct aws_protocol_adapte
 
 error:
 
-    s_aws_mqtt_protocol_adapter_5_publish_op_data_delete(publish_data);
+    s_aws_mqtt_protocol_adapter_5_publish_op_data_destroy(publish_data);
 
     return AWS_OP_ERR;
 }
@@ -360,7 +360,7 @@ static void s_protocol_adapter_mqtt5_listener_termination_callback(void *user_da
 }
 
 static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mqtt5_vtable = {
-    .aws_mqtt_protocol_adapter_delete_fn = s_aws_mqtt_protocol_adapter_5_delete,
+    .aws_mqtt_protocol_adapter_destroy_fn = s_aws_mqtt_protocol_adapter_5_destroy,
     .aws_mqtt_protocol_adapter_subscribe_fn = s_aws_mqtt_protocol_adapter_5_subscribe,
     .aws_mqtt_protocol_adapter_unsubscribe_fn = s_aws_mqtt_protocol_adapter_5_unsubscribe,
     .aws_mqtt_protocol_adapter_publish_fn = s_aws_mqtt_protocol_adapter_5_publish,
@@ -370,6 +370,12 @@ struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(
     struct aws_allocator *allocator,
     struct aws_mqtt_protocol_adapter_options *options,
     struct aws_mqtt5_client *client) {
+
+    if (options == NULL || client == NULL) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return NULL;
+    }
+
     struct aws_mqtt_protocol_adapter_5_impl *adapter =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_5_impl));
 
@@ -399,8 +405,8 @@ struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(
     return &adapter->base;
 }
 
-void aws_mqtt_protocol_adapter_delete(struct aws_mqtt_protocol_adapter *adapter) {
-    (*adapter->vtable->aws_mqtt_protocol_adapter_delete_fn)(adapter->impl);
+void aws_mqtt_protocol_adapter_destroy(struct aws_mqtt_protocol_adapter *adapter) {
+    (*adapter->vtable->aws_mqtt_protocol_adapter_destroy_fn)(adapter->impl);
 }
 
 int aws_mqtt_protocol_adapter_subscribe(

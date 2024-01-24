@@ -3226,7 +3226,7 @@ static void s_aws_mqtt_client_connection_311_release(void *impl) {
 enum aws_mqtt311_impl_type s_aws_mqtt_client_connection_3_get_impl(const void *impl) {
     (void)impl;
 
-    return AWS_MQTT311_IT_311_CONNECTION_IMPL;
+    return AWS_MQTT311_IT_311_CONNECTION;
 }
 
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311_vtable = {

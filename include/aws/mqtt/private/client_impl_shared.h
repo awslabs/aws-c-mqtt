@@ -18,10 +18,10 @@ struct aws_mqtt_client_connection;
 enum aws_mqtt311_impl_type {
 
     /* 311 connection impl can be cast to `struct aws_mqtt_client_connection_311_impl` */
-    AWS_MQTT311_IT_311_CONNECTION_IMPL,
+    AWS_MQTT311_IT_311_CONNECTION,
 
     /* 311 connection impl can be cast to `struct aws_mqtt_client_connection_5_impl`*/
-    AWS_MQTT311_IT_5_ADAPTER_IMPL,
+    AWS_MQTT311_IT_5_ADAPTER,
 };
 
 struct aws_mqtt_client_connection_vtable {
