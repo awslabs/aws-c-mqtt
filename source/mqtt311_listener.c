@@ -266,7 +266,7 @@ void aws_mqtt311_callback_set_manager_on_publish_received(
     }
 }
 
-void aws_mqtt311_callback_set_manager_on_connection_resumed(
+void aws_mqtt311_callback_set_manager_on_connection_success(
     struct aws_mqtt311_callback_set_manager *manager,
     enum aws_mqtt_connect_return_code return_code,
     bool rejoined_session) {
@@ -281,8 +281,8 @@ void aws_mqtt311_callback_set_manager_on_connection_resumed(
         node = aws_linked_list_next(node);
 
         struct aws_mqtt311_callback_set *callback_set = &entry->callbacks;
-        if (callback_set->connection_resumed_handler != NULL) {
-            (*callback_set->connection_resumed_handler)(
+        if (callback_set->connection_success_handler != NULL) {
+            (*callback_set->connection_success_handler)(
                 manager->connection, return_code, rejoined_session, callback_set->user_data);
         }
     }

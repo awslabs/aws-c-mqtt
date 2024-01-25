@@ -33,7 +33,7 @@ struct aws_mqtt311_callback_set {
     aws_mqtt_client_publish_received_fn *publish_received_handler;
 
     /* Called from s_packet_handler_connack which is event-loop invoked */
-    aws_mqtt_client_on_connection_resumed_fn *connection_resumed_handler;
+    aws_mqtt_client_on_connection_success_fn *connection_success_handler;
 
     void *user_data;
 };
@@ -162,7 +162,7 @@ void aws_mqtt311_callback_set_manager_on_publish_received(
     bool retain);
 
 AWS_MQTT_API
-void aws_mqtt311_callback_set_manager_on_connection_resumed(
+void aws_mqtt311_callback_set_manager_on_connection_success(
     struct aws_mqtt311_callback_set_manager *manager,
     enum aws_mqtt_connect_return_code return_code,
     bool rejoined_session);

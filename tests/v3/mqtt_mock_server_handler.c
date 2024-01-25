@@ -30,6 +30,8 @@ struct mqtt_mock_server_handler {
         size_t pubacks_received;
         size_t ping_received;
         size_t connacks_avail;
+        bool session_present;
+        bool reflect_publishes;
         bool auto_ack;
 
         /* last ID used when sending PUBLISH (QoS1+) to client */
@@ -77,12 +79,14 @@ static int s_mqtt_mock_server_handler_process_packet(
     switch (packet_type) {
         case AWS_MQTT_PACKET_CONNECT: {
             size_t connacks_available = 0;
+            bool session_present = false;
             aws_mutex_lock(&server->synced.lock);
             AWS_LOGF_DEBUG(
                 MOCK_LOG_SUBJECT,
                 "server, CONNECT received, %llu available connacks.",
                 (long long unsigned)server->synced.connacks_avail);
             connacks_available = server->synced.connacks_avail > 0 ? server->synced.connacks_avail-- : 0;
+            session_present = server->synced.session_present;
             aws_mutex_unlock(&server->synced.lock);
 
             if (connacks_available) {
@@ -90,7 +94,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                     aws_channel_acquire_message_from_pool(server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
 
                 struct aws_mqtt_packet_connack conn_ack;
-                err |= aws_mqtt_packet_connack_init(&conn_ack, false, AWS_MQTT_CONNECT_ACCEPTED);
+                err |= aws_mqtt_packet_connack_init(&conn_ack, session_present, AWS_MQTT_CONNECT_ACCEPTED);
                 err |= aws_mqtt_packet_connack_encode(&connack_msg->message_data, &conn_ack);
                 if (aws_channel_slot_send_message(server->slot, connack_msg, AWS_CHANNEL_DIR_WRITE)) {
                     err |= 1;
@@ -185,6 +189,7 @@ static int s_mqtt_mock_server_handler_process_packet(
 
             aws_mutex_lock(&server->synced.lock);
             bool auto_ack = server->synced.auto_ack;
+            bool reflect_publishes = server->synced.reflect_publishes;
             aws_mutex_unlock(&server->synced.lock);
 
             uint8_t qos = (publish_packet.fixed_header.flags >> 1) & 0x3;
@@ -196,6 +201,23 @@ static int s_mqtt_mock_server_handler_process_packet(
                 err |= aws_mqtt_packet_puback_init(&puback, publish_packet.packet_identifier);
                 err |= aws_mqtt_packet_ack_encode(&puback_msg->message_data, &puback);
                 err |= aws_channel_slot_send_message(server->slot, puback_msg, AWS_CHANNEL_DIR_WRITE);
+            }
+
+            if (reflect_publishes) {
+                struct aws_io_message *publish_msg =
+                    aws_channel_acquire_message_from_pool(server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 1024);
+                struct aws_mqtt_packet_publish publish;
+                // reusing the packet identifier here is weird but reasonably safe, they're separate id spaces
+                err |= aws_mqtt_packet_publish_init(
+                    &publish,
+                    false,
+                    qos,
+                    false,
+                    publish_packet.topic_name,
+                    publish_packet.packet_identifier,
+                    publish_packet.payload);
+                err |= aws_mqtt_packet_publish_encode(&publish_msg->message_data, &publish);
+                err |= aws_channel_slot_send_message(server->slot, publish_msg, AWS_CHANNEL_DIR_WRITE);
             }
             break;
         }
@@ -464,6 +486,22 @@ void destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
     aws_mutex_clean_up(&server->synced.lock);
     aws_condition_variable_clean_up(&server->synced.cvar);
     aws_mem_release(handler->alloc, server);
+}
+
+void mqtt_mock_server_set_session_present(struct aws_channel_handler *handler, bool session_present) {
+    struct mqtt_mock_server_handler *server = handler->impl;
+
+    aws_mutex_lock(&server->synced.lock);
+    server->synced.session_present = session_present;
+    aws_mutex_unlock(&server->synced.lock);
+}
+
+void mqtt_mock_server_set_publish_reflection(struct aws_channel_handler *handler, bool reflect_publishes) {
+    struct mqtt_mock_server_handler *server = handler->impl;
+
+    aws_mutex_lock(&server->synced.lock);
+    server->synced.reflect_publishes = reflect_publishes;
+    aws_mutex_unlock(&server->synced.lock);
 }
 
 void mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, size_t max_ping) {
