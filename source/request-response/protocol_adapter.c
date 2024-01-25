@@ -13,24 +13,22 @@
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
 /*
- * New API contract
+ * Basic API contract
  *
  * Invariant 1: Subscribe is only called from the RR subscription manager when going from 0 to 1 pending operations
  * Invariant 2: Unsubscribe is only called from the RR subscription manager when there are 0 pending operations, not
  *   necessarily on the exact transition to zero though.
  *
+ * Additional Notes
+ *
  * Entries are not tracked with the exception of eventstream impl which needs the stream handles to close.
- * A subscribe failure should not trigger an unsubscribe, only notify the status callback.
- * Subscription event callback should be {subscribe_success, subscribe_failure, unsubscribe_success,
- * unsubscribe_failure}. The sub manager is responsible for calling Unsubscribe on all its entries when shutting down
+ *
+ * A subscribe failure does not trigger an unsubscribe, a status event.
+ *
+ * The sub manager is responsible for calling Unsubscribe on all its entries when shutting down
  * (before releasing hold of the adapter).
  *
- * How do we know not to retry unsubscribe failures because a subscribe came in?  Well, we don't retry failures; let
- * the manager make that decision.  No retry when the weak ref is zeroed either.  The potential for things to go wrong
- * is worse than the potential of a subscription "leaking."
- *
- * On subscribe failures with zeroed weak ref, trust that an Unsubscribe was sent that will resolve later and let it
- * decide what to do.
+ * Retries, when appropriate, are the responsibility of the caller.
  */
 
 struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(
