@@ -106,12 +106,15 @@ static void s_protocol_adapter_5_subscribe_completion(
         goto done;
     }
 
-    bool success = error_code == AWS_ERROR_SUCCESS && suback != NULL && suback->reason_code_count == 1 &&
-                   suback->reason_codes[0] <= AWS_MQTT5_SARC_GRANTED_QOS_2;
+    if (error_code == AWS_ERROR_SUCCESS) {
+        if (suback == NULL || suback->reason_code_count != 1 || suback->reason_codes[0] >= 128) {
+            error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE;
+        }
+    }
 
     struct aws_protocol_adapter_subscription_event subscribe_event = {
         .topic_filter = aws_byte_cursor_from_buf(&subscribe_data->topic_filter),
-        .event_type = success ? AWS_PASET_SUBSCRIBE_SUCCESS : AWS_PASET_SUBSCRIBE_FAILURE,
+        .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = error_code,
     };
 
@@ -171,12 +174,15 @@ static void s_protocol_adapter_5_unsubscribe_completion(
         goto done;
     }
 
-    bool success = error_code == AWS_ERROR_SUCCESS && unsuback != NULL && unsuback->reason_code_count == 1 &&
-                   unsuback->reason_codes[0] < 128;
+    if (error_code == AWS_ERROR_SUCCESS) {
+        if (unsuback == NULL || unsuback->reason_code_count != 1 || unsuback->reason_codes[0] >= 128) {
+            error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE;
+        }
+    }
 
     struct aws_protocol_adapter_subscription_event unsubscribe_event = {
         .topic_filter = aws_byte_cursor_from_buf(&unsubscribe_data->topic_filter),
-        .event_type = success ? AWS_PASET_UNSUBSCRIBE_SUCCESS : AWS_PASET_UNSUBSCRIBE_FAILURE,
+        .event_type = AWS_PASET_UNSUBSCRIBE,
         .error_code = error_code,
     };
 
@@ -224,7 +230,7 @@ struct aws_mqtt_protocol_adapter_5_publish_op_data {
     struct aws_allocator *allocator;
     struct aws_weak_ref *callback_ref;
 
-    void (*completion_callback_fn)(bool, void *);
+    void (*completion_callback_fn)(int, void *);
     void *user_data;
 };
 
@@ -262,15 +268,14 @@ static void s_protocol_adapter_5_publish_completion(
         goto done;
     }
 
-    bool success = false;
     if (error_code == AWS_ERROR_SUCCESS && packet_type == AWS_MQTT5_PT_PUBACK) {
         const struct aws_mqtt5_packet_puback_view *puback = packet;
-        if (puback->reason_code < 128) {
-            success = true;
+        if (puback->reason_code >= 128) {
+            error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE;
         }
     }
 
-    (*publish_data->completion_callback_fn)(success, publish_data->user_data);
+    (*publish_data->completion_callback_fn)(error_code, publish_data->user_data);
 
 done:
 

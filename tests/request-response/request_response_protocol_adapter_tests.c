@@ -34,13 +34,20 @@ static void s_request_response_protocol_adapter_incoming_publish_event_record_cl
 struct request_response_protocol_adapter_subscription_event_record {
     enum aws_protocol_adapter_subscription_event_type event_type;
     struct aws_byte_buf topic_filter;
+    int error_code;
 };
 
 static void s_request_response_protocol_adapter_subscription_event_record_init(
     struct request_response_protocol_adapter_subscription_event_record *record,
     struct aws_allocator *allocator,
-    struct aws_byte_cursor topic_filter) {
+    enum aws_protocol_adapter_subscription_event_type event_type,
+    struct aws_byte_cursor topic_filter,
+    int error_code) {
 
+    AWS_ZERO_STRUCT(*record);
+
+    record->event_type = event_type;
+    record->error_code = error_code;
     aws_byte_buf_init_copy_from_cursor(&record->topic_filter, allocator, topic_filter);
 }
 
@@ -71,9 +78,9 @@ static void s_rr_mqtt5_protocol_adapter_test_on_subscription_event(
     void *user_data) {
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture = user_data;
 
-    struct request_response_protocol_adapter_subscription_event_record record = {.event_type = event->event_type};
+    struct request_response_protocol_adapter_subscription_event_record record;
     s_request_response_protocol_adapter_subscription_event_record_init(
-        &record, fixture->allocator, event->topic_filter);
+        &record, fixture->allocator, event->event_type, event->topic_filter, event->error_code);
 
     aws_mutex_lock(&fixture->lock);
     aws_array_list_push_back(&fixture->subscription_events, &record);
@@ -117,11 +124,11 @@ static void s_rr_mqtt5_protocol_adapter_test_on_session_event(
     aws_condition_variable_notify_all(&fixture->signal);
 }
 
-static void s_rr_mqtt5_protocol_adapter_test_on_publish_result(bool success, void *user_data) {
+static void s_rr_mqtt5_protocol_adapter_test_on_publish_result(int error_code, void *user_data) {
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture = user_data;
 
     aws_mutex_lock(&fixture->lock);
-    aws_array_list_push_back(&fixture->publish_results, &success);
+    aws_array_list_push_back(&fixture->publish_results, &error_code);
     aws_mutex_unlock(&fixture->lock);
     aws_condition_variable_notify_all(&fixture->signal);
 }
@@ -162,7 +169,7 @@ static int s_aws_request_response_mqtt5_adapter_test_fixture_init(
         allocator,
         10,
         sizeof(struct request_response_protocol_adapter_subscription_event_record));
-    aws_array_list_init_dynamic(&fixture->publish_results, allocator, 10, sizeof(bool));
+    aws_array_list_init_dynamic(&fixture->publish_results, allocator, 10, sizeof(int));
 
     aws_mutex_init(&fixture->lock);
     aws_condition_variable_init(&fixture->signal);
@@ -232,14 +239,22 @@ static bool s_do_subscription_events_contain(void *context) {
         struct request_response_protocol_adapter_subscription_event_record record;
         aws_array_list_get_at(&wait_context->fixture->subscription_events, &record, i);
 
-        if (record.event_type == wait_context->expected_event->event_type) {
-            struct aws_byte_cursor record_topic_filter = aws_byte_cursor_from_buf(&record.topic_filter);
-            struct aws_byte_cursor expected_topic_filter =
-                aws_byte_cursor_from_buf(&wait_context->expected_event->topic_filter);
-            if (aws_byte_cursor_eq(&record_topic_filter, &expected_topic_filter)) {
-                ++found;
-            }
+        if (record.event_type != wait_context->expected_event->event_type) {
+            continue;
         }
+
+        if (record.error_code != wait_context->expected_event->error_code) {
+            continue;
+        }
+
+        struct aws_byte_cursor record_topic_filter = aws_byte_cursor_from_buf(&record.topic_filter);
+        struct aws_byte_cursor expected_topic_filter =
+            aws_byte_cursor_from_buf(&wait_context->expected_event->topic_filter);
+        if (!aws_byte_cursor_eq(&record_topic_filter, &expected_topic_filter)) {
+            continue;
+        }
+
+        ++found;
     }
 
     return found >= wait_context->expected_count;
@@ -277,9 +292,11 @@ static bool s_do_session_events_contain(void *context) {
         struct aws_protocol_adapter_session_event record;
         aws_array_list_get_at(&wait_context->fixture->session_events, &record, i);
 
-        if (record.joined_session == wait_context->expected_event->joined_session) {
-            ++found;
+        if (record.joined_session != wait_context->expected_event->joined_session) {
+            continue;
         }
+
+        ++found;
     }
 
     return found >= wait_context->expected_count;
@@ -352,7 +369,7 @@ static void s_wait_for_incoming_publish_events_contains(
 }
 
 struct test_publish_result_wait_context {
-    bool expected_success;
+    int expected_error_code;
     size_t expected_count;
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture;
 };
@@ -364,10 +381,10 @@ static bool s_do_publish_results_contain(void *context) {
 
     size_t num_events = aws_array_list_length(&wait_context->fixture->publish_results);
     for (size_t i = 0; i < num_events; ++i) {
-        bool success = false;
-        aws_array_list_get_at(&wait_context->fixture->publish_results, &success, i);
+        int error_code = AWS_ERROR_SUCCESS;
+        aws_array_list_get_at(&wait_context->fixture->publish_results, &error_code, i);
 
-        if (success == wait_context->expected_success) {
+        if (error_code == wait_context->expected_error_code) {
             ++found;
         }
     }
@@ -377,11 +394,11 @@ static bool s_do_publish_results_contain(void *context) {
 
 static void s_wait_for_publish_results_contains(
     struct aws_request_response_mqtt5_adapter_test_fixture *fixture,
-    bool success,
+    int expected_error_code,
     size_t expected_count) {
 
     struct test_publish_result_wait_context context = {
-        .expected_success = success,
+        .expected_error_code = expected_error_code,
         .expected_count = expected_count,
         .fixture = fixture,
     };
@@ -418,6 +435,19 @@ static int s_aws_mqtt5_server_send_failed_suback_on_subscribe(
     };
 
     return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view);
+}
+
+static int s_test_type_to_expected_error_code(enum protocol_adapter_operation_test_type test_type) {
+    switch (test_type) {
+        case PAOTT_FAILURE_TIMEOUT:
+            return AWS_ERROR_MQTT_TIMEOUT;
+        case PAOTT_FAILURE_REASON_CODE:
+            return AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE;
+        case PAOTT_FAILURE_ERROR_CODE:
+            return AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY;
+        default:
+            return AWS_ERROR_SUCCESS;
+    }
 }
 
 static int s_do_request_response_mqtt5_protocol_adapter_subscribe_test(
@@ -457,12 +487,15 @@ static int s_do_request_response_mqtt5_protocol_adapter_subscribe_test(
         aws_wait_for_connected_lifecycle_event(&fixture.mqtt5_fixture);
     }
 
-    struct request_response_protocol_adapter_subscription_event_record expected_outcome = {
-        .event_type = (test_type == PAOTT_SUCCESS) ? AWS_PASET_SUBSCRIBE_SUCCESS : AWS_PASET_SUBSCRIBE_FAILURE,
-    };
+    int expected_error_code = s_test_type_to_expected_error_code(test_type);
 
-    aws_byte_buf_init_copy_from_cursor(
-        &expected_outcome.topic_filter, allocator, aws_byte_cursor_from_c_str("hello/world"));
+    struct request_response_protocol_adapter_subscription_event_record expected_outcome;
+    s_request_response_protocol_adapter_subscription_event_record_init(
+        &expected_outcome,
+        allocator,
+        AWS_PASET_SUBSCRIBE,
+        aws_byte_cursor_from_c_str("hello/world"),
+        expected_error_code);
 
     struct aws_protocol_adapter_subscribe_options subscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
@@ -595,12 +628,15 @@ static int s_do_request_response_mqtt5_protocol_adapter_unsubscribe_test(
         aws_wait_for_connected_lifecycle_event(&fixture.mqtt5_fixture);
     }
 
-    struct request_response_protocol_adapter_subscription_event_record expected_outcome = {
-        .event_type = (test_type == PAOTT_SUCCESS) ? AWS_PASET_UNSUBSCRIBE_SUCCESS : AWS_PASET_UNSUBSCRIBE_FAILURE,
-    };
+    int expected_error_code = s_test_type_to_expected_error_code(test_type);
 
-    aws_byte_buf_init_copy_from_cursor(
-        &expected_outcome.topic_filter, allocator, aws_byte_cursor_from_c_str("hello/world"));
+    struct request_response_protocol_adapter_subscription_event_record expected_outcome;
+    s_request_response_protocol_adapter_subscription_event_record_init(
+        &expected_outcome,
+        allocator,
+        AWS_PASET_UNSUBSCRIBE,
+        aws_byte_cursor_from_c_str("hello/world"),
+        expected_error_code);
 
     struct aws_protocol_adapter_unsubscribe_options unsubscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
@@ -743,7 +779,8 @@ static int s_do_request_response_mqtt5_protocol_adapter_publish_test(
 
     aws_mqtt_protocol_adapter_publish(fixture.protocol_adapter, &publish_options);
 
-    s_wait_for_publish_results_contains(&fixture, test_type == PAOTT_SUCCESS, 1);
+    int expected_error_code = s_test_type_to_expected_error_code(test_type);
+    s_wait_for_publish_results_contains(&fixture, expected_error_code, 1);
 
     s_aws_request_response_mqtt5_adapter_test_fixture_clean_up(&fixture);
 
