@@ -45,6 +45,7 @@ static void s_311_listener_test_on_publish_received(
     enum aws_mqtt_qos qos,
     bool retain,
     void *userdata) {
+    (void)connection;
     (void)dup;
     (void)qos;
     (void)retain;
@@ -68,6 +69,7 @@ static void s_311_listener_test_on_connection_success(
     enum aws_mqtt_connect_return_code return_code,
     bool session_present,
     void *userdata) {
+    (void)connection;
     (void)return_code;
 
     struct mqtt311_listener_test_context *context = userdata;
@@ -213,7 +215,7 @@ static int s_do_mqtt311_listener_connection_success_event_test(struct aws_alloca
     struct mqtt311_listener_test_context test_context;
     ASSERT_SUCCESS(mqtt311_listener_test_context_init(&test_context, allocator, &mqtt311_context));
 
-    mqtt_mock_server_set_session_present(mqtt311_context.mock_server, false);
+    mqtt_mock_server_set_session_present(mqtt311_context.mock_server, session_present);
 
     struct aws_mqtt_connection_options connection_options = {
         .user_data = &mqtt311_context,
@@ -227,7 +229,7 @@ static int s_do_mqtt311_listener_connection_success_event_test(struct aws_alloca
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(mqtt311_context.mqtt_connection, &connection_options));
     aws_test311_wait_for_connection_to_complete(&mqtt311_context);
 
-    s_wait_for_connection_success_events(&test_context, false, 1);
+    s_wait_for_connection_success_events(&test_context, session_present, 1);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         mqtt311_context.mqtt_connection, aws_test311_on_disconnect_fn, &mqtt311_context));
@@ -236,7 +238,7 @@ static int s_do_mqtt311_listener_connection_success_event_test(struct aws_alloca
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(mqtt311_context.mqtt_connection, &connection_options));
     aws_test311_wait_for_connection_to_complete(&mqtt311_context);
 
-    s_wait_for_connection_success_events(&test_context, false, 2);
+    s_wait_for_connection_success_events(&test_context, session_present, 2);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         mqtt311_context.mqtt_connection, aws_test311_on_disconnect_fn, &mqtt311_context));
