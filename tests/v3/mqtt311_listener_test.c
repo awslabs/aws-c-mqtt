@@ -114,9 +114,11 @@ static int mqtt311_listener_test_context_init(
     struct aws_mqtt311_listener_config listener_config = {
         .connection = mqtt311_test_context->mqtt_connection,
         .listener_callbacks =
-            {.publish_received_handler = s_311_listener_test_on_publish_received,
-             .connection_success_handler = s_311_listener_test_on_connection_success,
-             .user_data = context},
+            {
+                .publish_received_handler = s_311_listener_test_on_publish_received,
+                .connection_success_handler = s_311_listener_test_on_connection_success,
+                .user_data = context,
+            },
         .termination_callback = s_311_listener_test_on_termination,
         .termination_callback_user_data = context,
     };
