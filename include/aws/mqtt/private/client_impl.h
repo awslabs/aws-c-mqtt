@@ -154,6 +154,25 @@ struct aws_mqtt_reconnect_task {
     struct aws_allocator *allocator;
 };
 
+struct request_timeout_wrapper;
+
+/* used for timeout task */
+struct request_timeout_task_arg {
+    uint16_t packet_id;
+    struct aws_mqtt_client_connection_311_impl *connection;
+    struct request_timeout_wrapper *task_arg_wrapper;
+};
+
+/*
+ * We want the timeout task to be able to destroy the forward reference from the operation's task arg structure
+ * to the timeout task.  But the operation task arg structures don't have any data structure in common.  So to allow
+ * the timeout to refer back to a zero-able forward pointer, we wrap a pointer to the timeout task and embed it
+ * in every operation's task arg that needs to create a timeout.
+ */
+struct request_timeout_wrapper {
+    struct request_timeout_task_arg *timeout_task_arg;
+};
+
 /* The lifetime of this struct is from subscribe -> suback */
 struct subscribe_task_arg {
 
@@ -173,6 +192,9 @@ struct subscribe_task_arg {
         aws_mqtt_suback_fn *single;
     } on_suback;
     void *on_suback_ud;
+
+    struct request_timeout_wrapper timeout_wrapper;
+    uint64_t timeout_duration_in_ns;
 };
 
 /* The lifetime of this struct is the same as the lifetime of the subscription */

@@ -2412,9 +2412,9 @@ static int s_test_mqtt_connection_unsub_timeout_fn(struct aws_allocator *allocat
         state_test_data->mqtt_connection, &pub_topic, aws_test311_on_op_complete, state_test_data);
     ASSERT_TRUE(unsub_packet_id > 0);
 
-    /* publish should complete after the shutdown */
+    /* unsubscribe should complete after the timeout */
     aws_test311_wait_for_ops_completed(state_test_data);
-    /* Check the publish has been completed with timeout error */
+    /* Check that the unsubscribe has been completed with a timeout error */
     ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_MQTT_TIMEOUT);
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
@@ -2427,6 +2427,63 @@ AWS_TEST_CASE_FIXTURE(
     mqtt_connection_unsub_timeout,
     s_setup_mqtt_server_fn,
     s_test_mqtt_connection_unsub_timeout_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/**
+ * Test that connection is healthy, user set the timeout for request, and timeout happens and the subscribe failed.
+ */
+static int s_test_mqtt_connection_sub_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .protocol_operation_timeout_ms = 3000,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
+
+    /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    /* subscribe */
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    uint16_t sub_packet_id = aws_mqtt_client_connection_subscribe(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        aws_test311_on_publish_received,
+        state_test_data,
+        NULL,
+        aws_test311_on_suback,
+        state_test_data);
+    ASSERT_TRUE(sub_packet_id > 0);
+
+    /* subscribe should complete after the timeout */
+    aws_test311_wait_for_subscribe_to_complete(state_test_data);
+    /* Check that the subscribe has been completed with a timeout error */
+    ASSERT_UINT_EQUALS(state_test_data->subscribe_complete_error, AWS_ERROR_MQTT_TIMEOUT);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
+    aws_test311_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_sub_timeout,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_sub_timeout_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
 

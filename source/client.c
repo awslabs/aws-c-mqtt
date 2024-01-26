@@ -93,25 +93,6 @@ void mqtt_connection_set_state(
     connection->synced_data.state = state;
 }
 
-struct request_timeout_wrapper;
-
-/* used for timeout task */
-struct request_timeout_task_arg {
-    uint16_t packet_id;
-    struct aws_mqtt_client_connection_311_impl *connection;
-    struct request_timeout_wrapper *task_arg_wrapper;
-};
-
-/*
- * We want the timeout task to be able to destroy the forward reference from the operation's task arg structure
- * to the timeout task.  But the operation task arg structures don't have any data structure in common.  So to allow
- * the timeout to refer back to a zero-able forward pointer, we wrap a pointer to the timeout task and embed it
- * in every operation's task arg that needs to create a timeout.
- */
-struct request_timeout_wrapper {
-    struct request_timeout_task_arg *timeout_task_arg;
-};
-
 static void s_request_timeout(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
     (void)channel_task;
     struct request_timeout_task_arg *timeout_task_arg = arg;
@@ -139,8 +120,14 @@ static void s_request_timeout(struct aws_channel_task *channel_task, void *arg, 
 
 static struct request_timeout_task_arg *s_schedule_timeout_task(
     struct aws_mqtt_client_connection_311_impl *connection,
-    uint16_t packet_id) {
-    /* schedule a timeout task to run, in case server consider the publish is not received */
+    uint16_t packet_id,
+    uint64_t timeout_duration_in_ns) {
+
+    if (timeout_duration_in_ns == UINT64_MAX || timeout_duration_in_ns == 0 || packet_id == 0) {
+        return NULL;
+    }
+
+    /* schedule a timeout task to run, in case server never sends us an ack */
     struct aws_channel_task *request_timeout_task = NULL;
     struct request_timeout_task_arg *timeout_task_arg = NULL;
     if (!aws_mem_acquire_many(
@@ -1897,6 +1884,20 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
         aws_mem_release(message->allocator, message);
     }
 
+    /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
+     * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
+     * fire the on_completion callbacks. */
+    struct request_timeout_task_arg *timeout_task_arg =
+        s_schedule_timeout_task(task_arg->connection, packet_id, task_arg->timeout_duration_in_ns);
+    if (timeout_task_arg) {
+        /*
+         * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
+         * "wins", does its logic, and then breaks the connection between the two.
+         */
+        task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
+        timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
+    }
+
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->thread_data.subscriptions, &transaction);
         task_arg->tree_updated = true;
@@ -1962,6 +1963,18 @@ static void s_subscribe_complete(
             error_code,
             task_arg->on_suback_ud);
     }
+
+    /*
+     * If we have a forward pointer to a timeout task, then that means the timeout task has not run yet.  So we should
+     * follow it and zero out the back pointer to us, because we're going away now.  The timeout task will run later
+     * and be harmless (even vs. future operations with the same packet id) because it only cancels if it has a back
+     * pointer.
+     */
+    if (task_arg->timeout_wrapper.timeout_task_arg) {
+        task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
+        task_arg->timeout_wrapper.timeout_task_arg = NULL;
+    }
+
     for (size_t i = 0; i < list_len; i++) {
         aws_array_list_get_at(&task_arg->topics, &topic, i);
         s_task_topic_release(topic);
@@ -1994,6 +2007,7 @@ static uint16_t s_aws_mqtt_client_connection_311_subscribe_multiple(
     task_arg->connection = connection;
     task_arg->on_suback.multi = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
+    task_arg->timeout_duration_in_ns = connection->operation_timeout_ns;
 
     const size_t num_topics = aws_array_list_length(topic_filters);
 
@@ -2177,6 +2191,7 @@ static uint16_t s_aws_mqtt_client_connection_311_subscribe(
     task_arg->connection = connection;
     task_arg->on_suback.single = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
+    task_arg->timeout_duration_in_ns = connection->operation_timeout_ns;
 
     /* It stores the pointer */
     aws_array_list_init_static(&task_arg->topics, task_topic_storage, 1, sizeof(void *));
@@ -2448,6 +2463,7 @@ static uint16_t s_aws_mqtt_311_resubscribe_existing_topics(
     task_arg->connection = connection;
     task_arg->on_suback.multi = on_suback;
     task_arg->on_suback_ud = on_suback_ud;
+    task_arg->timeout_duration_in_ns = connection->operation_timeout_ns;
 
     /* Calculate the size of the packet.
      * The fixed header is 2 bytes and the packet ID is 2 bytes
@@ -2508,6 +2524,7 @@ struct unsubscribe_task_arg {
     void *on_unsuback_ud;
 
     struct request_timeout_wrapper timeout_wrapper;
+    uint64_t timeout_duration_in_ns;
 };
 
 static enum aws_mqtt_client_request_state s_unsubscribe_send(
@@ -2599,17 +2616,16 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
     /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
      * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
      * fire the on_completion callbacks. */
-    struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(task_arg->connection, packet_id);
-    if (!timeout_task_arg) {
-        return AWS_MQTT_CLIENT_REQUEST_ERROR;
+    struct request_timeout_task_arg *timeout_task_arg =
+        s_schedule_timeout_task(task_arg->connection, packet_id, task_arg->timeout_duration_in_ns);
+    if (timeout_task_arg) {
+        /*
+         * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
+         * "wins", does its logic, and then breaks the connection between the two.
+         */
+        task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
+        timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
     }
-
-    /*
-     * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
-     * "wins", does its logic, and then breaks the connection between the two.
-     */
-    task_arg->timeout_wrapper.timeout_task_arg = timeout_task_arg;
-    timeout_task_arg->task_arg_wrapper = &task_arg->timeout_wrapper;
 
     if (!task_arg->tree_updated) {
         aws_mqtt_topic_tree_transaction_commit(&task_arg->connection->thread_data.subscriptions, &transaction);
@@ -2691,6 +2707,7 @@ static uint16_t s_aws_mqtt_client_connection_311_unsubscribe(
     task_arg->filter = aws_byte_cursor_from_string(task_arg->filter_string);
     task_arg->on_unsuback = on_unsuback;
     task_arg->on_unsuback_ud = on_unsuback_ud;
+    task_arg->timeout_duration_in_ns = connection->operation_timeout_ns;
 
     /* Calculate the size of the unsubscribe packet.
      * The fixed header is always 2 bytes, the packet ID is always 2 bytes
@@ -2745,6 +2762,7 @@ struct publish_task_arg {
     aws_mqtt_op_complete_fn *on_complete;
     void *userdata;
 
+    uint64_t timeout_duration_in_ns;
     struct request_timeout_wrapper timeout_wrapper;
 };
 
@@ -2879,15 +2897,13 @@ static enum aws_mqtt_client_request_state s_publish_send(uint16_t packet_id, boo
             goto write_payload_chunk;
         }
     }
-    if (!is_qos_0 && connection->operation_timeout_ns != UINT64_MAX) {
-        /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
-         * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
-         * fire fire the on_completion callbacks. */
-        struct request_timeout_task_arg *timeout_task_arg = s_schedule_timeout_task(connection, packet_id);
-        if (!timeout_task_arg) {
-            return AWS_MQTT_CLIENT_REQUEST_ERROR;
-        }
 
+    /* TODO: timing should start from the message written into the socket, which is aws_io_message->on_completion
+     * invoked, but there are bugs in the websocket handler (and maybe also the h1 handler?) where we don't properly
+     * fire fire the on_completion callbacks. */
+    struct request_timeout_task_arg *timeout_task_arg =
+        s_schedule_timeout_task(connection, packet_id, task_arg->timeout_duration_in_ns);
+    if (timeout_task_arg != NULL) {
         /*
          * Set up mutual references between the operation task args and the timeout task args.  Whoever runs first
          * "wins", does its logic, and then breaks the connection between the two.
@@ -2965,6 +2981,7 @@ static uint16_t s_aws_mqtt_client_connection_311_publish(
     arg->topic = aws_byte_cursor_from_string(arg->topic_string);
     arg->qos = qos;
     arg->retain = retain;
+    arg->timeout_duration_in_ns = connection->operation_timeout_ns;
 
     struct aws_byte_cursor payload_cursor;
     AWS_ZERO_STRUCT(payload_cursor);
