@@ -77,6 +77,7 @@ enum aws_protocol_adapter_subscription_event_type {
 struct aws_protocol_adapter_subscription_event {
     struct aws_byte_cursor topic_filter;
     enum aws_protocol_adapter_subscription_event_type event_type;
+    int error_code;
 };
 
 /*

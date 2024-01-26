@@ -112,6 +112,7 @@ static void s_protocol_adapter_5_subscribe_completion(
     struct aws_protocol_adapter_subscription_event subscribe_event = {
         .topic_filter = aws_byte_cursor_from_buf(&subscribe_data->topic_filter),
         .event_type = success ? AWS_PASET_SUBSCRIBE_SUCCESS : AWS_PASET_SUBSCRIBE_FAILURE,
+        .error_code = error_code,
     };
 
     (*adapter->config.subscription_event_callback)(&subscribe_event, adapter->config.user_data);
@@ -176,6 +177,7 @@ static void s_protocol_adapter_5_unsubscribe_completion(
     struct aws_protocol_adapter_subscription_event unsubscribe_event = {
         .topic_filter = aws_byte_cursor_from_buf(&unsubscribe_data->topic_filter),
         .event_type = success ? AWS_PASET_UNSUBSCRIBE_SUCCESS : AWS_PASET_UNSUBSCRIBE_FAILURE,
+        .error_code = error_code,
     };
 
     (*adapter->config.subscription_event_callback)(&unsubscribe_event, adapter->config.user_data);
