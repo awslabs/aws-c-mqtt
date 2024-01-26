@@ -99,10 +99,12 @@ struct aws_mqtt311_listener *aws_mqtt311_listener_new(
     struct aws_allocator *allocator,
     struct aws_mqtt311_listener_config *config) {
     if (config->connection == NULL) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
     }
 
     if (aws_mqtt_client_connection_get_impl_type(config->connection) != AWS_MQTT311_IT_311_CONNECTION) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
     }
 
@@ -187,8 +189,8 @@ static struct aws_mqtt311_callback_set_entry *s_new_311_callback_set_entry(
     entry->callbacks = *callback_set;
 
     AWS_LOGF_INFO(
-        AWS_LS_MQTT5_GENERAL,
-        "id=%p: callback manager created new entry :%" PRIu64,
+        AWS_LS_MQTT_GENERAL,
+        "id=%p: MQTT311 callback manager created new entry :%" PRIu64,
         (void *)manager->connection,
         entry->id);
 
@@ -226,8 +228,8 @@ void aws_mqtt311_callback_set_manager_remove(
             aws_linked_list_remove(&entry->node);
 
             AWS_LOGF_INFO(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: callback manager removed entry id=%" PRIu64,
+                AWS_LS_MQTT_GENERAL,
+                "id=%p: MQTT311 callback manager removed entry id=%" PRIu64,
                 (void *)manager->connection,
                 entry->id);
             aws_mem_release(entry->allocator, entry);
@@ -235,8 +237,8 @@ void aws_mqtt311_callback_set_manager_remove(
         }
     }
     AWS_LOGF_INFO(
-        AWS_LS_MQTT5_GENERAL,
-        "id=%p: callback manager failed to remove entry id=%" PRIu64 ", callback set id not found.",
+        AWS_LS_MQTT_GENERAL,
+        "id=%p: MQTT311 callback manager failed to remove entry id=%" PRIu64 ", callback set id not found.",
         (void *)manager->connection,
         callback_set_id);
 }

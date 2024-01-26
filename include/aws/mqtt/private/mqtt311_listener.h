@@ -24,7 +24,9 @@ typedef void(aws_mqtt311_listener_termination_completion_fn)(void *complete_ctx)
  * All the callbacks that are supported here are invoked only on the 311 connection's event loop.  With the
  * add/remove callback set also on the event loop, everything is correctly serialized without data races.
  *
- * We only listen to connection-resumed because the only connection-level event we care about is a failure
+ * If binding additional callbacks, they must only be invoked from the connection's event loop.
+ *
+ * We only listen to connection-success because the only connection-level event we care about is a failure
  * to rejoin a session (which invalidates all subscriptions that were considered valid)
  */
 struct aws_mqtt311_callback_set {
@@ -147,8 +149,7 @@ void aws_mqtt311_callback_set_manager_remove(
     uint64_t callback_set_id);
 
 /**
- * Walks the incoming publish handler chain for an MQTT311 connection.  The chain's callbacks will be invoked
- * until either the end is reached or one of the callbacks returns true.
+ * Walks the incoming publish handler chain for an MQTT311 connection, invoking each in sequence.
  *
  * May only be called on the client's event loop thread.
  */
@@ -161,6 +162,11 @@ void aws_mqtt311_callback_set_manager_on_publish_received(
     enum aws_mqtt_qos qos,
     bool retain);
 
+/**
+ * Invokes a connection success event on each listener in the manager's collection of callback sets.
+ *
+ * May only be called on the client's event loop thread.
+ */
 AWS_MQTT_API
 void aws_mqtt311_callback_set_manager_on_connection_success(
     struct aws_mqtt311_callback_set_manager *manager,
