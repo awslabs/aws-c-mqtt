@@ -52,7 +52,7 @@ struct aws_protocol_adapter_publish_options {
      * Invoked on success/failure of the publish itself.  Our implementations use QoS1 which means that success
      * will be on puback receipt.
      */
-    void (*completion_callback_fn)(bool, void *);
+    void (*completion_callback_fn)(int, void *);
 
     /*
      * User data to pass in when invoking the completion callback
@@ -64,10 +64,8 @@ struct aws_protocol_adapter_publish_options {
  * Describes the type of subscription event (relative to a topic filter)
  */
 enum aws_protocol_adapter_subscription_event_type {
-    AWS_PASET_SUBSCRIBE_SUCCESS,
-    AWS_PASET_SUBSCRIBE_FAILURE,
-    AWS_PASET_UNSUBSCRIBE_SUCCESS,
-    AWS_PASET_UNSUBSCRIBE_FAILURE,
+    AWS_PASET_SUBSCRIBE,
+    AWS_PASET_UNSUBSCRIBE,
 };
 
 /*

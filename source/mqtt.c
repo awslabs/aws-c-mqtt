@@ -233,6 +233,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_CONNECTION_SUBSCRIBE_FAILURE,
                 "MQTT subscribe operation failed"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE,
+                "MQTT operation returned a failing reason code"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
