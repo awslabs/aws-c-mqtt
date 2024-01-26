@@ -2854,7 +2854,7 @@ error:
     return 0;
 }
 
-enum aws_mqtt311_impl_type s_aws_mqtt_client_connection_5_get_impl(void *impl) {
+enum aws_mqtt311_impl_type s_aws_mqtt_client_connection_5_get_impl(const void *impl) {
     (void)impl;
 
     return AWS_MQTT311_IT_5_ADAPTER;
