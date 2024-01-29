@@ -148,7 +148,7 @@ static struct request_timeout_task_arg *s_schedule_timeout_task(
         aws_mem_release(connection->allocator, timeout_task_arg);
         return NULL;
     }
-    timestamp = aws_add_u64_saturating(timestamp, connection->operation_timeout_ns);
+    timestamp = aws_add_u64_saturating(timestamp, timeout_duration_in_ns);
     aws_channel_schedule_task_future(connection->slot->channel, request_timeout_task, timestamp);
     return timeout_task_arg;
 }
