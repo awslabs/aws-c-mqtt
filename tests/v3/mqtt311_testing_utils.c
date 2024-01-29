@@ -538,6 +538,7 @@ void aws_test311_on_multi_suback(
 
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->subscribe_completed = true;
+    state_test_data->subscribe_complete_error = error_code;
     if (!error_code) {
         size_t length = aws_array_list_length(topic_subacks);
         for (size_t i = 0; i < length; ++i) {

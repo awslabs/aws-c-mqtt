@@ -451,4 +451,32 @@ void aws_mqtt_connection_statistics_change_operation_statistic_state(
 
 AWS_MQTT_API const struct aws_mqtt_client_connection_packet_handlers *aws_mqtt311_get_default_packet_handlers(void);
 
+AWS_MQTT_API uint16_t aws_mqtt_client_connection_311_unsubscribe(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    const struct aws_byte_cursor *topic_filter,
+    aws_mqtt_op_complete_fn *on_unsuback,
+    void *on_unsuback_ud,
+    uint64_t timeout_ns);
+
+AWS_MQTT_API uint16_t aws_mqtt_client_connection_311_subscribe(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    const struct aws_byte_cursor *topic_filter,
+    enum aws_mqtt_qos qos,
+    aws_mqtt_client_publish_received_fn *on_publish,
+    void *on_publish_ud,
+    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
+    aws_mqtt_suback_fn *on_suback,
+    void *on_suback_ud,
+    uint64_t timeout_ns);
+
+AWS_MQTT_API uint16_t aws_mqtt_client_connection_311_publish(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    const struct aws_byte_cursor *topic,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    const struct aws_byte_cursor *payload,
+    aws_mqtt_op_complete_fn *on_complete,
+    void *userdata,
+    uint64_t timeout_ns);
+
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_H */
