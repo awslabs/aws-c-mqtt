@@ -2146,6 +2146,18 @@ static void s_subscribe_single_complete(
             error_code,
             task_arg->on_suback_ud);
     }
+
+    /*
+     * If we have a forward pointer to a timeout task, then that means the timeout task has not run yet.  So we should
+     * follow it and zero out the back pointer to us, because we're going away now.  The timeout task will run later
+     * and be harmless (even vs. future operations with the same packet id) because it only cancels if it has a back
+     * pointer.
+     */
+    if (task_arg->timeout_wrapper.timeout_task_arg) {
+        task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
+        task_arg->timeout_wrapper.timeout_task_arg = NULL;
+    }
+
     s_task_topic_release(topic);
     aws_array_list_clean_up(&task_arg->topics);
     aws_mqtt_packet_subscribe_clean_up(&task_arg->subscribe);
@@ -2433,6 +2445,17 @@ static void s_resubscribe_complete(
     }
 
 clean_up:
+
+    /*
+     * If we have a forward pointer to a timeout task, then that means the timeout task has not run yet.  So we should
+     * follow it and zero out the back pointer to us, because we're going away now.  The timeout task will run later
+     * and be harmless (even vs. future operations with the same packet id) because it only cancels if it has a back
+     * pointer.
+     */
+    if (task_arg->timeout_wrapper.timeout_task_arg) {
+        task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
+        task_arg->timeout_wrapper.timeout_task_arg = NULL;
+    }
 
     /* We need to cleanup the subscribe_task_topics, since they are not inserted into the topic tree by resubscribe. We
      * take the ownership to clean it up */
