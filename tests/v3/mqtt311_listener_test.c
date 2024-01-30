@@ -16,6 +16,10 @@ struct mqtt311_listener_connection_success_record {
     bool joined_session;
 };
 
+struct mqtt311_listener_connection_interrupted_record {
+    int error_code;
+};
+
 struct mqtt311_listener_publish_record {
     struct aws_byte_buf topic;
     struct aws_byte_buf payload;
@@ -30,7 +34,9 @@ struct mqtt311_listener_test_context {
     int mqtt311_test_context_setup_result;
 
     struct aws_array_list connection_success_events;
+    struct aws_array_list connection_interrupted_events;
     struct aws_array_list publish_events;
+    size_t disconnect_event_count;
     bool terminated;
 
     struct aws_mutex lock;
@@ -84,6 +90,35 @@ static void s_311_listener_test_on_connection_success(
     aws_condition_variable_notify_all(&context->signal);
 }
 
+static void s_311_listener_test_on_connection_interrupted(
+    struct aws_mqtt_client_connection *connection,
+    int error_code,
+    void *userdata) {
+    (void)connection;
+
+    struct mqtt311_listener_test_context *context = userdata;
+
+    struct mqtt311_listener_connection_interrupted_record connection_interrupted_record = {
+        .error_code = error_code,
+    };
+
+    aws_mutex_lock(&context->lock);
+    aws_array_list_push_back(&context->connection_interrupted_events, &connection_interrupted_record);
+    aws_mutex_unlock(&context->lock);
+    aws_condition_variable_notify_all(&context->signal);
+}
+
+static void s_311_listener_test_on_disconnect(struct aws_mqtt_client_connection *connection, void *userdata) {
+    (void)connection;
+
+    struct mqtt311_listener_test_context *context = userdata;
+
+    aws_mutex_lock(&context->lock);
+    ++context->disconnect_event_count;
+    aws_mutex_unlock(&context->lock);
+    aws_condition_variable_notify_all(&context->signal);
+}
+
 static void s_311_listener_test_on_termination(void *complete_ctx) {
     struct mqtt311_listener_test_context *context = complete_ctx;
 
@@ -105,6 +140,11 @@ static int mqtt311_listener_test_context_init(
     aws_array_list_init_dynamic(
         &context->connection_success_events, allocator, 10, sizeof(struct mqtt311_listener_connection_success_record));
     aws_array_list_init_dynamic(
+        &context->connection_interrupted_events,
+        allocator,
+        10,
+        sizeof(struct mqtt311_listener_connection_interrupted_record));
+    aws_array_list_init_dynamic(
         &context->publish_events, allocator, 10, sizeof(struct mqtt311_listener_publish_record));
 
     aws_mutex_init(&context->lock);
@@ -119,6 +159,8 @@ static int mqtt311_listener_test_context_init(
             {
                 .publish_received_handler = s_311_listener_test_on_publish_received,
                 .connection_success_handler = s_311_listener_test_on_connection_success,
+                .connection_interrupted_handler = s_311_listener_test_on_connection_interrupted,
+                .disconnect_handler = s_311_listener_test_on_disconnect,
                 .user_data = context,
             },
         .termination_callback = s_311_listener_test_on_termination,
@@ -153,6 +195,7 @@ static void mqtt311_listener_test_context_clean_up(struct mqtt311_listener_test_
     aws_condition_variable_clean_up(&context->signal);
 
     aws_array_list_clean_up(&context->connection_success_events);
+    aws_array_list_clean_up(&context->connection_interrupted_events);
 
     for (size_t i = 0; i < aws_array_list_length(&context->publish_events); ++i) {
         struct mqtt311_listener_publish_record publish_record;
@@ -206,7 +249,70 @@ static void s_wait_for_connection_success_events(
     aws_mutex_unlock(&context->lock);
 }
 
-static int s_do_mqtt311_listener_connection_success_event_test(struct aws_allocator *allocator, bool session_present) {
+struct connection_interrupted_event_test_context {
+    struct mqtt311_listener_test_context *context;
+    int error_code;
+    size_t expected_count;
+};
+
+static bool s_contains_connection_interrupted_events(void *userdata) {
+    struct connection_interrupted_event_test_context *wait_context = userdata;
+    struct mqtt311_listener_test_context *context = wait_context->context;
+
+    size_t found = 0;
+    for (size_t i = 0; i < aws_array_list_length(&context->connection_interrupted_events); ++i) {
+        struct mqtt311_listener_connection_interrupted_record record;
+        aws_array_list_get_at(&context->connection_interrupted_events, &record, i);
+
+        if (record.error_code != wait_context->error_code) {
+            continue;
+        }
+
+        ++found;
+    }
+
+    return found >= wait_context->expected_count;
+}
+
+static void s_wait_for_connection_interrupted_events(
+    struct mqtt311_listener_test_context *context,
+    int error_code,
+    size_t expected_count) {
+    struct connection_interrupted_event_test_context wait_context = {
+        .context = context,
+        .error_code = error_code,
+        .expected_count = expected_count,
+    };
+
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(
+        &context->signal, &context->lock, s_contains_connection_interrupted_events, &wait_context);
+    aws_mutex_unlock(&context->lock);
+}
+
+struct disconnect_event_test_context {
+    struct mqtt311_listener_test_context *context;
+    size_t expected_count;
+};
+
+static bool s_contains_disconnect_events(void *userdata) {
+    struct disconnect_event_test_context *wait_context = userdata;
+
+    return wait_context->context->disconnect_event_count >= wait_context->expected_count;
+}
+
+static void s_wait_for_disconnect_events(struct mqtt311_listener_test_context *context, size_t expected_count) {
+    struct disconnect_event_test_context wait_context = {
+        .context = context,
+        .expected_count = expected_count,
+    };
+
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_contains_disconnect_events, &wait_context);
+    aws_mutex_unlock(&context->lock);
+}
+
+static int s_do_mqtt311_listener_connection_events_test(struct aws_allocator *allocator, bool session_present) {
     aws_mqtt_library_init(allocator);
 
     struct mqtt_connection_state_test mqtt311_context;
@@ -224,6 +330,8 @@ static int s_do_mqtt311_listener_connection_success_event_test(struct aws_alloca
         .host_name = aws_byte_cursor_from_c_str(mqtt311_context.endpoint.address),
         .socket_options = &mqtt311_context.socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(mqtt311_context.mqtt_connection, &connection_options));
@@ -235,14 +343,23 @@ static int s_do_mqtt311_listener_connection_success_event_test(struct aws_alloca
         mqtt311_context.mqtt_connection, aws_test311_on_disconnect_fn, &mqtt311_context));
     aws_test311_wait_for_disconnect_to_complete(&mqtt311_context);
 
+    s_wait_for_disconnect_events(&test_context, 1);
+
+    mqtt_mock_server_set_max_ping_resp(mqtt311_context.mock_server, 0);
+
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(mqtt311_context.mqtt_connection, &connection_options));
     aws_test311_wait_for_connection_to_complete(&mqtt311_context);
 
-    s_wait_for_connection_success_events(&test_context, session_present, 2);
+    // the ping configuration leads to an interruption event after 3 seconds due to ping timeout
+    s_wait_for_connection_interrupted_events(&test_context, AWS_ERROR_MQTT_TIMEOUT, 1);
+
+    aws_test311_wait_for_reconnect_to_complete(&mqtt311_context);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         mqtt311_context.mqtt_connection, aws_test311_on_disconnect_fn, &mqtt311_context));
     aws_test311_wait_for_disconnect_to_complete(&mqtt311_context);
+
+    s_wait_for_disconnect_events(&test_context, 2);
 
     mqtt311_listener_test_context_clean_up(&test_context);
 
@@ -251,25 +368,21 @@ static int s_do_mqtt311_listener_connection_success_event_test(struct aws_alloca
     return AWS_OP_SUCCESS;
 }
 
-static int s_mqtt311_listener_connection_success_event_no_session_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt311_listener_connection_events_no_session_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    return s_do_mqtt311_listener_connection_success_event_test(allocator, false);
+    return s_do_mqtt311_listener_connection_events_test(allocator, false);
 }
 
-AWS_TEST_CASE(
-    mqtt311_listener_connection_success_event_no_session,
-    s_mqtt311_listener_connection_success_event_no_session_fn)
+AWS_TEST_CASE(mqtt311_listener_connection_events_no_session, s_mqtt311_listener_connection_events_no_session_fn)
 
-static int s_mqtt311_listener_connection_success_event_with_session_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_mqtt311_listener_connection_events_with_session_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    return s_do_mqtt311_listener_connection_success_event_test(allocator, true);
+    return s_do_mqtt311_listener_connection_events_test(allocator, true);
 }
 
-AWS_TEST_CASE(
-    mqtt311_listener_connection_success_event_with_session,
-    s_mqtt311_listener_connection_success_event_with_session_fn)
+AWS_TEST_CASE(mqtt311_listener_connection_events_with_session, s_mqtt311_listener_connection_events_with_session_fn)
 
 struct publish_event_test_context {
     struct mqtt311_listener_test_context *context;

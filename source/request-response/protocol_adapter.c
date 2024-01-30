@@ -309,6 +309,16 @@ error:
     return AWS_OP_ERR;
 }
 
+static bool s_aws_mqtt_protocol_adapter_5_is_connected(void *impl) {
+    struct aws_mqtt_protocol_adapter_5_impl *adapter = impl;
+
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(adapter->client->loop));
+
+    enum aws_mqtt5_client_state current_state = adapter->client->current_state;
+
+    return current_state == AWS_MCS_CONNECTED;
+}
+
 static bool s_protocol_adapter_mqtt5_listener_publish_received(
     const struct aws_mqtt5_packet_publish_view *publish,
     void *user_data) {
@@ -327,15 +337,27 @@ static bool s_protocol_adapter_mqtt5_listener_publish_received(
 static void s_protocol_adapter_mqtt5_lifecycle_event_callback(const struct aws_mqtt5_client_lifecycle_event *event) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = event->user_data;
 
-    if (event->event_type != AWS_MQTT5_CLET_CONNECTION_SUCCESS) {
-        return;
+    switch (event->event_type) {
+        case AWS_MQTT5_CLET_CONNECTION_SUCCESS: {
+            struct aws_protocol_adapter_connection_event connection_event = {
+                .event_type = AWS_PACET_CONNECTED,
+                .joined_session = event->settings->rejoined_session,
+            };
+
+            (*adapter->config.connection_event_callback)(&connection_event, adapter->config.user_data);
+            break;
+        }
+        case AWS_MQTT5_CLET_DISCONNECTION: {
+            struct aws_protocol_adapter_connection_event connection_event = {
+                .event_type = AWS_PACET_DISCONNECTED,
+            };
+
+            (*adapter->config.connection_event_callback)(&connection_event, adapter->config.user_data);
+            break;
+        }
+        default:
+            break;
     }
-
-    struct aws_protocol_adapter_session_event session_event = {
-        .joined_session = event->settings->rejoined_session,
-    };
-
-    (*adapter->config.session_event_callback)(&session_event, adapter->config.user_data);
 }
 
 static void s_protocol_adapter_mqtt5_listener_termination_callback(void *user_data) {
@@ -363,7 +385,7 @@ static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mqtt5_vtable =
     .aws_mqtt_protocol_adapter_subscribe_fn = s_aws_mqtt_protocol_adapter_5_subscribe,
     .aws_mqtt_protocol_adapter_unsubscribe_fn = s_aws_mqtt_protocol_adapter_5_unsubscribe,
     .aws_mqtt_protocol_adapter_publish_fn = s_aws_mqtt_protocol_adapter_5_publish,
-};
+    .aws_mqtt_protocol_adapter_is_connected_fn = s_aws_mqtt_protocol_adapter_5_is_connected};
 
 struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(
     struct aws_allocator *allocator,
@@ -424,4 +446,8 @@ int aws_mqtt_protocol_adapter_publish(
     struct aws_mqtt_protocol_adapter *adapter,
     struct aws_protocol_adapter_publish_options *options) {
     return (*adapter->vtable->aws_mqtt_protocol_adapter_publish_fn)(adapter->impl, options);
+}
+
+bool aws_mqtt_protocol_adapter_is_connected(struct aws_mqtt_protocol_adapter *adapter) {
+    return (*adapter->vtable->aws_mqtt_protocol_adapter_is_connected_fn)(adapter->impl);
 }

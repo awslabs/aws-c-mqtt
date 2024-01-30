@@ -289,3 +289,41 @@ void aws_mqtt311_callback_set_manager_on_connection_success(
         }
     }
 }
+
+void aws_mqtt311_callback_set_manager_on_connection_interrupted(
+    struct aws_mqtt311_callback_set_manager *manager,
+    int error_code) {
+
+    struct aws_mqtt_client_connection_311_impl *connection_impl = manager->connection->impl;
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection_impl->loop));
+
+    struct aws_linked_list_node *node = aws_linked_list_begin(&manager->callback_set_entries);
+    while (node != aws_linked_list_end(&manager->callback_set_entries)) {
+        struct aws_mqtt311_callback_set_entry *entry =
+            AWS_CONTAINER_OF(node, struct aws_mqtt311_callback_set_entry, node);
+        node = aws_linked_list_next(node);
+
+        struct aws_mqtt311_callback_set *callback_set = &entry->callbacks;
+        if (callback_set->connection_interrupted_handler != NULL) {
+            (*callback_set->connection_interrupted_handler)(manager->connection, error_code, callback_set->user_data);
+        }
+    }
+}
+
+void aws_mqtt311_callback_set_manager_on_disconnect(struct aws_mqtt311_callback_set_manager *manager) {
+
+    struct aws_mqtt_client_connection_311_impl *connection_impl = manager->connection->impl;
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection_impl->loop));
+
+    struct aws_linked_list_node *node = aws_linked_list_begin(&manager->callback_set_entries);
+    while (node != aws_linked_list_end(&manager->callback_set_entries)) {
+        struct aws_mqtt311_callback_set_entry *entry =
+            AWS_CONTAINER_OF(node, struct aws_mqtt311_callback_set_entry, node);
+        node = aws_linked_list_next(node);
+
+        struct aws_mqtt311_callback_set *callback_set = &entry->callbacks;
+        if (callback_set->disconnect_handler != NULL) {
+            (*callback_set->disconnect_handler)(manager->connection, callback_set->user_data);
+        }
+    }
+}
