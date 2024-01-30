@@ -289,3 +289,13 @@ void aws_mqtt311_callback_set_manager_on_connection_success(
         }
     }
 }
+
+void aws_mqtt311_callback_set_manager_on_connection_interrupted(
+    struct aws_mqtt311_callback_set_manager *manager,
+    int error_code) {
+
+    struct aws_mqtt_client_connection_311_impl *connection_impl = manager->connection->impl;
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection_impl->loop));
+
+    
+}
