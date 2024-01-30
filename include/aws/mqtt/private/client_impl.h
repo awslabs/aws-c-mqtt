@@ -11,6 +11,7 @@
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/fixed_header.h>
 #include <aws/mqtt/private/mqtt311_decoder.h>
+#include <aws/mqtt/private/mqtt311_listener.h>
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/common/hash_table.h>
@@ -254,6 +255,9 @@ struct aws_mqtt_client_connection_311_impl {
     void *on_termination_ud;
     aws_mqtt_on_operation_statistics_fn *on_any_operation_statistics;
     void *on_any_operation_statistics_ud;
+
+    /* listener callbacks */
+    struct aws_mqtt311_callback_set_manager callback_manager;
 
     /* Connection tasks. */
     struct aws_mqtt_reconnect_task *reconnect_task;

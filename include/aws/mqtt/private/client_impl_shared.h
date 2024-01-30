@@ -122,7 +122,7 @@ struct aws_mqtt_client_connection_vtable {
 
     int (*get_stats_fn)(void *impl, struct aws_mqtt_connection_operation_statistics *stats);
 
-    enum aws_mqtt311_impl_type (*get_impl_type)(void *impl);
+    enum aws_mqtt311_impl_type (*get_impl_type)(const void *impl);
 };
 
 struct aws_mqtt_client_connection {
@@ -131,7 +131,7 @@ struct aws_mqtt_client_connection {
 };
 
 AWS_MQTT_API enum aws_mqtt311_impl_type aws_mqtt_client_connection_get_impl_type(
-    struct aws_mqtt_client_connection *connection);
+    const struct aws_mqtt_client_connection *connection);
 
 AWS_MQTT_API uint64_t aws_mqtt_hash_uint16_t(const void *item);
 
