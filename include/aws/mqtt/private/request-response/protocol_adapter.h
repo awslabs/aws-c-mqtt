@@ -88,10 +88,16 @@ struct aws_protocol_adapter_incoming_publish_event {
     struct aws_byte_cursor payload;
 };
 
+enum aws_protocol_adapter_connection_event_type {
+    AWS_PACET_CONNECTED,
+    AWS_PACET_DISCONNECTED,
+};
+
 /*
  * An event emitted by the protocol adapter whenever the protocol client successfully reconnects to the broker.
  */
-struct aws_protocol_adapter_session_event {
+struct aws_protocol_adapter_connection_event {
+    enum aws_protocol_adapter_connection_event_type event_type;
     bool joined_session;
 };
 
@@ -101,7 +107,8 @@ typedef void(aws_protocol_adapter_incoming_publish_fn)(
     struct aws_protocol_adapter_incoming_publish_event *publish,
     void *user_data);
 typedef void(aws_protocol_adapter_terminate_callback_fn)(void *user_data);
-typedef void(aws_protocol_adapter_session_event_fn)(struct aws_protocol_adapter_session_event *event, void *user_data);
+typedef void(
+    aws_protocol_adapter_connection_event_fn)(struct aws_protocol_adapter_connection_event *event, void *user_data);
 
 /*
  * Set of callbacks invoked by the protocol adapter.  These must all be set.
@@ -110,7 +117,7 @@ struct aws_mqtt_protocol_adapter_options {
     aws_protocol_adapter_subscription_event_fn *subscription_event_callback;
     aws_protocol_adapter_incoming_publish_fn *incoming_publish_callback;
     aws_protocol_adapter_terminate_callback_fn *terminate_callback;
-    aws_protocol_adapter_session_event_fn *session_event_callback;
+    aws_protocol_adapter_connection_event_fn *connection_event_callback;
 
     /*
      * User data to pass into all singleton protocol adapter callbacks.  Likely either the request-response client
@@ -128,6 +135,8 @@ struct aws_mqtt_protocol_adapter_vtable {
     int (*aws_mqtt_protocol_adapter_unsubscribe_fn)(void *, struct aws_protocol_adapter_unsubscribe_options *);
 
     int (*aws_mqtt_protocol_adapter_publish_fn)(void *, struct aws_protocol_adapter_publish_options *);
+
+    bool (*aws_mqtt_protocol_adapter_is_connected_fn)(void *);
 };
 
 struct aws_mqtt_protocol_adapter {
@@ -179,6 +188,12 @@ AWS_MQTT_API int aws_mqtt_protocol_adapter_unsubscribe(
 AWS_MQTT_API int aws_mqtt_protocol_adapter_publish(
     struct aws_mqtt_protocol_adapter *adapter,
     struct aws_protocol_adapter_publish_options *options);
+
+/*
+ * Synchronously checks the connection state of the adapted protocol client.  May only be called from the
+ * protocol client's event loop.
+ */
+AWS_MQTT_API bool aws_mqtt_protocol_adapter_is_connected(struct aws_mqtt_protocol_adapter *adapter);
 
 AWS_EXTERN_C_END
 
