@@ -299,7 +299,7 @@ static bool s_do_connection_events_contain(void *context) {
         if (record.joined_session != wait_context->expected_event->joined_session) {
             continue;
         }
-        
+
         ++found;
     }
 

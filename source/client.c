@@ -405,6 +405,7 @@ static void s_mqtt_client_shutdown(
                 "id=%p: Connection interrupted, calling callback and attempting reconnect",
                 (void *)connection);
             MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_interrupted, error_code);
+            aws_mqtt311_callback_set_manager_on_connection_interrupted(&connection->callback_manager, error_code);
 
             /* In case user called disconnect from the on_interrupted callback */
             bool stop_reconnect;
@@ -443,6 +444,7 @@ static void s_mqtt_client_shutdown(
                     (void *)connection);
                 MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
                 MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
+                aws_mqtt311_callback_set_manager_on_disconnect(&connection->callback_manager);
                 break;
             case AWS_MQTT_CLIENT_STATE_DISCONNECTING:
                 AWS_LOGF_DEBUG(
@@ -451,6 +453,7 @@ static void s_mqtt_client_shutdown(
                     (void *)connection);
                 MQTT_CLIENT_CALL_CALLBACK(connection, on_disconnect);
                 MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_closed, NULL);
+                aws_mqtt311_callback_set_manager_on_disconnect(&connection->callback_manager);
                 break;
             case AWS_MQTT_CLIENT_STATE_CONNECTING:
                 AWS_LOGF_TRACE(

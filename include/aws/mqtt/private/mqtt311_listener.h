@@ -38,7 +38,10 @@ struct aws_mqtt311_callback_set {
     aws_mqtt_client_on_connection_success_fn *connection_success_handler;
 
     /* Called from s_mqtt_client_shutdown which is event-loop invoked */
-    aws_mqtt_client_on_connection_interrupted_fn  *connection_interrupted_handler;
+    aws_mqtt_client_on_connection_interrupted_fn *connection_interrupted_handler;
+
+    /* Called from s_mqtt_client_shutdown which is event-loop invoked */
+    aws_mqtt_client_on_disconnect_fn *disconnect_handler;
 
     void *user_data;
 };
@@ -185,6 +188,14 @@ AWS_MQTT_API
 void aws_mqtt311_callback_set_manager_on_connection_interrupted(
     struct aws_mqtt311_callback_set_manager *manager,
     int error_code);
+
+/**
+ * Invokes a disconnection event on each listener in the manager's collection of callback sets.
+ *
+ * May only be called on the client's event loop thread.
+ */
+AWS_MQTT_API
+void aws_mqtt311_callback_set_manager_on_disconnect(struct aws_mqtt311_callback_set_manager *manager);
 
 AWS_EXTERN_C_END
 
