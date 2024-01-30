@@ -190,7 +190,7 @@ static struct aws_mqtt311_callback_set_entry *s_new_311_callback_set_entry(
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT_GENERAL,
-        "id=%p: MQTT311 callback manager created new entry :%" PRIu64,
+        "id=%p: MQTT311 callback manager created new entry id=%" PRIu64,
         (void *)manager->connection,
         entry->id);
 
