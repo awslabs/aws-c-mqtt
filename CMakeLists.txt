@@ -57,6 +57,7 @@ file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
 file(GLOB AWS_MQTT_SRC
         "source/*.c"
         "source/v5/*.c"
+        "source/request-response/*.c"
         )
 
 file(GLOB MQTT_HEADERS
