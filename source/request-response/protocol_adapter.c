@@ -345,6 +345,7 @@ static void s_protocol_adapter_mqtt5_lifecycle_event_callback(const struct aws_m
             };
 
             (*adapter->config.connection_event_callback)(&connection_event, adapter->config.user_data);
+            break;
         }
         case AWS_MQTT5_CLET_DISCONNECTION: {
             struct aws_protocol_adapter_connection_event connection_event = {
@@ -352,6 +353,7 @@ static void s_protocol_adapter_mqtt5_lifecycle_event_callback(const struct aws_m
             };
 
             (*adapter->config.connection_event_callback)(&connection_event, adapter->config.user_data);
+            break;
         }
         default:
             break;
