@@ -161,8 +161,18 @@ int s_aws_mqtt_protocol_adapter_311_subscribe(void *impl, struct aws_protocol_ad
         s_aws_mqtt_protocol_adapter_subscription_op_data_new(
             adapter->allocator, options->topic_filter, adapter->callback_ref);
 
-    uint64_t timeout_nanos = aws_timestamp_convert(options->ack_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    if (aws_mqtt_client_connection_311_subscribe(connection_impl, &options->topic_filter, AWS_MQTT_QOS_AT_LEAST_ONCE, NULL, NULL, NULL, s_protocol_adapter_311_subscribe_completion, subscribe_data, timeout_nanos)) {
+    uint64_t timeout_nanos =
+        aws_timestamp_convert(options->ack_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    if (aws_mqtt_client_connection_311_subscribe(
+            connection_impl,
+            &options->topic_filter,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            NULL,
+            NULL,
+            NULL,
+            s_protocol_adapter_311_subscribe_completion,
+            subscribe_data,
+            timeout_nanos)) {
         goto error;
     }
 
@@ -177,10 +187,11 @@ error:
 
 /* Unsubscribe */
 
-static void s_protocol_adapter_311_unsubscribe_completion(    struct aws_mqtt_client_connection *connection,
-                                                          uint16_t packet_id,
-                                                          int error_code,
-                                                          void *userdata) {
+static void s_protocol_adapter_311_unsubscribe_completion(
+    struct aws_mqtt_client_connection *connection,
+    uint16_t packet_id,
+    int error_code,
+    void *userdata) {
     (void)connection;
     (void)packet_id;
 
@@ -212,8 +223,14 @@ int s_aws_mqtt_protocol_adapter_311_unsubscribe(void *impl, struct aws_protocol_
         s_aws_mqtt_protocol_adapter_subscription_op_data_new(
             adapter->allocator, options->topic_filter, adapter->callback_ref);
 
-    uint64_t timeout_nanos = aws_timestamp_convert(options->ack_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    if (aws_mqtt_client_connection_311_unsubscribe(connection_impl, &options->topic_filter, s_protocol_adapter_311_unsubscribe_completion, unsubscribe_data, timeout_nanos)) {
+    uint64_t timeout_nanos =
+        aws_timestamp_convert(options->ack_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    if (aws_mqtt_client_connection_311_unsubscribe(
+            connection_impl,
+            &options->topic_filter,
+            s_protocol_adapter_311_unsubscribe_completion,
+            unsubscribe_data,
+            timeout_nanos)) {
         goto error;
     }
 
@@ -258,8 +275,17 @@ int s_aws_mqtt_protocol_adapter_311_publish(void *impl, struct aws_protocol_adap
     struct aws_mqtt_protocol_adapter_publish_op_data *publish_data =
         s_aws_mqtt_protocol_adapter_publish_op_data_new(adapter->allocator, options, adapter->callback_ref);
 
-    uint64_t timeout_nanos = aws_timestamp_convert(options->ack_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    if (aws_mqtt_client_connection_311_publish(connection_impl, &options->topic, AWS_MQTT_QOS_AT_LEAST_ONCE, false, &options->payload, s_protocol_adapter_311_publish_completion, publish_data, timeout_nanos)) {
+    uint64_t timeout_nanos =
+        aws_timestamp_convert(options->ack_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    if (aws_mqtt_client_connection_311_publish(
+            connection_impl,
+            &options->topic,
+            AWS_MQTT_QOS_AT_LEAST_ONCE,
+            false,
+            &options->payload,
+            s_protocol_adapter_311_publish_completion,
+            publish_data,
+            timeout_nanos)) {
         goto error;
     }
 
