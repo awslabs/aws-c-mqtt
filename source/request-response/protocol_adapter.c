@@ -172,7 +172,7 @@ int s_aws_mqtt_protocol_adapter_311_subscribe(void *impl, struct aws_protocol_ad
             NULL,
             s_protocol_adapter_311_subscribe_completion,
             subscribe_data,
-            timeout_nanos)) {
+            timeout_nanos) == 0) {
         goto error;
     }
 
@@ -230,7 +230,7 @@ int s_aws_mqtt_protocol_adapter_311_unsubscribe(void *impl, struct aws_protocol_
             &options->topic_filter,
             s_protocol_adapter_311_unsubscribe_completion,
             unsubscribe_data,
-            timeout_nanos)) {
+            timeout_nanos) == 0) {
         goto error;
     }
 
@@ -285,7 +285,7 @@ int s_aws_mqtt_protocol_adapter_311_publish(void *impl, struct aws_protocol_adap
             &options->payload,
             s_protocol_adapter_311_publish_completion,
             publish_data,
-            timeout_nanos)) {
+            timeout_nanos) == 0) {
         goto error;
     }
 
@@ -296,6 +296,78 @@ error:
     s_aws_mqtt_protocol_adapter_publish_op_data_destroy(publish_data);
 
     return AWS_OP_ERR;
+}
+
+static void s_protocol_adapter_mqtt311_listener_publish_received(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
+    bool dup,
+    enum aws_mqtt_qos qos,
+    bool retain,
+    void *userdata) {
+
+    (void)connection;
+    (void)dup;
+    (void)qos;
+    (void)retain;
+
+    struct aws_mqtt_protocol_adapter_311_impl *adapter = userdata;
+
+    struct aws_protocol_adapter_incoming_publish_event publish_event = {
+        .topic = *topic,
+        .payload = *payload,
+    };
+
+    (*adapter->config.incoming_publish_callback)(&publish_event, adapter->config.user_data);
+}
+
+static void s_protocol_adapter_mqtt311_listener_connection_success(
+    struct aws_mqtt_client_connection *connection,
+    enum aws_mqtt_connect_return_code return_code,
+    bool session_present,
+    void *userdata) {
+    (void)connection;
+    (void)return_code;
+
+    struct aws_mqtt_protocol_adapter_311_impl *adapter = userdata;
+
+    if (adapter->config.connection_event_callback != NULL) {
+        struct aws_protocol_adapter_connection_event connection_event = {
+            .event_type = AWS_PACET_CONNECTED,
+            .joined_session = session_present,
+        };
+
+        (*adapter->config.connection_event_callback)(&connection_event, adapter->config.user_data);
+    }
+}
+
+static void s_protocol_adapter_mqtt311_emit_disconnect_event(struct aws_mqtt_protocol_adapter_311_impl *adapter) {
+    if (adapter->config.connection_event_callback != NULL) {
+        struct aws_protocol_adapter_connection_event connection_event = {
+            .event_type = AWS_PACET_DISCONNECTED,
+        };
+
+        (*adapter->config.connection_event_callback)(&connection_event, adapter->config.user_data);
+    }
+}
+
+static void s_protocol_adapter_mqtt311_listener_connection_interrupted(
+    struct aws_mqtt_client_connection *connection,
+    int error_code,
+    void *userdata) {
+    (void)connection;
+    (void)error_code;
+
+    s_protocol_adapter_mqtt311_emit_disconnect_event(userdata);
+}
+
+static void s_aws_mqtt_protocol_adapter_311_disconnect_fn(
+    struct aws_mqtt_client_connection *connection,
+    void *userdata) {
+    (void)connection;
+
+    s_protocol_adapter_mqtt311_emit_disconnect_event(userdata);
 }
 
 static bool s_aws_mqtt_protocol_adapter_311_is_connected(void *impl) {
@@ -372,10 +444,10 @@ struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(
         .connection = connection,
         .listener_callbacks =
             {
-                .publish_received_handler = NULL,
-                .connection_success_handler = NULL,
-                .connection_interrupted_handler = NULL,
-                .disconnect_handler = NULL,
+                .publish_received_handler = s_protocol_adapter_mqtt311_listener_publish_received,
+                .connection_success_handler = s_protocol_adapter_mqtt311_listener_connection_success,
+                .connection_interrupted_handler = s_protocol_adapter_mqtt311_listener_connection_interrupted,
+                .disconnect_handler = s_aws_mqtt_protocol_adapter_311_disconnect_fn,
                 .user_data = adapter,
             },
         .termination_callback = s_protocol_adapter_mqtt311_listener_termination_callback,
