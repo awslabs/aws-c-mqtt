@@ -235,7 +235,7 @@ static bool s_is_adapter_terminated(void *context) {
     return fixture->adapter_terminated;
 }
 
-static void s_aws_request_response_mqtt5_adapter_test_fixture_destroy_adapters(
+static void s_aws_request_response_protocol_adapter_test_fixture_destroy_adapters(
     struct aws_request_response_protocol_adapter_test_fixture *fixture) {
     if (fixture->protocol_adapter != NULL) {
         aws_mqtt_protocol_adapter_destroy(fixture->protocol_adapter);
@@ -250,7 +250,7 @@ static void s_aws_request_response_mqtt5_adapter_test_fixture_destroy_adapters(
 static void s_aws_request_response_protocol_adapter_test_fixture_clean_up(
     struct aws_request_response_protocol_adapter_test_fixture *fixture) {
 
-    s_aws_request_response_mqtt5_adapter_test_fixture_destroy_adapters(fixture);
+    s_aws_request_response_protocol_adapter_test_fixture_destroy_adapters(fixture);
 
     if (fixture->protocol_type == AWS_PAPT_MQTT5) {
         aws_mqtt5_client_mock_test_fixture_clean_up(&fixture->protocol_context.mqtt5_fixture);
@@ -853,7 +853,8 @@ static int s_do_request_response_mqtt5_protocol_adapter_publish_test(
         .payload = aws_byte_cursor_from_c_str("SomePayload"),
         .ack_timeout_seconds = 2,
         .completion_callback_fn = s_rr_mqtt_protocol_adapter_test_on_publish_result,
-        .user_data = &fixture};
+        .user_data = &fixture,
+    };
 
     aws_mqtt_protocol_adapter_publish(fixture.protocol_adapter, &publish_options);
 
@@ -1032,7 +1033,8 @@ static int s_request_response_mqtt5_protocol_adapter_incoming_publish_fn(struct 
         .payload = aws_byte_cursor_from_buf(&expected_publish.payload),
         .ack_timeout_seconds = 2,
         .completion_callback_fn = s_rr_mqtt_protocol_adapter_test_on_publish_result,
-        .user_data = &fixture};
+        .user_data = &fixture,
+    };
 
     aws_mqtt_protocol_adapter_publish(fixture.protocol_adapter, &publish_options);
 
@@ -1089,7 +1091,8 @@ static int s_request_response_mqtt5_protocol_adapter_shutdown_while_pending_fn(
         .payload = aws_byte_cursor_from_c_str("SomePayload"),
         .ack_timeout_seconds = 5,
         .completion_callback_fn = s_rr_mqtt_protocol_adapter_test_on_publish_result,
-        .user_data = &fixture};
+        .user_data = &fixture,
+    };
 
     aws_mqtt_protocol_adapter_publish(fixture.protocol_adapter, &publish_options);
 
@@ -1110,7 +1113,7 @@ static int s_request_response_mqtt5_protocol_adapter_shutdown_while_pending_fn(
     aws_mqtt_protocol_adapter_unsubscribe(fixture.protocol_adapter, &unsubscribe_options);
 
     // tear down the adapter, leaving the in-progress operations with nothing to call back into
-    s_aws_request_response_mqtt5_adapter_test_fixture_destroy_adapters(&fixture);
+    s_aws_request_response_protocol_adapter_test_fixture_destroy_adapters(&fixture);
 
     // stop the mqtt client, which fails the pending MQTT operations
     ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
@@ -1262,3 +1265,457 @@ static int s_request_response_mqtt311_protocol_adapter_subscribe_failure_reason_
 AWS_TEST_CASE(
     request_response_mqtt311_protocol_adapter_subscribe_failure_reason_code,
     s_request_response_mqtt311_protocol_adapter_subscribe_failure_reason_code_fn)
+
+static int s_do_request_response_mqtt311_protocol_adapter_unsubscribe_test(
+    struct aws_allocator *allocator,
+    enum protocol_adapter_operation_test_type test_type) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_request_response_protocol_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_request_response_protocol_adapter_test_fixture_init_mqtt311(&fixture, allocator));
+
+    struct aws_mqtt_client_connection *connection =
+        fixture.protocol_context.mqtt311_fixture.mqtt311_test_context.mqtt_connection;
+
+    struct mqtt_connection_state_test *test_context_311 =
+        &fixture.protocol_context.mqtt311_fixture.mqtt311_test_context;
+
+    switch (test_type) {
+        case PAOTT_SUCCESS:
+            mqtt_mock_server_enable_auto_ack(test_context_311->mock_server);
+            break;
+        case PAOTT_FAILURE_REASON_CODE:
+            // 311 does not have unsuback reason codes or a way to fail
+            AWS_FATAL_ASSERT(false);
+            break;
+        case PAOTT_FAILURE_ERROR_CODE:
+            // there is no reasonable way to generate an async error-code-based failure; so skip this case
+            AWS_FATAL_ASSERT(false);
+            break;
+        case PAOTT_FAILURE_TIMEOUT:
+            mqtt_mock_server_disable_auto_ack(test_context_311->mock_server);
+        default:
+            break;
+    }
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = test_context_311,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(test_context_311->endpoint.address),
+        .socket_options = &test_context_311->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .protocol_operation_timeout_ms = 3000,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(connection, &connection_options));
+
+    struct aws_protocol_adapter_connection_event connection_success_event = {
+        .event_type = AWS_PACET_CONNECTED,
+        .joined_session = false,
+    };
+
+    s_wait_for_connection_events_contains(&fixture, &connection_success_event, 1);
+
+    int expected_error_code = s_test_type_to_expected_error_code(test_type, AWS_PAPT_MQTT311);
+
+    struct request_response_protocol_adapter_subscription_event_record expected_outcome;
+    s_request_response_protocol_adapter_subscription_event_record_init(
+        &expected_outcome,
+        allocator,
+        AWS_PASET_UNSUBSCRIBE,
+        aws_byte_cursor_from_c_str("hello/world"),
+        expected_error_code);
+
+    struct aws_protocol_adapter_unsubscribe_options unsubscribe_options = {
+        .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
+        .ack_timeout_seconds = 2,
+    };
+
+    aws_mqtt_protocol_adapter_unsubscribe(fixture.protocol_adapter, &unsubscribe_options);
+
+    s_wait_for_subscription_events_contains(&fixture, &expected_outcome, 1);
+
+    s_request_response_protocol_adapter_subscription_event_record_cleanup(&expected_outcome);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(connection, aws_test311_on_disconnect_fn, test_context_311));
+
+    struct aws_protocol_adapter_connection_event interruption_event = {
+        .event_type = AWS_PACET_DISCONNECTED,
+    };
+
+    s_wait_for_connection_events_contains(&fixture, &interruption_event, 1);
+
+    s_aws_request_response_protocol_adapter_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_request_response_mqtt311_protocol_adapter_unsubscribe_success_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt311_protocol_adapter_unsubscribe_test(allocator, PAOTT_SUCCESS));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt311_protocol_adapter_unsubscribe_success,
+    s_request_response_mqtt311_protocol_adapter_unsubscribe_success_fn)
+
+static int s_request_response_mqtt311_protocol_adapter_unsubscribe_failure_timeout_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt311_protocol_adapter_unsubscribe_test(allocator, PAOTT_FAILURE_TIMEOUT));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt311_protocol_adapter_unsubscribe_failure_timeout,
+    s_request_response_mqtt311_protocol_adapter_unsubscribe_failure_timeout_fn)
+
+static int s_do_request_response_mqtt311_protocol_adapter_publish_test(
+    struct aws_allocator *allocator,
+    enum protocol_adapter_operation_test_type test_type) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_request_response_protocol_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_request_response_protocol_adapter_test_fixture_init_mqtt311(&fixture, allocator));
+
+    struct aws_mqtt_client_connection *connection =
+        fixture.protocol_context.mqtt311_fixture.mqtt311_test_context.mqtt_connection;
+
+    struct mqtt_connection_state_test *test_context_311 =
+        &fixture.protocol_context.mqtt311_fixture.mqtt311_test_context;
+
+    switch (test_type) {
+        case PAOTT_SUCCESS:
+            mqtt_mock_server_enable_auto_ack(test_context_311->mock_server);
+            break;
+        case PAOTT_FAILURE_REASON_CODE:
+            // 311 does not have puback reason codes or a way to fail
+            AWS_FATAL_ASSERT(false);
+            break;
+        case PAOTT_FAILURE_ERROR_CODE:
+            // there is no reasonable way to generate an async error-code-based failure; so skip this case
+            AWS_FATAL_ASSERT(false);
+            break;
+        case PAOTT_FAILURE_TIMEOUT:
+            mqtt_mock_server_disable_auto_ack(test_context_311->mock_server);
+        default:
+            break;
+    }
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = test_context_311,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(test_context_311->endpoint.address),
+        .socket_options = &test_context_311->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .protocol_operation_timeout_ms = 3000,
+        .keep_alive_time_secs = 16960, /* basically stop automatically sending PINGREQ */
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(connection, &connection_options));
+
+    struct aws_protocol_adapter_connection_event connection_success_event = {
+        .event_type = AWS_PACET_CONNECTED,
+        .joined_session = false,
+    };
+
+    s_wait_for_connection_events_contains(&fixture, &connection_success_event, 1);
+
+    struct aws_protocol_adapter_publish_options publish_options = {
+        .topic = aws_byte_cursor_from_c_str("hello/world"),
+        .payload = aws_byte_cursor_from_c_str("SomePayload"),
+        .ack_timeout_seconds = 2,
+        .completion_callback_fn = s_rr_mqtt_protocol_adapter_test_on_publish_result,
+        .user_data = &fixture,
+    };
+
+    aws_mqtt_protocol_adapter_publish(fixture.protocol_adapter, &publish_options);
+
+    int expected_error_code = s_test_type_to_expected_error_code(test_type, AWS_PAPT_MQTT311);
+    s_wait_for_publish_results_contains(&fixture, expected_error_code, 1);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(connection, aws_test311_on_disconnect_fn, test_context_311));
+
+    struct aws_protocol_adapter_connection_event interruption_event = {
+        .event_type = AWS_PACET_DISCONNECTED,
+    };
+
+    s_wait_for_connection_events_contains(&fixture, &interruption_event, 1);
+
+    s_aws_request_response_protocol_adapter_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_request_response_mqtt311_protocol_adapter_publish_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt311_protocol_adapter_publish_test(allocator, PAOTT_SUCCESS));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt311_protocol_adapter_publish_success,
+    s_request_response_mqtt311_protocol_adapter_publish_success_fn)
+
+static int s_request_response_mqtt311_protocol_adapter_publish_failure_timeout_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt311_protocol_adapter_publish_test(allocator, PAOTT_FAILURE_TIMEOUT));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt311_protocol_adapter_publish_failure_timeout,
+    s_request_response_mqtt311_protocol_adapter_publish_failure_timeout_fn)
+
+static int s_request_response_mqtt311_protocol_adapter_connection_events_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_request_response_protocol_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_request_response_protocol_adapter_test_fixture_init_mqtt311(&fixture, allocator));
+
+    struct aws_mqtt_client_connection *connection =
+        fixture.protocol_context.mqtt311_fixture.mqtt311_test_context.mqtt_connection;
+
+    struct mqtt_connection_state_test *test_context_311 =
+        &fixture.protocol_context.mqtt311_fixture.mqtt311_test_context;
+
+    // always rejoin session and cause continual ping timeouts to generate interrupted events
+    mqtt_mock_server_set_session_present(test_context_311->mock_server, true);
+    mqtt_mock_server_set_max_ping_resp(test_context_311->mock_server, 0);
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = test_context_311,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(test_context_311->endpoint.address),
+        .socket_options = &test_context_311->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+        .protocol_operation_timeout_ms = 3000,
+        .keep_alive_time_secs = 2,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(connection, &connection_options));
+
+    struct aws_protocol_adapter_connection_event connection_success_event = {
+        .event_type = AWS_PACET_CONNECTED,
+        .joined_session = true,
+    };
+
+    s_wait_for_connection_events_contains(&fixture, &connection_success_event, 1);
+
+    struct aws_protocol_adapter_connection_event interruption_event = {
+        .event_type = AWS_PACET_DISCONNECTED,
+    };
+
+    /* wait for ping timeout disconnect */
+    s_wait_for_connection_events_contains(&fixture, &interruption_event, 1);
+
+    /* wait for automatic reconnect */
+    s_wait_for_connection_events_contains(&fixture, &connection_success_event, 2);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(connection, aws_test311_on_disconnect_fn, test_context_311));
+
+    s_wait_for_connection_events_contains(&fixture, &interruption_event, 2);
+
+    s_aws_request_response_protocol_adapter_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt311_protocol_adapter_connection_events,
+    s_request_response_mqtt311_protocol_adapter_connection_events_fn)
+
+static int s_request_response_mqtt311_protocol_adapter_incoming_publish_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_request_response_protocol_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_request_response_protocol_adapter_test_fixture_init_mqtt311(&fixture, allocator));
+
+    struct aws_mqtt_client_connection *connection =
+        fixture.protocol_context.mqtt311_fixture.mqtt311_test_context.mqtt_connection;
+
+    struct mqtt_connection_state_test *test_context_311 =
+        &fixture.protocol_context.mqtt311_fixture.mqtt311_test_context;
+
+    /* reflect publishes */
+    mqtt_mock_server_set_publish_reflection(test_context_311->mock_server, true);
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = test_context_311,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(test_context_311->endpoint.address),
+        .socket_options = &test_context_311->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+        .ping_timeout_ms = 30 * 1000,
+        .protocol_operation_timeout_ms = 3000,
+        .keep_alive_time_secs = 20000,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(connection, &connection_options));
+
+    struct aws_protocol_adapter_connection_event connection_success_event = {
+        .event_type = AWS_PACET_CONNECTED,
+    };
+
+    s_wait_for_connection_events_contains(&fixture, &connection_success_event, 1);
+
+    struct request_response_protocol_adapter_incoming_publish_event_record expected_publish;
+    AWS_ZERO_STRUCT(expected_publish);
+
+    s_request_response_protocol_adapter_incoming_publish_event_record_init(
+        &expected_publish,
+        allocator,
+        aws_byte_cursor_from_c_str("hello/world"),
+        aws_byte_cursor_from_c_str("SomePayload"));
+
+    struct aws_protocol_adapter_publish_options publish_options = {
+        .topic = aws_byte_cursor_from_buf(&expected_publish.topic),
+        .payload = aws_byte_cursor_from_buf(&expected_publish.payload),
+        .ack_timeout_seconds = 2,
+        .completion_callback_fn = s_rr_mqtt_protocol_adapter_test_on_publish_result,
+        .user_data = &fixture,
+    };
+
+    aws_mqtt_protocol_adapter_publish(fixture.protocol_adapter, &publish_options);
+
+    s_wait_for_incoming_publish_events_contains(&fixture, &expected_publish, 1);
+
+    s_request_response_protocol_adapter_incoming_publish_event_record_clean_up(&expected_publish);
+
+    struct aws_protocol_adapter_connection_event interruption_event = {
+        .event_type = AWS_PACET_DISCONNECTED,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(connection, aws_test311_on_disconnect_fn, test_context_311));
+
+    s_wait_for_connection_events_contains(&fixture, &interruption_event, 1);
+
+    s_aws_request_response_protocol_adapter_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt311_protocol_adapter_incoming_publish,
+    s_request_response_mqtt311_protocol_adapter_incoming_publish_fn)
+
+static int s_request_response_mqtt311_protocol_adapter_shutdown_while_pending_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_request_response_protocol_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_request_response_protocol_adapter_test_fixture_init_mqtt311(&fixture, allocator));
+
+    struct aws_mqtt_client_connection *connection =
+        fixture.protocol_context.mqtt311_fixture.mqtt311_test_context.mqtt_connection;
+
+    struct mqtt_connection_state_test *test_context_311 =
+        &fixture.protocol_context.mqtt311_fixture.mqtt311_test_context;
+
+    /* reflect publishes */
+    mqtt_mock_server_set_publish_reflection(test_context_311->mock_server, true);
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = test_context_311,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(test_context_311->endpoint.address),
+        .socket_options = &test_context_311->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+        .ping_timeout_ms = 30 * 1000,
+        .protocol_operation_timeout_ms = 3000,
+        .keep_alive_time_secs = 20000,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(connection, &connection_options));
+
+    struct aws_protocol_adapter_connection_event connection_success_event = {
+        .event_type = AWS_PACET_CONNECTED,
+    };
+
+    s_wait_for_connection_events_contains(&fixture, &connection_success_event, 1);
+
+    // publish
+    struct aws_protocol_adapter_publish_options publish_options = {
+        .topic = aws_byte_cursor_from_c_str("hello/world"),
+        .payload = aws_byte_cursor_from_c_str("SomePayload"),
+        .ack_timeout_seconds = 5,
+        .completion_callback_fn = s_rr_mqtt_protocol_adapter_test_on_publish_result,
+        .user_data = &fixture,
+    };
+
+    aws_mqtt_protocol_adapter_publish(fixture.protocol_adapter, &publish_options);
+
+    // subscribe
+    struct aws_protocol_adapter_subscribe_options subscribe_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .ack_timeout_seconds = 5,
+    };
+
+    aws_mqtt_protocol_adapter_subscribe(fixture.protocol_adapter, &subscribe_options);
+
+    // unsubscribe
+    struct aws_protocol_adapter_unsubscribe_options unsubscribe_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .ack_timeout_seconds = 5,
+    };
+
+    aws_mqtt_protocol_adapter_unsubscribe(fixture.protocol_adapter, &unsubscribe_options);
+
+    // tear down the adapter, leaving the in-progress operations with nothing to call back into
+    s_aws_request_response_protocol_adapter_test_fixture_destroy_adapters(&fixture);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(connection, aws_test311_on_disconnect_fn, test_context_311));
+
+    /* have to dig into the 311 test fixture because we won't be getting an interrupted event */
+    aws_test311_wait_for_disconnect_to_complete(test_context_311);
+
+    s_aws_request_response_protocol_adapter_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt311_protocol_adapter_shutdown_while_pending,
+    s_request_response_mqtt311_protocol_adapter_shutdown_while_pending_fn)
