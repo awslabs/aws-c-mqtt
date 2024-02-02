@@ -1975,7 +1975,6 @@ static void s_subscribe_complete(
      */
     if (task_arg->timeout_wrapper.timeout_task_arg) {
         task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
-        task_arg->timeout_wrapper.timeout_task_arg = NULL;
     }
 
     for (size_t i = 0; i < list_len; i++) {
@@ -2158,7 +2157,6 @@ static void s_subscribe_single_complete(
      */
     if (task_arg->timeout_wrapper.timeout_task_arg) {
         task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
-        task_arg->timeout_wrapper.timeout_task_arg = NULL;
     }
 
     s_task_topic_release(topic);
@@ -2493,7 +2491,6 @@ clean_up:
      */
     if (task_arg->timeout_wrapper.timeout_task_arg) {
         task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
-        task_arg->timeout_wrapper.timeout_task_arg = NULL;
     }
 
     /* We need to cleanup the subscribe_task_topics, since they are not inserted into the topic tree by resubscribe. We
@@ -2731,7 +2728,6 @@ static void s_unsubscribe_complete(
      */
     if (task_arg->timeout_wrapper.timeout_task_arg) {
         task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
-        task_arg->timeout_wrapper.timeout_task_arg = NULL;
     }
 
     if (task_arg->on_unsuback) {
@@ -3013,7 +3009,6 @@ static void s_publish_complete(
      */
     if (task_arg->timeout_wrapper.timeout_task_arg != NULL) {
         task_arg->timeout_wrapper.timeout_task_arg->task_arg_wrapper = NULL;
-        task_arg->timeout_wrapper.timeout_task_arg = NULL;
     }
 
     aws_byte_buf_clean_up(&task_arg->payload_buf);
