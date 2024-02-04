@@ -3011,6 +3011,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
 
     uint64_t second_ping_time = connection->next_ping_time;
 
+    /* make sure ping is not pushed on timedout publish */
     ASSERT_UINT_EQUALS(first_ping_time, second_ping_time);
     return AWS_OP_SUCCESS;
 }
