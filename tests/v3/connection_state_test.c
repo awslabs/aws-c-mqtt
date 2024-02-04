@@ -2962,6 +2962,9 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
+    struct aws_mqtt_client_connection_311_impl *connection =
+                state_test_data->mqtt_connection->impl;
+
     struct aws_mqtt_connection_options connection_options = {
         .user_data = state_test_data,
         .clean_session = false,
@@ -2997,6 +3000,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
         state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
+    uint64_t first_ping_time = connection->next_ping_time;
     /* publish should complete after the shutdown */
     s_wait_for_ops_completed(state_test_data);
     /* Check the publish has been completed with timeout error */
@@ -3005,6 +3009,9 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
         aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, s_on_disconnect_fn, state_test_data));
     s_wait_for_disconnect_to_complete(state_test_data);
 
+    uint64_t second_ping_time = connection->next_ping_time;
+
+    ASSERT_UINT_EQUALS(first_ping_time, second_ping_time);
     return AWS_OP_SUCCESS;
 }
 
