@@ -1591,7 +1591,7 @@ static int s_process_read_message(
 
     if (message->message_type != AWS_IO_MESSAGE_APPLICATION_DATA) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: unexpected io message data", (void *)client);
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
     AWS_LOGF_TRACE(

@@ -602,7 +602,7 @@ static int s_process_read_message(
     struct aws_mqtt_client_connection_311_impl *connection = handler->impl;
 
     if (message->message_type != AWS_IO_MESSAGE_APPLICATION_DATA || message->message_data.len < 1) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
     AWS_LOGF_TRACE(
