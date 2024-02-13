@@ -3016,7 +3016,7 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * Test that connection is healthy, user set the timeout for request, and timeout happens we still send ping reqs 
+ * Test that connection is healthy, user set the timeout for request, and timeout happens we still send ping reqs
  */
 static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
