@@ -320,7 +320,7 @@ static int aws_mqtt_utf8_decoder(uint32_t codepoint, void *user_data) {
         return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
     }
 
-    return AWS_ERROR_SUCCESS;
+    return AWS_OP_SUCCESS;
 }
 
 static struct aws_utf8_decoder_options s_aws_mqtt_utf8_decoder_options = {
