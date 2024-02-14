@@ -3029,9 +3029,9 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_a
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = s_on_connection_complete_fn,
-        .ping_timeout_ms = 100,
-        .protocol_operation_timeout_ms = 300,
-        .keep_alive_time_secs = 1,
+        .ping_timeout_ms = 99,
+        .protocol_operation_timeout_ms = 20,
+        .keep_alive_time_secs = 3, // connection->keep_alive_time_ns, pushoff the timestamp by that amount
     };
 
     struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
@@ -3043,7 +3043,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_a
     /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
     mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
 
-    mqtt_mock_server_set_max_ping_resp(state_test_data->mock_server, 1000);
+    //mqtt_mock_server_set_max_ping_resp(state_test_data->mock_server, 1000);
     /* make a publish with QoS 1 immediate. */
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
@@ -3059,13 +3059,28 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_a
         state_test_data);
     ASSERT_TRUE(packet_id_1 > 0);
 
+    aws_thread_current_sleep(1000000000);
+
+    packet_id_1 = aws_mqtt_client_connection_publish(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload_1,
+        s_on_op_complete,
+        state_test_data);
+    ASSERT_TRUE(packet_id_1 > 0);
+
+    // Wait for 2 seconds
+    aws_thread_current_sleep(3000000000);
+
+    // make sure we are still receiveing pings when the connection is down, in other words ping pushoff is not happening
+    ASSERT_INT_EQUALS(1, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
+
     /* publish should complete after the shutdown */
     s_wait_for_ops_completed(state_test_data);
 
-    aws_thread_current_sleep((uint64_t)ONE_SEC);
-
-    // make sure we are still receiveing pings when the connection is down in other words ping pushoff is not happening
-    ASSERT_INT_EQUALS(1, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
+    aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
 
     /* Check the publish has been completed with timeout error */
     ASSERT_UINT_EQUALS(state_test_data->op_complete_error, AWS_ERROR_MQTT_TIMEOUT);
