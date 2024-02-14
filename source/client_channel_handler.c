@@ -1032,7 +1032,9 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
             aws_mqtt_connection_statistics_change_operation_statistic_state(
                 request->connection, request, AWS_MQTT_OSS_NONE);
 
-            s_pushoff_next_ping_time(connection, request->request_send_timestamp);
+            if (error_code == AWS_OP_SUCCESS) {
+                s_pushoff_next_ping_time(connection, request->request_send_timestamp);
+            }
             /* clean up request resources */
             aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
             /* remove the request from the list, which is thread_data.ongoing_requests_list */
