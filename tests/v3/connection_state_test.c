@@ -3067,7 +3067,6 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_a
     aws_thread_current_sleep(3000000000);
 
     // make sure we are still receiveing pings when the connection is down, in other words ping pushoff is not happening
-    //ASSERT_INT_EQUALS(4l, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
     ASSERT_TRUE(mqtt_mock_server_get_ping_count(state_test_data->mock_server) > 1);
 
     aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
