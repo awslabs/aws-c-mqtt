@@ -3043,7 +3043,6 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_a
     /* Disable the auto ACK packets sent by the server, which blocks the requests to complete */
     mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
 
-    //mqtt_mock_server_set_max_ping_resp(state_test_data->mock_server, 1000);
     /* make a publish with QoS 1 immediate. */
     aws_mutex_lock(&state_test_data->lock);
     state_test_data->expected_ops_completed = 1;
