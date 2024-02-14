@@ -3045,7 +3045,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_a
 
     /* make a publish with QoS 1 immediate. */
     aws_mutex_lock(&state_test_data->lock);
-    state_test_data->expected_ops_completed = 1;
+    state_test_data->expected_ops_completed = 10;
     aws_mutex_unlock(&state_test_data->lock);
 
     for (int i = 0; i < 10; i++) {
