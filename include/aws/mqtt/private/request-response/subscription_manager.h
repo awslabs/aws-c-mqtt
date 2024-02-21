@@ -14,11 +14,11 @@ struct aws_mqtt_protocol_adapter;
 struct aws_protocol_adapter_connection_event;
 struct aws_protocol_adapter_subscription_event;
 
-enum aws_rr_subscription_status {
-    ARRSS_INVALID,
-    ARRSS_SUBSCRIBING,
-    ARRSS_SUBSCRIBED,
-    ARRSS_UNSUBSCRIBING,
+enum aws_rr_subscription_status_type {
+    ARRSST_INVALID,
+    ARRSST_SUBSCRIBING,
+    ARRSST_SUBSCRIBED,
+    ARRSST_UNSUBSCRIBING,
 };
 
 enum aws_rr_subscription_type {
@@ -26,30 +26,15 @@ enum aws_rr_subscription_type {
     ARRST_REQUEST_RESPONSE,
 };
 
-struct aws_rr_subscription {
-    struct aws_allocator *allocator;
-
-    struct aws_byte_buf topic_filter;
-    struct aws_byte_cursor topic_filter_cursor;
-
-    /* operation ids (uint64_t) */
-    struct aws_array_list listening_operations;
-
-    enum aws_rr_subscription_status status;
-};
-
-enum aws_acquire_subscription_result_type {
-    AASRT_SUBSCRIBED,
-    AASRT_SUBSCRIBING,
-    AASRT_BLOCKED,
-    AASRT_NO_CAPACITY,
-    AASRT_FAILURE
+enum aws_rr_subscription_event_type {
+    ARRSET_SUBSCRIPTION_ESTABLISHED,
+    ARRSET_SUBSCRIPTION_LOST
 };
 
 struct aws_rr_subscription_status_event {
+    enum aws_rr_subscription_event_type type;
     struct aws_byte_cursor topic_filter;
     uint64_t operation_id;
-    enum aws_rr_subscription_status status;
 };
 
 typedef void (aws_rr_subscription_status_event_callbacK_fn)(struct aws_rr_subscription_status_event, void *userdata);
@@ -83,6 +68,14 @@ struct aws_rr_acquire_subscription_options {
 struct aws_rr_release_subscription_options {
     struct aws_byte_cursor topic_filter;
     uint64_t operation_id;
+};
+
+enum aws_acquire_subscription_result_type {
+    AASRT_SUBSCRIBED,
+    AASRT_SUBSCRIBING,
+    AASRT_BLOCKED,
+    AASRT_NO_CAPACITY,
+    AASRT_FAILURE
 };
 
 AWS_EXTERN_C_BEGIN
