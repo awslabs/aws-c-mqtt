@@ -33,6 +33,7 @@ struct mqtt_mock_server_handler {
         bool session_present;
         bool reflect_publishes;
         bool auto_ack;
+        uint8_t suback_reason_code;
 
         /* last ID used when sending PUBLISH (QoS1+) to client */
         uint16_t last_packet_id;
@@ -139,6 +140,7 @@ static int s_mqtt_mock_server_handler_process_packet(
 
             aws_mutex_lock(&server->synced.lock);
             bool auto_ack = server->synced.auto_ack;
+            uint8_t reason_code = server->synced.suback_reason_code;
             aws_mutex_unlock(&server->synced.lock);
 
             if (auto_ack) {
@@ -148,7 +150,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                 err |= aws_mqtt_packet_suback_init(&suback, server->handler.alloc, subscribe_packet.packet_identifier);
                 const size_t num_filters = aws_array_list_length(&subscribe_packet.topic_filters);
                 for (size_t i = 0; i < num_filters; ++i) {
-                    err |= aws_mqtt_packet_suback_add_return_code(&suback, AWS_MQTT_QOS_EXACTLY_ONCE);
+                    err |= aws_mqtt_packet_suback_add_return_code(&suback, reason_code);
                 }
                 err |= aws_mqtt_packet_suback_encode(&suback_msg->message_data, &suback);
                 err |= aws_channel_slot_send_message(server->slot, suback_msg, AWS_CHANNEL_DIR_WRITE);
@@ -460,6 +462,7 @@ struct aws_channel_handler *new_mqtt_mock_server(struct aws_allocator *allocator
     server->synced.ping_resp_avail = SIZE_MAX;
     server->synced.connacks_avail = SIZE_MAX;
     server->synced.auto_ack = true;
+    server->synced.suback_reason_code = AWS_MQTT_QOS_EXACTLY_ONCE;
     aws_mutex_init(&server->synced.lock);
     aws_condition_variable_init(&server->synced.cvar);
 
@@ -533,6 +536,14 @@ void mqtt_mock_server_enable_auto_ack(struct aws_channel_handler *handler) {
 
     aws_mutex_lock(&server->synced.lock);
     server->synced.auto_ack = true;
+    aws_mutex_unlock(&server->synced.lock);
+}
+
+void mqtt_mock_server_suback_reason_code(struct aws_channel_handler *handler, uint8_t reason_code) {
+    struct mqtt_mock_server_handler *server = handler->impl;
+
+    aws_mutex_lock(&server->synced.lock);
+    server->synced.suback_reason_code = reason_code;
     aws_mutex_unlock(&server->synced.lock);
 }
 

@@ -92,10 +92,17 @@ void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_
  * Disable the automatically response (suback/unsuback/puback) to the client
  */
 void mqtt_mock_server_disable_auto_ack(struct aws_channel_handler *handler);
+
 /**
  * Enable the automatically response (suback/unsuback/puback) to the client
  */
 void mqtt_mock_server_enable_auto_ack(struct aws_channel_handler *handler);
+
+/**
+ * Sets what reason code to return in subacks
+ */
+void mqtt_mock_server_suback_reason_code(struct aws_channel_handler *handler, uint8_t reason_code);
+
 /**
  * Send response back the client given the packet ID
  */
