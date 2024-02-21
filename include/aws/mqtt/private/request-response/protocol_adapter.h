@@ -95,7 +95,7 @@ enum aws_protocol_adapter_connection_event_type {
 };
 
 /*
- * An event emitted by the protocol adapter whenever the protocol client successfully reconnects to the broker.
+ * An event emitted by the protocol adapter whenever the protocol client's connection status changes
  */
 struct aws_protocol_adapter_connection_event {
     enum aws_protocol_adapter_connection_event_type event_type;

@@ -14,20 +14,9 @@ struct aws_mqtt_protocol_adapter;
 struct aws_protocol_adapter_connection_event;
 struct aws_protocol_adapter_subscription_event;
 
-enum aws_rr_subscription_status_type {
-    ARRSST_INVALID,
-    ARRSST_SUBSCRIBING,
-    ARRSST_SUBSCRIBED,
-    ARRSST_UNSUBSCRIBING,
-};
-
-enum aws_rr_subscription_type {
-    ARRST_EVENT_STREAM,
-    ARRST_REQUEST_RESPONSE,
-};
-
 enum aws_rr_subscription_event_type {
-    ARRSET_SUBSCRIPTION_ESTABLISHED,
+    ARRSET_SUBSCRIPTION_SUCCESS,
+    ARRSET_SUBSCRIPTION_FAILURE,
     ARRSET_SUBSCRIPTION_LOST
 };
 
@@ -57,6 +46,13 @@ struct aws_rr_subscription_manager {
 
     /* &aws_request_response_subscription.topic_filter_cursor -> aws_request_response_subscription * */
     struct aws_hash_table subscriptions;
+
+    bool is_protocol_client_connected;
+};
+
+enum aws_rr_subscription_type {
+    ARRST_EVENT_STREAM,
+    ARRST_REQUEST_RESPONSE,
 };
 
 struct aws_rr_acquire_subscription_options {
