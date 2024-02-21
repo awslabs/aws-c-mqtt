@@ -187,6 +187,10 @@ error:
 
 /* Unsubscribe */
 
+static bool s_is_retryable_unsubscribe311(int error_code) {
+    return error_code == AWS_ERROR_MQTT_TIMEOUT;
+}
+
 static void s_protocol_adapter_311_unsubscribe_completion(
     struct aws_mqtt_client_connection *connection,
     uint16_t packet_id,
@@ -206,6 +210,7 @@ static void s_protocol_adapter_311_unsubscribe_completion(
         .topic_filter = aws_byte_cursor_from_buf(&unsubscribe_data->topic_filter),
         .event_type = AWS_PASET_UNSUBSCRIBE,
         .error_code = error_code,
+        .retryable = s_is_retryable_unsubscribe311(error_code),
     };
 
     (*adapter->config.subscription_event_callback)(&unsubscribe_event, adapter->config.user_data);
@@ -549,6 +554,24 @@ error:
 
 /* Unsubscribe */
 
+static bool s_is_retryable_unsubscribe5(enum aws_mqtt5_unsuback_reason_code reason_code, int error_code) {
+    if (error_code == AWS_ERROR_MQTT5_PACKET_VALIDATION ||
+        error_code == AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION) {
+        return false;
+    } else if (error_code == AWS_ERROR_MQTT_TIMEOUT) {
+        return true;
+    }
+
+    switch (reason_code) {
+        case AWS_MQTT5_UARC_UNSPECIFIED_ERROR:
+        case AWS_MQTT5_UARC_IMPLEMENTATION_SPECIFIC_ERROR:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 static void s_protocol_adapter_5_unsubscribe_completion(
     const struct aws_mqtt5_packet_unsuback_view *unsuback,
     int error_code,
@@ -560,6 +583,13 @@ static void s_protocol_adapter_5_unsubscribe_completion(
         goto done;
     }
 
+    enum aws_mqtt5_unsuback_reason_code reason_code = AWS_MQTT5_UARC_SUCCESS;
+    if (unsuback != NULL && unsuback->reason_code_count > 0) {
+        reason_code = unsuback->reason_codes[0];
+    }
+
+    bool is_retryable = s_is_retryable_unsubscribe5(reason_code, error_code);
+
     if (error_code == AWS_ERROR_SUCCESS) {
         if (unsuback == NULL || unsuback->reason_code_count != 1 || unsuback->reason_codes[0] >= 128) {
             error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE;
@@ -570,6 +600,7 @@ static void s_protocol_adapter_5_unsubscribe_completion(
         .topic_filter = aws_byte_cursor_from_buf(&unsubscribe_data->topic_filter),
         .event_type = AWS_PASET_UNSUBSCRIBE,
         .error_code = error_code,
+        .retryable = is_retryable,
     };
 
     (*adapter->config.subscription_event_callback)(&unsubscribe_event, adapter->config.user_data);
