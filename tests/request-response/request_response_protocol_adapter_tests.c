@@ -37,6 +37,7 @@ struct request_response_protocol_adapter_subscription_event_record {
     enum aws_protocol_adapter_subscription_event_type event_type;
     struct aws_byte_buf topic_filter;
     int error_code;
+    bool retryable;
 };
 
 static void s_request_response_protocol_adapter_subscription_event_record_init(
@@ -44,12 +45,14 @@ static void s_request_response_protocol_adapter_subscription_event_record_init(
     struct aws_allocator *allocator,
     enum aws_protocol_adapter_subscription_event_type event_type,
     struct aws_byte_cursor topic_filter,
-    int error_code) {
+    int error_code,
+    bool retryable) {
 
     AWS_ZERO_STRUCT(*record);
 
     record->event_type = event_type;
     record->error_code = error_code;
+    record->retryable = retryable;
     aws_byte_buf_init_copy_from_cursor(&record->topic_filter, allocator, topic_filter);
 }
 
@@ -98,7 +101,7 @@ static void s_rr_mqtt_protocol_adapter_test_on_subscription_event(
 
     struct request_response_protocol_adapter_subscription_event_record record;
     s_request_response_protocol_adapter_subscription_event_record_init(
-        &record, fixture->allocator, event->event_type, event->topic_filter, event->error_code);
+        &record, fixture->allocator, event->event_type, event->topic_filter, event->error_code, event->retryable);
 
     aws_mutex_lock(&fixture->lock);
     aws_array_list_push_back(&fixture->subscription_events, &record);
@@ -313,6 +316,10 @@ static bool s_do_subscription_events_contain(void *context) {
             continue;
         }
 
+        if (record.retryable != wait_context->expected_event->retryable) {
+            continue;
+        }
+
         ++found;
     }
 
@@ -474,7 +481,8 @@ static void s_wait_for_publish_results_contains(
 enum protocol_adapter_operation_test_type {
     PAOTT_SUCCESS,
     PAOTT_FAILURE_TIMEOUT,
-    PAOTT_FAILURE_REASON_CODE,
+    PAOTT_FAILURE_REASON_CODE_RETRYABLE,
+    PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE,
     PAOTT_FAILURE_ERROR_CODE,
 };
 
@@ -507,7 +515,8 @@ static int s_test_type_to_expected_error_code(
         switch (test_type) {
             case PAOTT_FAILURE_TIMEOUT:
                 return AWS_ERROR_MQTT_TIMEOUT;
-            case PAOTT_FAILURE_REASON_CODE:
+            case PAOTT_FAILURE_REASON_CODE_RETRYABLE:
+            case PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE:
                 return AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE;
             case PAOTT_FAILURE_ERROR_CODE:
                 return AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY;
@@ -518,7 +527,8 @@ static int s_test_type_to_expected_error_code(
         switch (test_type) {
             case PAOTT_FAILURE_TIMEOUT:
                 return AWS_ERROR_MQTT_TIMEOUT;
-            case PAOTT_FAILURE_REASON_CODE:
+            case PAOTT_FAILURE_REASON_CODE_RETRYABLE:
+            case PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE:
                 return AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE;
             case PAOTT_FAILURE_ERROR_CODE:
                 return AWS_ERROR_MQTT5_OPERATION_FAILED_DUE_TO_OFFLINE_QUEUE_POLICY;
@@ -539,7 +549,8 @@ static int s_do_request_response_mqtt5_protocol_adapter_subscribe_test(
     if (test_type == PAOTT_SUCCESS) {
         test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
             aws_mqtt5_server_send_suback_on_subscribe;
-    } else if (test_type == PAOTT_FAILURE_REASON_CODE) {
+    } else if (
+        test_type == PAOTT_FAILURE_REASON_CODE_RETRYABLE || test_type == PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE) {
         test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
             s_aws_mqtt5_server_send_failed_suback_on_subscribe;
     }
@@ -573,7 +584,8 @@ static int s_do_request_response_mqtt5_protocol_adapter_subscribe_test(
         allocator,
         AWS_PASET_SUBSCRIBE,
         aws_byte_cursor_from_c_str("hello/world"),
-        expected_error_code);
+        expected_error_code,
+        false);
 
     struct aws_protocol_adapter_subscribe_options subscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
@@ -624,7 +636,8 @@ static int s_request_response_mqtt5_protocol_adapter_subscribe_failure_reason_co
     void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_subscribe_test(allocator, PAOTT_FAILURE_REASON_CODE));
+    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_subscribe_test(
+        allocator, PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE));
 
     return AWS_OP_SUCCESS;
 }
@@ -647,11 +660,11 @@ AWS_TEST_CASE(
     request_response_mqtt5_protocol_adapter_subscribe_failure_error_code,
     s_request_response_mqtt5_protocol_adapter_subscribe_failure_error_code_fn)
 
-static enum aws_mqtt5_unsuback_reason_code s_failed_unsuback_reason_codes[] = {
-    AWS_MQTT5_UARC_NOT_AUTHORIZED,
+static enum aws_mqtt5_unsuback_reason_code s_retryable_failed_unsuback_reason_codes[] = {
+    AWS_MQTT5_UARC_IMPLEMENTATION_SPECIFIC_ERROR,
 };
 
-static int s_aws_mqtt5_server_send_failed_unsuback_on_unsubscribe(
+static int s_aws_mqtt5_server_send_retryable_failed_unsuback_on_unsubscribe(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -662,8 +675,30 @@ static int s_aws_mqtt5_server_send_failed_unsuback_on_unsubscribe(
 
     struct aws_mqtt5_packet_unsuback_view unsuback_view = {
         .packet_id = unsubscribe_view->packet_id,
-        .reason_code_count = AWS_ARRAY_SIZE(s_failed_unsuback_reason_codes),
-        .reason_codes = s_failed_unsuback_reason_codes,
+        .reason_code_count = AWS_ARRAY_SIZE(s_retryable_failed_unsuback_reason_codes),
+        .reason_codes = s_retryable_failed_unsuback_reason_codes,
+    };
+
+    return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_UNSUBACK, &unsuback_view);
+}
+
+static enum aws_mqtt5_unsuback_reason_code s_not_retryable_failed_unsuback_reason_codes[] = {
+    AWS_MQTT5_UARC_NOT_AUTHORIZED,
+};
+
+static int s_aws_mqtt5_server_send_not_retryable_failed_unsuback_on_unsubscribe(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+    (void)user_data;
+
+    struct aws_mqtt5_packet_subscribe_view *unsubscribe_view = packet;
+
+    struct aws_mqtt5_packet_unsuback_view unsuback_view = {
+        .packet_id = unsubscribe_view->packet_id,
+        .reason_code_count = AWS_ARRAY_SIZE(s_not_retryable_failed_unsuback_reason_codes),
+        .reason_codes = s_not_retryable_failed_unsuback_reason_codes,
     };
 
     return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_UNSUBACK, &unsuback_view);
@@ -680,9 +715,12 @@ static int s_do_request_response_mqtt5_protocol_adapter_unsubscribe_test(
     if (test_type == PAOTT_SUCCESS) {
         test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
             aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success;
-    } else if (test_type == PAOTT_FAILURE_REASON_CODE) {
+    } else if (test_type == PAOTT_FAILURE_REASON_CODE_RETRYABLE) {
         test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
-            s_aws_mqtt5_server_send_failed_unsuback_on_unsubscribe;
+            s_aws_mqtt5_server_send_retryable_failed_unsuback_on_unsubscribe;
+    } else if (test_type == PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE) {
+        test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
+            s_aws_mqtt5_server_send_not_retryable_failed_unsuback_on_unsubscribe;
     }
 
     if (test_type == PAOTT_FAILURE_ERROR_CODE) {
@@ -714,7 +752,8 @@ static int s_do_request_response_mqtt5_protocol_adapter_unsubscribe_test(
         allocator,
         AWS_PASET_UNSUBSCRIBE,
         aws_byte_cursor_from_c_str("hello/world"),
-        expected_error_code);
+        expected_error_code,
+        test_type == PAOTT_FAILURE_REASON_CODE_RETRYABLE || test_type == PAOTT_FAILURE_TIMEOUT);
 
     struct aws_protocol_adapter_unsubscribe_options unsubscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
@@ -762,19 +801,35 @@ AWS_TEST_CASE(
     request_response_mqtt5_protocol_adapter_unsubscribe_failure_timeout,
     s_request_response_mqtt5_protocol_adapter_unsubscribe_failure_timeout_fn)
 
-static int s_request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code_fn(
+static int s_request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code_retryable_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_unsubscribe_test(allocator, PAOTT_FAILURE_REASON_CODE));
+    ASSERT_SUCCESS(
+        s_do_request_response_mqtt5_protocol_adapter_unsubscribe_test(allocator, PAOTT_FAILURE_REASON_CODE_RETRYABLE));
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(
-    request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code,
-    s_request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code_fn)
+    request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code_retryable,
+    s_request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code_retryable_fn)
+
+static int s_request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code_not_retryable_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_unsubscribe_test(
+        allocator, PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code_not_retryable,
+    s_request_response_mqtt5_protocol_adapter_unsubscribe_failure_reason_code_not_retryable_fn)
 
 static int s_request_response_mqtt5_protocol_adapter_unsubscribe_failure_error_code_fn(
     struct aws_allocator *allocator,
@@ -822,7 +877,8 @@ static int s_do_request_response_mqtt5_protocol_adapter_publish_test(
     if (test_type == PAOTT_SUCCESS) {
         test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
             aws_mqtt5_mock_server_handle_publish_puback;
-    } else if (test_type == PAOTT_FAILURE_REASON_CODE) {
+    } else if (
+        test_type == PAOTT_FAILURE_REASON_CODE_RETRYABLE || test_type == PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE) {
         test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
             s_aws_mqtt5_server_send_failed_puback_on_publish;
     }
@@ -899,7 +955,8 @@ static int s_request_response_mqtt5_protocol_adapter_publish_failure_reason_code
     void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_do_request_response_mqtt5_protocol_adapter_publish_test(allocator, PAOTT_FAILURE_REASON_CODE));
+    ASSERT_SUCCESS(
+        s_do_request_response_mqtt5_protocol_adapter_publish_test(allocator, PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE));
 
     return AWS_OP_SUCCESS;
 }
@@ -1153,7 +1210,8 @@ static int s_do_request_response_mqtt311_protocol_adapter_subscribe_test(
         case PAOTT_SUCCESS:
             mqtt_mock_server_enable_auto_ack(test_context_311->mock_server);
             break;
-        case PAOTT_FAILURE_REASON_CODE:
+        case PAOTT_FAILURE_REASON_CODE_RETRYABLE:
+        case PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE:
             mqtt_mock_server_enable_auto_ack(test_context_311->mock_server);
             mqtt_mock_server_suback_reason_code(test_context_311->mock_server, 128);
             break;
@@ -1196,7 +1254,8 @@ static int s_do_request_response_mqtt311_protocol_adapter_subscribe_test(
         allocator,
         AWS_PASET_SUBSCRIBE,
         aws_byte_cursor_from_c_str("hello/world"),
-        expected_error_code);
+        expected_error_code,
+        false);
 
     struct aws_protocol_adapter_subscribe_options subscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
@@ -1257,7 +1316,8 @@ static int s_request_response_mqtt311_protocol_adapter_subscribe_failure_reason_
     void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_do_request_response_mqtt311_protocol_adapter_subscribe_test(allocator, PAOTT_FAILURE_REASON_CODE));
+    ASSERT_SUCCESS(s_do_request_response_mqtt311_protocol_adapter_subscribe_test(
+        allocator, PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE));
 
     return AWS_OP_SUCCESS;
 }
@@ -1284,7 +1344,8 @@ static int s_do_request_response_mqtt311_protocol_adapter_unsubscribe_test(
         case PAOTT_SUCCESS:
             mqtt_mock_server_enable_auto_ack(test_context_311->mock_server);
             break;
-        case PAOTT_FAILURE_REASON_CODE:
+        case PAOTT_FAILURE_REASON_CODE_RETRYABLE:
+        case PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE:
             // 311 does not have unsuback reason codes or a way to fail
             AWS_FATAL_ASSERT(false);
             break;
@@ -1327,7 +1388,8 @@ static int s_do_request_response_mqtt311_protocol_adapter_unsubscribe_test(
         allocator,
         AWS_PASET_UNSUBSCRIBE,
         aws_byte_cursor_from_c_str("hello/world"),
-        expected_error_code);
+        expected_error_code,
+        expected_error_code == AWS_ERROR_MQTT_TIMEOUT);
 
     struct aws_protocol_adapter_unsubscribe_options unsubscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
@@ -1401,7 +1463,8 @@ static int s_do_request_response_mqtt311_protocol_adapter_publish_test(
         case PAOTT_SUCCESS:
             mqtt_mock_server_enable_auto_ack(test_context_311->mock_server);
             break;
-        case PAOTT_FAILURE_REASON_CODE:
+        case PAOTT_FAILURE_REASON_CODE_RETRYABLE:
+        case PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE:
             // 311 does not have puback reason codes or a way to fail
             AWS_FATAL_ASSERT(false);
             break;
