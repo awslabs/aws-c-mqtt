@@ -14,9 +14,24 @@ struct aws_mqtt_protocol_adapter;
 struct aws_protocol_adapter_connection_event;
 struct aws_protocol_adapter_subscription_event;
 
+/*
+ * The kind of subscription event being emitted.
+ */
 enum aws_rr_subscription_event_type {
+
+    /*
+     * A subscribe succeeded
+     */
     ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+
+    /*
+     * A subscribe failed
+     */
     ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE,
+
+    /*
+     * A previously successful subscription has ended (generally due to a failure to resume a session)
+     */
     ARRSET_SUBSCRIPTION_ENDED
 };
 
@@ -32,13 +47,21 @@ struct aws_rr_subscription_status_event {
  * callers disrupting things by invoking APIs back on us.
  */
 typedef void(
-    aws_rr_subscription_status_event_callbacK_fn)(const struct aws_rr_subscription_status_event *event, void *userdata);
+    aws_rr_subscription_status_event_callback_fn)(const struct aws_rr_subscription_status_event *event, void *userdata);
 
 struct aws_rr_subscription_manager_options {
+
+    /*
+     * Maximum number of concurrent subscriptions allowed
+     */
     size_t max_subscriptions;
+
+    /*
+     * Ack timeout to use for all subscribe and unsubscribe operations
+     */
     uint32_t operation_timeout_seconds;
 
-    aws_rr_subscription_status_event_callbacK_fn *subscription_status_callback;
+    aws_rr_subscription_status_event_callback_fn *subscription_status_callback;
     void *userdata;
 };
 
@@ -85,10 +108,33 @@ struct aws_rr_release_subscription_options {
 };
 
 enum aws_acquire_subscription_result_type {
+
+    /*
+     * The requested subscription already exists and is active.  The operation can proceed to the next stage.
+     */
     AASRT_SUBSCRIBED,
+
+    /*
+     * The requested subscription now exists but is not yet active.  The operation must wait for the subscribe
+     * to complete as success or failure.
+     */
     AASRT_SUBSCRIBING,
+
+    /*
+     * The subscription does not exist and there is no room for it currently.  Room may open up in the future, so
+     * the operation should wait.
+     */
     AASRT_BLOCKED,
+
+    /*
+     * The subscription does not exist, there is no room for it, and unless an event stream subscription gets
+     * closed, no room will be available in the future.  The operation should be failed.
+     */
     AASRT_NO_CAPACITY,
+
+    /*
+     * An internal failure occurred while trying to establish the subscription.  The operation should be failed.
+     */
     AASRT_FAILURE
 };
 
