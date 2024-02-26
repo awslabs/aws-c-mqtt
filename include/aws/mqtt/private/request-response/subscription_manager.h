@@ -140,26 +140,63 @@ enum aws_acquire_subscription_result_type {
 
 AWS_EXTERN_C_BEGIN
 
+/*
+ * Initializes a subscription manager.  Every native request-response client owns a single subscription manager.
+ */
 int aws_rr_subscription_manager_init(
     struct aws_rr_subscription_manager *manager,
     struct aws_allocator *allocator,
     struct aws_mqtt_protocol_adapter *protocol_adapter,
     const struct aws_rr_subscription_manager_options *options);
 
+/*
+ * Cleans up a subscription manager.  This is done early in the native request-response client shutdown process.
+ * After this API is called, no other subscription manager APIs will be called by the request-response client (during
+ * the rest of the asynchronous shutdown process).
+ */
 void aws_rr_subscription_manager_clean_up(struct aws_rr_subscription_manager *manager);
 
+/*
+ * Signals to the subscription manager that the native request-response client is processing an operation that
+ * needs a subscription to a particular topic.  Return value indicates to the request-response client how it should
+ * proceed with processing the operation.
+ */
 enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_subscription(
     struct aws_rr_subscription_manager *manager,
     const struct aws_rr_acquire_subscription_options *options);
 
+/*
+ * Signals to the subscription manager that the native request-response client operation no longer
+ * needs a subscription to a particular topic.
+ */
 void aws_rr_subscription_manager_release_subscription(
     struct aws_rr_subscription_manager *manager,
     const struct aws_rr_release_subscription_options *options);
 
+/*
+ * Notifies the subscription manager of a subscription status event.  Invoked by the native request-response client
+ * that owns the subscription manager.  The native request-response client also owns the protocol adapter that
+ * the subscription event originates from, so the control flow looks like:
+ *
+ * [Subscribe]
+ * subscription manager -> protocol adapter Subscribe -> protocol client Subscribe -> network...
+ *
+ * [Result]
+ * protocol client Suback/Timeout/Error -> protocol adapter -> native request-response client ->
+ *      subscription manager (this API)
+ */
 void aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
     struct aws_rr_subscription_manager *manager,
     const struct aws_protocol_adapter_subscription_event *event);
 
+/*
+ * Notifies the subscription manager of a connection status event.  Invoked by the native request-response client
+ * that owns the subscription manager.  The native request-response client also owns the protocol adapter that
+ * the connection event originates from. The control flow looks like:
+ *
+ * protocol client connect/disconnect -> protocol adapter -> native request-response client ->
+ *     Subscription manager (this API)
+ */
 void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
     struct aws_rr_subscription_manager *manager,
     const struct aws_protocol_adapter_connection_event *event);
