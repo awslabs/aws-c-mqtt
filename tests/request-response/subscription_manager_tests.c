@@ -113,7 +113,7 @@ static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mock_vtable = 
     .aws_mqtt_protocol_adapter_is_connected_fn = s_aws_mqtt_protocol_adapter_mqtt_is_connected,
 };
 
-static struct aws_protocol_adapter *s_aws_mqtt_mock_protocol_adapter_new(
+static struct aws_mqtt_protocol_adapter *s_aws_mqtt_mock_protocol_adapter_new(
     struct aws_allocator *allocator,
     bool is_connected) {
     struct aws_mqtt_protocol_adapter_mock_impl *adapter =
@@ -126,6 +126,40 @@ static struct aws_protocol_adapter *s_aws_mqtt_mock_protocol_adapter_new(
     aws_array_list_init_dynamic(&adapter->api_records, allocator, 10, sizeof(struct aws_protocol_adapter_api_record));
 
     return &adapter->base;
+}
+
+static bool s_protocol_adapter_api_records_equal(struct aws_protocol_adapter_api_record *record1, struct aws_protocol_adapter_api_record *record2) {
+    if (record1->type != record2->type) {
+        return false;
+    }
+
+    if (record1->timeout != record2->timeout) {
+        return false;
+    }
+
+    if (!aws_byte_cursor_eq(&record1->topic_filter_cursor, &record2->topic_filter_cursor)) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool s_api_records_contains_record(struct aws_mqtt_protocol_adapter *protocol_adapter,
+                                          struct aws_protocol_adapter_api_record *expected_record) {
+
+    struct aws_mqtt_protocol_adapter_mock_impl *adapter = protocol_adapter->impl;
+
+    size_t record_count = aws_array_list_length(&adapter->api_records);
+    for (size_t i = 0; i < record_count; ++i) {
+        struct aws_protocol_adapter_api_record *actual_record = NULL;
+        aws_array_list_get_at_ptr(&adapter->api_records, (void **)&actual_record, i);
+
+        if (s_protocol_adapter_api_records_equal(expected_record, actual_record)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool s_api_records_contains_range(
@@ -146,15 +180,7 @@ static bool s_api_records_contains_range(
         struct aws_protocol_adapter_api_record *actual_record = NULL;
         aws_array_list_get_at_ptr(&adapter->api_records, (void **)&actual_record, i);
 
-        if (expected_record->type != actual_record->type) {
-            return false;
-        }
-
-        if (expected_record->timeout != actual_record->timeout) {
-            return false;
-        }
-
-        if (!aws_byte_cursor_eq(&expected_record->topic_filter_cursor, &actual_record->topic_filter_cursor)) {
+        if (!s_protocol_adapter_api_records_equal(expected_record, actual_record)) {
             return false;
         }
     }
@@ -184,7 +210,7 @@ struct aws_subscription_status_record {
 static void s_aws_subscription_status_record_init_from_event(
     struct aws_subscription_status_record *record,
     struct aws_allocator *allocator,
-    struct aws_rr_subscription_status_event *event) {
+    const struct aws_rr_subscription_status_event *event) {
     AWS_ZERO_STRUCT(*record);
     record->type = event->type;
     record->operation_id = event->operation_id;
@@ -202,7 +228,7 @@ static void s_aws_subscription_status_record_clean_up(struct aws_subscription_st
 struct aws_subscription_manager_test_fixture {
     struct aws_allocator *allocator;
 
-    struct aws_protocol_adapter *mock_protocol_adapter;
+    struct aws_mqtt_protocol_adapter *mock_protocol_adapter;
     struct aws_rr_subscription_manager subscription_manager;
 
     struct aws_array_list subscription_status_records;
@@ -225,11 +251,23 @@ struct aws_subscription_manager_test_fixture_options {
     bool start_connected;
 };
 
+static const uint32_t DEFAULT_SM_TEST_TIMEOUT = 5;
+
 static int s_aws_subscription_manager_test_fixture_init(
     struct aws_subscription_manager_test_fixture *fixture,
     struct aws_allocator *allocator,
     const struct aws_subscription_manager_test_fixture_options *options) {
     AWS_ZERO_STRUCT(*fixture);
+
+    struct aws_subscription_manager_test_fixture_options default_options = {
+        .max_subscriptions = 3,
+        .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
+        .start_connected = true,
+    };
+
+    if (options == NULL) {
+        options = &default_options;
+    }
 
     fixture->allocator = allocator;
     fixture->mock_protocol_adapter = s_aws_mqtt_mock_protocol_adapter_new(allocator, options->start_connected);
@@ -335,3 +373,71 @@ static bool s_contains_subscription_event_sequential_records(
 
     return true;
 }
+
+static int s_do_acquire_subscribing_test(struct aws_allocator *allocator, enum aws_rr_subscription_type subscription_type) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = subscription_type,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
+
+    struct aws_protocol_adapter_api_record expected_subscribes[] = {
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        }
+    };
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 1, expected_subscribes));
+
+    /*
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = subscription_type,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));*/
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrsm_acquire_subscribing_rr_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    return s_do_acquire_subscribing_test(allocator, ARRST_REQUEST_RESPONSE);
+}
+
+AWS_TEST_CASE(
+    rrsm_acquire_subscribing_rr,
+    s_rrsm_acquire_subscribing_rr_fn)
+
+static int s_rrsm_acquire_subscribing_eventstream_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    return s_do_acquire_subscribing_test(allocator, ARRST_REQUEST_RESPONSE);
+}
+
+AWS_TEST_CASE(
+    rrsm_acquire_subscribing_eventstream,
+    s_rrsm_acquire_subscribing_eventstream_fn)

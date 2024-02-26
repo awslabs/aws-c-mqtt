@@ -481,6 +481,11 @@ add_test_case(mqtt311_listener_connection_events_no_session)
 add_test_case(mqtt311_listener_connection_events_with_session)
 add_test_case(mqtt311_listener_publish_event)
 
+# "rrsm" = "request_response_subscription_manager"
+# these tests tend to have longer operation sequences and checks in their names
+add_test_case(rrsm_acquire_subscribing_rr)
+add_test_case(rrsm_acquire_subscribing_eventstream)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)

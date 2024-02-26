@@ -152,6 +152,7 @@ static int s_rr_subscription_clean_up_foreach_wrap(void *context, struct aws_has
     struct aws_rr_subscription_record *subscription = elem->value;
 
     s_subscription_record_unsubscribe(manager, subscription, true);
+    s_aws_rr_subscription_record_destroy(subscription);
 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
 }
@@ -233,6 +234,7 @@ static int s_rr_subscription_cull_unused_subscriptions_wrapper(void *context, st
         }
 
         if (record->status == ARRSST_NOT_SUBSCRIBED && record->pending_action == ARRSPAT_NOTHING) {
+            s_aws_rr_subscription_record_destroy(record);
             return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
         }
     }
@@ -321,7 +323,10 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
     }
 
     AWS_FATAL_ASSERT(existing_record != NULL);
-    AWS_FATAL_ASSERT(existing_record->type == options->type);
+    if (existing_record->type != options->type) {
+        return AASRT_FAILURE;
+    }
+
     s_aws_rr_subscription_record_log_invariant_violations(existing_record);
 
     // for simplicity, we require unsubscribes to complete before re-subscribing
@@ -407,6 +412,7 @@ static int s_apply_session_lost_wrapper(void *context, struct aws_hash_element *
         s_emit_subscription_event(manager, record, ARRSET_SUBSCRIPTION_ENDED);
 
         if (record->pending_action != ARRSPAT_UNSUBSCRIBING) {
+            s_aws_rr_subscription_record_destroy(record);
             return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
         }
     }
@@ -464,6 +470,6 @@ int aws_rr_subscription_manager_init(
 }
 
 void aws_rr_subscription_manager_clean_up(struct aws_rr_subscription_manager *manager) {
-    aws_hash_table_foreach(&manager->subscriptions, s_rr_subscription_clean_up_foreach_wrap, manager->protocol_adapter);
+    aws_hash_table_foreach(&manager->subscriptions, s_rr_subscription_clean_up_foreach_wrap, manager);
     aws_hash_table_clean_up(&manager->subscriptions);
 }
