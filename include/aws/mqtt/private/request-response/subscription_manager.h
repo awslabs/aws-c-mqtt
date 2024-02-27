@@ -143,7 +143,7 @@ AWS_EXTERN_C_BEGIN
 /*
  * Initializes a subscription manager.  Every native request-response client owns a single subscription manager.
  */
-int aws_rr_subscription_manager_init(
+AWS_MQTT_API int aws_rr_subscription_manager_init(
     struct aws_rr_subscription_manager *manager,
     struct aws_allocator *allocator,
     struct aws_mqtt_protocol_adapter *protocol_adapter,
@@ -154,14 +154,14 @@ int aws_rr_subscription_manager_init(
  * After this API is called, no other subscription manager APIs will be called by the request-response client (during
  * the rest of the asynchronous shutdown process).
  */
-void aws_rr_subscription_manager_clean_up(struct aws_rr_subscription_manager *manager);
+AWS_MQTT_API void aws_rr_subscription_manager_clean_up(struct aws_rr_subscription_manager *manager);
 
 /*
  * Signals to the subscription manager that the native request-response client is processing an operation that
  * needs a subscription to a particular topic.  Return value indicates to the request-response client how it should
  * proceed with processing the operation.
  */
-enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_subscription(
+AWS_MQTT_API enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_subscription(
     struct aws_rr_subscription_manager *manager,
     const struct aws_rr_acquire_subscription_options *options);
 
@@ -169,7 +169,7 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
  * Signals to the subscription manager that the native request-response client operation no longer
  * needs a subscription to a particular topic.
  */
-void aws_rr_subscription_manager_release_subscription(
+AWS_MQTT_API void aws_rr_subscription_manager_release_subscription(
     struct aws_rr_subscription_manager *manager,
     const struct aws_rr_release_subscription_options *options);
 
@@ -185,7 +185,7 @@ void aws_rr_subscription_manager_release_subscription(
  * protocol client Suback/Timeout/Error -> protocol adapter -> native request-response client ->
  *      subscription manager (this API)
  */
-void aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
+AWS_MQTT_API void aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
     struct aws_rr_subscription_manager *manager,
     const struct aws_protocol_adapter_subscription_event *event);
 
@@ -197,7 +197,7 @@ void aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
  * protocol client connect/disconnect -> protocol adapter -> native request-response client ->
  *     Subscription manager (this API)
  */
-void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
+AWS_MQTT_API void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
     struct aws_rr_subscription_manager *manager,
     const struct aws_protocol_adapter_connection_event *event);
 
