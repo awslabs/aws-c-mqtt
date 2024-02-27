@@ -731,7 +731,7 @@ static int s_rrsm_acquire_no_capacity_too_many_event_stream_fn(struct aws_alloca
     // N - 1 event stream subscriptions
     for (size_t i = 0; i < 4; ++i) {
         char topic_filter_buffer[256];
-        sprintf(topic_filter_buffer, "hello/world/%d", (int)(i + 1));
+        snprintf(topic_filter_buffer, AWS_ARRAY_SIZE(topic_filter_buffer), "hello/world/%d", (int)(i + 1));
 
         struct aws_rr_acquire_subscription_options acquire_options = {
             .type = ARRST_EVENT_STREAM,
