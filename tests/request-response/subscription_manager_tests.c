@@ -73,6 +73,8 @@ static void s_aws_mqtt_protocol_adapter_mock_destroy(void *impl) {
     }
 
     aws_array_list_clean_up(&adapter->api_records);
+
+    aws_mem_release(adapter->allocator, adapter);
 }
 
 int s_aws_mqtt_protocol_adapter_mock_subscribe(void *impl, struct aws_protocol_adapter_subscribe_options *options) {
