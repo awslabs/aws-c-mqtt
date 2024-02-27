@@ -483,8 +483,20 @@ add_test_case(mqtt311_listener_publish_event)
 
 # "rrsm" = "request_response_subscription_manager"
 # these tests tend to have longer operation sequences and checks in their names
-add_test_case(rrsm_acquire_subscribing_rr)
-add_test_case(rrsm_acquire_subscribing_eventstream)
+add_test_case(rrsm_acquire_subscribing)
+add_test_case(rrsm_acquire_existing_subscribing)
+add_test_case(rrsm_acquire_existing_subscribed)
+add_test_case(rrsm_acquire_blocked_rr)
+add_test_case(rrsm_acquire_blocked_eventstream)
+add_test_case(rrsm_acquire_no_capacity_max1)
+add_test_case(rrsm_acquire_no_capacity_too_many_event_stream)
+add_test_case(rrsm_acquire_failure_mixed_subscription_types)
+add_test_case(rrsm_acquire_failure_subscribe_sync_failure)
+add_test_case(rrsm_release_unsubscribes)
+add_test_case(rrsm_release_unsubscribe_success_clears_space)
+add_test_case(rrsm_release_unsubscribe_failure_blocked)
+
+add_test_case(rrsm_acquire_subscribe_failure_event)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

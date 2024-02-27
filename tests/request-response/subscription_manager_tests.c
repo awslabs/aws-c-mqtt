@@ -117,20 +117,27 @@ static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mock_vtable = 
 
 static struct aws_mqtt_protocol_adapter *s_aws_mqtt_mock_protocol_adapter_new(
     struct aws_allocator *allocator,
+    const struct aws_mqtt_protocol_adapter_vtable *vtable,
     bool is_connected) {
     struct aws_mqtt_protocol_adapter_mock_impl *adapter =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_protocol_adapter_mock_impl));
 
     adapter->allocator = allocator;
     adapter->base.impl = adapter;
-    adapter->base.vtable = &s_protocol_adapter_mock_vtable;
+    if (vtable != NULL) {
+        adapter->base.vtable = vtable;
+    } else {
+        adapter->base.vtable = &s_protocol_adapter_mock_vtable;
+    }
     adapter->is_connected = is_connected;
     aws_array_list_init_dynamic(&adapter->api_records, allocator, 10, sizeof(struct aws_protocol_adapter_api_record));
 
     return &adapter->base;
 }
 
-static bool s_protocol_adapter_api_records_equal(struct aws_protocol_adapter_api_record *record1, struct aws_protocol_adapter_api_record *record2) {
+static bool s_protocol_adapter_api_records_equal(
+    struct aws_protocol_adapter_api_record *record1,
+    struct aws_protocol_adapter_api_record *record2) {
     if (record1->type != record2->type) {
         return false;
     }
@@ -146,8 +153,9 @@ static bool s_protocol_adapter_api_records_equal(struct aws_protocol_adapter_api
     return true;
 }
 
-static bool s_api_records_contains_record(struct aws_mqtt_protocol_adapter *protocol_adapter,
-                                          struct aws_protocol_adapter_api_record *expected_record) {
+static bool s_api_records_contains_record(
+    struct aws_mqtt_protocol_adapter *protocol_adapter,
+    struct aws_protocol_adapter_api_record *expected_record) {
 
     struct aws_mqtt_protocol_adapter_mock_impl *adapter = protocol_adapter->impl;
 
@@ -251,6 +259,7 @@ struct aws_subscription_manager_test_fixture_options {
     uint32_t operation_timeout_seconds;
     size_t max_subscriptions;
     bool start_connected;
+    const struct aws_mqtt_protocol_adapter_vtable *adapter_vtable;
 };
 
 static const uint32_t DEFAULT_SM_TEST_TIMEOUT = 5;
@@ -272,7 +281,8 @@ static int s_aws_subscription_manager_test_fixture_init(
     }
 
     fixture->allocator = allocator;
-    fixture->mock_protocol_adapter = s_aws_mqtt_mock_protocol_adapter_new(allocator, options->start_connected);
+    fixture->mock_protocol_adapter =
+        s_aws_mqtt_mock_protocol_adapter_new(allocator, options->adapter_vtable, options->start_connected);
 
     aws_array_list_init_dynamic(
         &fixture->subscription_status_records, allocator, 10, sizeof(struct aws_subscription_status_record));
@@ -376,7 +386,411 @@ static bool s_contains_subscription_event_sequential_records(
     return true;
 }
 
-static int s_do_acquire_subscribing_test(struct aws_allocator *allocator, enum aws_rr_subscription_type subscription_type) {
+static int s_rrsm_acquire_subscribing_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_protocol_adapter_api_record expected_subscribes[] = {
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world3"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+    };
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 1, expected_subscribes));
+
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));
+
+    struct aws_rr_acquire_subscription_options acquire3_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world3"),
+        .operation_id = 3,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 3, expected_subscribes));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_subscribing, s_rrsm_acquire_subscribing_fn)
+
+// duplicate acquires while subscribing should not generate additional subscribe requests
+static int s_rrsm_acquire_existing_subscribing_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_protocol_adapter_api_record expected_subscribes[] = {
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+    };
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 1, expected_subscribes));
+
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));
+
+    struct aws_rr_acquire_subscription_options reacquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .operation_id = 3,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire1_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));
+
+    struct aws_rr_acquire_subscription_options reacquire2_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 4,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire2_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_existing_subscribing, s_rrsm_acquire_existing_subscribing_fn)
+
+// calling acquire while subscribed returns subscribed, also checks subscription event emission
+static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_protocol_adapter_api_record expected_subscribes[] = {
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+    };
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 1, expected_subscribes));
+
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));
+
+    struct aws_protocol_adapter_subscription_event successful_subscription1_event = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .error_code = AWS_ERROR_SUCCESS,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_subscription1_event);
+
+    struct aws_subscription_status_record expected_subscription_events[] = {
+        {
+            .type = ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+            .operation_id = 1,
+        },
+        {
+            .type = ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .operation_id = 2,
+        }};
+    ASSERT_TRUE(s_contains_subscription_event_sequential_records(&fixture, 1, expected_subscription_events));
+
+    struct aws_protocol_adapter_subscription_event successful_subscription2_event = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .error_code = AWS_ERROR_SUCCESS,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_subscription2_event);
+
+    ASSERT_TRUE(s_contains_subscription_event_sequential_records(&fixture, 2, expected_subscription_events));
+
+    struct aws_rr_acquire_subscription_options reacquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .operation_id = 3,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBED, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire1_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));
+
+    struct aws_rr_acquire_subscription_options reacquire2_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 4,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBED, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire2_options));
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_existing_subscribed, s_rrsm_acquire_existing_subscribed_fn)
+
+static int s_do_acquire_blocked_test(
+    struct aws_subscription_manager_test_fixture *fixture,
+    enum aws_rr_subscription_type subscription_type) {
+    struct aws_rr_subscription_manager *manager = &fixture->subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
+
+    // no room, but it could potentially free up in the future
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = subscription_type,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrsm_acquire_blocked_rr_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture_options fixture_config = {
+        .max_subscriptions = 1,
+        .operation_timeout_seconds = 30,
+    };
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
+
+    ASSERT_SUCCESS(s_do_acquire_blocked_test(&fixture, ARRST_REQUEST_RESPONSE));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_blocked_rr, s_rrsm_acquire_blocked_rr_fn)
+
+static int s_rrsm_acquire_blocked_eventstream_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture_options fixture_config = {
+        .max_subscriptions = 2,
+        .operation_timeout_seconds = 30,
+    };
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world3"),
+        .operation_id = 3,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_SUBSCRIBING,
+        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire1_options));
+
+    ASSERT_SUCCESS(s_do_acquire_blocked_test(&fixture, ARRST_EVENT_STREAM));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_blocked_eventstream, s_rrsm_acquire_blocked_eventstream_fn)
+
+static int s_do_acquire_no_capacity_test(struct aws_subscription_manager_test_fixture *fixture) {
+    struct aws_rr_subscription_manager *manager = &fixture->subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_NO_CAPACITY, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrsm_acquire_no_capacity_max1_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture_options fixture_config = {
+        .max_subscriptions = 1,
+        .operation_timeout_seconds = 30,
+    };
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
+
+    ASSERT_SUCCESS(s_do_acquire_no_capacity_test(&fixture));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_no_capacity_max1, s_rrsm_acquire_no_capacity_max1_fn)
+
+static int s_rrsm_acquire_no_capacity_too_many_event_stream_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture_options fixture_config = {
+        .max_subscriptions = 5,
+        .operation_timeout_seconds = 30,
+    };
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
+
+    // N - 1 event stream subscriptions
+    for (size_t i = 0; i < 4; ++i) {
+        char topic_filter_buffer[256];
+        sprintf(topic_filter_buffer, "hello/world/%d", (int)(i + 1));
+
+        struct aws_rr_acquire_subscription_options acquire_options = {
+            .type = ARRST_EVENT_STREAM,
+            .topic_filter = aws_byte_cursor_from_c_str(topic_filter_buffer),
+            .operation_id = i + 2,
+        };
+        ASSERT_INT_EQUALS(
+            AASRT_SUBSCRIBING,
+            aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire_options));
+    }
+
+    // 1 more, should fail
+    ASSERT_SUCCESS(s_do_acquire_no_capacity_test(&fixture));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_no_capacity_too_many_event_stream, s_rrsm_acquire_no_capacity_too_many_event_stream_fn)
+
+static int s_rrsm_acquire_failure_mixed_subscription_types_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_SUBSCRIBING,
+        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire1_options));
+
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_FAILURE,
+        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire2_options));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_failure_mixed_subscription_types, s_rrsm_acquire_failure_mixed_subscription_types_fn)
+
+static int s_rrsm_release_unsubscribes_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture fixture;
@@ -385,34 +799,74 @@ static int s_do_acquire_subscribing_test(struct aws_allocator *allocator, enum a
     struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
-        .type = subscription_type,
+        .type = ARRST_REQUEST_RESPONSE,
         .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
 
-    struct aws_protocol_adapter_api_record expected_subscribes[] = {
-        {
-            .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
-            .timeout = DEFAULT_SM_TEST_TIMEOUT,
-        },
-        {
-            .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
-            .timeout = DEFAULT_SM_TEST_TIMEOUT,
-        }
-    };
-    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 1, expected_subscribes));
-
-    /*
     struct aws_rr_acquire_subscription_options acquire2_options = {
-        .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
-    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));*/
+
+    struct aws_protocol_adapter_subscription_event successful_subscription_event = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .error_code = AWS_ERROR_SUCCESS,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_subscription_event);
+
+    // verify two success callbacks
+    struct aws_subscription_status_record expected_subscription_events[] = {
+        {
+            .type = ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .operation_id = 1,
+        },
+        {
+            .type = ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .operation_id = 2,
+        }};
+    ASSERT_TRUE(s_contains_subscription_event_records(&fixture, 2, expected_subscription_events));
+
+    // verify no unsubscribes
+    struct aws_protocol_adapter_api_record expected_unsubscribe = {
+        .type = PAAT_UNSUBSCRIBE,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .timeout = DEFAULT_SM_TEST_TIMEOUT,
+    };
+    ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // release once, verify no unsubscribe
+    struct aws_rr_release_subscription_options release1_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    aws_rr_subscription_manager_release_subscription(manager, &release1_options);
+    ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // release second
+    struct aws_rr_release_subscription_options release2_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 2,
+    };
+    aws_rr_subscription_manager_release_subscription(manager, &release2_options);
+    ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // unsubscribe is lazy, so we need to trigger it by acquiring something else
+    struct aws_rr_acquire_subscription_options acquire3_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 3,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
+
+    // now the unsubscribe should be present
+    ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
 
     s_aws_subscription_manager_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
@@ -420,26 +874,181 @@ static int s_do_acquire_subscribing_test(struct aws_allocator *allocator, enum a
     return AWS_OP_SUCCESS;
 }
 
-static int s_rrsm_acquire_subscribing_rr_fn(
-    struct aws_allocator *allocator,
-    void *ctx) {
-    (void)ctx;
+AWS_TEST_CASE(rrsm_release_unsubscribes, s_rrsm_release_unsubscribes_fn)
 
-    return s_do_acquire_subscribing_test(allocator, ARRST_REQUEST_RESPONSE);
+static int s_rrsm_do_unsubscribe_test(struct aws_allocator *allocator, bool should_succeed) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture_options fixture_config = {
+        .max_subscriptions = 1,
+        .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
+        .start_connected = true,
+    };
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
+
+    // budget of 1, so new acquires should be blocked
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+
+    // complete the subscribe
+    struct aws_protocol_adapter_subscription_event successful_subscription_event = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .error_code = AWS_ERROR_SUCCESS,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_subscription_event);
+
+    // still blocked
+    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+
+    // release
+    struct aws_rr_release_subscription_options release1_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    aws_rr_subscription_manager_release_subscription(manager, &release1_options);
+
+    // unsubscribe should be visible, but we're still blocked because it hasn't completed
+    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+    struct aws_protocol_adapter_api_record expected_unsubscribe = {
+        .type = PAAT_UNSUBSCRIBE,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .timeout = DEFAULT_SM_TEST_TIMEOUT,
+    };
+    ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // complete the unsubscribe
+    struct aws_protocol_adapter_subscription_event successful_unsubscribe_event = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .event_type = AWS_PASET_UNSUBSCRIBE,
+        .error_code = should_succeed ? AWS_ERROR_SUCCESS : AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_unsubscribe_event);
+
+    // a successful unsubscribe should clear space, a failed one should not
+    ASSERT_INT_EQUALS(
+        (should_succeed ? AASRT_SUBSCRIBING : AASRT_BLOCKED),
+        aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(
-    rrsm_acquire_subscribing_rr,
-    s_rrsm_acquire_subscribing_rr_fn)
-
-static int s_rrsm_acquire_subscribing_eventstream_fn(
-    struct aws_allocator *allocator,
-    void *ctx) {
+static int s_rrsm_release_unsubscribe_success_clears_space_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    return s_do_acquire_subscribing_test(allocator, ARRST_REQUEST_RESPONSE);
+    return s_rrsm_do_unsubscribe_test(allocator, true);
 }
 
-AWS_TEST_CASE(
-    rrsm_acquire_subscribing_eventstream,
-    s_rrsm_acquire_subscribing_eventstream_fn)
+AWS_TEST_CASE(rrsm_release_unsubscribe_success_clears_space, s_rrsm_release_unsubscribe_success_clears_space_fn)
+
+static int s_rrsm_release_unsubscribe_failure_blocked_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_rrsm_do_unsubscribe_test(allocator, false);
+}
+
+AWS_TEST_CASE(rrsm_release_unsubscribe_failure_blocked, s_rrsm_release_unsubscribe_failure_blocked_fn)
+
+static int s_aws_mqtt_protocol_adapter_mock_subscribe_fails(
+    void *impl,
+    struct aws_protocol_adapter_subscribe_options *options) {
+    (void)impl;
+    (void)options;
+
+    return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+}
+
+static int s_rrsm_acquire_failure_subscribe_sync_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_mqtt_protocol_adapter_vtable failing_vtable = s_protocol_adapter_mock_vtable;
+    failing_vtable.aws_mqtt_protocol_adapter_subscribe_fn = s_aws_mqtt_protocol_adapter_mock_subscribe_fails;
+
+    struct aws_subscription_manager_test_fixture_options fixture_config = {
+        .max_subscriptions = 3,
+        .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
+        .start_connected = true,
+        .adapter_vtable = &failing_vtable,
+    };
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_FAILURE, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_failure_subscribe_sync_failure, s_rrsm_acquire_failure_subscribe_sync_failure_fn)
+
+static int s_rrsm_acquire_subscribe_failure_event_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
+
+    // complete the subscribe with a failure
+    struct aws_protocol_adapter_subscription_event failed_subscription_event = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &failed_subscription_event);
+
+    // verify subscribe failure event emission
+    struct aws_subscription_status_record expected_subscription_event = {
+        .type = ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+
+    ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_acquire_subscribe_failure_event, s_rrsm_acquire_subscribe_failure_event_fn)
