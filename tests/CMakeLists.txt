@@ -483,6 +483,7 @@ add_test_case(mqtt311_listener_publish_event)
 
 # "rrsm" = "request_response_subscription_manager"
 # these tests tend to have longer operation sequences and checks in their names
+# more details about each test can be found at the top of each test function
 add_test_case(rrsm_acquire_subscribing)
 add_test_case(rrsm_acquire_existing_subscribing)
 add_test_case(rrsm_acquire_existing_subscribed)
@@ -492,11 +493,18 @@ add_test_case(rrsm_acquire_no_capacity_max1)
 add_test_case(rrsm_acquire_no_capacity_too_many_event_stream)
 add_test_case(rrsm_acquire_failure_mixed_subscription_types)
 add_test_case(rrsm_acquire_failure_subscribe_sync_failure)
+add_test_case(rrsm_acquire_subscribe_failure_event)
 add_test_case(rrsm_release_unsubscribes)
 add_test_case(rrsm_release_unsubscribe_success_clears_space)
 add_test_case(rrsm_release_unsubscribe_failure_blocked)
-
-add_test_case(rrsm_acquire_subscribe_failure_event)
+add_test_case(rrsm_offline_acquire_online_success)
+add_test_case(rrsm_offline_acquire_online_failure)
+add_test_case(rrsm_offline_acquire_release_online)
+add_test_case(rrsm_acquire_success_offline_release_acquire2_no_unsubscribe)
+add_test_case(rrsm_acquire_success_clean_up_unsubscribe_override)
+add_test_case(rrsm_acquire_pending_clean_up_unsubscribe_override)
+add_test_case(rrsm_acquire_success_offline_online_no_session_subscription_lost_can_reacquire)
+add_test_case(rrsm_subscription_lost_while_unsubscribing)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

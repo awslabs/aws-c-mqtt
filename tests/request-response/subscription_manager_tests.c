@@ -1052,3 +1052,442 @@ static int s_rrsm_acquire_subscribe_failure_event_fn(struct aws_allocator *alloc
 }
 
 AWS_TEST_CASE(rrsm_acquire_subscribe_failure_event, s_rrsm_acquire_subscribe_failure_event_fn)
+
+static int s_do_offline_acquire_online_test(struct aws_allocator *allocator, bool success) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture_options fixture_config = {
+        .max_subscriptions = 3,
+        .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
+        .start_connected = false,
+    };
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
+
+    // nothing should happen while offline
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 0, NULL));
+
+    // go online, should trigger a subscribe
+    struct aws_protocol_adapter_connection_event online_event = {
+        .event_type = AWS_PACET_CONNECTED,
+        .joined_session = false,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_connection_event(&fixture.subscription_manager, &online_event);
+
+    struct aws_protocol_adapter_api_record expected_subscribes[] = {
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+    };
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 1, expected_subscribes));
+
+    // complete the subscribe, verify a subscription success/failure event
+    struct aws_protocol_adapter_subscription_event subscription_event = {
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .error_code = success ? AWS_ERROR_SUCCESS : AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
+
+    struct aws_subscription_status_record expected_subscription_event = {
+        .type = success ? ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS : ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrsm_offline_acquire_online_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_do_offline_acquire_online_test(allocator, true);
+}
+
+AWS_TEST_CASE(rrsm_offline_acquire_online_success, s_rrsm_offline_acquire_online_success_fn)
+
+static int s_rrsm_offline_acquire_online_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_do_offline_acquire_online_test(allocator, false);
+}
+
+AWS_TEST_CASE(rrsm_offline_acquire_online_failure, s_rrsm_offline_acquire_online_failure_fn)
+
+static int s_rrsm_offline_acquire_release_online_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    // trigger online -> offline
+    struct aws_protocol_adapter_connection_event offline_event = {
+        .event_type = AWS_PACET_DISCONNECTED,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_connection_event(manager, &offline_event);
+
+    // acquire
+    struct aws_rr_acquire_subscription_options acquire_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
+
+    // nothing should happen while offline
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 0, NULL));
+
+    // release while offline, nothing should happen
+    struct aws_rr_release_subscription_options release_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    aws_rr_subscription_manager_release_subscription(manager, &release_options);
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 0, NULL));
+
+    // go online, nothing should be sent to the protocol adapter
+    struct aws_protocol_adapter_connection_event online_event = {
+        .event_type = AWS_PACET_CONNECTED,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_connection_event(manager, &online_event);
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 0, NULL));
+
+    // trigger a different subscription, verify it's the only thing that has reached the protocol adapter
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+
+    struct aws_protocol_adapter_api_record expected_subscribes[] = {
+        {
+            .type = PAAT_SUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        },
+    };
+    ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 1, expected_subscribes));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrsm_offline_acquire_release_online, s_rrsm_offline_acquire_release_online_fn)
+
+static int s_rrsm_acquire_success_offline_release_acquire2_no_unsubscribe_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    // acquire
+    struct aws_rr_acquire_subscription_options acquire_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
+
+    // successfully complete subscription
+    struct aws_protocol_adapter_subscription_event subscription_event = {
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .error_code = AWS_ERROR_SUCCESS,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
+
+    struct aws_subscription_status_record expected_subscription_event = {
+        .type = ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
+
+    // trigger online -> offline
+    struct aws_protocol_adapter_connection_event offline_event = {
+        .event_type = AWS_PACET_DISCONNECTED,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_connection_event(manager, &offline_event);
+
+    // release
+    struct aws_rr_release_subscription_options release_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    aws_rr_subscription_manager_release_subscription(manager, &release_options);
+
+    // acquire something different, normally that triggers an unsubscribe, but we're offline
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+
+    // verify no unsubscribe has been sent
+    struct aws_protocol_adapter_api_record expected_unsubscribe = {
+        .type = PAAT_UNSUBSCRIBE,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .timeout = DEFAULT_SM_TEST_TIMEOUT,
+    };
+    ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // online, verify unsubscribe
+    struct aws_protocol_adapter_connection_event online_event = {
+        .event_type = AWS_PACET_CONNECTED,
+        .joined_session = true,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_connection_event(manager, &online_event);
+
+    ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrsm_acquire_success_offline_release_acquire2_no_unsubscribe,
+    s_rrsm_acquire_success_offline_release_acquire2_no_unsubscribe_fn)
+
+static int s_do_rrsm_acquire_clean_up_test(struct aws_allocator *allocator, bool complete_subscribe) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    // acquire
+    struct aws_rr_acquire_subscription_options acquire_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
+
+    // successfully complete subscription if desired
+    if (complete_subscribe) {
+        struct aws_protocol_adapter_subscription_event subscription_event = {
+            .event_type = AWS_PASET_SUBSCRIBE,
+            .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+            .error_code = AWS_ERROR_SUCCESS,
+        };
+        aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
+
+        struct aws_subscription_status_record expected_subscription_event = {
+            .type = ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .operation_id = 1,
+        };
+        ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
+    }
+
+    // clean up subscription manager
+    aws_rr_subscription_manager_clean_up(manager);
+
+    // verify an unsubscribe was sent even though we are offline
+    struct aws_protocol_adapter_api_record expected_unsubscribe = {
+        .type = PAAT_UNSUBSCRIBE,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .timeout = DEFAULT_SM_TEST_TIMEOUT,
+    };
+    ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // prevent the fixture cleanup from double freeing the subscription manager that was already cleaned up by
+    // reinitializing the subscription manager
+    struct aws_rr_subscription_manager_options subscription_manager_options = {
+        .max_subscriptions = 3,
+        .operation_timeout_seconds = 5,
+        .subscription_status_callback = s_aws_rr_subscription_status_event_test_callback_fn,
+        .userdata = &fixture,
+    };
+    ASSERT_SUCCESS(aws_rr_subscription_manager_init(
+        &fixture.subscription_manager, allocator, fixture.mock_protocol_adapter, &subscription_manager_options));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrsm_acquire_success_clean_up_unsubscribe_override_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_do_rrsm_acquire_clean_up_test(allocator, true);
+}
+
+AWS_TEST_CASE(
+    rrsm_acquire_success_clean_up_unsubscribe_override,
+    s_rrsm_acquire_success_clean_up_unsubscribe_override_fn)
+
+static int s_rrsm_acquire_pending_clean_up_unsubscribe_override_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_do_rrsm_acquire_clean_up_test(allocator, false);
+}
+
+AWS_TEST_CASE(
+    rrsm_acquire_pending_clean_up_unsubscribe_override,
+    s_rrsm_acquire_pending_clean_up_unsubscribe_override_fn)
+
+static int s_rrsm_do_no_session_subscription_lost_test(
+    struct aws_allocator *allocator,
+    bool offline_while_unsubscribing) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    // acquire
+    struct aws_rr_acquire_subscription_options acquire_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
+
+    // successfully complete subscription
+    struct aws_protocol_adapter_subscription_event subscription_event = {
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .error_code = AWS_ERROR_SUCCESS,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
+
+    struct aws_subscription_status_record expected_subscription_event = {
+        .type = ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
+
+    // release if appropriate
+    if (offline_while_unsubscribing) {
+        struct aws_rr_release_subscription_options release_options = {
+            .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+            .operation_id = 1,
+        };
+        aws_rr_subscription_manager_release_subscription(manager, &release_options);
+
+        struct aws_protocol_adapter_api_record expected_unsubscribe = {
+            .type = PAAT_UNSUBSCRIBE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .timeout = DEFAULT_SM_TEST_TIMEOUT,
+        };
+        ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+        // trigger an event that would cull unused subscriptions, causing an unsubscribe
+        struct aws_rr_acquire_subscription_options acquire3_options = {
+            .type = ARRST_REQUEST_RESPONSE,
+            .topic_filter = aws_byte_cursor_from_c_str("hello/world3"),
+            .operation_id = 2,
+        };
+        ASSERT_INT_EQUALS(
+            AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
+
+        // now the unsubscribe should be present
+        ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+    }
+
+    // online -> offline
+    struct aws_protocol_adapter_connection_event offline_event = {
+        .event_type = AWS_PACET_DISCONNECTED,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_connection_event(manager, &offline_event);
+
+    // offline -> online (no session)
+    struct aws_protocol_adapter_connection_event online_event = {
+        .event_type = AWS_PACET_CONNECTED,
+        .joined_session = false,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_connection_event(manager, &online_event);
+
+    // verify subscription lost emitted
+    if (!offline_while_unsubscribing) {
+        struct aws_subscription_status_record expected_subscription_lost_event = {
+            .type = ARRSET_SUBSCRIPTION_ENDED,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .operation_id = 1,
+        };
+        ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_lost_event));
+    }
+
+    // if we were unsubscribing, verify reacquire is blocked and then complete the unsubscribe
+    struct aws_rr_acquire_subscription_options reacquire_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 3,
+    };
+
+    if (offline_while_unsubscribing) {
+        ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire_options));
+
+        struct aws_protocol_adapter_subscription_event unsubscribe_event = {
+            .event_type = AWS_PASET_UNSUBSCRIBE,
+            .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+            .error_code = AWS_ERROR_SUCCESS,
+        };
+        aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &unsubscribe_event);
+    }
+
+    // verify we can reacquire
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire_options));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrsm_acquire_success_offline_online_no_session_subscription_lost_can_reacquire_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    return s_rrsm_do_no_session_subscription_lost_test(allocator, false);
+}
+
+AWS_TEST_CASE(
+    rrsm_acquire_success_offline_online_no_session_subscription_lost_can_reacquire,
+    s_rrsm_acquire_success_offline_online_no_session_subscription_lost_can_reacquire_fn)
+
+static int s_rrsm_subscription_lost_while_unsubscribing_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_rrsm_do_no_session_subscription_lost_test(allocator, true);
+}
+
+AWS_TEST_CASE(rrsm_subscription_lost_while_unsubscribing, s_rrsm_subscription_lost_while_unsubscribing_fn)
