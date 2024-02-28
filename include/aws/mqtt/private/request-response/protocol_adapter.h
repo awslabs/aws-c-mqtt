@@ -196,6 +196,12 @@ AWS_MQTT_API int aws_mqtt_protocol_adapter_publish(
  */
 AWS_MQTT_API bool aws_mqtt_protocol_adapter_is_connected(struct aws_mqtt_protocol_adapter *adapter);
 
+AWS_MQTT_API const char *aws_protocol_adapter_subscription_event_type_to_c_str(
+    enum aws_protocol_adapter_subscription_event_type type);
+
+AWS_MQTT_API const char *aws_protocol_adapter_connection_event_type_to_c_str(
+    enum aws_protocol_adapter_connection_event_type type);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_PRIVATE_REQUEST_RESPONSE_PROTOCOL_ADAPTER_H */

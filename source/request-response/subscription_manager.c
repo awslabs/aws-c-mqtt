@@ -9,6 +9,8 @@
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
 
+#include <inttypes.h>
+
 enum aws_rr_subscription_status_type {
     ARRSST_SUBSCRIBED,
     ARRSST_NOT_SUBSCRIBED,
@@ -68,7 +70,7 @@ static void s_aws_rr_subscription_record_log_invariant_violations(const struct a
     if (record->status == ARRSST_SUBSCRIBED && record->pending_action == ARRSPAT_SUBSCRIBING) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_REQUEST_RESPONSE,
-            "MQTT request response subscription ('" PRInSTR "') invalid state",
+            "request-response subscription manager - subscription ('" PRInSTR "') invalid state",
             AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
     }
 }
@@ -128,6 +130,11 @@ static void s_subscription_record_unsubscribe(
     }
 
     if (!should_unsubscribe) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - subscription ('" PRInSTR
+            "') has no listeners but is not in a state that allows unsubscribe yet",
+            AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
         return;
     }
 
@@ -137,13 +144,22 @@ static void s_subscription_record_unsubscribe(
     };
 
     if (aws_mqtt_protocol_adapter_unsubscribe(manager->protocol_adapter, &unsubscribe_options)) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - sync unsubscribe failure for ('" PRInSTR "'), ec %d(%s)",
+            AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor),
+            error_code,
+            aws_error_debug_str(error_code));
         return;
     }
 
-    record->pending_action = ARRSPAT_UNSUBSCRIBING;
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "request-response subscription manager - unsubscribe submitted for ('" PRInSTR "')",
+        AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
 
-    // check_invariants may no longer be true now because we might have converted a pending subscribe to a pending
-    // unsubscribe
+    record->pending_action = ARRSPAT_UNSUBSCRIBING;
 }
 
 /* Only called when shutting down the client */
@@ -197,6 +213,13 @@ static void s_get_subscription_stats(
     AWS_ZERO_STRUCT(*stats);
 
     aws_hash_table_foreach(&manager->subscriptions, s_rr_subscription_count_foreach_wrap, stats);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "request-response subscription manager current stats: %d event stream sub records, %d request-response sub "
+        "records",
+        (int)stats->event_stream_subscriptions,
+        (int)stats->request_response_subscriptions);
 }
 
 static void s_remove_listener_from_subscription_record(
@@ -213,6 +236,14 @@ static void s_remove_listener_from_subscription_record(
     };
 
     aws_hash_table_remove(&record->listeners, &listener, NULL, NULL);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "request-response subscription manager - removed listener %" PRIu64 " from subscription ('" PRInSTR
+        "'), %zu listeners left",
+        operation_id,
+        AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor),
+        aws_hash_table_get_entry_count(&record->listeners));
 }
 
 static void s_add_listener_to_subscription_record(struct aws_rr_subscription_record *record, uint64_t operation_id) {
@@ -222,6 +253,14 @@ static void s_add_listener_to_subscription_record(struct aws_rr_subscription_rec
     listener->operation_id = operation_id;
 
     aws_hash_table_put(&record->listeners, listener, listener, NULL);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "request-response subscription manager - added listener %" PRIu64 " to subscription ('" PRInSTR
+        "'), %zu listeners total",
+        operation_id,
+        AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor),
+        aws_hash_table_get_entry_count(&record->listeners));
 }
 
 static int s_rr_subscription_cull_unused_subscriptions_wrapper(void *context, struct aws_hash_element *elem) {
@@ -229,11 +268,21 @@ static int s_rr_subscription_cull_unused_subscriptions_wrapper(void *context, st
     struct aws_rr_subscription_manager *manager = context;
 
     if (aws_hash_table_get_entry_count(&record->listeners) == 0) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - checking subscription ('" PRInSTR "') for removal",
+            AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
+
         if (manager->is_protocol_client_connected) {
             s_subscription_record_unsubscribe(manager, record, false);
         }
 
         if (record->status == ARRSST_NOT_SUBSCRIBED && record->pending_action == ARRSPAT_NOTHING) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "request-response subscription manager - deleting subscription ('" PRInSTR "')",
+                AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
+
             s_aws_rr_subscription_record_destroy(record);
             return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
         }
@@ -243,29 +292,24 @@ static int s_rr_subscription_cull_unused_subscriptions_wrapper(void *context, st
 }
 
 static void s_cull_unused_subscriptions(struct aws_rr_subscription_manager *manager) {
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE, "request-response subscription manager - culling unused subscriptions");
     aws_hash_table_foreach(&manager->subscriptions, s_rr_subscription_cull_unused_subscriptions_wrapper, manager);
 }
 
-static int s_rr_activate_idle_subscription(
-    struct aws_rr_subscription_manager *manager,
-    struct aws_rr_subscription_record *record) {
-    int result = AWS_OP_SUCCESS;
+static const char *s_request_response_subscription_event_type_to_c_str(enum aws_rr_subscription_event_type type) {
+    switch (type) {
+        case ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS:
+            return "SubscriptionSubscribeSuccess";
 
-    if (manager->is_protocol_client_connected && aws_hash_table_get_entry_count(&record->listeners) > 0) {
-        if (record->status == ARRSST_NOT_SUBSCRIBED && record->pending_action == ARRSPAT_NOTHING) {
-            struct aws_protocol_adapter_subscribe_options subscribe_options = {
-                .topic_filter = record->topic_filter_cursor,
-                .ack_timeout_seconds = manager->config.operation_timeout_seconds,
-            };
+        case ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE:
+            return "SubscriptionSubscribeFailure";
 
-            result = aws_mqtt_protocol_adapter_subscribe(manager->protocol_adapter, &subscribe_options);
-            if (result == AWS_OP_SUCCESS) {
-                record->pending_action = ARRSPAT_SUBSCRIBING;
-            }
-        }
+        case ARRSET_SUBSCRIPTION_ENDED:
+            return "SubscriptionEnded";
     }
 
-    return result;
+    return "Unknown";
 }
 
 static void s_emit_subscription_event(
@@ -284,7 +328,52 @@ static void s_emit_subscription_event(
         };
 
         (*manager->config.subscription_status_callback)(&event, manager->config.userdata);
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - subscription event for ('" PRInSTR
+            "'), type: %s, operation: %" PRIu64 "",
+            AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor),
+            s_request_response_subscription_event_type_to_c_str(type),
+            listener->operation_id);
     }
+}
+
+static int s_rr_activate_idle_subscription(
+    struct aws_rr_subscription_manager *manager,
+    struct aws_rr_subscription_record *record) {
+    int result = AWS_OP_SUCCESS;
+
+    if (manager->is_protocol_client_connected && aws_hash_table_get_entry_count(&record->listeners) > 0) {
+        if (record->status == ARRSST_NOT_SUBSCRIBED && record->pending_action == ARRSPAT_NOTHING) {
+            struct aws_protocol_adapter_subscribe_options subscribe_options = {
+                .topic_filter = record->topic_filter_cursor,
+                .ack_timeout_seconds = manager->config.operation_timeout_seconds,
+            };
+
+            result = aws_mqtt_protocol_adapter_subscribe(manager->protocol_adapter, &subscribe_options);
+            if (result == AWS_OP_SUCCESS) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "request-response subscription manager - initiating subscribe operation for ('" PRInSTR "')",
+                    AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
+                record->pending_action = ARRSPAT_SUBSCRIBING;
+            } else {
+                int error_code = aws_last_error();
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "request-response subscription manager - synchronous failure subscribing to ('" PRInSTR
+                    "'), ec %d(%s)",
+                    AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor),
+                    error_code,
+                    aws_error_debug_str(error_code));
+
+                s_emit_subscription_event(manager, record, ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE);
+            }
+        }
+    }
+
+    return result;
 }
 
 enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_subscription(
@@ -311,8 +400,20 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
         if (!space_for_subscription) {
             // could space eventually free up?
             if (options->type == ARRST_REQUEST_RESPONSE || stats.request_response_subscriptions > 1) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "request-response subscription manager - acquire subscription for ('" PRInSTR
+                    "'), operation %" PRIu64 " blocked - no room currently",
+                    AWS_BYTE_CURSOR_PRI(options->topic_filter),
+                    options->operation_id);
                 return AASRT_BLOCKED;
             } else {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "request-response subscription manager - acquire subscription for ('" PRInSTR
+                    "'), operation %" PRIu64 " failed - no room",
+                    AWS_BYTE_CURSOR_PRI(options->topic_filter),
+                    options->operation_id);
                 return AASRT_NO_CAPACITY;
             }
         }
@@ -324,6 +425,12 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
 
     AWS_FATAL_ASSERT(existing_record != NULL);
     if (existing_record->type != options->type) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+            " failed - conflicts with subscription type of existing subscription",
+            AWS_BYTE_CURSOR_PRI(options->topic_filter),
+            options->operation_id);
         return AASRT_FAILURE;
     }
 
@@ -331,22 +438,47 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
 
     // for simplicity, we require unsubscribes to complete before re-subscribing
     if (existing_record->pending_action == ARRSPAT_UNSUBSCRIBING) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+            " blocked - existing subscription is unsubscribing",
+            AWS_BYTE_CURSOR_PRI(options->topic_filter),
+            options->operation_id);
         return AASRT_BLOCKED;
     }
 
     // register the operation as a listener
     s_add_listener_to_subscription_record(existing_record, options->operation_id);
     if (existing_record->status == ARRSST_SUBSCRIBED) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+            " subscribed - existing subscription is active",
+            AWS_BYTE_CURSOR_PRI(options->topic_filter),
+            options->operation_id);
         return AASRT_SUBSCRIBED;
     }
 
     // do we need to send a subscribe?
     if (s_rr_activate_idle_subscription(manager, existing_record)) {
-        s_emit_subscription_event(manager, existing_record, ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE);
+        // error code was already logged at the point of failure
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+            " failed - synchronous subscribe failure",
+            AWS_BYTE_CURSOR_PRI(options->topic_filter),
+            options->operation_id);
         return AASRT_FAILURE;
     }
 
     s_aws_rr_subscription_record_log_invariant_violations(existing_record);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+        " subscribing - waiting on existing subscription",
+        AWS_BYTE_CURSOR_PRI(options->topic_filter),
+        options->operation_id);
 
     return AASRT_SUBSCRIBING;
 }
@@ -364,6 +496,15 @@ void aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
     if (record == NULL) {
         return;
     }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "request-response subscription manager - received a protocol adapter subscription event for ('" PRInSTR
+        "'), type %s, error_code %d(%s)",
+        AWS_BYTE_CURSOR_PRI(event->topic_filter),
+        aws_protocol_adapter_subscription_event_type_to_c_str(event->event_type),
+        event->error_code,
+        aws_error_debug_str(event->error_code));
 
     if (event->event_type == AWS_PASET_SUBSCRIBE) {
         AWS_FATAL_ASSERT(record->pending_action == ARRSPAT_SUBSCRIBING);
@@ -427,6 +568,14 @@ static void s_apply_session_lost(struct aws_rr_subscription_manager *manager) {
 void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
     struct aws_rr_subscription_manager *manager,
     const struct aws_protocol_adapter_connection_event *event) {
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "request-response subscription manager - received a protocol adapter connection event, type %s, joined_session "
+        "%d",
+        aws_protocol_adapter_connection_event_type_to_c_str(event->event_type),
+        (int)(event->joined_session ? 1 : 0));
+
     if (event->event_type == AWS_PACET_CONNECTED) {
         manager->is_protocol_client_connected = true;
         if (!event->joined_session) {

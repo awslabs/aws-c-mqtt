@@ -839,3 +839,28 @@ int aws_mqtt_protocol_adapter_publish(
 bool aws_mqtt_protocol_adapter_is_connected(struct aws_mqtt_protocol_adapter *adapter) {
     return (*adapter->vtable->aws_mqtt_protocol_adapter_is_connected_fn)(adapter->impl);
 }
+
+const char *aws_protocol_adapter_subscription_event_type_to_c_str(
+    enum aws_protocol_adapter_subscription_event_type type) {
+    switch (type) {
+        case AWS_PASET_SUBSCRIBE:
+            return "Subscribe";
+
+        case AWS_PASET_UNSUBSCRIBE:
+            return "Unsubscribe";
+    }
+
+    return "Unknown";
+}
+
+const char *aws_protocol_adapter_connection_event_type_to_c_str(enum aws_protocol_adapter_connection_event_type type) {
+    switch (type) {
+        case AWS_PACET_CONNECTED:
+            return "Connected";
+
+        case AWS_PACET_DISCONNECTED:
+            return "Disconnected";
+    }
+
+    return "Unknown";
+}
