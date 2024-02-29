@@ -386,6 +386,9 @@ static bool s_contains_subscription_event_sequential_records(
     return true;
 }
 
+/*
+ * Verify: Acquiring a new subscription triggers a protocol client subscribe and returns SUBSCRIBING
+ */
 static int s_rrsm_acquire_subscribing_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -446,7 +449,10 @@ static int s_rrsm_acquire_subscribing_fn(struct aws_allocator *allocator, void *
 
 AWS_TEST_CASE(rrsm_acquire_subscribing, s_rrsm_acquire_subscribing_fn)
 
-// duplicate acquires while subscribing should not generate additional subscribe requests
+/*
+ * Verify: Acquiring an existing, incomplete subscription does not trigger a protocol client subscribe and returns
+ * SUBSCRIBING
+ */
 static int s_rrsm_acquire_existing_subscribing_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -512,7 +518,10 @@ static int s_rrsm_acquire_existing_subscribing_fn(struct aws_allocator *allocato
 
 AWS_TEST_CASE(rrsm_acquire_existing_subscribing, s_rrsm_acquire_existing_subscribing_fn)
 
-// calling acquire while subscribed returns subscribed, also checks subscription event emission
+/*
+ * Verify: Acquiring an existing, completed subscription does not trigger a protocol client subscribe and returns
+ * SUBSCRIBED
+ */
 static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -628,6 +637,9 @@ static int s_do_acquire_blocked_test(
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Verify: Acquiring a new request-response subscription when there is no room returns BLOCKED
+ */
 static int s_rrsm_acquire_blocked_rr_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -650,6 +662,9 @@ static int s_rrsm_acquire_blocked_rr_fn(struct aws_allocator *allocator, void *c
 
 AWS_TEST_CASE(rrsm_acquire_blocked_rr, s_rrsm_acquire_blocked_rr_fn)
 
+/*
+ * Verify: Acquiring a new eventstream subscription when there is no room, but room could free up later, returns BLOCKED
+ */
 static int s_rrsm_acquire_blocked_eventstream_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -694,6 +709,9 @@ static int s_do_acquire_no_capacity_test(struct aws_subscription_manager_test_fi
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Verify: Acquiring a new eventstream subscription when the budget is 1 returns NO_CAPACITY
+ */
 static int s_rrsm_acquire_no_capacity_max1_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -716,6 +734,10 @@ static int s_rrsm_acquire_no_capacity_max1_fn(struct aws_allocator *allocator, v
 
 AWS_TEST_CASE(rrsm_acquire_no_capacity_max1, s_rrsm_acquire_no_capacity_max1_fn)
 
+/*
+ * Verify: Acquiring a new eventstream subscription when there is no room, and no room could free up later, returns
+ * NO_CAPACITY
+ */
 static int s_rrsm_acquire_no_capacity_too_many_event_stream_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -754,6 +776,9 @@ static int s_rrsm_acquire_no_capacity_too_many_event_stream_fn(struct aws_alloca
 
 AWS_TEST_CASE(rrsm_acquire_no_capacity_too_many_event_stream, s_rrsm_acquire_no_capacity_too_many_event_stream_fn)
 
+/*
+ * Verify: Acquiring an existing subscription with an unequal subscription type returns FAILURE
+ */
 static int s_rrsm_acquire_failure_mixed_subscription_types_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -788,6 +813,10 @@ static int s_rrsm_acquire_failure_mixed_subscription_types_fn(struct aws_allocat
 
 AWS_TEST_CASE(rrsm_acquire_failure_mixed_subscription_types, s_rrsm_acquire_failure_mixed_subscription_types_fn)
 
+/*
+ * Verify: A subscription that resolves successfully invokes callbacks for every operation listener; releasing
+ * both references and calling a new acquire will trigger an unsubscribe of the first subscription
+ */
 static int s_rrsm_release_unsubscribes_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -951,6 +980,9 @@ static int s_rrsm_do_unsubscribe_test(struct aws_allocator *allocator, bool shou
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Verify: Releasing a subscription and successfully unsubscribing frees up space for new acquires
+ */
 static int s_rrsm_release_unsubscribe_success_clears_space_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -959,6 +991,9 @@ static int s_rrsm_release_unsubscribe_success_clears_space_fn(struct aws_allocat
 
 AWS_TEST_CASE(rrsm_release_unsubscribe_success_clears_space, s_rrsm_release_unsubscribe_success_clears_space_fn)
 
+/*
+ * Verify: Releasing a subscription but failing to unsubscribe does not free up space for new acquires
+ */
 static int s_rrsm_release_unsubscribe_failure_blocked_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -976,6 +1011,9 @@ static int s_aws_mqtt_protocol_adapter_mock_subscribe_fails(
     return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
 }
 
+/*
+ * Verify: Acquiring a new subscription but synchronously failing the protocol adapter subscribe returns FAILURE
+ */
 static int s_rrsm_acquire_failure_subscribe_sync_failure_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1011,6 +1049,9 @@ static int s_rrsm_acquire_failure_subscribe_sync_failure_fn(struct aws_allocator
 
 AWS_TEST_CASE(rrsm_acquire_failure_subscribe_sync_failure, s_rrsm_acquire_failure_subscribe_sync_failure_fn)
 
+/*
+ * Verify: Completing a subscription-acquire with a failing reason code emits a subscription failed event
+ */
 static int s_rrsm_acquire_subscribe_failure_event_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1114,6 +1155,10 @@ static int s_do_offline_acquire_online_test(struct aws_allocator *allocator, boo
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Verify: Acquiring a new subscription while offline returns SUBSCRIBING.  Going online triggers a protocol adapter
+ * subscribe.  Completing the subscription successfully emits a subscribe success event.
+ */
 static int s_rrsm_offline_acquire_online_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1122,6 +1167,10 @@ static int s_rrsm_offline_acquire_online_success_fn(struct aws_allocator *alloca
 
 AWS_TEST_CASE(rrsm_offline_acquire_online_success, s_rrsm_offline_acquire_online_success_fn)
 
+/*
+ * Verify: Acquiring a new subscription while offline returns SUBSCRIBING.  Going online triggers a protocol adapter
+ * subscribe.  Completing the subscription with a failure emits a subscribe failure event.
+ */
 static int s_rrsm_offline_acquire_online_failure_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1130,6 +1179,10 @@ static int s_rrsm_offline_acquire_online_failure_fn(struct aws_allocator *alloca
 
 AWS_TEST_CASE(rrsm_offline_acquire_online_failure, s_rrsm_offline_acquire_online_failure_fn)
 
+/*
+ * Verify: Acquiring and releasing a subscription while offline and then going online should remove the
+ * subscription without invoking any protocol adapter APIs.
+ */
 static int s_rrsm_offline_acquire_release_online_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -1197,6 +1250,9 @@ static int s_rrsm_offline_acquire_release_online_fn(struct aws_allocator *alloca
 
 AWS_TEST_CASE(rrsm_offline_acquire_release_online, s_rrsm_offline_acquire_release_online_fn)
 
+/*
+ * Verify: Releasing an active subscription while offline should not invoke an unsubscribe until back online
+ */
 static int s_rrsm_acquire_success_offline_release_acquire2_no_unsubscribe_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1280,7 +1336,10 @@ AWS_TEST_CASE(
     rrsm_acquire_success_offline_release_acquire2_no_unsubscribe,
     s_rrsm_acquire_success_offline_release_acquire2_no_unsubscribe_fn)
 
-static int s_do_rrsm_acquire_clean_up_test(struct aws_allocator *allocator, bool complete_subscribe) {
+static int s_do_rrsm_acquire_clean_up_test(
+    struct aws_allocator *allocator,
+    bool complete_subscribe,
+    bool clean_up_while_connected) {
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture fixture;
@@ -1313,6 +1372,14 @@ static int s_do_rrsm_acquire_clean_up_test(struct aws_allocator *allocator, bool
         ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
     }
 
+    if (!clean_up_while_connected) {
+        // trigger online -> offline
+        struct aws_protocol_adapter_connection_event offline_event = {
+            .event_type = AWS_PACET_DISCONNECTED,
+        };
+        aws_rr_subscription_manager_on_protocol_adapter_connection_event(manager, &offline_event);
+    }
+
     // clean up subscription manager
     aws_rr_subscription_manager_clean_up(manager);
 
@@ -1341,25 +1408,44 @@ static int s_do_rrsm_acquire_clean_up_test(struct aws_allocator *allocator, bool
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Verify: Calling clean up while a subscription is active triggers an immediate unsubscribe
+ */
 static int s_rrsm_acquire_success_clean_up_unsubscribe_override_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    return s_do_rrsm_acquire_clean_up_test(allocator, true);
+    return s_do_rrsm_acquire_clean_up_test(allocator, true, true);
 }
 
 AWS_TEST_CASE(
     rrsm_acquire_success_clean_up_unsubscribe_override,
     s_rrsm_acquire_success_clean_up_unsubscribe_override_fn)
 
+/*
+ * Verify: Calling clean up while a subscription is pending triggers an immediate unsubscribe
+ */
 static int s_rrsm_acquire_pending_clean_up_unsubscribe_override_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    return s_do_rrsm_acquire_clean_up_test(allocator, false);
+    return s_do_rrsm_acquire_clean_up_test(allocator, false, true);
 }
 
 AWS_TEST_CASE(
     rrsm_acquire_pending_clean_up_unsubscribe_override,
     s_rrsm_acquire_pending_clean_up_unsubscribe_override_fn)
+
+/*
+ * Verify: Calling clean up while offline and a subscription is pending triggers an immediate unsubscribe
+ */
+static int s_rrsm_offline_acquire_pending_clean_up_unsubscribe_override_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_do_rrsm_acquire_clean_up_test(allocator, false, false);
+}
+
+AWS_TEST_CASE(
+    rrsm_offline_acquire_pending_clean_up_unsubscribe_override,
+    s_rrsm_offline_acquire_pending_clean_up_unsubscribe_override_fn)
 
 static int s_rrsm_do_no_session_subscription_lost_test(
     struct aws_allocator *allocator,
@@ -1472,6 +1558,10 @@ static int s_rrsm_do_no_session_subscription_lost_test(
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Verify: If the client fails to rejoin a session, a SUBSCRIPTION_ENDED event is emitted for active subscriptions and
+ * that subscription can successfully be reacquired
+ */
 static int s_rrsm_acquire_success_offline_online_no_session_subscription_lost_can_reacquire_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1484,6 +1574,10 @@ AWS_TEST_CASE(
     rrsm_acquire_success_offline_online_no_session_subscription_lost_can_reacquire,
     s_rrsm_acquire_success_offline_online_no_session_subscription_lost_can_reacquire_fn)
 
+/*
+ * Verify: If the client fails to rejoin a session, a SUBSCRIPTION_ENDED event is emitted for unsubscribing
+ * subscriptions
+ */
 static int s_rrsm_subscription_lost_while_unsubscribing_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
