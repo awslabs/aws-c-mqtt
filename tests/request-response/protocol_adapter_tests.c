@@ -95,7 +95,7 @@ struct aws_request_response_protocol_adapter_test_fixture {
 };
 
 static void s_rr_mqtt_protocol_adapter_test_on_subscription_event(
-    struct aws_protocol_adapter_subscription_event *event,
+    const struct aws_protocol_adapter_subscription_event *event,
     void *user_data) {
     struct aws_request_response_protocol_adapter_test_fixture *fixture = user_data;
 
@@ -110,7 +110,7 @@ static void s_rr_mqtt_protocol_adapter_test_on_subscription_event(
 }
 
 static void s_rr_mqtt_protocol_adapter_test_on_incoming_publish(
-    struct aws_protocol_adapter_incoming_publish_event *publish,
+    const struct aws_protocol_adapter_incoming_publish_event *publish,
     void *user_data) {
     struct aws_request_response_protocol_adapter_test_fixture *fixture = user_data;
 
@@ -135,7 +135,7 @@ static void s_rr_mqtt_protocol_adapter_test_on_terminate_callback(void *user_dat
 }
 
 static void s_rr_mqtt_protocol_adapter_test_on_connection_event(
-    struct aws_protocol_adapter_connection_event *event,
+    const struct aws_protocol_adapter_connection_event *event,
     void *user_data) {
     struct aws_request_response_protocol_adapter_test_fixture *fixture = user_data;
 

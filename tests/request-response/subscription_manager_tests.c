@@ -77,7 +77,7 @@ static void s_aws_mqtt_protocol_adapter_mock_destroy(void *impl) {
     aws_mem_release(adapter->allocator, adapter);
 }
 
-int s_aws_mqtt_protocol_adapter_mock_subscribe(void *impl, struct aws_protocol_adapter_subscribe_options *options) {
+static int s_aws_mqtt_protocol_adapter_mock_subscribe(void *impl, struct aws_protocol_adapter_subscribe_options *options) {
     struct aws_mqtt_protocol_adapter_mock_impl *adapter = impl;
 
     struct aws_protocol_adapter_api_record record;
@@ -89,7 +89,7 @@ int s_aws_mqtt_protocol_adapter_mock_subscribe(void *impl, struct aws_protocol_a
     return AWS_OP_SUCCESS;
 }
 
-int s_aws_mqtt_protocol_adapter_mock_unsubscribe(void *impl, struct aws_protocol_adapter_unsubscribe_options *options) {
+static int s_aws_mqtt_protocol_adapter_mock_unsubscribe(void *impl, struct aws_protocol_adapter_unsubscribe_options *options) {
     struct aws_mqtt_protocol_adapter_mock_impl *adapter = impl;
 
     struct aws_protocol_adapter_api_record record;
@@ -101,7 +101,7 @@ int s_aws_mqtt_protocol_adapter_mock_unsubscribe(void *impl, struct aws_protocol
     return AWS_OP_SUCCESS;
 }
 
-static bool s_aws_mqtt_protocol_adapter_mqtt_is_connected(void *impl) {
+static bool s_aws_mqtt_protocol_adapter_mock_is_connected(void *impl) {
     struct aws_mqtt_protocol_adapter_mock_impl *adapter = impl;
 
     return adapter->is_connected;
@@ -112,7 +112,7 @@ static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mock_vtable = 
     .aws_mqtt_protocol_adapter_subscribe_fn = s_aws_mqtt_protocol_adapter_mock_subscribe,
     .aws_mqtt_protocol_adapter_unsubscribe_fn = s_aws_mqtt_protocol_adapter_mock_unsubscribe,
     .aws_mqtt_protocol_adapter_publish_fn = NULL,
-    .aws_mqtt_protocol_adapter_is_connected_fn = s_aws_mqtt_protocol_adapter_mqtt_is_connected,
+    .aws_mqtt_protocol_adapter_is_connected_fn = s_aws_mqtt_protocol_adapter_mock_is_connected,
 };
 
 static struct aws_mqtt_protocol_adapter *s_aws_mqtt_mock_protocol_adapter_new(
