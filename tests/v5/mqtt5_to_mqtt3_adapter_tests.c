@@ -2380,10 +2380,10 @@ int aws_mqtt5_mock_server_handle_not_authorized_publish_puback(
         return AWS_OP_SUCCESS;
     }
 
-    struct aws_mqtt5_packet_puback_view = {
+    struct aws_mqtt5_packet_puback_view puback_view = {
         .packet_id = publish_view->packet_id,
         .reason_code = AWS_MQTT5_PARC_NOT_AUTHORIZED,
-    }
+    };
 
     return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBACK, &puback_view);
 }
