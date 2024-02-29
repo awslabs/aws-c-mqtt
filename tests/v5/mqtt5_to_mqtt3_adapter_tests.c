@@ -2368,6 +2368,86 @@ static int s_mqtt5to3_adapter_publish_success_qos1_fn(struct aws_allocator *allo
 
 AWS_TEST_CASE(mqtt5to3_adapter_publish_success_qos1, s_mqtt5to3_adapter_publish_success_qos1_fn)
 
+int aws_mqtt5_mock_server_handle_not_authorized_publish_puback(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+
+    (void)user_data;
+
+    struct aws_mqtt5_packet_publish_view *publish_view = packet;
+    if (publish_view->qos != AWS_MQTT5_QOS_AT_LEAST_ONCE) {
+        return AWS_OP_SUCCESS;
+    }
+
+    struct aws_mqtt5_packet_puback_view puback_view = {
+        .packet_id = publish_view->packet_id,
+        .reason_code = AWS_MQTT5_PARC_NOT_AUTHORIZED,
+    };
+
+    return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBACK, &puback_view);
+}
+
+static int s_mqtt5to3_adapter_publish_qos1_fail_ack_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    /* Return a fail qos1 puback */
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        aws_mqtt5_mock_server_handle_not_authorized_publish_puback;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_to_mqtt3_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt5_to_mqtt3_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    struct aws_mqtt_connection_options connection_options;
+    s_init_adapter_connection_options_from_fixture(&connection_options, &fixture);
+
+    connection_options.on_connection_complete = s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_connection_complete;
+    connection_options.user_data = &fixture;
+
+    aws_mqtt_client_connection_connect(connection, &connection_options);
+
+    s_wait_for_n_adapter_lifecycle_events(&fixture, AWS_MQTT3_LET_CONNECTION_COMPLETE, 1);
+
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("derp");
+
+    aws_mqtt_client_connection_publish(
+        connection,
+        &topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        NULL,
+        s_aws_mqtt5_to_mqtt3_adapter_test_fixture_record_publish_complete,
+        &fixture);
+
+    s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_PUBLISH_COMPLETE, 1);
+
+    struct aws_mqtt3_operation_event expected_events[] = {{
+        .type = AWS_MQTT3_OET_PUBLISH_COMPLETE,
+        .error_code = AWS_ERROR_MQTT_ACK_REASON_CODE_FAILURE,
+    }};
+    s_aws_mqtt5_to_mqtt3_adapter_test_fixture_verify_operation_sequence(
+        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events, AWS_ARRAY_SIZE(expected_events));
+
+    aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5to3_adapter_publish_qos1_fail_ack, s_mqtt5to3_adapter_publish_qos1_fail_ack_fn)
+
 static int s_mqtt5to3_adapter_publish_no_ack_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
