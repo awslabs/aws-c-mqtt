@@ -1825,7 +1825,7 @@ static void s_aws_mqtt5_to_mqtt3_adapter_publish_completion_fn(
 
     int error_code_final = error_code;
 
-    if (error_code_final == 0 && packet_type == AWS_MQTT5_PT_PUBACK) {
+    if (error_code_final == AWS_ERROR_SUCCESS && packet_type == AWS_MQTT5_PT_PUBACK) {
         const struct aws_mqtt5_packet_puback_view *puback_view = packet;
         if (puback_view->reason_code >= 128) {
             error_code_final = AWS_ERROR_MQTT_ACK_REASON_CODE_FAILURE;
