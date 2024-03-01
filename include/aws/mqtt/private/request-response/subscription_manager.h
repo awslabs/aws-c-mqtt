@@ -143,7 +143,7 @@ AWS_EXTERN_C_BEGIN
 /*
  * Initializes a subscription manager.  Every native request-response client owns a single subscription manager.
  */
-AWS_MQTT_API int aws_rr_subscription_manager_init(
+AWS_MQTT_API void aws_rr_subscription_manager_init(
     struct aws_rr_subscription_manager *manager,
     struct aws_allocator *allocator,
     struct aws_mqtt_protocol_adapter *protocol_adapter,
@@ -200,6 +200,12 @@ AWS_MQTT_API void aws_rr_subscription_manager_on_protocol_adapter_subscription_e
 AWS_MQTT_API void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
     struct aws_rr_subscription_manager *manager,
     const struct aws_protocol_adapter_connection_event *event);
+
+/*
+ * Checks subscription manager options for validity.
+ */
+AWS_MQTT_API bool aws_rr_subscription_manager_are_options_valid(
+    const struct aws_rr_subscription_manager_options *options);
 
 AWS_EXTERN_C_END
 

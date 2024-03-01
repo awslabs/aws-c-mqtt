@@ -77,7 +77,9 @@ static void s_aws_mqtt_protocol_adapter_mock_destroy(void *impl) {
     aws_mem_release(adapter->allocator, adapter);
 }
 
-static int s_aws_mqtt_protocol_adapter_mock_subscribe(void *impl, struct aws_protocol_adapter_subscribe_options *options) {
+static int s_aws_mqtt_protocol_adapter_mock_subscribe(
+    void *impl,
+    struct aws_protocol_adapter_subscribe_options *options) {
     struct aws_mqtt_protocol_adapter_mock_impl *adapter = impl;
 
     struct aws_protocol_adapter_api_record record;
@@ -89,7 +91,9 @@ static int s_aws_mqtt_protocol_adapter_mock_subscribe(void *impl, struct aws_pro
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_mqtt_protocol_adapter_mock_unsubscribe(void *impl, struct aws_protocol_adapter_unsubscribe_options *options) {
+static int s_aws_mqtt_protocol_adapter_mock_unsubscribe(
+    void *impl,
+    struct aws_protocol_adapter_unsubscribe_options *options) {
     struct aws_mqtt_protocol_adapter_mock_impl *adapter = impl;
 
     struct aws_protocol_adapter_api_record record;
@@ -292,8 +296,8 @@ static int s_aws_subscription_manager_test_fixture_init(
         .operation_timeout_seconds = options->operation_timeout_seconds,
         .subscription_status_callback = s_aws_rr_subscription_status_event_test_callback_fn,
         .userdata = fixture};
-    ASSERT_SUCCESS(aws_rr_subscription_manager_init(
-        &fixture->subscription_manager, allocator, fixture->mock_protocol_adapter, &subscription_manager_options));
+    aws_rr_subscription_manager_init(
+        &fixture->subscription_manager, allocator, fixture->mock_protocol_adapter, &subscription_manager_options);
 
     return AWS_OP_SUCCESS;
 }
@@ -1399,8 +1403,8 @@ static int s_do_rrsm_acquire_clean_up_test(
         .subscription_status_callback = s_aws_rr_subscription_status_event_test_callback_fn,
         .userdata = &fixture,
     };
-    ASSERT_SUCCESS(aws_rr_subscription_manager_init(
-        &fixture.subscription_manager, allocator, fixture.mock_protocol_adapter, &subscription_manager_options));
+    aws_rr_subscription_manager_init(
+        &fixture.subscription_manager, allocator, fixture.mock_protocol_adapter, &subscription_manager_options);
 
     s_aws_subscription_manager_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();

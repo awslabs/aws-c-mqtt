@@ -507,6 +507,10 @@ add_test_case(rrsm_offline_acquire_pending_clean_up_unsubscribe_override)
 add_test_case(rrsm_acquire_success_offline_online_no_session_subscription_lost_can_reacquire)
 add_test_case(rrsm_subscription_lost_while_unsubscribing)
 
+# "rrc" = request response client
+add_test_case(rrc_mqtt5_create_destroy)
+add_test_case(rrc_mqtt311_create_destroy)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)

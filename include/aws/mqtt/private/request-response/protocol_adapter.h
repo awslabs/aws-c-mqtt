@@ -102,8 +102,9 @@ struct aws_protocol_adapter_connection_event {
     bool joined_session;
 };
 
-typedef void(
-    aws_protocol_adapter_subscription_event_fn)(const struct aws_protocol_adapter_subscription_event *event, void *user_data);
+typedef void(aws_protocol_adapter_subscription_event_fn)(
+    const struct aws_protocol_adapter_subscription_event *event,
+    void *user_data);
 
 typedef void(aws_protocol_adapter_incoming_publish_fn)(
     const struct aws_protocol_adapter_incoming_publish_event *publish,
@@ -111,8 +112,9 @@ typedef void(aws_protocol_adapter_incoming_publish_fn)(
 
 typedef void(aws_protocol_adapter_terminate_callback_fn)(void *user_data);
 
-typedef void(
-    aws_protocol_adapter_connection_event_fn)(const struct aws_protocol_adapter_connection_event *event, void *user_data);
+typedef void(aws_protocol_adapter_connection_event_fn)(
+    const struct aws_protocol_adapter_connection_event *event,
+    void *user_data);
 
 /*
  * Set of callbacks invoked by the protocol adapter.  These must all be set.

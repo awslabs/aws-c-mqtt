@@ -589,16 +589,22 @@ void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
     }
 }
 
-int aws_rr_subscription_manager_init(
+bool aws_rr_subscription_manager_are_options_valid(const struct aws_rr_subscription_manager_options *options) {
+    if (options == NULL || options->max_subscriptions < 1 || options->operation_timeout_seconds == 0) {
+        return false;
+    }
+
+    return true;
+}
+
+void aws_rr_subscription_manager_init(
     struct aws_rr_subscription_manager *manager,
     struct aws_allocator *allocator,
     struct aws_mqtt_protocol_adapter *protocol_adapter,
     const struct aws_rr_subscription_manager_options *options) {
     AWS_ZERO_STRUCT(*manager);
 
-    if (options == NULL || options->max_subscriptions < 1 || options->operation_timeout_seconds == 0) {
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
+    AWS_FATAL_ASSERT(aws_rr_subscription_manager_are_options_valid(options));
 
     manager->allocator = allocator;
     manager->config = *options;
@@ -614,8 +620,6 @@ int aws_rr_subscription_manager_init(
         s_aws_rr_subscription_record_destroy);
 
     manager->is_protocol_client_connected = aws_mqtt_protocol_adapter_is_connected(protocol_adapter);
-
-    return AWS_OP_SUCCESS;
 }
 
 void aws_rr_subscription_manager_clean_up(struct aws_rr_subscription_manager *manager) {
