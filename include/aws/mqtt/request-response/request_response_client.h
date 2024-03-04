@@ -19,7 +19,7 @@ struct aws_mqtt_request_response_client_options {
     size_t max_subscriptions;
     uint32_t operation_timeout_seconds;
 
-    // Do not bind the initialized callback; it exists mostly for tests and should not be exposed
+    /* Do not bind the initialized callback; it exists mostly for tests and should not be exposed */
     aws_mqtt_request_response_client_initialized_callback_fn *initialized_callback;
 
     aws_mqtt_request_response_client_terminated_callback_fn *terminated_callback;
@@ -28,19 +28,31 @@ struct aws_mqtt_request_response_client_options {
 
 AWS_EXTERN_C_BEGIN
 
+/*
+ * Create a new request-response client that uses an MQTT311 client.
+ */
 struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_from_mqtt311_client(
     struct aws_allocator *allocator,
     struct aws_mqtt_client_connection *client,
     const struct aws_mqtt_request_response_client_options *options);
 
+/*
+ * Create a new request-response client that uses an MQTT5 client.
+ */
 struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_from_mqtt5_client(
     struct aws_allocator *allocator,
     struct aws_mqtt5_client *client,
     const struct aws_mqtt_request_response_client_options *options);
 
+/*
+ * Add a reference to a request-response client
+ */
 struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_acquire(
     struct aws_mqtt_request_response_client *client);
 
+/*
+ * Remove a reference to a request-response client
+ */
 struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_release(
     struct aws_mqtt_request_response_client *client);
 
