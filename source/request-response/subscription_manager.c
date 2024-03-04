@@ -569,14 +569,13 @@ void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
     struct aws_rr_subscription_manager *manager,
     const struct aws_protocol_adapter_connection_event *event) {
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_REQUEST_RESPONSE,
-        "request-response subscription manager - received a protocol adapter connection event, type %s, joined_session "
-        "%d",
-        aws_protocol_adapter_connection_event_type_to_c_str(event->event_type),
-        (int)(event->joined_session ? 1 : 0));
-
     if (event->event_type == AWS_PACET_CONNECTED) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - received a protocol adapter connection event, joined_session: "
+            "%d",
+            (int)(event->joined_session ? 1 : 0));
+
         manager->is_protocol_client_connected = true;
         if (!event->joined_session) {
             s_apply_session_lost(manager);
@@ -585,6 +584,10 @@ void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
         s_cull_unused_subscriptions(manager);
         s_activate_idle_subscriptions(manager);
     } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - received a protocol adapter disconnection event");
+
         manager->is_protocol_client_connected = false;
     }
 }
