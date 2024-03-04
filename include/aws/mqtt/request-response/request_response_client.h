@@ -31,7 +31,7 @@ AWS_EXTERN_C_BEGIN
 /*
  * Create a new request-response client that uses an MQTT311 client.
  */
-struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_from_mqtt311_client(
+AWS_MQTT_API struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_from_mqtt311_client(
     struct aws_allocator *allocator,
     struct aws_mqtt_client_connection *client,
     const struct aws_mqtt_request_response_client_options *options);
@@ -39,7 +39,7 @@ struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_fr
 /*
  * Create a new request-response client that uses an MQTT5 client.
  */
-struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_from_mqtt5_client(
+AWS_MQTT_API struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_from_mqtt5_client(
     struct aws_allocator *allocator,
     struct aws_mqtt5_client *client,
     const struct aws_mqtt_request_response_client_options *options);
@@ -47,13 +47,13 @@ struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_fr
 /*
  * Add a reference to a request-response client
  */
-struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_acquire(
+AWS_MQTT_API struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_acquire(
     struct aws_mqtt_request_response_client *client);
 
 /*
  * Remove a reference to a request-response client
  */
-struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_release(
+AWS_MQTT_API struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_release(
     struct aws_mqtt_request_response_client *client);
 
 AWS_EXTERN_C_END
