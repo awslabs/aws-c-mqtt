@@ -162,7 +162,7 @@ static void s_subscription_record_unsubscribe(
     record->pending_action = ARRSPAT_UNSUBSCRIBING;
 }
 
-/* Only called when shutting down the client */
+/* Only called when shutting down the request-response client */
 static int s_rr_subscription_clean_up_foreach_wrap(void *context, struct aws_hash_element *elem) {
     struct aws_rr_subscription_manager *manager = context;
     struct aws_rr_subscription_record *subscription = elem->value;
