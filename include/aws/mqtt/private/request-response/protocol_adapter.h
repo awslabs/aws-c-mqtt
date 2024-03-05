@@ -95,7 +95,7 @@ enum aws_protocol_adapter_connection_event_type {
 };
 
 /*
- * An event emitted by the protocol adapter whenever the protocol client successfully reconnects to the broker.
+ * An event emitted by the protocol adapter whenever the protocol client's connection status changes
  */
 struct aws_protocol_adapter_connection_event {
     enum aws_protocol_adapter_connection_event_type event_type;
@@ -195,6 +195,12 @@ AWS_MQTT_API int aws_mqtt_protocol_adapter_publish(
  * protocol client's event loop.
  */
 AWS_MQTT_API bool aws_mqtt_protocol_adapter_is_connected(struct aws_mqtt_protocol_adapter *adapter);
+
+AWS_MQTT_API const char *aws_protocol_adapter_subscription_event_type_to_c_str(
+    enum aws_protocol_adapter_subscription_event_type type);
+
+AWS_MQTT_API const char *aws_protocol_adapter_connection_event_type_to_c_str(
+    enum aws_protocol_adapter_connection_event_type type);
 
 AWS_EXTERN_C_END
 
