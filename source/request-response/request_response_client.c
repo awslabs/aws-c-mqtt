@@ -13,6 +13,243 @@
 #include <aws/mqtt/private/request-response/subscription_manager.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 
+enum aws_mqtt_request_response_operation_type {
+    AWS_MRROT_REQUEST,
+    AWS_MRROT_STREAMING,
+};
+
+enum aws_mqtt_request_response_operation_state {
+    AWS_MRROS_NONE, // creation -> in event loop enqueue
+    AWS_MRROS_QUEUED, // in event loop queue -> non blocked response from subscription manager
+    AWS_MRROS_PENDING_SUBSCRIPTION, // subscribing response from sub manager -> subscription success/failure event
+    AWS_MRROS_AWAITING_RESPONSE, // (request only) subscription success -> (publish failure OR correlated response received)
+    AWS_MRROS_SUBSCRIBED, // (streaming only) subscription success -> (operation finished OR subscription ended event)
+    AWS_MRROS_TERMINAL, // (streaming only) (subscription failure OR subscription ended) -> operation close/terminate
+};
+
+/*
+
+Tables/Lookups
+
+    (Authoritative operation container)
+    1. &operation.id -> &operation // added on in-thread enqueue, removed on operation completion/destruction
+
+    (Response topic -> Correlation token extraction info)
+    2. &topic -> &{topic, topic_buffer, correlation token json path buffer} // per-message-path add/replace on in-thread enqueue, removed on client destruction
+
+    (Correlation token -> request operation)
+    3. &operation.correlation token -> (request) &operation // added on in-thread request op move to awaiting response state, removed on operation completion/destruction
+
+    (Subscription filter -> all operations using that filter)
+    4. &topic_filter -> &{topic_filter, linked_list} // added on in-thread pop from queue, removed from list on operation completion/destruction also checked for empty and removed from table
+
+*/
+
+/* All operations have an internal ref to the client they are a part of */
+
+/*
+ On submit request operation API [Anywhere]:
+
+ Allocate id
+ Create operation
+ Submit cross-thread task
+
+ */
+
+/*
+ On submit streaming operation API [Anywhere]:
+
+ Allocate id
+ Create operation
+ Submit cross-thread task
+ Return (ref-counted) operation
+
+ */
+
+/*
+ On receive operation [Event Loop, top-level task]:
+
+ Add to operations table
+ (Request) Add message paths to path table if no exist or different value
+ Add to timeout priority queue
+ Add operation to end of queue list
+ state <- QUEUED
+ Wake service task
+
+ */
+
+/*
+ Complete (request) operation [Event Loop]:
+
+ Completion Callback (Success/Failure)
+ State <- TERMINAL
+ Decref operation
+ */
+
+/*
+ On operation ref to zero [Anywhere]:
+
+ Submit cross-thread task to destroy operation (operation terminate callback chains directly to the binding)
+ */
+
+/*
+ On operation destroy [Event Loop, top-level task]:
+
+ Remove from operations table
+ Remove from intrusive list
+ (Request only) Remove from correlation token table
+ (Streaming only) Check streaming topic table for empty list, remove entry if so
+ Remove from timeout priority queue
+ Remove from subscription manager
+ Wake service task // What if this is the last internal ref?  Should service task have an internal reference while scheduled?
+ (Streaming) Invoke termination callback
+ Release client internal ref
+
+ */
+
+/*
+ On incoming publish [Event Loop]:
+
+ If topic in streaming routes table
+    for all streaming operations in list
+       if operation.state == SUBSCRIBED
+          invoke publish received callback
+
+ If topic in paths table:
+    If correlation token extraction success
+        If entry exists in correlation token table
+            Complete operation with publish payload
+ */
+
+/*
+ On Publish completion [Event Loop]:
+
+ If Error
+    Complete and Fail Operation(id)
+
+ */
+
+
+/*
+ On protocol adapter connection event [Event Loop]:
+
+ Notify subscription manager
+ Wake service task
+ */
+
+/*
+ On subscription status event [Event Loop, top-level task]:
+
+ For all streaming operations in topic_filter table list:
+    If Success and state == SUBSCRIBING
+        state <- SUBSCRIBED
+        Invoke Success/Failure callback with success
+    Else If Failure and state == SUBSCRIBING
+        state <- TERMINAL
+        Invoke Success/Failure callback with failure
+    Else if Subscription Ended and state != TERMINAL
+        state <- TERMINAL
+        Invoke Ended callback
+    If Failure or Ended:
+        sub manager release_subscription(operation id)
+
+ For all request operations in request topic filter list:
+    If Success and state == SUBSCRIBING
+       MakeRequest(op)
+
+    If Failure or Ended
+       Complete operation with failure
+
+ */
+
+/*
+ MakeRequest(op) [Event Loop]:
+
+    state <- AWAITING_RESPONSE
+    if publish fails synchronously
+        Complete operation with failure
+        Decref(op)
+ */
+
+/*
+ Handle acquire sub result(op, result) [Event Loop, Service Task Loop]:
+
+ If result == {No Capacity, Failure}
+    If op is streaming
+       Invoke failure callback
+       state <- TERMINAL
+    else
+       Complete operation with failure
+       Decref
+    return
+
+ If streaming
+    Add operation to topic filter table
+    State <- {SUBSCRIBING, SUBSCRIBED}
+
+ If request
+    Add operation to topic filter table
+    if result == SUBSCRIBING
+       state <- SUBSCRIBING
+    else // (SUBSCRIBED)
+       MakeRequest(op)
+
+
+ */
+/*
+ Service task [Event Loop]:
+
+ For all timed out operations:
+    Invoke On Operation Timeout
+
+ While OperationQueue is not empty:
+    op = peek queue
+    result = subscription manager acquire sub(op)
+    if result == Blocked
+       break
+    pop op
+    handle acquire sub result (op, result)
+
+ Reschedule Service for next timeout if it exists
+ */
+
+/*
+ On operation timeout [Event Loop, Service Task Loop]:
+
+ If request
+    Complete with failure
+    Decref-op
+ If streaming and state != {SUBSCRIBED, TERMINAL}
+    state <- TERMINAL
+    Invoke failure callback
+
+ */
+
+struct aws_mqtt_rr_client_operation {
+    struct aws_allocator *allocator;
+
+    struct aws_ref_count ref_count;
+
+    struct aws_mqtt_request_response_client *internal_client_ref;
+
+    uint64_t id;
+
+    enum aws_mqtt_request_response_operation_type type;
+
+    union {
+        struct aws_mqtt_streaming_operation_storage streaming_storage;
+        struct aws_mqtt_request_operation_storage request_storage;
+    } storage;
+
+    uint64_t ack_timeout_timepoint_ns;
+    struct aws_priority_queue_node priority_queue_node;
+    struct aws_linked_list_node node;
+
+    enum aws_mqtt_request_response_operation_state state;
+};
+
+/*******************************************************************************************/
+
 /* Tracks the current state of the request-response client */
 enum aws_request_response_client_state {
 
@@ -383,6 +620,37 @@ struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_releas
     if (client != NULL) {
         aws_ref_count_release(&client->external_ref_count);
     }
+
+    return NULL;
+}
+
+int aws_mqtt_request_response_client_submit_request(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_mqtt_request_operation_options *request_options) {
+    (void)client;
+    (void)request_options;
+
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+AWS_MQTT_API struct aws_mqtt_streaming_operation *aws_mqtt_request_response_client_create_streaming_operation(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_mqtt_streaming_operation_options *streaming_options) {
+
+    (void)client;
+    (void)streaming_options;
+
+    return NULL;
+}
+
+AWS_MQTT_API struct aws_mqtt_streaming_operation *aws_mqtt_streaming_operation_acquire(struct aws_mqtt_streaming_operation *operation) {
+    (void)operation;
+
+    return NULL;
+}
+
+AWS_MQTT_API struct aws_mqtt_streaming_operation *aws_mqtt_streaming_operation_release(struct aws_mqtt_streaming_operation *operation) {
+    (void)operation;
 
     return NULL;
 }
