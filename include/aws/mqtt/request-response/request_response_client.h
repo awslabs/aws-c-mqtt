@@ -15,20 +15,20 @@ struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
 struct aws_mqtt_streaming_operation;
 
-struct aws_mqtt_request_operation_message_path {
+struct aws_mqtt_request_operation_response_path {
     struct aws_byte_cursor topic;
 
     /* potential point of expansion into an abstract "extractor" if we ever need to support non-JSON payloads */
     struct aws_byte_cursor correlation_token_json_path;
 };
 
-typedef void(aws_mqtt_request_operation_completion_fn)(int error_code, struct aws_byte_cursor payload, void *user_data);
+typedef void(aws_mqtt_request_operation_completion_fn)(struct aws_byte_cursor *payload, int error_code, void *user_data);
 
 struct aws_mqtt_request_operation_options {
     struct aws_byte_cursor subscription_topic_filter;
 
-    struct aws_mqtt_request_operation_message_path *message_paths;
-    size_t message_path_count;
+    struct aws_mqtt_request_operation_response_path *response_paths;
+    size_t response_path_count;
 
     struct aws_byte_cursor publish_topic;
     struct aws_byte_cursor serialized_request;
@@ -41,7 +41,7 @@ struct aws_mqtt_request_operation_options {
 struct aws_mqtt_request_operation_storage {
     struct aws_mqtt_request_operation_options options;
 
-    struct aws_array_list operation_message_paths;
+    struct aws_array_list operation_response_paths;
 
     struct aws_byte_buf operation_data;
 };
@@ -113,15 +113,15 @@ AWS_MQTT_API struct aws_mqtt_request_response_client *aws_mqtt_request_response_
 
 AWS_MQTT_API int aws_mqtt_request_response_client_submit_request(
     struct aws_mqtt_request_response_client *client,
-    struct aws_mqtt_request_operation_options *request_options);
+    const struct aws_mqtt_request_operation_options *request_options);
 
-AWS_MQTT_API struct aws_mqtt_streaming_operation *aws_mqtt_request_response_client_create_streaming_operation(
+AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_request_response_client_create_streaming_operation(
     struct aws_mqtt_request_response_client *client,
-    struct aws_mqtt_streaming_operation_options *streaming_options);
+    const struct aws_mqtt_streaming_operation_options *streaming_options);
 
-AWS_MQTT_API struct aws_mqtt_streaming_operation *aws_mqtt_streaming_operation_acquire(struct aws_mqtt_streaming_operation *operation);
+AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_acquire(struct aws_mqtt_rr_client_operation *operation);
 
-AWS_MQTT_API struct aws_mqtt_streaming_operation *aws_mqtt_streaming_operation_release(struct aws_mqtt_streaming_operation *operation);
+AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_release(struct aws_mqtt_rr_client_operation *operation);
 
 AWS_EXTERN_C_END
 
