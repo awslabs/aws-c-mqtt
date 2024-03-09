@@ -30,4 +30,3 @@ enum aws_rr_subscription_event_type {
 };
 
 #endif /* AWS_MQTT_PRIVATE_REQUEST_RESPONSE_REQUEST_RESPONSE_H */
-

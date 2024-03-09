@@ -22,7 +22,8 @@ struct aws_mqtt_request_operation_response_path {
     struct aws_byte_cursor correlation_token_json_path;
 };
 
-typedef void(aws_mqtt_request_operation_completion_fn)(struct aws_byte_cursor *payload, int error_code, void *user_data);
+typedef void(
+    aws_mqtt_request_operation_completion_fn)(struct aws_byte_cursor *payload, int error_code, void *user_data);
 
 struct aws_mqtt_request_operation_options {
     struct aws_byte_cursor subscription_topic_filter;
@@ -46,7 +47,10 @@ struct aws_mqtt_request_operation_storage {
     struct aws_byte_buf operation_data;
 };
 
-typedef void(aws_mqtt_streaming_operation_subscription_status_fn)(enum aws_rr_subscription_event_type status, int error_code, void *user_data);
+typedef void(aws_mqtt_streaming_operation_subscription_status_fn)(
+    enum aws_rr_subscription_event_type status,
+    int error_code,
+    void *user_data);
 typedef void(aws_mqtt_streaming_operation_incoming_publish_fn)(struct aws_byte_cursor payload, void *user_data);
 typedef void(aws_mqtt_streaming_operation_terminated_fn)(void *user_data);
 
@@ -65,7 +69,6 @@ struct aws_mqtt_streaming_operation_storage {
 
     struct aws_byte_buf operation_data;
 };
-
 
 typedef void(aws_mqtt_request_response_client_initialized_callback_fn)(void *user_data);
 typedef void(aws_mqtt_request_response_client_terminated_callback_fn)(void *user_data);
@@ -119,9 +122,11 @@ AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_request_response_clie
     struct aws_mqtt_request_response_client *client,
     const struct aws_mqtt_streaming_operation_options *streaming_options);
 
-AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_acquire(struct aws_mqtt_rr_client_operation *operation);
+AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_acquire(
+    struct aws_mqtt_rr_client_operation *operation);
 
-AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_release(struct aws_mqtt_rr_client_operation *operation);
+AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_release(
+    struct aws_mqtt_rr_client_operation *operation);
 
 AWS_EXTERN_C_END
 

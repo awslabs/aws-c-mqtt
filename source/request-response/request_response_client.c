@@ -442,28 +442,6 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
     aws_mqtt_rr_client_operation_release(operation);
 }
 
-static void s_complete_request_operation_with_success(
-    struct aws_mqtt_rr_client_operation *operation,
-    struct aws_byte_cursor payload) {
-    AWS_FATAL_ASSERT(operation->type == AWS_MRROT_REQUEST);
-
-    if (operation->state == AWS_MRROS_PENDING_DESTROY) {
-        return;
-    }
-
-    aws_mqtt_request_operation_completion_fn *completion_callback =
-        operation->storage.request_storage.options.completion_callback;
-    void *user_data = operation->storage.request_storage.options.user_data;
-
-    if (completion_callback != NULL) {
-        (*completion_callback)(&payload, AWS_ERROR_SUCCESS, user_data);
-    }
-
-    operation->state = AWS_MRROS_PENDING_DESTROY;
-
-    aws_mqtt_rr_client_operation_release(operation);
-}
-
 static void s_streaming_operation_on_client_shutdown(struct aws_mqtt_rr_client_operation *operation, int error_code) {
     AWS_FATAL_ASSERT(operation->type == AWS_MRROT_STREAMING);
     AWS_FATAL_ASSERT(error_code != AWS_ERROR_SUCCESS);
