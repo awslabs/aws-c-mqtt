@@ -9,31 +9,11 @@
 #include <aws/mqtt/mqtt.h>
 
 #include <aws/common/hash_table.h>
+#include <aws/mqtt/private/request-response/request_response.h>
 
 struct aws_mqtt_protocol_adapter;
 struct aws_protocol_adapter_connection_event;
 struct aws_protocol_adapter_subscription_event;
-
-/*
- * The kind of subscription event being emitted.
- */
-enum aws_rr_subscription_event_type {
-
-    /*
-     * A subscribe succeeded
-     */
-    ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
-
-    /*
-     * A subscribe failed
-     */
-    ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE,
-
-    /*
-     * A previously successful subscription has ended (generally due to a failure to resume a session)
-     */
-    ARRSET_SUBSCRIPTION_ENDED
-};
 
 struct aws_rr_subscription_status_event {
     enum aws_rr_subscription_event_type type;
