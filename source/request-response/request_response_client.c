@@ -632,6 +632,8 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         NULL,
         NULL);
 
+    aws_linked_list_init(&rr_client->operation_queue);
+
     aws_task_init(
         &rr_client->external_shutdown_task,
         s_mqtt_request_response_client_external_shutdown_task_fn,
@@ -838,6 +840,14 @@ static bool s_are_request_operation_options_valid(
                 "(%p) rr client request options - " PRInSTR " is not a valid topic",
                 (void *)client,
                 AWS_BYTE_CURSOR_PRI(path->topic));
+            return false;
+        }
+
+        if (path->correlation_token_json_path.len == 0) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "(%p) rr client request options - empty correlation token json path",
+                (void *)client);
             return false;
         }
     }
