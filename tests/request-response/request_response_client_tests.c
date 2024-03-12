@@ -633,12 +633,12 @@ static int s_rrc_do_submit_request_operation_failure_test(
         .serialized_request = aws_byte_cursor_from_c_str("{}"),
         .correlation_token = aws_byte_cursor_from_c_str("MyRequest#1"),
     };
-    ASSERT_SUCCESS(aws_mqtt_request_response_client_submit_request(fixture.client, &good_request));
+    ASSERT_SUCCESS(aws_mqtt_request_response_client_submit_request(fixture.rr_client, &good_request));
 
     struct aws_mqtt_request_operation_options bad_request = good_request;
     (*request_mutator_fn)(&bad_request);
 
-    ASSERT_FAILS(aws_mqtt_request_response_client_submit_request(fixture.client, &bad_request));
+    ASSERT_FAILS(aws_mqtt_request_response_client_submit_request(fixture.rr_client, &bad_request));
 
     s_aws_rr_client_test_fixture_clean_up(&fixture);
 
@@ -761,7 +761,7 @@ static int s_rrc_submit_streaming_operation_failure_invalid_subscription_topic_f
     };
 
     struct aws_mqtt_rr_client_operation *good_operation =
-        aws_mqtt_request_response_client_create_streaming_operation(fixture.client, &good_options);
+        aws_mqtt_request_response_client_create_streaming_operation(fixture.rr_client, &good_options);
     ASSERT_NOT_NULL(good_operation);
 
     aws_mqtt_rr_client_operation_release(good_operation);
@@ -770,7 +770,7 @@ static int s_rrc_submit_streaming_operation_failure_invalid_subscription_topic_f
     bad_options.topic_filter = aws_byte_cursor_from_c_str("");
 
     struct aws_mqtt_rr_client_operation *bad_operation =
-        aws_mqtt_request_response_client_create_streaming_operation(fixture.client, &bad_options);
+        aws_mqtt_request_response_client_create_streaming_operation(fixture.rr_client, &bad_options);
     ASSERT_NULL(bad_operation);
 
     s_aws_rr_client_test_fixture_clean_up(&fixture);
@@ -810,11 +810,11 @@ static int s_do_rrc_single_request_operation_test_fn(
     request_options->completion_callback = s_rrc_fixture_request_completion_callback;
     request_options->user_data = record;
 
-    ASSERT_SUCCESS(aws_mqtt_request_response_client_submit_request(fixture.client, request_options));
+    ASSERT_SUCCESS(aws_mqtt_request_response_client_submit_request(fixture.rr_client, request_options));
 
     if (shutdown_after_submit) {
-        aws_mqtt_request_response_client_release(fixture.client);
-        fixture.client = NULL;
+        aws_mqtt_request_response_client_release(fixture.rr_client);
+        fixture.rr_client = NULL;
     }
 
     s_rrc_wait_on_request_completion(&fixture, request_options->serialized_request);
@@ -883,12 +883,12 @@ static int s_do_rrc_single_streaming_operation_test_fn(
     streaming_options->user_data = record;
 
     struct aws_mqtt_rr_client_operation *streaming_operation =
-        aws_mqtt_request_response_client_create_streaming_operation(fixture.client, streaming_options);
+        aws_mqtt_request_response_client_create_streaming_operation(fixture.rr_client, streaming_options);
     ASSERT_NOT_NULL(streaming_operation);
 
     if (shutdown_after_submit) {
-        aws_mqtt_request_response_client_release(fixture.client);
-        fixture.client = NULL;
+        aws_mqtt_request_response_client_release(fixture.rr_client);
+        fixture.rr_client = NULL;
         aws_mqtt_rr_client_operation_release(streaming_operation);
     }
 
