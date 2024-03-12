@@ -3322,10 +3322,16 @@ static void s_aws_mqtt_client_connection_311_release(void *impl) {
     aws_ref_count_release(&connection->ref_count);
 }
 
-enum aws_mqtt311_impl_type s_aws_mqtt_client_connection_3_get_impl(const void *impl) {
+static enum aws_mqtt311_impl_type s_aws_mqtt_client_connection_311_get_impl(const void *impl) {
     (void)impl;
 
     return AWS_MQTT311_IT_311_CONNECTION;
+}
+
+static struct aws_event_loop *s_aws_mqtt_client_connection_311_get_event_loop(const void *impl) {
+    const struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    return connection->loop;
 }
 
 static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311_vtable = {
@@ -3351,7 +3357,8 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .unsubscribe_fn = s_aws_mqtt_client_connection_311_unsubscribe,
     .publish_fn = s_aws_mqtt_client_connection_311_publish,
     .get_stats_fn = s_aws_mqtt_client_connection_311_get_stats,
-    .get_impl_type = s_aws_mqtt_client_connection_3_get_impl,
+    .get_impl_type = s_aws_mqtt_client_connection_311_get_impl,
+    .get_event_loop = s_aws_mqtt_client_connection_311_get_event_loop,
 };
 
 static struct aws_mqtt_client_connection_vtable *s_aws_mqtt_client_connection_311_vtable_ptr =

@@ -223,3 +223,7 @@ bool aws_mqtt_byte_cursor_hash_equality(const void *a, const void *b) {
 
     return aws_byte_cursor_eq(a_cursor, b_cursor);
 }
+
+struct aws_event_loop *aws_mqtt_client_connection_get_event_loop(const struct aws_mqtt_client_connection *connection) {
+    return (*connection->vtable->get_event_loop)(connection->impl);
+}

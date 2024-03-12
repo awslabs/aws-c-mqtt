@@ -12,6 +12,7 @@
 #include <aws/mqtt/private/mqtt311_listener.h>
 #include <aws/mqtt/private/request-response/weak_ref.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
+#include <aws/mqtt/private/v5/mqtt5_to_mqtt3_adapter_impl.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
@@ -428,8 +429,8 @@ struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(
     }
 
     if (aws_mqtt_client_connection_get_impl_type(connection) != AWS_MQTT311_IT_311_CONNECTION) {
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        return NULL;
+        struct aws_mqtt_client_connection_5_impl *adapter_impl = connection->impl;
+        return aws_mqtt_protocol_adapter_new_from_5(allocator, options, adapter_impl->client);
     }
 
     struct aws_mqtt_client_connection_311_impl *impl = connection->impl;
