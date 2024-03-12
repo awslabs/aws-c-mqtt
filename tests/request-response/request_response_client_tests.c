@@ -20,7 +20,7 @@ enum rr_test_client_protocol {
 struct aws_rr_client_test_fixture {
     struct aws_allocator *allocator;
 
-    struct aws_mqtt_request_response_client *client;
+    struct aws_mqtt_request_response_client *rr_client;
 
     enum rr_test_client_protocol test_protocol;
     union {
@@ -442,9 +442,9 @@ static int s_aws_rr_client_test_fixture_init_from_mqtt5(
     client_options.terminated_callback = s_aws_rr_client_test_fixture_on_terminated;
     client_options.user_data = fixture;
 
-    fixture->client = aws_mqtt_request_response_client_new_from_mqtt5_client(
+    fixture->rr_client = aws_mqtt_request_response_client_new_from_mqtt5_client(
         allocator, fixture->client_test_fixture.mqtt5_test_fixture.client, &client_options);
-    AWS_FATAL_ASSERT(fixture->client != NULL);
+    AWS_FATAL_ASSERT(fixture->rr_client != NULL);
 
     aws_mqtt5_client_start(fixture->client_test_fixture.mqtt5_test_fixture.client);
 
@@ -502,8 +502,9 @@ static int s_aws_rr_client_test_fixture_init_from_mqtt311(
 
     struct aws_mqtt_client_connection *mqtt_client = fixture->client_test_fixture.mqtt311_test_fixture.mqtt_connection;
 
-    fixture->client = aws_mqtt_request_response_client_new_from_mqtt311_client(allocator, mqtt_client, &client_options);
-    AWS_FATAL_ASSERT(fixture->client != NULL);
+    fixture->rr_client =
+        aws_mqtt_request_response_client_new_from_mqtt311_client(allocator, mqtt_client, &client_options);
+    AWS_FATAL_ASSERT(fixture->rr_client != NULL);
 
     struct aws_mqtt_connection_options connection_options = {
         .user_data = &fixture->client_test_fixture.mqtt311_test_fixture,
@@ -531,7 +532,7 @@ static bool s_rr_client_test_fixture_terminated(void *context) {
 }
 
 static void s_aws_rr_client_test_fixture_clean_up(struct aws_rr_client_test_fixture *fixture) {
-    aws_mqtt_request_response_client_release(fixture->client);
+    aws_mqtt_request_response_client_release(fixture->rr_client);
 
     aws_mutex_lock(&fixture->lock);
     aws_condition_variable_wait_pred(&fixture->signal, &fixture->lock, s_rr_client_test_fixture_terminated, fixture);
