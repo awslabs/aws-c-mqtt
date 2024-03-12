@@ -218,6 +218,9 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
      * initialize can't fail by checking its options for validity now.
      */
     if (!aws_rr_subscription_manager_are_options_valid(&sm_options)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE, "(static) request response client creation failed - invalid client options");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
     }
 
@@ -311,6 +314,10 @@ struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_fr
     struct aws_mqtt_request_response_client *rr_client =
         s_aws_mqtt_request_response_client_new(allocator, options, aws_mqtt_client_connection_get_event_loop(client));
 
+    if (rr_client == NULL) {
+        return NULL;
+    }
+
     struct aws_mqtt_protocol_adapter_options adapter_options = {
         .subscription_event_callback = s_aws_rr_client_protocol_adapter_subscription_event_callback,
         .incoming_publish_callback = s_aws_rr_client_protocol_adapter_incoming_publish_callback,
@@ -343,6 +350,10 @@ struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_new_fr
 
     struct aws_mqtt_request_response_client *rr_client =
         s_aws_mqtt_request_response_client_new(allocator, options, client->loop);
+
+    if (rr_client == NULL) {
+        return NULL;
+    }
 
     struct aws_mqtt_protocol_adapter_options adapter_options = {
         .subscription_event_callback = s_aws_rr_client_protocol_adapter_subscription_event_callback,
