@@ -909,7 +909,7 @@ static int s_rrc_submit_streaming_operation_and_shutdown_fn(struct aws_allocator
 
     struct aws_rr_client_fixture_streaming_record_subscription_event expected_events[] = {
         {
-            .status = ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE,
+            .status = ARRSET_STREAMING_SUBSCRIPTION_HALTED,
             .error_code = AWS_ERROR_MQTT_REQUEST_RESPONSE_CLIENT_SHUT_DOWN,
         },
     };

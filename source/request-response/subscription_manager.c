@@ -64,6 +64,16 @@ struct aws_rr_subscription_record {
     enum aws_rr_subscription_pending_action_type pending_action;
 
     enum aws_rr_subscription_type type;
+
+    /*
+     * A poisoned record represents a subscription that we will never try to subscribe to because a previous
+     * attempt resulted in a failure that we judge to be "terminal."  Terminal failures include permission failures
+     * and validation failures.  To remove a poisoned record, all listeners must be removed.  For request-response
+     * operations this will happen naturally.  For streaming operations, the operation must be closed by the user (in
+     * response to the user-facing event we emit on the streaming operation when the failure that poisons the
+     * record occurs).
+     */
+    bool poisoned;
 };
 
 static void s_aws_rr_subscription_record_log_invariant_violations(const struct aws_rr_subscription_record *record) {
@@ -162,7 +172,7 @@ static void s_subscription_record_unsubscribe(
     record->pending_action = ARRSPAT_UNSUBSCRIBING;
 }
 
-/* Only called when shutting down the request-response client */
+/* Only called by the request-response client when shutting down */
 static int s_rr_subscription_clean_up_foreach_wrap(void *context, struct aws_hash_element *elem) {
     struct aws_rr_subscription_manager *manager = context;
     struct aws_rr_subscription_record *subscription = elem->value;
@@ -297,25 +307,54 @@ static void s_cull_unused_subscriptions(struct aws_rr_subscription_manager *mana
     aws_hash_table_foreach(&manager->subscriptions, s_rr_subscription_cull_unused_subscriptions_wrapper, manager);
 }
 
-static const char *s_request_response_subscription_event_type_to_c_str(enum aws_rr_subscription_event_type type) {
+static const char *s_rr_subscription_event_type_to_c_str(enum aws_rr_subscription_event_type type) {
     switch (type) {
-        case ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS:
-            return "SubscriptionSubscribeSuccess";
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS:
+            return "RequestSubscribeSuccess";
 
-        case ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE:
-            return "SubscriptionSubscribeFailure";
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE:
+            return "RequestSubscribeFailure";
 
-        case ARRSET_SUBSCRIPTION_ENDED:
-            return "SubscriptionEnded";
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED:
+            return "RequestSubscriptionEnded";
+
+        case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
+            return "StreamingSubscriptionEstablished";
+
+        case ARRSET_STREAMING_SUBSCRIPTION_LOST:
+            return "StreamingSubscriptionLost";
+
+        case ARRSET_STREAMING_SUBSCRIPTION_HALTED:
+            return "StreamingSubscriptionHalted";
     }
 
     return "Unknown";
+}
+
+static bool s_subscription_type_matches_event_type(
+    enum aws_rr_subscription_type subscription_type,
+    enum aws_rr_subscription_event_type event_type) {
+    switch (event_type) {
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS:
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE:
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED:
+            return subscription_type == ARRST_REQUEST_RESPONSE;
+
+        case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
+        case ARRSET_STREAMING_SUBSCRIPTION_LOST:
+        case ARRSET_STREAMING_SUBSCRIPTION_HALTED:
+            return subscription_type == ARRST_EVENT_STREAM;
+    }
+
+    return false;
 }
 
 static void s_emit_subscription_event(
     const struct aws_rr_subscription_manager *manager,
     const struct aws_rr_subscription_record *record,
     enum aws_rr_subscription_event_type type) {
+
+    AWS_FATAL_ASSERT(s_subscription_type_matches_event_type(record->type, type));
 
     for (struct aws_hash_iter iter = aws_hash_iter_begin(&record->listeners); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
@@ -334,7 +373,7 @@ static void s_emit_subscription_event(
             "request-response subscription manager - subscription event for ('" PRInSTR
             "'), type: %s, operation: %" PRIu64 "",
             AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor),
-            s_request_response_subscription_event_type_to_c_str(type),
+            s_rr_subscription_event_type_to_c_str(type),
             listener->operation_id);
     }
 }
@@ -343,6 +382,10 @@ static int s_rr_activate_idle_subscription(
     struct aws_rr_subscription_manager *manager,
     struct aws_rr_subscription_record *record) {
     int result = AWS_OP_SUCCESS;
+
+    if (record->poisoned) {
+        return AWS_OP_SUCCESS;
+    }
 
     if (manager->is_protocol_client_connected && aws_hash_table_get_entry_count(&record->listeners) > 0) {
         if (record->status == ARRSST_NOT_SUBSCRIBED && record->pending_action == ARRSPAT_NOTHING) {
@@ -368,7 +411,12 @@ static int s_rr_activate_idle_subscription(
                     error_code,
                     aws_error_debug_str(error_code));
 
-                s_emit_subscription_event(manager, record, ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE);
+                if (record->type == ARRST_REQUEST_RESPONSE) {
+                    s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE);
+                } else {
+                    record->poisoned = true;
+                    s_emit_subscription_event(manager, record, ARRSET_STREAMING_SUBSCRIPTION_HALTED);
+                }
             }
         }
     }
@@ -434,6 +482,16 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
         return AASRT_FAILURE;
     }
 
+    if (existing_record->poisoned) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+            " failed - existing subscription is poisoned and has not been released",
+            AWS_BYTE_CURSOR_PRI(options->topic_filter),
+            options->operation_id);
+        return AASRT_FAILURE;
+    }
+
     s_aws_rr_subscription_record_log_invariant_violations(existing_record);
 
     // for simplicity, we require unsubscribes to complete before re-subscribing
@@ -489,6 +547,62 @@ void aws_rr_subscription_manager_release_subscription(
     s_remove_listener_from_subscription_record(manager, options->topic_filter, options->operation_id);
 }
 
+static void s_handle_protocol_adapter_request_subscription_event(
+    struct aws_rr_subscription_manager *manager,
+    struct aws_rr_subscription_record *record,
+    const struct aws_protocol_adapter_subscription_event *event) {
+    if (event->event_type == AWS_PASET_SUBSCRIBE) {
+        AWS_FATAL_ASSERT(record->pending_action == ARRSPAT_SUBSCRIBING);
+        record->pending_action = ARRSPAT_NOTHING;
+
+        if (event->error_code == AWS_ERROR_SUCCESS) {
+            record->status = ARRSST_SUBSCRIBED;
+            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS);
+        } else {
+            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE);
+        }
+    } else {
+        AWS_FATAL_ASSERT(event->event_type == AWS_PASET_UNSUBSCRIBE);
+        AWS_FATAL_ASSERT(record->pending_action == ARRSPAT_UNSUBSCRIBING);
+        record->pending_action = ARRSPAT_NOTHING;
+
+        if (event->error_code == AWS_ERROR_SUCCESS) {
+            record->status = ARRSST_NOT_SUBSCRIBED;
+            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED);
+        }
+    }
+}
+
+static void s_handle_protocol_adapter_streaming_subscription_event(
+    struct aws_rr_subscription_manager *manager,
+    struct aws_rr_subscription_record *record,
+    const struct aws_protocol_adapter_subscription_event *event) {
+    if (event->event_type == AWS_PASET_SUBSCRIBE) {
+        AWS_FATAL_ASSERT(record->pending_action == ARRSPAT_SUBSCRIBING);
+        record->pending_action = ARRSPAT_NOTHING;
+
+        if (event->error_code == AWS_ERROR_SUCCESS) {
+            record->status = ARRSST_SUBSCRIBED;
+            s_emit_subscription_event(manager, record, ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED);
+        } else {
+            if (event->retryable) {
+                s_rr_activate_idle_subscription(manager, record);
+            } else {
+                record->poisoned = true;
+                s_emit_subscription_event(manager, record, ARRSET_STREAMING_SUBSCRIPTION_HALTED);
+            }
+        }
+    } else {
+        AWS_FATAL_ASSERT(event->event_type == AWS_PASET_UNSUBSCRIBE);
+        AWS_FATAL_ASSERT(record->pending_action == ARRSPAT_UNSUBSCRIBING);
+        record->pending_action = ARRSPAT_NOTHING;
+
+        if (event->error_code == AWS_ERROR_SUCCESS) {
+            record->status = ARRSST_NOT_SUBSCRIBED;
+        }
+    }
+}
+
 void aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
     struct aws_rr_subscription_manager *manager,
     const struct aws_protocol_adapter_subscription_event *event) {
@@ -506,25 +620,11 @@ void aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
         event->error_code,
         aws_error_debug_str(event->error_code));
 
-    if (event->event_type == AWS_PASET_SUBSCRIBE) {
-        AWS_FATAL_ASSERT(record->pending_action == ARRSPAT_SUBSCRIBING);
-
-        if (event->error_code == AWS_ERROR_SUCCESS) {
-            record->status = ARRSST_SUBSCRIBED;
-            s_emit_subscription_event(manager, record, ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS);
-        } else {
-            s_emit_subscription_event(manager, record, ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE);
-        }
-    } else if (event->event_type == AWS_PASET_UNSUBSCRIBE) {
-        AWS_FATAL_ASSERT(record->pending_action == ARRSPAT_UNSUBSCRIBING);
-
-        if (event->error_code == AWS_ERROR_SUCCESS) {
-            record->status = ARRSST_NOT_SUBSCRIBED;
-            s_emit_subscription_event(manager, record, ARRSET_SUBSCRIPTION_ENDED);
-        }
+    if (record->type == ARRST_REQUEST_RESPONSE) {
+        s_handle_protocol_adapter_request_subscription_event(manager, record, event);
+    } else {
+        s_handle_protocol_adapter_streaming_subscription_event(manager, record, event);
     }
-
-    record->pending_action = ARRSPAT_NOTHING;
 
     s_aws_rr_subscription_record_log_invariant_violations(record);
 }
@@ -550,12 +650,28 @@ static int s_apply_session_lost_wrapper(void *context, struct aws_hash_element *
 
     if (record->status == ARRSST_SUBSCRIBED) {
         record->status = ARRSST_NOT_SUBSCRIBED;
-        s_emit_subscription_event(manager, record, ARRSET_SUBSCRIPTION_ENDED);
 
-        if (record->pending_action != ARRSPAT_UNSUBSCRIBING) {
-            s_aws_rr_subscription_record_destroy(record);
-            return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
+        if (record->type == ARRST_REQUEST_RESPONSE) {
+            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED);
+
+            if (record->pending_action != ARRSPAT_UNSUBSCRIBING) {
+                s_aws_rr_subscription_record_destroy(record);
+                return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
+            }
+        } else {
+            s_emit_subscription_event(manager, record, ARRSET_STREAMING_SUBSCRIPTION_LOST);
         }
+    }
+
+    return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
+}
+
+static int s_apply_streaming_resubscribe_wrapper(void *context, struct aws_hash_element *elem) {
+    struct aws_rr_subscription_record *record = elem->value;
+    struct aws_rr_subscription_manager *manager = context;
+
+    if (record->type == ARRST_EVENT_STREAM) {
+        s_rr_activate_idle_subscription(manager, record);
     }
 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
@@ -563,6 +679,7 @@ static int s_apply_session_lost_wrapper(void *context, struct aws_hash_element *
 
 static void s_apply_session_lost(struct aws_rr_subscription_manager *manager) {
     aws_hash_table_foreach(&manager->subscriptions, s_apply_session_lost_wrapper, manager);
+    aws_hash_table_foreach(&manager->subscriptions, s_apply_streaming_resubscribe_wrapper, manager);
 }
 
 void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
