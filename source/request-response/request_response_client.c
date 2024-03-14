@@ -520,6 +520,11 @@ static void s_mqtt_request_response_client_external_shutdown_task_fn(
     /* stop handling adapter event callbacks */
     client->state = AWS_RRCS_SHUTTING_DOWN;
 
+    if (client->scheduled_service_timepoint_ns != 0) {
+        aws_event_loop_cancel_task(client->loop, &client->service_task);
+        client->scheduled_service_timepoint_ns = 0;
+    }
+
     aws_rr_subscription_manager_clean_up(&client->subscription_manager);
 
     if (client->client_adapter != NULL) {
@@ -545,6 +550,12 @@ static void s_mqtt_request_response_client_external_shutdown_task_fn(
 static void s_mqtt_request_response_client_wake_service(struct aws_mqtt_request_response_client *client) {
     uint64_t now = 0;
     aws_high_res_clock_get_ticks(&now);
+
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
+
+    if (client->state != AWS_RRCS_ACTIVE) {
+        return;
+    }
 
     if (client->scheduled_service_timepoint_ns == 0 || now < client->scheduled_service_timepoint_ns) {
         if (now < client->scheduled_service_timepoint_ns) {
