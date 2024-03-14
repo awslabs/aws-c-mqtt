@@ -787,6 +787,7 @@ AWS_TEST_CASE(
 
 static int s_do_rrc_single_request_operation_test_fn(
     struct aws_allocator *allocator,
+    struct aws_mqtt_request_response_client_options *rr_client_options,
     struct aws_mqtt_request_operation_options *request_options,
     int expected_error_code,
     struct aws_byte_cursor *expected_payload,
@@ -802,8 +803,8 @@ static int s_do_rrc_single_request_operation_test_fn(
     };
 
     struct aws_rr_client_test_fixture fixture;
-    ASSERT_SUCCESS(
-        s_aws_rr_client_test_fixture_init_from_mqtt5(&fixture, allocator, NULL, &client_test_fixture_options, NULL));
+    ASSERT_SUCCESS(s_aws_rr_client_test_fixture_init_from_mqtt5(
+        &fixture, allocator, rr_client_options, &client_test_fixture_options, NULL));
 
     struct aws_rr_client_fixture_request_response_record *record =
         s_rrc_fixture_add_request_record(&fixture, request_options->serialized_request);
@@ -850,13 +851,14 @@ static int s_rrc_submit_request_operation_failure_by_shutdown_fn(struct aws_allo
     };
 
     return s_do_rrc_single_request_operation_test_fn(
-        allocator, &request, AWS_ERROR_MQTT_REQUEST_RESPONSE_CLIENT_SHUT_DOWN, NULL, true);
+        allocator, NULL, &request, AWS_ERROR_MQTT_REQUEST_RESPONSE_CLIENT_SHUT_DOWN, NULL, true);
 }
 
 AWS_TEST_CASE(rrc_submit_request_operation_failure_by_shutdown, s_rrc_submit_request_operation_failure_by_shutdown_fn)
 
 static int s_do_rrc_single_streaming_operation_test_fn(
     struct aws_allocator *allocator,
+    struct aws_mqtt_request_response_client_options *rr_client_options,
     struct aws_mqtt_streaming_operation_options *streaming_options,
     size_t expected_subscription_event_count,
     struct aws_rr_client_fixture_streaming_record_subscription_event *expected_subscription_events,
@@ -872,8 +874,8 @@ static int s_do_rrc_single_streaming_operation_test_fn(
     };
 
     struct aws_rr_client_test_fixture fixture;
-    ASSERT_SUCCESS(
-        s_aws_rr_client_test_fixture_init_from_mqtt5(&fixture, allocator, NULL, &client_test_fixture_options, NULL));
+    ASSERT_SUCCESS(s_aws_rr_client_test_fixture_init_from_mqtt5(
+        &fixture, allocator, rr_client_options, &client_test_fixture_options, NULL));
 
     struct aws_byte_cursor streaming_id = aws_byte_cursor_from_c_str("streaming1");
     struct aws_rr_client_fixture_streaming_record *record = s_rrc_fixture_add_streaming_record(&fixture, streaming_id);
@@ -935,7 +937,37 @@ static int s_rrc_submit_streaming_operation_and_shutdown_fn(struct aws_allocator
     };
 
     return s_do_rrc_single_streaming_operation_test_fn(
-        allocator, &streaming_options, AWS_ARRAY_SIZE(expected_events), expected_events, true);
+        allocator, NULL, &streaming_options, AWS_ARRAY_SIZE(expected_events), expected_events, true);
 }
 
 AWS_TEST_CASE(rrc_submit_streaming_operation_and_shutdown, s_rrc_submit_streaming_operation_and_shutdown_fn)
+
+static int s_rrc_submit_request_operation_failure_by_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt_request_operation_response_path response_paths[] = {
+        {
+            .topic = aws_byte_cursor_from_c_str("response/filter/accepted"),
+            .correlation_token_json_path = aws_byte_cursor_from_c_str("client_token"),
+        },
+    };
+
+    struct aws_mqtt_request_operation_options request = {
+        .subscription_topic_filter = aws_byte_cursor_from_c_str("response/filter/+"),
+        .response_paths = response_paths,
+        .response_path_count = AWS_ARRAY_SIZE(response_paths),
+        .publish_topic = aws_byte_cursor_from_c_str("get/shadow"),
+        .serialized_request = aws_byte_cursor_from_c_str("request1"),
+        .correlation_token = aws_byte_cursor_from_c_str("MyRequest#1"),
+    };
+
+    struct aws_mqtt_request_response_client_options rr_client_options = {
+        .max_subscriptions = 2,
+        .operation_timeout_seconds = 2,
+    };
+
+    return s_do_rrc_single_request_operation_test_fn(
+        allocator, &rr_client_options, &request, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL, false);
+}
+
+AWS_TEST_CASE(rrc_submit_request_operation_failure_by_timeout, s_rrc_submit_request_operation_failure_by_timeout_fn)
