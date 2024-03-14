@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/common/clock.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
 #include <aws/mqtt/request-response/request_response_client.h>
@@ -889,6 +890,21 @@ static int s_do_rrc_single_streaming_operation_test_fn(
     if (shutdown_after_submit) {
         aws_mqtt_request_response_client_release(fixture.rr_client);
         fixture.rr_client = NULL;
+
+        /*
+         * Extremely awkward sleep:
+         *
+         * We've submitted the operation and we've decref'd the client to zero.  When the operation submit task
+         * is processed, if the release in the succeeding line has happened-before the client external destroy task
+         * has run, then the operation's destory will be scheduled in-thread and run ahead of the client external
+         * destroy.  This doesn't break correctness, but it does prevent the client from emitting a HALTED event
+         * on the subscription because the subscription/operation will be gone before the client external destroy
+         * task runs.
+         *
+         * So we add a nice, fat sleep to guarantee that the client external destroy task runs before the operation
+         * destroy task.
+         */
+        aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
         aws_mqtt_rr_client_operation_release(streaming_operation);
     }
 
