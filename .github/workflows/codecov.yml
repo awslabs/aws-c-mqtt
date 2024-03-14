@@ -1,6 +1,7 @@
 name: Code coverage check
 
 on:
+  workflow_dispatch:
   push:
 
 env:
