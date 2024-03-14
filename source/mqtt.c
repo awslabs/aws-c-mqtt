@@ -239,6 +239,10 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_REQUEST_RESPONSE_CLIENT_SHUT_DOWN,
                 "Request operation failed due to client shut down"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT,
+                "Request operation failed due to timeout"),
+
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT

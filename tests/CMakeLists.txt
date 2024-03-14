@@ -533,6 +533,7 @@ add_test_case(rrc_submit_streaming_operation_failure_invalid_subscription_topic_
 
 add_test_case(rrc_submit_request_operation_failure_by_shutdown)
 add_test_case(rrc_submit_streaming_operation_and_shutdown)
+add_test_case(rrc_submit_request_operation_failure_by_timeout)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
