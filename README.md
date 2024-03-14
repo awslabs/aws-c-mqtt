@@ -127,7 +127,7 @@ int aws_mqtt_client_connection_set_will(
 ```
 Sets the last will and testament to be distributed by the server upon client disconnection. Must be called before
 `aws_mqtt_client_connection_connect`. See `aws_mqtt_client_connection_publish` for information on the parameters.
-`topic` and `payload` must persist past the call to `aws_mqtt_client_connection_connect`.
+`topic` and `payload` are copied.
 
 ```c
 int aws_mqtt_client_connection_set_login(
@@ -164,17 +164,18 @@ Closes an open connection. Does not clean up any resources, that's to be done by
 probably from the `on_disconnected` connection callback.
 
 ```c
-uint16_t aws_mqtt_client_connection_subscribe_single(
+uint16_t aws_mqtt_client_connection_subscribe(
     struct aws_mqtt_client_connection *connection,
     const struct aws_byte_cursor *topic_filter,
     enum aws_mqtt_qos qos,
     aws_mqtt_client_publish_received_fn *on_publish,
     void *on_publish_ud,
-    aws_mqtt_suback_single_fn *on_suback,
+    aws_mqtt_userdata_cleanup_fn *on_ud_cleanup,
+    aws_mqtt_suback_fn *on_suback,
     void *on_suback_ud);
 ```
 Subscribes to the topic filter given with the given QoS. `on_publish` will be called whenever a packet matching
-`topic_filter` arrives. `on_suback` will be called when the SUBACK packet has been received. `topic_filter` must persist until `on_suback` is called. The packet_id of the SUBSCRIBE packet will be returned, or 0 on error.
+`topic_filter` arrives. `on_suback` will be called when the SUBACK packet has been received. `topic_filter` is copied. The packet_id of the SUBSCRIBE packet will be returned, or 0 on error.
 
 ```c
 uint16_t aws_mqtt_client_connection_unsubscribe(
@@ -183,7 +184,7 @@ uint16_t aws_mqtt_client_connection_unsubscribe(
     aws_mqtt_op_complete_fn *on_unsuback,
     void *on_unsuback_ud);
 ```
-Unsubscribes from the topic filter given. `topic_filter` must persist until `on_unsuback` is called. The packet_id of
+Unsubscribes from the topic filter given. `topic_filter` is copied. The packet_id of
 the UNSUBSCRIBE packet will be returned, or 0 on error.
 
 ```c
@@ -197,8 +198,7 @@ uint16_t aws_mqtt_client_connection_publish(
     void *userdata);
 ```
 Publish a payload to the topic specified. For QoS 0, `on_complete` will be called as soon as the packet is sent over
-the wire. For QoS 1, as soon as PUBACK comes back. For QoS 2, PUBCOMP. `topic` and `payload` must persist until
-`on_complete`.
+the wire. For QoS 1, as soon as PUBACK comes back. For QoS 2, PUBCOMP. `topic` and `payload` are copied.
 
 ```c
 int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection *connection);
