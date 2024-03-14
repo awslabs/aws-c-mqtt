@@ -9,24 +9,49 @@
 #include <aws/mqtt/mqtt.h>
 
 /*
- * Describes a change to the state of a request-response client subscription
+ * Describes a change to the state of a request operation subscription
  */
 enum aws_rr_subscription_event_type {
 
     /*
-     * A subscribe succeeded
+     * A request subscription subscribe succeeded
      */
-    ARRSET_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+    ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
 
     /*
-     * A subscribe failed
+     * A request subscription subscribe failed
      */
-    ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE,
+    ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE,
 
     /*
-     * A previously successful subscription has ended (generally due to a failure to resume a session)
+     * A previously successful request subscription has ended.
+     *
+     * Under normal circumstances this can happen when
+     *
+     * (1) failure to rejoin a session
+     * (2) a successful unsubscribe when the subscription is no longer needed
      */
-    ARRSET_SUBSCRIPTION_ENDED
+    ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED,
+
+    /*
+     * A streaming subscription subscribe succeeded
+     */
+    ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
+
+    /*
+     * The protocol client failed to rejoin a session containing a previously-established streaming subscription
+     */
+    ARRSET_STREAMING_SUBSCRIPTION_LOST,
+
+    /*
+     * A streaming subscription subscribe attempt resulted in an error or reason code that the client has determined
+     * will result in indefinite failures to subscribe.  In this case, we stop attempting to resubscribe.
+     *
+     * Situations that can lead to this:
+     * (1) Permission failures
+     * (2) Invalid topic filter
+     */
+    ARRSET_STREAMING_SUBSCRIPTION_HALTED
 };
 
 #endif /* AWS_MQTT_PRIVATE_REQUEST_RESPONSE_REQUEST_RESPONSE_H */

@@ -454,10 +454,7 @@ static void s_streaming_operation_on_client_shutdown(struct aws_mqtt_rr_client_o
                 operation->storage.streaming_storage.options.subscription_status_callback;
             void *user_data = operation->storage.streaming_storage.options.user_data;
             if (subscription_status_callback != NULL) {
-                enum aws_rr_subscription_event_type status_type = (operation->state == AWS_MRROS_SUBSCRIBED)
-                                                                      ? ARRSET_SUBSCRIPTION_ENDED
-                                                                      : ARRSET_SUBSCRIPTION_SUBSCRIBE_FAILURE;
-                (*subscription_status_callback)(status_type, error_code, user_data);
+                (*subscription_status_callback)(ARRSET_STREAMING_SUBSCRIPTION_HALTED, error_code, user_data);
             }
         }
 

@@ -585,7 +585,7 @@ static int s_do_request_response_mqtt5_protocol_adapter_subscribe_test(
         AWS_PASET_SUBSCRIBE,
         aws_byte_cursor_from_c_str("hello/world"),
         expected_error_code,
-        false);
+        test_type != PAOTT_FAILURE_REASON_CODE_NOT_RETRYABLE);
 
     struct aws_protocol_adapter_subscribe_options subscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),
@@ -1255,7 +1255,7 @@ static int s_do_request_response_mqtt311_protocol_adapter_subscribe_test(
         AWS_PASET_SUBSCRIBE,
         aws_byte_cursor_from_c_str("hello/world"),
         expected_error_code,
-        false);
+        true);
 
     struct aws_protocol_adapter_subscribe_options subscribe_options = {
         .topic_filter = aws_byte_cursor_from_buf(&expected_outcome.topic_filter),

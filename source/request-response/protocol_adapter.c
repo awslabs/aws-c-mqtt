@@ -145,6 +145,7 @@ static void s_protocol_adapter_311_subscribe_completion(
         .topic_filter = aws_byte_cursor_from_buf(&subscribe_data->topic_filter),
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = error_code,
+        .retryable = true,
     };
 
     (*adapter->config.subscription_event_callback)(&subscribe_event, adapter->config.user_data);
@@ -487,6 +488,28 @@ static void s_aws_mqtt_protocol_adapter_5_destroy(void *impl) {
 
 /* Subscribe */
 
+static bool s_is_retryable_subscribe(enum aws_mqtt5_suback_reason_code reason_code, int error_code) {
+    if (error_code == AWS_ERROR_MQTT5_PACKET_VALIDATION || error_code == AWS_ERROR_MQTT5_SUBSCRIBE_OPTIONS_VALIDATION) {
+        return false;
+    } else if (error_code != AWS_ERROR_SUCCESS) {
+        return true;
+    }
+
+    switch (reason_code) {
+        case AWS_MQTT5_SARC_GRANTED_QOS_0:
+        case AWS_MQTT5_SARC_GRANTED_QOS_1:
+        case AWS_MQTT5_SARC_GRANTED_QOS_2:
+        case AWS_MQTT5_SARC_UNSPECIFIED_ERROR:
+        case AWS_MQTT5_SARC_PACKET_IDENTIFIER_IN_USE:
+        case AWS_MQTT5_SARC_IMPLEMENTATION_SPECIFIC_ERROR:
+        case AWS_MQTT5_SARC_QUOTA_EXCEEDED:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 static void s_protocol_adapter_5_subscribe_completion(
     const struct aws_mqtt5_packet_suback_view *suback,
     int error_code,
@@ -498,6 +521,12 @@ static void s_protocol_adapter_5_subscribe_completion(
         goto done;
     }
 
+    enum aws_mqtt5_suback_reason_code reason_code = AWS_MQTT5_SARC_GRANTED_QOS_0;
+    if (suback != NULL && suback->reason_code_count > 0) {
+        reason_code = suback->reason_codes[0];
+    }
+    bool is_retryable = s_is_retryable_subscribe(reason_code, error_code);
+
     if (error_code == AWS_ERROR_SUCCESS) {
         if (suback == NULL || suback->reason_code_count != 1 || suback->reason_codes[0] >= 128) {
             error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE;
@@ -508,6 +537,7 @@ static void s_protocol_adapter_5_subscribe_completion(
         .topic_filter = aws_byte_cursor_from_buf(&subscribe_data->topic_filter),
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = error_code,
+        .retryable = is_retryable,
     };
 
     (*adapter->config.subscription_event_callback)(&subscribe_event, adapter->config.user_data);
