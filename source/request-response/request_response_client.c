@@ -903,7 +903,6 @@ static int s_add_operation_to_subscription_topic_filter_table(
 
     struct aws_rr_operation_list_topic_filter_entry *entry = NULL;
     if (element == NULL) {
-        struct aws_byte_cursor topic_filter_cursor = s_aws_mqtt_rr_operation_get_subscription_topic_filter(operation);
         entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
         aws_hash_table_put(&client->operation_lists_by_subscription_filter, &entry->topic_filter_cursor, entry, NULL);
     } else {
@@ -1329,7 +1328,6 @@ static void s_mqtt_rr_client_destroy_operation(struct aws_task *task, void *arg,
     /*
      NYI:
 
-     Remove from topic filter table
      Remove from correlation token table
 
      */
