@@ -13,7 +13,6 @@
 struct aws_mqtt_request_response_client;
 struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
-struct aws_mqtt_streaming_operation;
 
 struct aws_mqtt_request_operation_response_path {
     struct aws_byte_cursor topic;

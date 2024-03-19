@@ -242,6 +242,15 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT,
                 "Request operation failed due to timeout"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_REQUEST_RESPONSE_NO_SUBSCRIPTION_CAPACITY,
+                "Streaming request operation failed because there was no space for the subscription"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_REQUEST_RESPONSE_SUBSCRIBE_FAILURE,
+                "Request operation failed because the associated subscribe failed synchronously"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR,
+                "Request operation failed due to a non-specific internal error within the client."),
 
         };
 /* clang-format on */
