@@ -3308,26 +3308,6 @@ struct aws_mqtt5_operation_pingreq *aws_mqtt5_operation_pingreq_new(struct aws_a
     return pingreq_op;
 }
 
-bool aws_mqtt5_client_keep_alive_options_are_valid(uint16_t keep_alive_interval_seconds, uint32_t ping_timeout_ms) {
-    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
-    if (keep_alive_interval_seconds > 0) {
-        uint64_t keep_alive_ms =
-            aws_timestamp_convert(keep_alive_interval_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
-        uint64_t one_second_ms = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
-
-        if (ping_timeout_ms == 0) {
-            ping_timeout_ms = AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS;
-        }
-
-        if ((uint64_t)ping_timeout_ms + one_second_ms > keep_alive_ms) {
-            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
-            return false;
-        }
-    }
-
-    return true;
-}
-
 /*********************************************************************************************************************
  * Client storage options
  ********************************************************************************************************************/
@@ -3387,15 +3367,8 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
 
     if (aws_mqtt5_packet_connect_view_validate(options->connect_options)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid CONNECT options in mqtt5 client configuration");
-        /* connect validation failure will have already rasied the appropriate error */
+        /* connect validation failure will have already raised the appropriate error */
         return AWS_OP_ERR;
-    }
-
-    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
-    if (!aws_mqtt5_client_keep_alive_options_are_valid(
-            options->connect_options->keep_alive_interval_seconds, options->ping_timeout_ms)) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "keep alive interval is too small relative to ping timeout interval");
-        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
     }
 
     if (options->topic_aliasing_options != NULL) {

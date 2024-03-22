@@ -1217,7 +1217,9 @@ AWS_TEST_CASE(mqtt5_client_ping_write_pushout, s_mqtt5_client_ping_write_pushout
 
 #define TIMEOUT_TEST_PING_INTERVAL_MS ((uint64_t)10000)
 
-static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+static int s_verify_ping_timeout_interval(
+    struct aws_mqtt5_client_mock_test_fixture *test_context,
+    uint64_t expected_connected_time_ms) {
     aws_mutex_lock(&test_context->lock);
 
     uint64_t connected_time = 0;
@@ -1242,8 +1244,6 @@ static int s_verify_ping_timeout_interval(struct aws_mqtt5_client_mock_test_fixt
 
     uint64_t connected_interval_ms =
         aws_timestamp_convert(disconnected_time - connected_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
-    uint64_t expected_connected_time_ms =
-        TIMEOUT_TEST_PING_INTERVAL_MS + (uint64_t)test_context->client->config->ping_timeout_ms;
 
     ASSERT_TRUE(s_is_within_percentage_of(expected_connected_time_ms, connected_interval_ms, .3));
 
@@ -1310,7 +1310,9 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(
         s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
 
-    ASSERT_SUCCESS(s_verify_ping_timeout_interval(&test_context));
+    uint64_t expected_connected_time_ms =
+        TIMEOUT_TEST_PING_INTERVAL_MS + (uint64_t)test_context.client->config->ping_timeout_ms;
+    ASSERT_SUCCESS(s_verify_ping_timeout_interval(&test_context, expected_connected_time_ms));
 
     enum aws_mqtt5_client_state expected_states[] = {
         AWS_MCS_CONNECTING,
@@ -1328,6 +1330,88 @@ static int s_mqtt5_client_ping_timeout_fn(struct aws_allocator *allocator, void 
 }
 
 AWS_TEST_CASE(mqtt5_client_ping_timeout, s_mqtt5_client_ping_timeout_fn)
+
+/*
+ * A variant of the basic ping timeout test that uses a timeout that is larger than the keep alive.  Previously,
+ * we forbid this because taken literally, it leads to broken behavior.  We now clamp the ping timeout dynamically
+ * based on the connection's established keep alive.
+ */
+static int s_mqtt5_client_ping_timeout_with_keep_alive_conflict_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    /* fast keep alive in order keep tests reasonably short */
+    uint16_t keep_alive_seconds =
+        (uint16_t)aws_timestamp_convert(TIMEOUT_TEST_PING_INTERVAL_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_SECS, NULL);
+    test_options.connect_options.keep_alive_interval_seconds = keep_alive_seconds;
+
+    /* don't respond to PINGREQs */
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PINGREQ] = NULL;
+
+    /* ping timeout slower than keep alive */
+    test_options.client_options.ping_timeout_ms = 2 * TIMEOUT_TEST_PING_INTERVAL_MS;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    aws_wait_for_connected_lifecycle_event(&test_context);
+    s_wait_for_disconnection_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    aws_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_DISCONNECTION,
+            .error_code = AWS_ERROR_MQTT5_PING_RESPONSE_TIMEOUT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_STOPPED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    uint64_t expected_connected_time_ms = 3 * TIMEOUT_TEST_PING_INTERVAL_MS / 2;
+    ASSERT_SUCCESS(s_verify_ping_timeout_interval(&test_context, expected_connected_time_ms));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CONNECTED,
+        AWS_MCS_CLEAN_DISCONNECT,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+    };
+    ASSERT_SUCCESS(aws_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_ping_timeout_with_keep_alive_conflict,
+    s_mqtt5_client_ping_timeout_with_keep_alive_conflict_fn)
 
 struct aws_lifecycle_event_wait_context {
     enum aws_mqtt5_client_lifecycle_event_type type;
