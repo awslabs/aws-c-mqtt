@@ -576,7 +576,7 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: request-response operation with id:%" PRIu64 " failed with error code %d(%s)",
+        "id=%p: request-response operation %" PRIu64 " failed with error code %d(%s)",
         (void *)operation->client_internal_ref,
         operation->id,
         error_code,
@@ -605,7 +605,7 @@ static void s_halt_streaming_operation_with_failure(struct aws_mqtt_rr_client_op
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: streaming operation with id:%" PRIu64 " halted with error code %d(%s)",
+        "id=%p: streaming operation %" PRIu64 " halted with error code %d(%s)",
         (void *)operation->client_internal_ref,
         operation->id,
         error_code,
@@ -1611,26 +1611,25 @@ static void s_log_request_response_operation(
         log_handle,
         AWS_LL_DEBUG,
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: request-response client operation %" PRIu64,
-        ": subscription topic filter: '" PRInSTR "'",
+        "id=%p: request-response client operation %" PRIu64 " - subscription topic filter: '" PRInSTR "'",
         (void *)client,
         operation->id,
         AWS_BYTE_CURSOR_PRI(options->subscription_topic_filter));
+
     AWS_LOGUF(
         log_handle,
         AWS_LL_DEBUG,
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: request-response client operation %" PRIu64,
-        ": correlation token: '" PRInSTR "'",
+        "id=%p: request-response client operation %" PRIu64 " - correlation token: '" PRInSTR "'",
         (void *)client,
         operation->id,
         AWS_BYTE_CURSOR_PRI(options->correlation_token));
+
     AWS_LOGUF(
         log_handle,
         AWS_LL_DEBUG,
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: request-response client operation %" PRIu64,
-        ": publish topic: '" PRInSTR "'",
+        "id=%p: request-response client operation %" PRIu64 " - publish topic: '" PRInSTR "'",
         (void *)client,
         operation->id,
         AWS_BYTE_CURSOR_PRI(options->publish_topic));
@@ -1639,30 +1638,33 @@ static void s_log_request_response_operation(
         log_handle,
         AWS_LL_DEBUG,
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: request-response client operation %" PRIu64,
-        ": %zu response paths:",
+        "id=%p: request-response client operation %" PRIu64 " - %zu response paths:",
         (void *)client,
         operation->id,
         options->response_path_count);
+
     for (size_t i = 0; i < options->response_path_count; ++i) {
         struct aws_mqtt_request_operation_response_path *response_path = &options->response_paths[i];
+
         AWS_LOGUF(
             log_handle,
             AWS_LL_DEBUG,
             AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client operation %" PRIu64,
-            ": response path %zu topic '" PRInSTR "'",
+            "id=%p: request-response client operation %" PRIu64 " - response path %zu topic '" PRInSTR "'",
             (void *)client,
             operation->id,
+            i,
             AWS_BYTE_CURSOR_PRI(response_path->topic));
+
         AWS_LOGUF(
             log_handle,
             AWS_LL_DEBUG,
             AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client operation %" PRIu64,
-            ": response path %zu correlation token path '" PRInSTR "'",
+            "id=%p: request-response client operation %" PRIu64 " - response path %zu correlation token path '" PRInSTR
+            "'",
             (void *)client,
             operation->id,
+            i,
             AWS_BYTE_CURSOR_PRI(response_path->correlation_token_json_path));
     }
 }
@@ -1700,7 +1702,7 @@ int aws_mqtt_request_response_client_submit_request(
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: request-response client - submitting request-response operation with id " PRIu64,
+        "id=%p: request-response client - submitting request-response operation with id %" PRIu64,
         (void *)client,
         operation->id);
 
@@ -1722,6 +1724,26 @@ void s_aws_mqtt_streaming_operation_storage_init_from_options(
 
     AWS_FATAL_ASSERT(
         aws_byte_buf_append_and_update(&storage->operation_data, &storage->options.topic_filter) == AWS_OP_SUCCESS);
+}
+
+static void s_log_streaming_operation(
+    struct aws_mqtt_rr_client_operation *operation,
+    struct aws_mqtt_request_response_client *client) {
+    struct aws_logger *log_handle = aws_logger_get_conditional(AWS_LS_MQTT_REQUEST_RESPONSE, AWS_LL_DEBUG);
+    if (log_handle == NULL) {
+        return;
+    }
+
+    struct aws_mqtt_streaming_operation_options *options = &operation->storage.streaming_storage.options;
+
+    AWS_LOGUF(
+        log_handle,
+        AWS_LL_DEBUG,
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response client streaming operation %" PRIu64 ": topic filter: '" PRInSTR "'",
+        (void *)client,
+        operation->id,
+        AWS_BYTE_CURSOR_PRI(options->topic_filter));
 }
 
 struct aws_mqtt_rr_client_operation *aws_mqtt_request_response_client_create_streaming_operation(
@@ -1749,6 +1771,14 @@ struct aws_mqtt_rr_client_operation *aws_mqtt_request_response_client_create_str
     s_aws_mqtt_streaming_operation_storage_init_from_options(
         &operation->storage.streaming_storage, allocator, streaming_options);
     s_aws_mqtt_rr_client_operation_init_shared(operation, client);
+
+    AWS_LOGF_INFO(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response client - submitting streaming operation with id %" PRIu64,
+        (void *)client,
+        operation->id);
+
+    s_log_streaming_operation(operation, client);
 
     aws_event_loop_schedule_task_now(client->loop, &operation->submit_task);
 
