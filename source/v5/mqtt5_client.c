@@ -2950,6 +2950,9 @@ static void s_on_pingreq_send(struct aws_mqtt5_client *client) {
         connection_ping_timeout = half_keep_alive_nanos;
     }
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT, "id=%p: dynamic ping timeout: %" PRIu64 " ns", (void *)client, connection_ping_timeout);
+
     client->next_ping_timeout_time = aws_add_u64_saturating(now, connection_ping_timeout);
 }
 
