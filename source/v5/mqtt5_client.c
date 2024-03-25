@@ -2940,7 +2940,20 @@ static void s_on_pingreq_send(struct aws_mqtt5_client *client) {
     uint64_t now = client->vtable->get_current_time_fn();
     uint64_t ping_timeout_nanos =
         aws_timestamp_convert(client->config->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
-    client->next_ping_timeout_time = aws_add_u64_saturating(now, ping_timeout_nanos);
+    uint64_t half_keep_alive_nanos =
+        aws_timestamp_convert(
+            client->negotiated_settings.server_keep_alive, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL) /
+        2;
+
+    uint64_t connection_ping_timeout = ping_timeout_nanos;
+    if (connection_ping_timeout == 0 || connection_ping_timeout > half_keep_alive_nanos) {
+        connection_ping_timeout = half_keep_alive_nanos;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT, "id=%p: dynamic ping timeout: %" PRIu64 " ns", (void *)client, connection_ping_timeout);
+
+    client->next_ping_timeout_time = aws_add_u64_saturating(now, connection_ping_timeout);
 }
 
 static int s_apply_throughput_flow_control(struct aws_mqtt5_client *client) {

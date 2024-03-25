@@ -309,16 +309,6 @@ static int s_validate_adapter_connection_options(
         }
     }
 
-    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
-    if (!aws_mqtt5_client_keep_alive_options_are_valid(
-            connection_options->keep_alive_time_secs, connection_options->ping_timeout_ms)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
-            "id=%p: mqtt3-to-5-adapter - keep alive interval is too small relative to ping timeout interval",
-            (void *)adapter);
-        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
-    }
-
     return AWS_OP_SUCCESS;
 }
 
