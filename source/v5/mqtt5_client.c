@@ -1069,7 +1069,11 @@ static void s_reset_ping(struct aws_mqtt5_client *client) {
 
     uint64_t keep_alive_interval_nanos =
         aws_timestamp_convert(keep_alive_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    client->next_ping_time = aws_add_u64_saturating(now, keep_alive_interval_nanos);
+    if (keep_alive_interval_nanos == 0) {
+        client->next_ping_time = UINT64_MAX;
+    } else {
+        client->next_ping_time = aws_add_u64_saturating(now, keep_alive_interval_nanos);
+    }
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT, "id=%p: next PINGREQ scheduled for time %" PRIu64, (void *)client, client->next_ping_time);
