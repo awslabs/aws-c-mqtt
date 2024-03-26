@@ -986,10 +986,7 @@ struct aws_mqtt5_client_test_wait_for_n_context {
     struct aws_mqtt5_client_mock_test_fixture *test_fixture;
 };
 
-static bool s_received_at_least_n_pingreqs(void *arg) {
-    struct aws_mqtt5_client_test_wait_for_n_context *ping_context = arg;
-    struct aws_mqtt5_client_mock_test_fixture *test_fixture = ping_context->test_fixture;
-
+static size_t s_count_pingreqs(struct aws_mqtt5_client_mock_test_fixture *test_fixture) {
     size_t ping_count = 0;
     size_t packet_count = aws_array_list_length(&test_fixture->server_received_packets);
     for (size_t i = 0; i < packet_count; ++i) {
@@ -1000,6 +997,15 @@ static bool s_received_at_least_n_pingreqs(void *arg) {
             ping_count++;
         }
     }
+
+    return ping_count;
+}
+
+static bool s_received_at_least_n_pingreqs(void *arg) {
+    struct aws_mqtt5_client_test_wait_for_n_context *ping_context = arg;
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = ping_context->test_fixture;
+
+    size_t ping_count = s_count_pingreqs(test_fixture);
 
     return ping_count >= ping_context->required_event_count;
 }
@@ -1412,6 +1418,54 @@ static int s_mqtt5_client_ping_timeout_with_keep_alive_conflict_fn(struct aws_al
 AWS_TEST_CASE(
     mqtt5_client_ping_timeout_with_keep_alive_conflict,
     s_mqtt5_client_ping_timeout_with_keep_alive_conflict_fn)
+
+/*
+ * Set up a zero keep alive and verify no pings get sent over an interval of time.
+ */
+static int s_mqtt5_client_disabled_keep_alive_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    /* no keep alive at all */
+    test_options.connect_options.keep_alive_interval_seconds = 0;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    aws_wait_for_connected_lifecycle_event(&test_context);
+
+    // zzz
+    aws_thread_current_sleep(aws_timestamp_convert(5, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    aws_wait_for_stopped_lifecycle_event(&test_context);
+
+    // verify the mock server did not get any PINGREQs
+    aws_mutex_lock(&test_context.lock);
+    size_t pingreq_count = s_count_pingreqs(&test_context);
+    aws_mutex_unlock(&test_context.lock);
+    ASSERT_INT_EQUALS(0, pingreq_count);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_disabled_keep_alive, s_mqtt5_client_disabled_keep_alive_fn)
 
 struct aws_lifecycle_event_wait_context {
     enum aws_mqtt5_client_lifecycle_event_type type;
