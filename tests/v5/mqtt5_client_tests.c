@@ -1446,6 +1446,17 @@ static int s_mqtt5_client_disabled_keep_alive_fn(struct aws_allocator *allocator
 
     aws_wait_for_connected_lifecycle_event(&test_context);
 
+    uint16_t negotiated_keep_alive = 65535;
+    aws_mutex_lock(&test_context.lock);
+    size_t event_count = aws_array_list_length(&test_context.lifecycle_events);
+    struct aws_mqtt5_lifecycle_event_record *record = NULL;
+    aws_array_list_get_at(&test_context.lifecycle_events, &record, event_count - 1);
+    ASSERT_TRUE(AWS_MQTT5_CLET_CONNECTION_SUCCESS == record->event.event_type);
+    negotiated_keep_alive = record->settings_storage.server_keep_alive;
+    aws_mutex_unlock(&test_context.lock);
+
+    ASSERT_INT_EQUALS(0, negotiated_keep_alive);
+
     // zzz
     aws_thread_current_sleep(aws_timestamp_convert(5, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
 
