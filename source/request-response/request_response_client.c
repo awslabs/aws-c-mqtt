@@ -111,6 +111,9 @@ operation completion/destruction also checked for empty and removed from table
 
 */
 
+/*
+ * This is the (key and) value in hash table (4) above.
+ */
 struct aws_rr_operation_list_topic_filter_entry {
     struct aws_allocator *allocator;
 
@@ -120,7 +123,7 @@ struct aws_rr_operation_list_topic_filter_entry {
     struct aws_linked_list operations;
 };
 
-struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
+static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
     struct aws_allocator *allocator,
     struct aws_byte_cursor topic_filter) {
     struct aws_rr_operation_list_topic_filter_entry *entry =
@@ -135,7 +138,7 @@ struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_f
     return entry;
 }
 
-void s_aws_rr_operation_list_topic_filter_entry_destroy(struct aws_rr_operation_list_topic_filter_entry *entry) {
+static void s_aws_rr_operation_list_topic_filter_entry_destroy(struct aws_rr_operation_list_topic_filter_entry *entry) {
     if (entry == NULL) {
         return;
     }
@@ -145,7 +148,7 @@ void s_aws_rr_operation_list_topic_filter_entry_destroy(struct aws_rr_operation_
     aws_mem_release(entry->allocator, entry);
 }
 
-void s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy(void *value) {
+static void s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy(void *value) {
     s_aws_rr_operation_list_topic_filter_entry_destroy(value);
 }
 
@@ -1367,6 +1370,15 @@ static bool s_are_request_operation_options_valid(
             "(%p) rr client request options - " PRInSTR " is not a valid topic",
             (void *)client,
             AWS_BYTE_CURSOR_PRI(request_options->publish_topic));
+        return false;
+    }
+
+    if (!aws_mqtt_is_valid_topic_filter(&request_options->subscription_topic_filter)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "(%p) rr client request options - " PRInSTR " is not a valid topic filter",
+            (void *)client,
+            AWS_BYTE_CURSOR_PRI(request_options->subscription_topic_filter));
         return false;
     }
 
