@@ -8,8 +8,6 @@
 
 #include <aws/mqtt/mqtt.h>
 
-#include <aws/mqtt/private/request-response/request_response.h>
-
 struct aws_mqtt_request_response_client;
 struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
@@ -46,8 +44,30 @@ struct aws_mqtt_request_operation_storage {
     struct aws_byte_buf operation_data;
 };
 
+/*
+ * Describes a change to the state of a request operation subscription
+ */
+enum aws_rr_streaming_subscription_event_type {
+
+    /*
+     * The streaming operation is successfully subscribed to its topic (filter)
+     */
+    ARRSSET_SUBSCRIPTION_ESTABLISHED,
+
+    /*
+     * The streaming operation has temporarily lost its subscription to its topic (filter)
+     */
+    ARRSSET_SUBSCRIPTION_LOST,
+
+    /*
+     * The streaming operation has entered a terminal state where it has given up trying to subscribe
+     * to its topic (filter).  This is always due to user error (bad topic filter or IoT Core permission policy).
+     */
+    ARRSSET_SUBSCRIPTION_HALTED,
+};
+
 typedef void(aws_mqtt_streaming_operation_subscription_status_fn)(
-    enum aws_rr_subscription_event_type status,
+    enum aws_rr_streaming_subscription_event_type status,
     int error_code,
     void *user_data);
 typedef void(aws_mqtt_streaming_operation_incoming_publish_fn)(struct aws_byte_cursor payload, void *user_data);

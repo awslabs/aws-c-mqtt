@@ -330,6 +330,104 @@ static void s_rrc_wait_on_streaming_termination(
     aws_mutex_unlock(&fixture->lock);
 }
 
+struct rrc_streaming_event_wait_context {
+    struct aws_byte_cursor operation_key;
+    struct aws_rr_client_test_fixture *fixture;
+    size_t event_count;
+};
+
+static bool s_streaming_operation_has_n_publishes(void *context) {
+    struct rrc_streaming_event_wait_context *streaming_publish_context = context;
+
+    struct aws_hash_element *element = NULL;
+    aws_hash_table_find(
+        &streaming_publish_context->fixture->streaming_records, &streaming_publish_context->operation_key, &element);
+
+    AWS_FATAL_ASSERT(element != NULL && element->value != NULL);
+
+    struct aws_rr_client_fixture_streaming_record *record = element->value;
+
+    return aws_array_list_length(&record->publishes) >= streaming_publish_context->event_count;
+}
+
+static void s_rrc_wait_for_n_streaming_publishes(
+    struct aws_rr_client_test_fixture *fixture,
+    struct aws_byte_cursor key,
+    size_t count) {
+    struct rrc_streaming_event_wait_context context = {
+        .operation_key = key,
+        .fixture = fixture,
+        .event_count = count,
+    };
+
+    aws_mutex_lock(&fixture->lock);
+    aws_condition_variable_wait_pred(&fixture->signal, &fixture->lock, s_streaming_operation_has_n_publishes, &context);
+    aws_mutex_unlock(&fixture->lock);
+}
+
+static int s_rrc_verify_streaming_publishes(
+    struct aws_rr_client_test_fixture *fixture,
+    struct aws_byte_cursor key,
+    size_t expected_publish_count,
+    struct aws_byte_cursor *expected_publishes) {
+
+    aws_mutex_lock(&fixture->lock);
+
+    struct aws_hash_element *element = NULL;
+    aws_hash_table_find(&fixture->streaming_records, &key, &element);
+
+    AWS_FATAL_ASSERT(element != NULL && element->value != NULL);
+
+    struct aws_rr_client_fixture_streaming_record *record = element->value;
+
+    size_t actual_publish_count = aws_array_list_length(&record->publishes);
+    ASSERT_INT_EQUALS(expected_publish_count, actual_publish_count);
+
+    for (size_t i = 0; i < actual_publish_count; ++i) {
+        struct aws_byte_buf actual_payload;
+        aws_array_list_get_at(&record->publishes, &actual_payload, i);
+
+        struct aws_byte_cursor *expected_payload = &expected_publishes[i];
+
+        ASSERT_BIN_ARRAYS_EQUALS(
+            expected_payload->ptr, expected_payload->len, actual_payload.buffer, actual_payload.len);
+    }
+
+    aws_mutex_unlock(&fixture->lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static bool s_streaming_operation_has_n_subscription_events(void *context) {
+    struct rrc_streaming_event_wait_context *streaming_publish_context = context;
+
+    struct aws_hash_element *element = NULL;
+    aws_hash_table_find(
+        &streaming_publish_context->fixture->streaming_records, &streaming_publish_context->operation_key, &element);
+
+    AWS_FATAL_ASSERT(element != NULL && element->value != NULL);
+
+    struct aws_rr_client_fixture_streaming_record *record = element->value;
+
+    return aws_array_list_length(&record->subscription_events) >= streaming_publish_context->event_count;
+}
+
+static void s_rrc_wait_for_n_streaming_subscription_events(
+    struct aws_rr_client_test_fixture *fixture,
+    struct aws_byte_cursor key,
+    size_t count) {
+    struct rrc_streaming_event_wait_context context = {
+        .operation_key = key,
+        .fixture = fixture,
+        .event_count = count,
+    };
+
+    aws_mutex_lock(&fixture->lock);
+    aws_condition_variable_wait_pred(
+        &fixture->signal, &fixture->lock, s_streaming_operation_has_n_subscription_events, &context);
+    aws_mutex_unlock(&fixture->lock);
+}
+
 static int s_rrc_verify_streaming_record_subscription_events(
     struct aws_rr_client_test_fixture *fixture,
     struct aws_byte_cursor key,
