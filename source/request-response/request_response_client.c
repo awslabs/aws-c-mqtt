@@ -306,16 +306,6 @@ static void s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy(void
  */
 
 /*
- OnSubscriptionStatusEvent(event) [Event Loop, top-level task from sub manager]:
-
- For all operations in topic_filter table list:
-    if operation.type == Streaming
-        StreamingOperationOnSubscriptionStatusEvent(operation, event)
-    else
-        RequestOperationOnSubscriptionStatusEvent(operation, event)
- */
-
-/*
  HandleAcquireSubscriptionResult(operation, result) [Event Loop, Service Task Loop]:
 
  // invariant, BLOCKED is not possible, it was already handled
@@ -497,6 +487,24 @@ struct aws_mqtt_request_response_client {
     struct aws_hash_table operation_lists_by_subscription_filter;
 };
 
+struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_client_acquire_internal(
+    struct aws_mqtt_request_response_client *client) {
+    if (client != NULL) {
+        aws_ref_count_acquire(&client->internal_ref_count);
+    }
+
+    return client;
+}
+
+struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_client_release_internal(
+    struct aws_mqtt_request_response_client *client) {
+    if (client != NULL) {
+        aws_ref_count_release(&client->internal_ref_count);
+    }
+
+    return NULL;
+}
+
 static void s_aws_rr_client_on_zero_internal_ref_count(void *context) {
     struct aws_mqtt_request_response_client *client = context;
 
@@ -598,6 +606,16 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
     aws_mqtt_rr_client_operation_release(operation);
 }
 
+static void s_streaming_operation_emit_streaming_subscription_event(struct aws_mqtt_rr_client_operation *operation, enum aws_rr_streaming_subscription_event_type event_type, int error_code) {
+    aws_mqtt_streaming_operation_subscription_status_fn *subscription_status_callback =
+        operation->storage.streaming_storage.options.subscription_status_callback;
+
+    if (subscription_status_callback != NULL) {
+        void *user_data = operation->storage.streaming_storage.options.user_data;
+        (*subscription_status_callback)(event_type, error_code, user_data);
+    }
+}
+
 static void s_halt_streaming_operation_with_failure(struct aws_mqtt_rr_client_operation *operation, int error_code) {
     AWS_FATAL_ASSERT(operation->type == AWS_MRROT_STREAMING);
     AWS_FATAL_ASSERT(error_code != AWS_ERROR_SUCCESS);
@@ -614,13 +632,7 @@ static void s_halt_streaming_operation_with_failure(struct aws_mqtt_rr_client_op
         error_code,
         aws_error_debug_str(error_code));
 
-    aws_mqtt_streaming_operation_subscription_status_fn *subscription_status_callback =
-        operation->storage.streaming_storage.options.subscription_status_callback;
-
-    if (subscription_status_callback != NULL) {
-        void *user_data = operation->storage.streaming_storage.options.user_data;
-        (*subscription_status_callback)(ARRSET_STREAMING_SUBSCRIPTION_HALTED, error_code, user_data);
-    }
+    s_streaming_operation_emit_streaming_subscription_event(operation, ARRSSET_SUBSCRIPTION_HALTED, error_code);
 
     s_change_operation_state(operation, AWS_MRROS_TERMINAL);
 }
@@ -705,6 +717,104 @@ static void s_mqtt_request_response_client_wake_service(struct aws_mqtt_request_
     }
 }
 
+struct aws_rr_subscription_status_event_task {
+    struct aws_allocator *allocator;
+
+    struct aws_task task;
+
+    struct aws_mqtt_request_response_client *rr_client;
+
+    enum aws_rr_subscription_event_type type;
+    struct aws_byte_buf topic_filter;
+    uint64_t operation_id;
+};
+
+static void s_aws_rr_subscription_status_event_task_delete(struct aws_rr_subscription_status_event_task *task) {
+    if (task == NULL) {
+        return;
+    }
+
+    aws_byte_buf_clean_up(&task->topic_filter);
+    s_aws_mqtt_request_response_client_release_internal(task->rr_client);
+
+    aws_mem_release(task->allocator, task);
+}
+
+static void s_on_streaming_operation_subscription_status_event(struct aws_mqtt_rr_client_operation *operation, struct aws_byte_cursor topic_filter, enum aws_rr_subscription_event_type event_type) {
+    (void)topic_filter;
+
+    switch (event_type) {
+        case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
+            if (operation->state == AWS_MRROS_PENDING_SUBSCRIPTION) {
+                s_change_operation_state(operation, AWS_MRROS_SUBSCRIBED);
+            }
+
+            s_streaming_operation_emit_streaming_subscription_event(operation, ARRSSET_SUBSCRIPTION_ESTABLISHED, AWS_ERROR_SUCCESS);
+            break;
+
+        case ARRSET_STREAMING_SUBSCRIPTION_LOST:
+            s_streaming_operation_emit_streaming_subscription_event(operation, ARRSSET_SUBSCRIPTION_LOST, AWS_ERROR_SUCCESS);
+            break;
+
+        case ARRSET_STREAMING_SUBSCRIPTION_HALTED:
+            s_halt_streaming_operation_with_failure(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_SUBSCRIBE_FAILURE);
+            break;
+
+        default:
+            AWS_FATAL_ASSERT(false);
+    }
+}
+
+static void s_handle_subscription_status_event_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_rr_subscription_status_event_task *event_task = arg;
+
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        goto done;
+    }
+
+    struct aws_hash_element *element = NULL;
+    if (aws_hash_table_find(&event_task->rr_client->operations, &event_task->operation_id, &element) || element == NULL) {
+        goto done;
+    }
+
+    struct aws_mqtt_rr_client_operation *operation = element->value;
+
+    switch (event_task->type) {
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS:
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE:
+        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED:
+            /* NYI */
+            break;
+
+        case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
+        case ARRSET_STREAMING_SUBSCRIPTION_LOST:
+        case ARRSET_STREAMING_SUBSCRIPTION_HALTED:
+            s_on_streaming_operation_subscription_status_event(operation, aws_byte_cursor_from_buf(&event_task->topic_filter), event_task->type);
+            break;
+    }
+
+done:
+
+    s_aws_rr_subscription_status_event_task_delete(event_task);
+}
+
+static struct aws_rr_subscription_status_event_task *s_aws_rr_subscription_status_event_task_new(struct aws_allocator *allocator, struct aws_mqtt_request_response_client *rr_client, const struct aws_rr_subscription_status_event *event) {
+    struct aws_rr_subscription_status_event_task *task = aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_subscription_status_event_task));
+
+    task->allocator = allocator;
+    task->type = event->type;
+    task->operation_id = event->operation_id;
+    task->rr_client = s_aws_mqtt_request_response_client_acquire_internal(rr_client);
+
+    aws_byte_buf_init_copy_from_cursor(&task->topic_filter, allocator, event->topic_filter);
+
+    aws_task_init(&task->task, s_handle_subscription_status_event_task, task, "SubscriptionStatusEventTask");
+
+    return task;
+}
+
 static void s_aws_rr_client_subscription_status_event_callback(
     const struct aws_rr_subscription_status_event *event,
     void *userdata) {
@@ -723,7 +833,9 @@ static void s_aws_rr_client_subscription_status_event_callback(
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(rr_client->loop));
     AWS_FATAL_ASSERT(rr_client->state != AWS_RRCS_SHUTTING_DOWN);
 
-    /* NYI */
+    struct aws_rr_subscription_status_event_task *task = s_aws_rr_subscription_status_event_task_new(rr_client->allocator, rr_client, event);
+
+    aws_event_loop_schedule_task_now(rr_client->loop, &task->task);
 }
 
 static void s_aws_rr_client_protocol_adapter_subscription_event_callback(
@@ -1086,6 +1198,7 @@ static void s_handle_operation_subscribe_result(
 
     if (operation->type == AWS_MRROT_STREAMING) {
         s_change_operation_state(operation, AWS_MRROS_SUBSCRIBED);
+        s_streaming_operation_emit_streaming_subscription_event(operation, ARRSSET_SUBSCRIPTION_ESTABLISHED, AWS_ERROR_SUCCESS);
     } else {
         s_make_mqtt_request(client, operation);
     }
@@ -1297,24 +1410,6 @@ struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_releas
     struct aws_mqtt_request_response_client *client) {
     if (client != NULL) {
         aws_ref_count_release(&client->external_ref_count);
-    }
-
-    return NULL;
-}
-
-struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_client_acquire_internal(
-    struct aws_mqtt_request_response_client *client) {
-    if (client != NULL) {
-        aws_ref_count_acquire(&client->internal_ref_count);
-    }
-
-    return client;
-}
-
-struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_client_release_internal(
-    struct aws_mqtt_request_response_client *client) {
-    if (client != NULL) {
-        aws_ref_count_release(&client->internal_ref_count);
     }
 
     return NULL;

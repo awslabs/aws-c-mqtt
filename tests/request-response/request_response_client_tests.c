@@ -194,7 +194,7 @@ struct aws_rr_client_fixture_streaming_record {
 };
 
 struct aws_rr_client_fixture_streaming_record_subscription_event {
-    enum aws_rr_subscription_event_type status;
+    enum aws_rr_streaming_subscription_event_type status;
     int error_code;
 };
 
@@ -245,7 +245,7 @@ static void s_aws_rr_client_fixture_streaming_record_hash_destroy(void *element)
 }
 
 static void s_rrc_fixture_streaming_operation_subscription_status_callback(
-    enum aws_rr_subscription_event_type status,
+    enum aws_rr_streaming_subscription_event_type status,
     int error_code,
     void *user_data) {
 
@@ -1025,7 +1025,7 @@ static int s_rrc_submit_streaming_operation_and_shutdown_fn(struct aws_allocator
 
     struct aws_rr_client_fixture_streaming_record_subscription_event expected_events[] = {
         {
-            .status = ARRSET_STREAMING_SUBSCRIPTION_HALTED,
+            .status = ARRSSET_SUBSCRIPTION_HALTED,
             .error_code = AWS_ERROR_MQTT_REQUEST_RESPONSE_CLIENT_SHUT_DOWN,
         },
     };
@@ -1069,3 +1069,106 @@ static int s_rrc_submit_request_operation_failure_by_timeout_fn(struct aws_alloc
 }
 
 AWS_TEST_CASE(rrc_submit_request_operation_failure_by_timeout, s_rrc_submit_request_operation_failure_by_timeout_fn)
+
+static struct aws_mqtt_rr_client_operation *s_create_streaming_operation(struct aws_rr_client_test_fixture *fixture, struct aws_byte_cursor record_key, struct aws_byte_cursor topic_filter) {
+    struct aws_rr_client_fixture_streaming_record *record = s_rrc_fixture_add_streaming_record(&fixture, record_key);
+
+    struct aws_mqtt_streaming_operation_options streaming_options = {
+        .topic_filter = topic_filter,
+    };
+    streaming_options.incoming_publish_callback = s_rrc_fixture_streaming_operation_incoming_publish_callback;
+    streaming_options.subscription_status_callback = s_rrc_fixture_streaming_operation_subscription_status_callback;
+    streaming_options.terminated_callback = s_rrc_fixture_streaming_operation_terminated_callback;
+    streaming_options.user_data = record;
+
+    struct aws_mqtt_rr_client_operation *streaming_operation =
+        aws_mqtt_request_response_client_create_streaming_operation(fixture->rr_client, &streaming_options);
+    ASSERT_NOT_NULL(streaming_operation);
+
+    return streaming_operation;
+}
+
+static int s_rrc_publish_5(struct aws_mqtt5_client *client, struct aws_byte_cursor topic, struct aws_byte_cursor payload) {
+
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrc_publish_311(struct aws_mqtt_client_connection *connection, struct aws_byte_cursor topic, struct aws_byte_cursor payload) {
+
+    
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrc_protocol_client_publish(struct aws_rr_client_test_fixture *fixture, struct aws_byte_cursor topic, struct aws_byte_cursor payload) {
+
+    if (fixture->test_protocol == RRCP_MQTT311) {
+        return s_rrc_publish_5(fixture->client_test_fixture.mqtt311_test_fixture.mqtt_connection, topic, payload);
+    } else {
+        return s_rrc_publish_5(fixture->client_test_fixture.mqtt5_test_fixture.client, topic, payload);
+    }
+}
+
+static int s_rrc_streaming_operation_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    aws_mqtt5_client_test_init_default_options(&client_test_options);
+
+    client_test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] = ??;
+    client_test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] = ??;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options client_test_fixture_options = {
+        .client_options = &client_test_options.client_options,
+        .server_function_table = &client_test_options.server_function_table,
+    };
+
+    struct aws_mqtt_request_response_client_options rr_client_options = {
+        .max_subscriptions = 2,
+        .operation_timeout_seconds = 2,
+    };
+
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_rr_client_test_fixture_init_from_mqtt5(
+        &fixture, allocator, &rr_client_options, &client_test_fixture_options, NULL));
+
+    struct aws_byte_cursor record_key1 = aws_byte_cursor_from_c_str("key1");
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/1");
+    struct aws_mqtt_rr_client_operation *operation = s_create_streaming_operation(&fixture, record_key1, topic_filter1);
+
+    s_rrc_wait_for_n_streaming_subscription_events(&fixture, record_key1, 1);
+
+    struct aws_rr_client_fixture_streaming_record_subscription_event expected_events[] = {
+        {
+            .status = ARRSSET_SUBSCRIPTION_ESTABLISHED,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+    };
+    s_rrc_verify_streaming_record_subscription_events(&fixture, record_key1, AWS_ARRAY_SIZE(expected_events), expected_events);
+
+    // two publishes on the mqtt client that get reflected into our subscription topic
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
+    struct aws_byte_cursor payload2 = aws_byte_cursor_from_c_str("Payload1");
+    s_rrc_protocol_client_publish(&fixture, topic_filter1, payload1);
+    s_rrc_protocol_client_publish(&fixture, topic_filter1, payload2);
+
+    s_rrc_wait_for_n_streaming_publishes(&fixture, record_key1, 2);
+
+    struct aws_byte_cursor expected_publishes[] = {
+        payload1,
+        payload2,
+    };
+    s_rrc_verify_streaming_publishes(&fixture, record_key1, AWS_ARRAY_SIZE(expected_publishes), expected_publishes);
+
+    aws_mqtt_rr_client_operation_release(operation);
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrc_streaming_operation_success, s_rrc_streaming_operation_success_fn)
