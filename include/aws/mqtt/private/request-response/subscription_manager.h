@@ -22,12 +22,12 @@ enum aws_rr_subscription_event_type {
     /*
      * A request subscription subscribe succeeded
      */
-    ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+    ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
 
     /*
      * A request subscription subscribe failed
      */
-    ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE,
+    ARRSET_REQUEST_SUBSCRIBE_FAILURE,
 
     /*
      * A previously successful request subscription has ended.
@@ -36,7 +36,7 @@ enum aws_rr_subscription_event_type {
      *
      * (1) failure to rejoin a session
      */
-    ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED,
+    ARRSET_REQUEST_SUBSCRIPTION_ENDED,
 
     /*
      * A streaming subscription subscribe succeeded
@@ -57,6 +57,11 @@ enum aws_rr_subscription_event_type {
      * (2) Invalid topic filter
      */
     ARRSET_STREAMING_SUBSCRIPTION_HALTED,
+
+    /*
+     * A subscription has lost its last listener and can be purged
+     */
+    ARRSET_SUBSCRIPTION_EMPTY,
 
     /*
      * A subscription has been unsubscribed from

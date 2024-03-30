@@ -4,6 +4,7 @@
  */
 
 #include <aws/common/clock.h>
+#include <aws/common/uuid.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
 #include <aws/mqtt/request-response/request_response_client.h>
@@ -46,9 +47,8 @@ struct aws_rr_client_fixture_request_response_record {
 
     struct aws_rr_client_test_fixture *fixture;
 
-    struct aws_byte_cursor payload_cursor;
-
-    struct aws_byte_buf payload;
+    struct aws_byte_cursor record_key_cursor;
+    struct aws_byte_buf record_key;
 
     bool completed;
     int error_code;
@@ -65,15 +65,15 @@ struct aws_rr_client_fixture_request_response_record *s_aws_rr_client_fixture_re
     record->allocator = allocator;
     record->fixture = fixture;
 
-    aws_byte_buf_init_copy_from_cursor(&record->payload, allocator, request_payload);
-    record->payload_cursor = aws_byte_cursor_from_buf(&record->payload);
+    aws_byte_buf_init_copy_from_cursor(&record->record_key, allocator, request_payload);
+    record->record_key_cursor = aws_byte_cursor_from_buf(&record->record_key);
 
     return record;
 }
 
 void s_aws_rr_client_fixture_request_response_record_delete(
     struct aws_rr_client_fixture_request_response_record *record) {
-    aws_byte_buf_clean_up(&record->payload);
+    aws_byte_buf_clean_up(&record->record_key);
     aws_byte_buf_clean_up(&record->response);
 
     aws_mem_release(record->allocator, record);
@@ -111,11 +111,11 @@ static void s_rrc_fixture_request_completion_callback(
 
 static struct aws_rr_client_fixture_request_response_record *s_rrc_fixture_add_request_record(
     struct aws_rr_client_test_fixture *fixture,
-    struct aws_byte_cursor request_payload) {
+    struct aws_byte_cursor record_key) {
     struct aws_rr_client_fixture_request_response_record *record =
-        s_aws_rr_client_fixture_request_response_record_new(fixture->allocator, fixture, request_payload);
+        s_aws_rr_client_fixture_request_response_record_new(fixture->allocator, fixture, record_key);
 
-    aws_hash_table_put(&fixture->request_response_records, &record->payload_cursor, record, NULL);
+    aws_hash_table_put(&fixture->request_response_records, &record->record_key_cursor, record, NULL);
 
     return record;
 }
@@ -140,9 +140,9 @@ static bool s_is_request_complete(void *context) {
 
 static void s_rrc_wait_on_request_completion(
     struct aws_rr_client_test_fixture *fixture,
-    struct aws_byte_cursor request_payload) {
+    struct aws_byte_cursor record_key) {
     struct rrc_operation_completion_context context = {
-        .key = request_payload,
+        .key = record_key,
         .fixture = fixture,
     };
 
@@ -153,13 +153,13 @@ static void s_rrc_wait_on_request_completion(
 
 static int s_rrc_verify_request_completion(
     struct aws_rr_client_test_fixture *fixture,
-    struct aws_byte_cursor request_payload,
+    struct aws_byte_cursor record_key,
     int expected_error_code,
     struct aws_byte_cursor *expected_response) {
     aws_mutex_lock(&fixture->lock);
 
     struct aws_hash_element *element = NULL;
-    aws_hash_table_find(&fixture->request_response_records, &request_payload, &element);
+    aws_hash_table_find(&fixture->request_response_records, &record_key, &element);
 
     AWS_FATAL_ASSERT(element != NULL && element->value != NULL);
 
@@ -1966,3 +1966,219 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
 AWS_TEST_CASE(
     rrc_streaming_operation_failure_exceeds_subscription_budget,
     s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn)
+
+static int s_submit_request_operation_from_prefix(
+    struct aws_rr_client_test_fixture *fixture,
+    struct aws_byte_cursor record_key,
+    struct aws_byte_cursor prefix) {
+    char accepted_path[128];
+    char rejected_path[128];
+    char subscription_topic_filter[128];
+    char publish_topic[128];
+
+    snprintf(accepted_path, AWS_ARRAY_SIZE(accepted_path), PRInSTR "/accepted", AWS_BYTE_CURSOR_PRI(prefix));
+    snprintf(rejected_path, AWS_ARRAY_SIZE(rejected_path), PRInSTR "/rejected", AWS_BYTE_CURSOR_PRI(prefix));
+    snprintf(
+        subscription_topic_filter,
+        AWS_ARRAY_SIZE(subscription_topic_filter),
+        PRInSTR "/+",
+        AWS_BYTE_CURSOR_PRI(prefix));
+    snprintf(publish_topic, AWS_ARRAY_SIZE(publish_topic), PRInSTR "/get", AWS_BYTE_CURSOR_PRI(prefix));
+
+    char correlation_token[128];
+    struct aws_byte_buf correlation_token_buf =
+        aws_byte_buf_from_empty_array(correlation_token, AWS_ARRAY_SIZE(correlation_token));
+
+    struct aws_uuid uuid;
+    aws_uuid_init(&uuid);
+    aws_uuid_to_str(&uuid, &correlation_token_buf);
+
+    struct aws_mqtt_request_operation_response_path response_paths[] = {
+        {
+            .topic = aws_byte_cursor_from_c_str(accepted_path),
+            .correlation_token_json_path = aws_byte_cursor_from_c_str("client_token"),
+        },
+        {
+            .topic = aws_byte_cursor_from_c_str(rejected_path),
+            .correlation_token_json_path = aws_byte_cursor_from_c_str("client_token"),
+        },
+    };
+
+    struct aws_rr_client_fixture_request_response_record *record =
+        s_rrc_fixture_add_request_record(fixture, record_key);
+
+    struct aws_mqtt_request_operation_options request = {
+        .subscription_topic_filter = aws_byte_cursor_from_c_str(subscription_topic_filter),
+        .response_paths = response_paths,
+        .response_path_count = AWS_ARRAY_SIZE(response_paths),
+        .publish_topic = aws_byte_cursor_from_c_str(publish_topic),
+        .serialized_request = aws_byte_cursor_from_c_str("{}"),
+        .correlation_token = aws_byte_cursor_from_buf(&correlation_token_buf),
+        .completion_callback = s_rrc_fixture_request_completion_callback,
+        .user_data = record,
+    };
+
+    return aws_mqtt_request_response_client_submit_request(fixture->rr_client, &request);
+}
+
+/*
+ * Configure server to only respond to subscribes that match a streaming filter.  Submit a couple of
+ * request-response operations ahead of a streaming operation.  Verify they both time out and that the streaming
+ * operation successfully subscribes and receives publishes.
+ */
+static int s_rrc_streaming_operation_success_delayed_by_request_operations_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_streaming_operation_success(
+        &fixture, &client_test_options, allocator, s_rrc_unsubscribe_success_config, NULL));
+
+    struct aws_byte_cursor request_key1 = aws_byte_cursor_from_c_str("requestkey1");
+    struct aws_byte_cursor request_key2 = aws_byte_cursor_from_c_str("requestkey2");
+
+    ASSERT_SUCCESS(s_submit_request_operation_from_prefix(&fixture, request_key1, request_key1));
+    ASSERT_SUCCESS(s_submit_request_operation_from_prefix(&fixture, request_key2, request_key2));
+
+    struct aws_byte_cursor record_key1 = aws_byte_cursor_from_c_str("key1");
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/1");
+    struct aws_mqtt_rr_client_operation *operation = s_create_streaming_operation(&fixture, record_key1, topic_filter1);
+
+    s_rrc_wait_on_request_completion(&fixture, request_key1);
+    ASSERT_SUCCESS(
+        s_rrc_verify_request_completion(&fixture, request_key1, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL));
+    s_rrc_wait_on_request_completion(&fixture, request_key2);
+    ASSERT_SUCCESS(
+        s_rrc_verify_request_completion(&fixture, request_key2, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL));
+
+    s_rrc_wait_for_n_streaming_subscription_events(&fixture, record_key1, 1);
+
+    struct aws_rr_client_fixture_streaming_record_subscription_event expected_events[] = {
+        {
+            .status = ARRSSET_SUBSCRIPTION_ESTABLISHED,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+    };
+    ASSERT_SUCCESS(s_rrc_verify_streaming_record_subscription_events(
+        &fixture, record_key1, AWS_ARRAY_SIZE(expected_events), expected_events));
+
+    // two publishes on the mqtt client that get reflected into our subscription topic
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
+    struct aws_byte_cursor payload2 = aws_byte_cursor_from_c_str("Payload2");
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic_filter1, payload1));
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic_filter1, payload2));
+
+    s_rrc_wait_for_n_streaming_publishes(&fixture, record_key1, 2);
+
+    struct aws_byte_cursor expected_publishes[] = {
+        payload1,
+        payload2,
+    };
+    ASSERT_SUCCESS(s_rrc_verify_streaming_publishes(
+        &fixture, record_key1, AWS_ARRAY_SIZE(expected_publishes), expected_publishes));
+
+    aws_mqtt_rr_client_operation_release(operation);
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrc_streaming_operation_success_delayed_by_request_operations,
+    s_rrc_streaming_operation_success_delayed_by_request_operations_fn)
+
+/*
+ * Variant of previous test where we sandwich the streaming operation by multiple request response operations and
+ * verify all request-response operations fail with a timeout.
+ */
+static int s_rrc_streaming_operation_success_sandwiched_by_request_operations_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_streaming_operation_success(
+        &fixture, &client_test_options, allocator, s_rrc_unsubscribe_success_config, NULL));
+
+    struct aws_byte_cursor request_key1 = aws_byte_cursor_from_c_str("requestkey1");
+    struct aws_byte_cursor request_key2 = aws_byte_cursor_from_c_str("requestkey2");
+    struct aws_byte_cursor request_key3 = aws_byte_cursor_from_c_str("requestkey3");
+    struct aws_byte_cursor request_key4 = aws_byte_cursor_from_c_str("requestkey4");
+
+    ASSERT_SUCCESS(s_submit_request_operation_from_prefix(&fixture, request_key1, request_key1));
+    ASSERT_SUCCESS(s_submit_request_operation_from_prefix(&fixture, request_key2, request_key2));
+
+    struct aws_byte_cursor record_key1 = aws_byte_cursor_from_c_str("key1");
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/1");
+    struct aws_mqtt_rr_client_operation *operation = s_create_streaming_operation(&fixture, record_key1, topic_filter1);
+
+    ASSERT_SUCCESS(s_submit_request_operation_from_prefix(&fixture, request_key3, request_key3));
+    ASSERT_SUCCESS(s_submit_request_operation_from_prefix(&fixture, request_key4, request_key4));
+
+    s_rrc_wait_on_request_completion(&fixture, request_key1);
+    ASSERT_SUCCESS(
+        s_rrc_verify_request_completion(&fixture, request_key1, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL));
+    s_rrc_wait_on_request_completion(&fixture, request_key2);
+    ASSERT_SUCCESS(
+        s_rrc_verify_request_completion(&fixture, request_key2, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL));
+
+    s_rrc_wait_for_n_streaming_subscription_events(&fixture, record_key1, 1);
+
+    struct aws_rr_client_fixture_streaming_record_subscription_event expected_events[] = {
+        {
+            .status = ARRSSET_SUBSCRIPTION_ESTABLISHED,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+    };
+    ASSERT_SUCCESS(s_rrc_verify_streaming_record_subscription_events(
+        &fixture, record_key1, AWS_ARRAY_SIZE(expected_events), expected_events));
+
+    // two publishes on the mqtt client that get reflected into our subscription topic
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
+    struct aws_byte_cursor payload2 = aws_byte_cursor_from_c_str("Payload2");
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic_filter1, payload1));
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic_filter1, payload2));
+
+    s_rrc_wait_for_n_streaming_publishes(&fixture, record_key1, 2);
+
+    struct aws_byte_cursor expected_publishes[] = {
+        payload1,
+        payload2,
+    };
+    ASSERT_SUCCESS(s_rrc_verify_streaming_publishes(
+        &fixture, record_key1, AWS_ARRAY_SIZE(expected_publishes), expected_publishes));
+
+    s_rrc_wait_on_request_completion(&fixture, request_key3);
+    ASSERT_SUCCESS(
+        s_rrc_verify_request_completion(&fixture, request_key3, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL));
+    s_rrc_wait_on_request_completion(&fixture, request_key4);
+    ASSERT_SUCCESS(
+        s_rrc_verify_request_completion(&fixture, request_key4, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL));
+
+    aws_mqtt_rr_client_operation_release(operation);
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrc_streaming_operation_success_sandwiched_by_request_operations,
+    s_rrc_streaming_operation_success_sandwiched_by_request_operations_fn)
+
+/*
+#add_test_case()
+#add_test_case(rrc_streaming_operation_success_sandwiched_by_request_operations)
+ */

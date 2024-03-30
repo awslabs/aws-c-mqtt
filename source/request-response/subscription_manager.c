@@ -252,13 +252,25 @@ static void s_remove_listener_from_subscription_record(
 
     aws_hash_table_remove(&record->listeners, &listener, NULL, NULL);
 
+    size_t listener_count = aws_hash_table_get_entry_count(&record->listeners);
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_REQUEST_RESPONSE,
         "request-response subscription manager - removed listener %" PRIu64 " from subscription ('" PRInSTR
         "'), %zu listeners left",
         operation_id,
         AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor),
-        aws_hash_table_get_entry_count(&record->listeners));
+        listener_count);
+
+    if (listener_count == 0) {
+        struct aws_rr_subscription_status_event event = {
+            .type = ARRSET_SUBSCRIPTION_EMPTY,
+            .topic_filter = record->topic_filter_cursor,
+            .operation_id = 0,
+        };
+
+        (*manager->config.subscription_status_callback)(&event, manager->config.userdata);
+    }
 }
 
 static void s_add_listener_to_subscription_record(struct aws_rr_subscription_record *record, uint64_t operation_id) {
@@ -314,13 +326,13 @@ static void s_cull_unused_subscriptions(struct aws_rr_subscription_manager *mana
 
 static const char *s_rr_subscription_event_type_to_c_str(enum aws_rr_subscription_event_type type) {
     switch (type) {
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS:
+        case ARRSET_REQUEST_SUBSCRIBE_SUCCESS:
             return "RequestSubscribeSuccess";
 
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE:
+        case ARRSET_REQUEST_SUBSCRIBE_FAILURE:
             return "RequestSubscribeFailure";
 
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED:
+        case ARRSET_REQUEST_SUBSCRIPTION_ENDED:
             return "RequestSubscriptionEnded";
 
         case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
@@ -334,6 +346,9 @@ static const char *s_rr_subscription_event_type_to_c_str(enum aws_rr_subscriptio
 
         case ARRSET_UNSUBSCRIBE_COMPLETE:
             return "UnsubscribeComplete";
+
+        case ARRSET_SUBSCRIPTION_EMPTY:
+            return "SubscriptionEmpty";
     }
 
     return "Unknown";
@@ -343,9 +358,9 @@ static bool s_subscription_type_matches_event_type(
     enum aws_rr_subscription_type subscription_type,
     enum aws_rr_subscription_event_type event_type) {
     switch (event_type) {
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS:
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE:
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED:
+        case ARRSET_REQUEST_SUBSCRIBE_SUCCESS:
+        case ARRSET_REQUEST_SUBSCRIBE_FAILURE:
+        case ARRSET_REQUEST_SUBSCRIPTION_ENDED:
             return subscription_type == ARRST_REQUEST_RESPONSE;
 
         case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
@@ -421,7 +436,7 @@ static int s_rr_activate_idle_subscription(
                     aws_error_debug_str(error_code));
 
                 if (record->type == ARRST_REQUEST_RESPONSE) {
-                    s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE);
+                    s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIBE_FAILURE);
                 } else {
                     record->poisoned = true;
                     s_emit_subscription_event(manager, record, ARRSET_STREAMING_SUBSCRIPTION_HALTED);
@@ -567,9 +582,9 @@ static void s_handle_protocol_adapter_request_subscription_event(
 
         if (event->error_code == AWS_ERROR_SUCCESS) {
             record->status = ARRSST_SUBSCRIBED;
-            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS);
+            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIBE_SUCCESS);
         } else {
-            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE);
+            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIBE_FAILURE);
         }
     } else {
         AWS_FATAL_ASSERT(event->event_type == AWS_PASET_UNSUBSCRIBE);
@@ -677,7 +692,7 @@ static int s_apply_session_lost_wrapper(void *context, struct aws_hash_element *
         record->status = ARRSST_NOT_SUBSCRIBED;
 
         if (record->type == ARRST_REQUEST_RESPONSE) {
-            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED);
+            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_ENDED);
 
             if (record->pending_action != ARRSPAT_UNSUBSCRIBING) {
                 s_aws_rr_subscription_record_destroy(record);

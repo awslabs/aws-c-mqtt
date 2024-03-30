@@ -782,7 +782,7 @@ static void s_handle_subscription_status_event_task(struct aws_task *task, void 
         goto done;
     }
 
-    if (event_task->type == ARRSET_UNSUBSCRIBE_COMPLETE) {
+    if (event_task->type == ARRSET_UNSUBSCRIBE_COMPLETE || event_task->type == ARRSET_SUBSCRIPTION_EMPTY) {
         s_mqtt_request_response_client_wake_service(event_task->rr_client);
         goto done;
     }
@@ -796,9 +796,9 @@ static void s_handle_subscription_status_event_task(struct aws_task *task, void 
     struct aws_mqtt_rr_client_operation *operation = element->value;
 
     switch (event_task->type) {
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS:
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE:
-        case ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED:
+        case ARRSET_REQUEST_SUBSCRIBE_SUCCESS:
+        case ARRSET_REQUEST_SUBSCRIBE_FAILURE:
+        case ARRSET_REQUEST_SUBSCRIPTION_ENDED:
             /* NYI */
             break;
 
