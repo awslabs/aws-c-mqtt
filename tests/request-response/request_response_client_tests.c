@@ -1368,6 +1368,8 @@ AWS_TEST_CASE(rrc_streaming_operation_success_starting_offline, s_rrc_streaming_
 static void s_rrc_force_clean_session_config(
     struct aws_mqtt_request_response_client_options *fixture_options,
     struct mqtt5_client_test_options *client_test_options) {
+    (void)fixture_options;
+
     client_test_options->client_options.session_behavior = AWS_MQTT5_CSBT_CLEAN;
 }
 
@@ -1452,6 +1454,8 @@ AWS_TEST_CASE(
 static void s_rrc_force_resume_session_config(
     struct aws_mqtt_request_response_client_options *fixture_options,
     struct mqtt5_client_test_options *client_test_options) {
+    (void)fixture_options;
+
     client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
         aws_mqtt5_mock_server_handle_connect_honor_session_unconditional;
     client_test_options->client_options.session_behavior = AWS_MQTT5_CSBT_REJOIN_ALWAYS;
@@ -1566,6 +1570,8 @@ int s_handle_subscribe_with_initial_timeout(
 static void s_rrc_initial_subscribe_timeout_config(
     struct aws_mqtt_request_response_client_options *fixture_options,
     struct mqtt5_client_test_options *client_test_options) {
+    (void)fixture_options;
+
     client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
         s_handle_subscribe_with_initial_timeout;
 }
@@ -1676,6 +1682,8 @@ int s_handle_subscribe_with_initial_retryable_failure(
 static void s_rrc_initial_subscribe_retryable_failure_config(
     struct aws_mqtt_request_response_client_options *fixture_options,
     struct mqtt5_client_test_options *client_test_options) {
+    (void)fixture_options;
+
     client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
         s_handle_subscribe_with_initial_retryable_failure;
 }
@@ -1783,6 +1791,8 @@ int s_handle_subscribe_with_terminal_failure(
 static void s_rrc_subscribe_terminal_failure_config(
     struct aws_mqtt_request_response_client_options *fixture_options,
     struct mqtt5_client_test_options *client_test_options) {
+    (void)fixture_options;
+
     client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
         s_handle_subscribe_with_terminal_failure;
 }
@@ -1844,6 +1854,8 @@ AWS_TEST_CASE(
 static void s_rrc_unsubscribe_success_config(
     struct aws_mqtt_request_response_client_options *fixture_options,
     struct mqtt5_client_test_options *client_test_options) {
+    (void)fixture_options;
+
     client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
         aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success;
 }
