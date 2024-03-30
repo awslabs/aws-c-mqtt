@@ -579,13 +579,13 @@ static void s_handle_protocol_adapter_request_subscription_event(
         if (event->error_code == AWS_ERROR_SUCCESS) {
             record->status = ARRSST_NOT_SUBSCRIBED;
 
-            struct aws_rr_subscription_status_event event = {
+            struct aws_rr_subscription_status_event unsubscribe_event = {
                 .type = ARRSET_UNSUBSCRIBE_COMPLETE,
                 .topic_filter = record->topic_filter_cursor,
                 .operation_id = 0,
             };
 
-            (*manager->config.subscription_status_callback)(&event, manager->config.userdata);
+            (*manager->config.subscription_status_callback)(&unsubscribe_event, manager->config.userdata);
         }
     }
 }
@@ -617,13 +617,13 @@ static void s_handle_protocol_adapter_streaming_subscription_event(
         if (event->error_code == AWS_ERROR_SUCCESS) {
             record->status = ARRSST_NOT_SUBSCRIBED;
 
-            struct aws_rr_subscription_status_event event = {
+            struct aws_rr_subscription_status_event unsubscribe_event = {
                 .type = ARRSET_UNSUBSCRIBE_COMPLETE,
                 .topic_filter = record->topic_filter_cursor,
                 .operation_id = 0,
             };
 
-            (*manager->config.subscription_status_callback)(&event, manager->config.userdata);
+            (*manager->config.subscription_status_callback)(&unsubscribe_event, manager->config.userdata);
         }
     }
 }
