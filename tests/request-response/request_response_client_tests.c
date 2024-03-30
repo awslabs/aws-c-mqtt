@@ -826,7 +826,9 @@ static void s_invalid_subscription_topic_filter_mutator(struct aws_mqtt_request_
     request_options->subscription_topic_filter = aws_byte_cursor_from_c_str("a/#/c");
 }
 
-static int s_rrc_submit_request_operation_failure_invalid_subscription_topic_filter_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_rrc_submit_request_operation_failure_invalid_subscription_topic_filter_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)ctx;
 
     return s_rrc_do_submit_request_operation_failure_test(allocator, s_invalid_subscription_topic_filter_mutator);

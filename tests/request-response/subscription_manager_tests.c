@@ -2165,9 +2165,7 @@ static int s_rrsm_request_subscription_purge_events_fn(struct aws_allocator *all
     return s_do_purge_test(allocator, ARRST_REQUEST_RESPONSE);
 }
 
-AWS_TEST_CASE(
-    rrsm_request_subscription_purge_events,
-    s_rrsm_request_subscription_purge_events_fn)
+AWS_TEST_CASE(rrsm_request_subscription_purge_events, s_rrsm_request_subscription_purge_events_fn)
 
 static int s_rrsm_streaming_subscription_purge_events_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -2175,7 +2173,4 @@ static int s_rrsm_streaming_subscription_purge_events_fn(struct aws_allocator *a
     return s_do_purge_test(allocator, ARRST_EVENT_STREAM);
 }
 
-AWS_TEST_CASE(
-    rrsm_streaming_subscription_purge_events,
-    s_rrsm_streaming_subscription_purge_events_fn)
-
+AWS_TEST_CASE(rrsm_streaming_subscription_purge_events, s_rrsm_streaming_subscription_purge_events_fn)
