@@ -720,6 +720,36 @@ static void s_mqtt_request_response_client_wake_service(struct aws_mqtt_request_
     }
 }
 
+struct aws_rrc_incomplete_publish {
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt_request_response_client *rr_client;
+
+    uint64_t operation_id;
+};
+
+static void s_make_mqtt_request(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_mqtt_rr_client_operation *operation) {
+    (void)client;
+
+    AWS_FATAL_ASSERT(operation->type == AWS_MRROT_REQUEST);
+
+    struct aws_mqtt_request_operation_options *request_options = &operation->storage.request_storage.options;
+
+    struct aws_protocol_adapter_publish_options publish_options = {
+        .topic = request_options->publish_topic,
+        .payload = request_options->serialized_request,
+        .ack_timeout_seconds = client->config.operation_timeout_seconds,
+        .completion_callback_fn = s_??,
+        .user_data = ??,
+    };
+
+    if (aws_mqtt_protocol_adapter_publish(client->client_adapter, &publish_options)) {
+        s_complete_request_operation_with_failure(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_PUBLISH_FAILURE);
+    }
+}
+
 struct aws_rr_subscription_status_event_task {
     struct aws_allocator *allocator;
 
@@ -741,6 +771,30 @@ static void s_aws_rr_subscription_status_event_task_delete(struct aws_rr_subscri
     s_aws_mqtt_request_response_client_release_internal(task->rr_client);
 
     aws_mem_release(task->allocator, task);
+}
+
+static void s_on_request_operation_subscription_status_event(
+    struct aws_mqtt_rr_client_operation *operation,
+    struct aws_byte_cursor topic_filter,
+    enum aws_rr_subscription_event_type event_type) {
+    (void)topic_filter;
+
+    switch (event_type) {
+        case ARRSET_REQUEST_SUBSCRIBE_FAILURE:
+        case ARRSET_REQUEST_SUBSCRIPTION_ENDED:
+            s_complete_request_operation_with_failure(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_SUBSCRIBE_FAILURE);
+            break;
+
+        case ARRSET_REQUEST_SUBSCRIBE_SUCCESS:
+            if (operation->state == AWS_MRROS_PENDING_SUBSCRIPTION) {
+                s_change_operation_state(operation, AWS_MRROS_PENDING_RESPONSE);
+                s_make_mqtt_request(operation->client_internal_ref, operation);
+            }
+            break;
+
+        default:
+            AWS_FATAL_ASSERT(false);
+    }
 }
 
 static void s_on_streaming_operation_subscription_status_event(
@@ -799,7 +853,7 @@ static void s_handle_subscription_status_event_task(struct aws_task *task, void 
         case ARRSET_REQUEST_SUBSCRIBE_SUCCESS:
         case ARRSET_REQUEST_SUBSCRIBE_FAILURE:
         case ARRSET_REQUEST_SUBSCRIPTION_ENDED:
-            /* NYI */
+            s_on_request_operation_subscription_status_event(operation, aws_byte_cursor_from_buf(&event_task->topic_filter), event_task->type);
             break;
 
         case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
@@ -1185,16 +1239,6 @@ static int s_add_operation_to_subscription_topic_filter_table(
     aws_linked_list_push_back(&entry->operations, &operation->node);
 
     return AWS_OP_SUCCESS;
-}
-
-static void s_make_mqtt_request(
-    struct aws_mqtt_request_response_client *client,
-    struct aws_mqtt_rr_client_operation *operation) {
-    (void)client;
-
-    AWS_FATAL_ASSERT(operation->type == AWS_MRROT_REQUEST);
-
-    // TODO: NYI
 }
 
 static void s_handle_operation_subscribe_result(
