@@ -35,7 +35,6 @@ enum aws_rr_subscription_event_type {
      * Under normal circumstances this can happen when
      *
      * (1) failure to rejoin a session
-     * (2) a successful unsubscribe when the subscription is no longer needed
      */
     ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED,
 
@@ -57,7 +56,14 @@ enum aws_rr_subscription_event_type {
      * (1) Permission failures
      * (2) Invalid topic filter
      */
-    ARRSET_STREAMING_SUBSCRIPTION_HALTED
+    ARRSET_STREAMING_SUBSCRIPTION_HALTED,
+
+    /*
+     * A subscription has been unsubscribed from
+     *
+     * This particular event is global, with an operation id of 0.
+     */
+    ARRSET_UNSUBSCRIBE_COMPLETE,
 };
 
 struct aws_rr_subscription_status_event {

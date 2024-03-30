@@ -202,6 +202,7 @@ static struct aws_rr_subscription_record *s_get_subscription_record(
 struct aws_subscription_stats {
     size_t request_response_subscriptions;
     size_t event_stream_subscriptions;
+    size_t unsubscribing_event_stream_subscriptions;
 };
 
 static int s_rr_subscription_count_foreach_wrap(void *context, struct aws_hash_element *elem) {
@@ -210,6 +211,9 @@ static int s_rr_subscription_count_foreach_wrap(void *context, struct aws_hash_e
 
     if (subscription->type == ARRST_EVENT_STREAM) {
         ++stats->event_stream_subscriptions;
+        if (subscription->pending_action == ARRSPAT_UNSUBSCRIBING) {
+            ++stats->unsubscribing_event_stream_subscriptions;
+        }
     } else {
         ++stats->request_response_subscriptions;
     }
@@ -227,9 +231,10 @@ static void s_get_subscription_stats(
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_REQUEST_RESPONSE,
         "request-response subscription manager current stats: %d event stream sub records, %d request-response sub "
-        "records",
+        "records, %d unsubscribing event stream subscriptions",
         (int)stats->event_stream_subscriptions,
-        (int)stats->request_response_subscriptions);
+        (int)stats->request_response_subscriptions,
+        (int)stats->unsubscribing_event_stream_subscriptions);
 }
 
 static void s_remove_listener_from_subscription_record(
@@ -326,6 +331,9 @@ static const char *s_rr_subscription_event_type_to_c_str(enum aws_rr_subscriptio
 
         case ARRSET_STREAMING_SUBSCRIPTION_HALTED:
             return "StreamingSubscriptionHalted";
+
+        case ARRSET_UNSUBSCRIBE_COMPLETE:
+            return "UnsubscribeComplete";
     }
 
     return "Unknown";
@@ -344,9 +352,10 @@ static bool s_subscription_type_matches_event_type(
         case ARRSET_STREAMING_SUBSCRIPTION_LOST:
         case ARRSET_STREAMING_SUBSCRIPTION_HALTED:
             return subscription_type == ARRST_EVENT_STREAM;
-    }
 
-    return false;
+        default:
+            return true;
+    }
 }
 
 static void s_emit_subscription_event(
@@ -447,7 +456,8 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
 
         if (!space_for_subscription) {
             // could space eventually free up?
-            if (options->type == ARRST_REQUEST_RESPONSE || stats.request_response_subscriptions > 1) {
+            if (options->type == ARRST_REQUEST_RESPONSE || stats.request_response_subscriptions > 1 ||
+                stats.unsubscribing_event_stream_subscriptions > 0) {
                 AWS_LOGF_DEBUG(
                     AWS_LS_MQTT_REQUEST_RESPONSE,
                     "request-response subscription manager - acquire subscription for ('" PRInSTR
@@ -568,7 +578,14 @@ static void s_handle_protocol_adapter_request_subscription_event(
 
         if (event->error_code == AWS_ERROR_SUCCESS) {
             record->status = ARRSST_NOT_SUBSCRIBED;
-            s_emit_subscription_event(manager, record, ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED);
+
+            struct aws_rr_subscription_status_event event = {
+                .type = ARRSET_UNSUBSCRIBE_COMPLETE,
+                .topic_filter = record->topic_filter_cursor,
+                .operation_id = 0,
+            };
+
+            (*manager->config.subscription_status_callback)(&event, manager->config.userdata);
         }
     }
 }
@@ -599,6 +616,14 @@ static void s_handle_protocol_adapter_streaming_subscription_event(
 
         if (event->error_code == AWS_ERROR_SUCCESS) {
             record->status = ARRSST_NOT_SUBSCRIBED;
+
+            struct aws_rr_subscription_status_event event = {
+                .type = ARRSET_UNSUBSCRIBE_COMPLETE,
+                .topic_filter = record->topic_filter_cursor,
+                .operation_id = 0,
+            };
+
+            (*manager->config.subscription_status_callback)(&event, manager->config.userdata);
         }
     }
 }

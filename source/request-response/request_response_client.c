@@ -606,7 +606,10 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
     aws_mqtt_rr_client_operation_release(operation);
 }
 
-static void s_streaming_operation_emit_streaming_subscription_event(struct aws_mqtt_rr_client_operation *operation, enum aws_rr_streaming_subscription_event_type event_type, int error_code) {
+static void s_streaming_operation_emit_streaming_subscription_event(
+    struct aws_mqtt_rr_client_operation *operation,
+    enum aws_rr_streaming_subscription_event_type event_type,
+    int error_code) {
     aws_mqtt_streaming_operation_subscription_status_fn *subscription_status_callback =
         operation->storage.streaming_storage.options.subscription_status_callback;
 
@@ -740,7 +743,10 @@ static void s_aws_rr_subscription_status_event_task_delete(struct aws_rr_subscri
     aws_mem_release(task->allocator, task);
 }
 
-static void s_on_streaming_operation_subscription_status_event(struct aws_mqtt_rr_client_operation *operation, struct aws_byte_cursor topic_filter, enum aws_rr_subscription_event_type event_type) {
+static void s_on_streaming_operation_subscription_status_event(
+    struct aws_mqtt_rr_client_operation *operation,
+    struct aws_byte_cursor topic_filter,
+    enum aws_rr_subscription_event_type event_type) {
     (void)topic_filter;
 
     switch (event_type) {
@@ -749,11 +755,13 @@ static void s_on_streaming_operation_subscription_status_event(struct aws_mqtt_r
                 s_change_operation_state(operation, AWS_MRROS_SUBSCRIBED);
             }
 
-            s_streaming_operation_emit_streaming_subscription_event(operation, ARRSSET_SUBSCRIPTION_ESTABLISHED, AWS_ERROR_SUCCESS);
+            s_streaming_operation_emit_streaming_subscription_event(
+                operation, ARRSSET_SUBSCRIPTION_ESTABLISHED, AWS_ERROR_SUCCESS);
             break;
 
         case ARRSET_STREAMING_SUBSCRIPTION_LOST:
-            s_streaming_operation_emit_streaming_subscription_event(operation, ARRSSET_SUBSCRIPTION_LOST, AWS_ERROR_SUCCESS);
+            s_streaming_operation_emit_streaming_subscription_event(
+                operation, ARRSSET_SUBSCRIPTION_LOST, AWS_ERROR_SUCCESS);
             break;
 
         case ARRSET_STREAMING_SUBSCRIPTION_HALTED:
@@ -774,8 +782,14 @@ static void s_handle_subscription_status_event_task(struct aws_task *task, void 
         goto done;
     }
 
+    if (event_task->type == ARRSET_UNSUBSCRIBE_COMPLETE) {
+        s_mqtt_request_response_client_wake_service(event_task->rr_client);
+        goto done;
+    }
+
     struct aws_hash_element *element = NULL;
-    if (aws_hash_table_find(&event_task->rr_client->operations, &event_task->operation_id, &element) || element == NULL) {
+    if (aws_hash_table_find(&event_task->rr_client->operations, &event_task->operation_id, &element) ||
+        element == NULL) {
         goto done;
     }
 
@@ -791,7 +805,11 @@ static void s_handle_subscription_status_event_task(struct aws_task *task, void 
         case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
         case ARRSET_STREAMING_SUBSCRIPTION_LOST:
         case ARRSET_STREAMING_SUBSCRIPTION_HALTED:
-            s_on_streaming_operation_subscription_status_event(operation, aws_byte_cursor_from_buf(&event_task->topic_filter), event_task->type);
+            s_on_streaming_operation_subscription_status_event(
+                operation, aws_byte_cursor_from_buf(&event_task->topic_filter), event_task->type);
+            break;
+
+        default:
             break;
     }
 
@@ -800,8 +818,12 @@ done:
     s_aws_rr_subscription_status_event_task_delete(event_task);
 }
 
-static struct aws_rr_subscription_status_event_task *s_aws_rr_subscription_status_event_task_new(struct aws_allocator *allocator, struct aws_mqtt_request_response_client *rr_client, const struct aws_rr_subscription_status_event *event) {
-    struct aws_rr_subscription_status_event_task *task = aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_subscription_status_event_task));
+static struct aws_rr_subscription_status_event_task *s_aws_rr_subscription_status_event_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_request_response_client *rr_client,
+    const struct aws_rr_subscription_status_event *event) {
+    struct aws_rr_subscription_status_event_task *task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_subscription_status_event_task));
 
     task->allocator = allocator;
     task->type = event->type;
@@ -833,7 +855,8 @@ static void s_aws_rr_client_subscription_status_event_callback(
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(rr_client->loop));
     AWS_FATAL_ASSERT(rr_client->state != AWS_RRCS_SHUTTING_DOWN);
 
-    struct aws_rr_subscription_status_event_task *task = s_aws_rr_subscription_status_event_task_new(rr_client->allocator, rr_client, event);
+    struct aws_rr_subscription_status_event_task *task =
+        s_aws_rr_subscription_status_event_task_new(rr_client->allocator, rr_client, event);
 
     aws_event_loop_schedule_task_now(rr_client->loop, &task->task);
 }
@@ -1198,7 +1221,8 @@ static void s_handle_operation_subscribe_result(
 
     if (operation->type == AWS_MRROT_STREAMING) {
         s_change_operation_state(operation, AWS_MRROS_SUBSCRIBED);
-        s_streaming_operation_emit_streaming_subscription_event(operation, ARRSSET_SUBSCRIPTION_ESTABLISHED, AWS_ERROR_SUCCESS);
+        s_streaming_operation_emit_streaming_subscription_event(
+            operation, ARRSSET_SUBSCRIPTION_ESTABLISHED, AWS_ERROR_SUCCESS);
     } else {
         s_make_mqtt_request(client, operation);
     }
@@ -1533,7 +1557,10 @@ static void s_mqtt_rr_client_submit_operation(struct aws_task *task, void *arg, 
     // NYI other tables
 
     // add to timeout priority queue
-    aws_priority_queue_push_ref(&client->operations_by_timeout, (void *)&operation, &operation->priority_queue_node);
+    if (operation->type == AWS_MRROT_REQUEST) {
+        aws_priority_queue_push_ref(
+            &client->operations_by_timeout, (void *)&operation, &operation->priority_queue_node);
+    }
 
     // enqueue
     aws_linked_list_push_back(&operation->client_internal_ref->operation_queue, &operation->node);
