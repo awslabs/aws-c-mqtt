@@ -487,7 +487,7 @@ struct aws_mqtt_request_response_client {
     struct aws_hash_table operation_lists_by_subscription_filter;
 };
 
-struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_client_acquire_internal(
+struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_acquire_internal(
     struct aws_mqtt_request_response_client *client) {
     if (client != NULL) {
         aws_ref_count_acquire(&client->internal_ref_count);
@@ -496,7 +496,7 @@ struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_client_acqu
     return client;
 }
 
-struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_client_release_internal(
+struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_release_internal(
     struct aws_mqtt_request_response_client *client) {
     if (client != NULL) {
         aws_ref_count_release(&client->internal_ref_count);
@@ -738,7 +738,7 @@ static void s_aws_rr_subscription_status_event_task_delete(struct aws_rr_subscri
     }
 
     aws_byte_buf_clean_up(&task->topic_filter);
-    s_aws_mqtt_request_response_client_release_internal(task->rr_client);
+    aws_mqtt_request_response_client_release_internal(task->rr_client);
 
     aws_mem_release(task->allocator, task);
 }
@@ -828,7 +828,7 @@ static struct aws_rr_subscription_status_event_task *s_aws_rr_subscription_statu
     task->allocator = allocator;
     task->type = event->type;
     task->operation_id = event->operation_id;
-    task->rr_client = s_aws_mqtt_request_response_client_acquire_internal(rr_client);
+    task->rr_client = aws_mqtt_request_response_client_acquire_internal(rr_client);
 
     aws_byte_buf_init_copy_from_cursor(&task->topic_filter, allocator, event->topic_filter);
 
@@ -1621,7 +1621,7 @@ static void s_mqtt_rr_client_destroy_operation(struct aws_task *task, void *arg,
 
      */
 
-    s_aws_mqtt_request_response_client_release_internal(operation->client_internal_ref);
+    aws_mqtt_request_response_client_release_internal(operation->client_internal_ref);
 
     if (operation->type == AWS_MRROT_STREAMING) {
         s_aws_mqtt_streaming_operation_storage_clean_up(&operation->storage.streaming_storage);
@@ -1661,7 +1661,7 @@ static void s_aws_mqtt_rr_client_operation_init_shared(
      */
     aws_mqtt_rr_client_operation_acquire(operation);
 
-    operation->client_internal_ref = s_aws_mqtt_request_response_client_acquire_internal(client);
+    operation->client_internal_ref = aws_mqtt_request_response_client_acquire_internal(client);
     operation->id = s_aws_mqtt_request_response_client_allocate_operation_id(client);
     s_change_operation_state(operation, AWS_MRROS_NONE);
 
