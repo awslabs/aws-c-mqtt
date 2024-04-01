@@ -575,7 +575,7 @@ static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator
 
     struct aws_subscription_status_record expected_subscription_events[] = {
         {
-            .type = ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+            .type = ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
             .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
             .operation_id = 1,
         },
@@ -907,12 +907,12 @@ static int s_rrsm_release_unsubscribes_request_fn(struct aws_allocator *allocato
     // verify two success callbacks
     struct aws_subscription_status_record expected_subscription_events[] = {
         {
-            .type = ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+            .type = ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
             .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
             .operation_id = 1,
         },
         {
-            .type = ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+            .type = ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
             .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
             .operation_id = 2,
         }};
@@ -1283,7 +1283,7 @@ static int s_rrsm_acquire_request_subscribe_failure_event_fn(struct aws_allocato
 
     // verify subscribe failure event emission
     struct aws_subscription_status_record expected_subscription_event = {
-        .type = ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE,
+        .type = ARRSET_REQUEST_SUBSCRIBE_FAILURE,
         .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
         .operation_id = 1,
     };
@@ -1360,9 +1360,9 @@ static enum aws_rr_subscription_event_type s_compute_expected_subscription_event
     bool success) {
     if (subscription_type == ARRST_REQUEST_RESPONSE) {
         if (success) {
-            return ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS;
+            return ARRSET_REQUEST_SUBSCRIBE_SUCCESS;
         } else {
-            return ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_FAILURE;
+            return ARRSET_REQUEST_SUBSCRIBE_FAILURE;
         }
     } else {
         if (success) {
@@ -1602,7 +1602,7 @@ static int s_do_acquire_success_offline_release_acquire2_no_unsubscribe_test(
     aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
 
     struct aws_subscription_status_record expected_subscription_event = {
-        .type = subscription_type == ARRST_REQUEST_RESPONSE ? ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS
+        .type = subscription_type == ARRST_REQUEST_RESPONSE ? ARRSET_REQUEST_SUBSCRIBE_SUCCESS
                                                             : ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
         .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
         .operation_id = 1,
@@ -1714,7 +1714,7 @@ static int s_do_rrsm_acquire_clean_up_test(
         aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
 
         struct aws_subscription_status_record expected_subscription_event = {
-            .type = subscription_type == ARRST_REQUEST_RESPONSE ? ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS
+            .type = subscription_type == ARRST_REQUEST_RESPONSE ? ARRSET_REQUEST_SUBSCRIBE_SUCCESS
                                                                 : ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
             .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
             .operation_id = 1,
@@ -1871,7 +1871,7 @@ static int s_rrsm_do_no_session_subscription_ended_test(
     aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
 
     struct aws_subscription_status_record expected_subscription_event = {
-        .type = ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIBE_SUCCESS,
+        .type = ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
         .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
         .operation_id = 1,
     };
@@ -1921,7 +1921,7 @@ static int s_rrsm_do_no_session_subscription_ended_test(
     // verify subscription lost emitted
     if (!offline_while_unsubscribing) {
         struct aws_subscription_status_record expected_subscription_ended_event = {
-            .type = ARRSET_REQUEST_SUBSCRIPTION_SUBSCRIPTION_ENDED,
+            .type = ARRSET_REQUEST_SUBSCRIPTION_ENDED,
             .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
             .operation_id = 1,
         };
@@ -2069,3 +2069,108 @@ static int s_rrsm_streaming_subscription_lost_resubscribe_on_no_session_fn(struc
 AWS_TEST_CASE(
     rrsm_streaming_subscription_lost_resubscribe_on_no_session,
     s_rrsm_streaming_subscription_lost_resubscribe_on_no_session_fn)
+
+static int s_do_purge_test(struct aws_allocator *allocator, enum aws_rr_subscription_type subscription_type) {
+    aws_mqtt_library_init(allocator);
+
+    struct aws_subscription_manager_test_fixture fixture;
+    ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, NULL));
+
+    struct aws_rr_subscription_manager *manager = &fixture.subscription_manager;
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = subscription_type,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
+
+    struct aws_protocol_adapter_subscription_event successful_subscription_event = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .error_code = AWS_ERROR_SUCCESS,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_subscription_event);
+
+    struct aws_subscription_status_record expected_empty_subscription_events[] = {
+        {
+            .type = ARRSET_SUBSCRIPTION_EMPTY,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .operation_id = 0,
+        },
+    };
+
+    struct aws_subscription_status_record expected_unsubscribe_events[] = {
+        {
+            .type = ARRSET_UNSUBSCRIBE_COMPLETE,
+            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .operation_id = 0,
+        },
+    };
+
+    ASSERT_FALSE(s_contains_subscription_event_records(&fixture, 1, expected_empty_subscription_events));
+    ASSERT_FALSE(s_contains_subscription_event_records(&fixture, 1, expected_unsubscribe_events));
+
+    // verify no unsubscribes
+    struct aws_protocol_adapter_api_record expected_unsubscribe = {
+        .type = PAAT_UNSUBSCRIBE,
+        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .timeout = DEFAULT_SM_TEST_TIMEOUT,
+    };
+    ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // release once, verify no unsubscribe
+    struct aws_rr_release_subscription_options release1_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .operation_id = 1,
+    };
+    aws_rr_subscription_manager_release_subscription(manager, &release1_options);
+    ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // verify empty event, but no unsubscribe event yet
+    ASSERT_TRUE(s_contains_subscription_event_records(&fixture, 1, expected_empty_subscription_events));
+    ASSERT_FALSE(s_contains_subscription_event_records(&fixture, 1, expected_unsubscribe_events));
+
+    // unsubscribe is lazy, so we need to trigger it by acquiring something else
+    struct aws_rr_acquire_subscription_options acquire3_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .operation_id = 3,
+    };
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
+
+    // now the unsubscribe should be present
+    ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // complete the unsubscribe
+    struct aws_protocol_adapter_subscription_event successful_unsubscribe_event = {
+        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .event_type = AWS_PASET_UNSUBSCRIBE,
+        .error_code = AWS_ERROR_SUCCESS,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_unsubscribe_event);
+
+    // verify unsubscribe attempt emission
+    ASSERT_TRUE(s_contains_subscription_event_records(&fixture, 1, expected_unsubscribe_events));
+
+    s_aws_subscription_manager_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrsm_request_subscription_purge_events_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_do_purge_test(allocator, ARRST_REQUEST_RESPONSE);
+}
+
+AWS_TEST_CASE(rrsm_request_subscription_purge_events, s_rrsm_request_subscription_purge_events_fn)
+
+static int s_rrsm_streaming_subscription_purge_events_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_do_purge_test(allocator, ARRST_EVENT_STREAM);
+}
+
+AWS_TEST_CASE(rrsm_streaming_subscription_purge_events, s_rrsm_streaming_subscription_purge_events_fn)

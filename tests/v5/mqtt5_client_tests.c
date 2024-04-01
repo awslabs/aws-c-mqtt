@@ -5353,7 +5353,10 @@ static int s_aws_mqtt5_server_send_aliased_publish_sequence(
     struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet;
 
     struct aws_mqtt5_packet_suback_view suback_view = {
-        .packet_id = subscribe_view->packet_id, .reason_code_count = 1, .reason_codes = s_alias_reason_codes};
+        .packet_id = subscribe_view->packet_id,
+        .reason_code_count = 1,
+        .reason_codes = s_alias_reason_codes,
+    };
 
     // just to be thorough, send a suback
     if (aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view)) {
@@ -5548,7 +5551,10 @@ static int s_aws_mqtt5_server_send_aliased_publish_failure(
     struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet;
 
     struct aws_mqtt5_packet_suback_view suback_view = {
-        .packet_id = subscribe_view->packet_id, .reason_code_count = 1, .reason_codes = s_alias_reason_codes};
+        .packet_id = subscribe_view->packet_id,
+        .reason_code_count = 1,
+        .reason_codes = s_alias_reason_codes,
+    };
 
     // just to be thorough, send a suback
     if (aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view)) {
