@@ -60,13 +60,15 @@ enum aws_rr_subscription_event_type {
 
     /*
      * A subscription has lost its last listener and can be purged
+     *
+     * This event is global; operation_id will always be zero.
      */
     ARRSET_SUBSCRIPTION_EMPTY,
 
     /*
      * A subscription has been unsubscribed from
      *
-     * This particular event is global, with an operation id of 0.
+     * This event is global; operation_id will always be zero.
      */
     ARRSET_UNSUBSCRIBE_COMPLETE,
 };
