@@ -1080,6 +1080,13 @@ static void s_apply_publish_to_streaming_operation_list(
     }
 }
 
+static void s_apply_publish_to_response_path_entry(
+    struct aws_rr_response_path_entry *entry,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
+    (void)entry;
+    (void)publish_event;
+}
+
 static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     void *user_data) {
@@ -1096,19 +1103,30 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
     struct aws_hash_element *subscription_filter_element = NULL;
     if (aws_hash_table_find(
             &rr_client->streaming_operation_subscription_lists, &publish_event->topic, &subscription_filter_element) ==
-        AWS_OP_SUCCESS) {
-        if (subscription_filter_element != NULL) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: request-response client incoming publish on topic '" PRInSTR "'",
-                (void *)rr_client,
-                AWS_BYTE_CURSOR_PRI(publish_event->topic));
+            AWS_OP_SUCCESS &&
+        subscription_filter_element != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches streaming topic",
+            (void *)rr_client,
+            AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
-            s_apply_publish_to_streaming_operation_list(subscription_filter_element->value, publish_event);
-        }
+        s_apply_publish_to_streaming_operation_list(subscription_filter_element->value, publish_event);
     }
 
-    /* Request-Response handling NYI */
+    /* Request-Response handling */
+    struct aws_hash_element *response_path_element = NULL;
+    if (aws_hash_table_find(&rr_client->request_response_paths, &publish_event->topic, &response_path_element) ==
+            AWS_OP_SUCCESS &&
+        response_path_element != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches response path",
+            (void *)rr_client,
+            AWS_BYTE_CURSOR_PRI(publish_event->topic));
+
+        s_apply_publish_to_response_path_entry(response_path_element->value, publish_event);
+    }
 }
 
 static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data) {
