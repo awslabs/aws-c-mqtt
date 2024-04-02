@@ -777,37 +777,6 @@ AWS_TEST_CASE(
     rrc_submit_request_operation_failure_invalid_response_topic,
     s_rrc_submit_request_operation_failure_invalid_response_topic_fn)
 
-static void s_invalid_response_correlation_token_path_mutator(
-    struct aws_mqtt_request_operation_options *request_options) {
-    request_options->response_paths[0].correlation_token_json_path = aws_byte_cursor_from_c_str("");
-}
-
-static int s_rrc_submit_request_operation_failure_invalid_response_correlation_token_path_fn(
-    struct aws_allocator *allocator,
-    void *ctx) {
-    (void)ctx;
-
-    return s_rrc_do_submit_request_operation_failure_test(allocator, s_invalid_response_correlation_token_path_mutator);
-}
-
-AWS_TEST_CASE(
-    rrc_submit_request_operation_failure_invalid_response_correlation_token_path,
-    s_rrc_submit_request_operation_failure_invalid_response_correlation_token_path_fn)
-
-static void s_no_correlation_token_mutator(struct aws_mqtt_request_operation_options *request_options) {
-    request_options->correlation_token = aws_byte_cursor_from_c_str("");
-}
-
-static int s_rrc_submit_request_operation_failure_no_correlation_token_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    return s_rrc_do_submit_request_operation_failure_test(allocator, s_no_correlation_token_mutator);
-}
-
-AWS_TEST_CASE(
-    rrc_submit_request_operation_failure_no_correlation_token,
-    s_rrc_submit_request_operation_failure_no_correlation_token_fn)
-
 static void s_invalid_publish_topic_mutator(struct aws_mqtt_request_operation_options *request_options) {
     request_options->publish_topic = aws_byte_cursor_from_c_str("a/b/#");
 }
