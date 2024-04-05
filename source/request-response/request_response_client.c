@@ -6,6 +6,7 @@
 #include <aws/mqtt/request-response/request_response_client.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/json.h>
 #include <aws/common/ref_count.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
@@ -656,7 +657,7 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
     void *user_data = operation->storage.request_storage.options.user_data;
 
     if (completion_callback != NULL) {
-        (*completion_callback)(NULL, error_code, user_data);
+        (*completion_callback)(NULL, NULL, error_code, user_data);
     }
 
     s_change_operation_state(operation, AWS_MRROS_PENDING_DESTROY);
@@ -1083,11 +1084,137 @@ static void s_apply_publish_to_streaming_operation_list(
     }
 }
 
+static void s_complete_operation_with_correlation_token(
+    struct aws_mqtt_request_response_client *rr_client,
+    struct aws_byte_cursor correlation_token,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
+    struct aws_hash_element *hash_element = NULL;
+
+    if (aws_hash_table_find(&rr_client->operations_by_correlation_tokens, &correlation_token, &hash_element)) {
+        return;
+    }
+
+    if (hash_element == NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+            "' and correlation token '" PRInSTR "' does not have an originating request entry",
+            (void *)rr_client,
+            AWS_BYTE_CURSOR_PRI(publish_event->topic),
+            AWS_BYTE_CURSOR_PRI(correlation_token));
+        return;
+    }
+
+    struct aws_mqtt_rr_client_operation *operation = hash_element->value;
+    AWS_FATAL_ASSERT(operation->type == AWS_MRROT_REQUEST);
+
+    if (operation->state == AWS_MRROS_PENDING_DESTROY) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response operation %" PRIu64 " cannot be completed, already in pending destruction state",
+            (void *)operation->client_internal_ref,
+            operation->id);
+        return;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response operation %" PRIu64 " completed successfully",
+        (void *)operation->client_internal_ref,
+        operation->id);
+
+    aws_mqtt_request_operation_completion_fn *completion_callback =
+        operation->storage.request_storage.options.completion_callback;
+    void *user_data = operation->storage.request_storage.options.user_data;
+
+    if (completion_callback != NULL) {
+        (*completion_callback)(&publish_event->topic, &publish_event->payload, AWS_ERROR_SUCCESS, user_data);
+    }
+
+    s_change_operation_state(operation, AWS_MRROS_PENDING_DESTROY);
+
+    aws_mqtt_rr_client_operation_release(operation);
+}
+
 static void s_apply_publish_to_response_path_entry(
+    struct aws_mqtt_request_response_client *rr_client,
     struct aws_rr_response_path_entry *entry,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
-    (void)entry;
-    (void)publish_event;
+
+    struct aws_json_value *json_payload = NULL;
+
+    struct aws_byte_cursor correlation_token;
+    AWS_ZERO_STRUCT(correlation_token);
+    struct aws_byte_cursor correlation_token_json_path = aws_byte_cursor_from_buf(&entry->correlation_token_json_path);
+    if (correlation_token_json_path.len > 0) {
+        json_payload = aws_json_value_new_from_string(rr_client->allocator, publish_event->payload);
+        if (json_payload == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                "' could not be deserialized into JSON",
+                (void *)rr_client,
+                AWS_BYTE_CURSOR_PRI(publish_event->topic));
+            return;
+        }
+
+        struct aws_byte_cursor segment;
+        AWS_ZERO_STRUCT(segment);
+
+        struct aws_json_value *correlation_token_entry = json_payload;
+        while (aws_byte_cursor_next_split(&correlation_token_json_path, '.', &segment)) {
+            if (!aws_json_value_is_object(correlation_token_entry)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                    "' unable to walk correlation token path '" PRInSTR "'",
+                    (void *)rr_client,
+                    AWS_BYTE_CURSOR_PRI(publish_event->topic),
+                    AWS_BYTE_CURSOR_PRI(correlation_token_json_path));
+                goto done;
+            }
+
+            correlation_token_entry = aws_json_value_get_from_object(correlation_token_entry, segment);
+            if (correlation_token_entry == NULL) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                    "' could not find path segment '" PRInSTR "'",
+                    (void *)rr_client,
+                    AWS_BYTE_CURSOR_PRI(publish_event->topic),
+                    AWS_BYTE_CURSOR_PRI(segment));
+                goto done;
+            }
+        }
+
+        if (!aws_json_value_is_string(correlation_token_entry)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                "' token entry is not a string",
+                (void *)rr_client,
+                AWS_BYTE_CURSOR_PRI(publish_event->topic));
+            goto done;
+        }
+
+        if (aws_json_value_get_string(correlation_token_entry, &correlation_token)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                "' failed to extract string from token entry",
+                (void *)rr_client,
+                AWS_BYTE_CURSOR_PRI(publish_event->topic));
+            goto done;
+        }
+    }
+
+    s_complete_operation_with_correlation_token(rr_client, correlation_token, publish_event);
+
+done:
+
+    if (json_payload != NULL) {
+        aws_json_value_destroy(json_payload);
+    }
 }
 
 static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
@@ -1128,7 +1255,7 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
             (void *)rr_client,
             AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
-        s_apply_publish_to_response_path_entry(response_path_element->value, publish_event);
+        s_apply_publish_to_response_path_entry(rr_client, response_path_element->value, publish_event);
     }
 }
 

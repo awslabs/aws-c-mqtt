@@ -53,6 +53,7 @@ struct aws_rr_client_fixture_request_response_record {
     bool completed;
     int error_code;
     struct aws_byte_buf response;
+    struct aws_byte_buf response_topic;
 };
 
 struct aws_rr_client_fixture_request_response_record *s_aws_rr_client_fixture_request_response_record_new(
@@ -75,6 +76,7 @@ void s_aws_rr_client_fixture_request_response_record_delete(
     struct aws_rr_client_fixture_request_response_record *record) {
     aws_byte_buf_clean_up(&record->record_key);
     aws_byte_buf_clean_up(&record->response);
+    aws_byte_buf_clean_up(&record->response_topic);
 
     aws_mem_release(record->allocator, record);
 }
@@ -86,7 +88,8 @@ static void s_aws_rr_client_fixture_request_response_record_hash_destroy(void *e
 }
 
 static void s_rrc_fixture_request_completion_callback(
-    struct aws_byte_cursor *payload,
+    const struct aws_byte_cursor *topic,
+    const struct aws_byte_cursor *payload,
     int error_code,
     void *user_data) {
     struct aws_rr_client_fixture_request_response_record *record = user_data;
@@ -94,12 +97,13 @@ static void s_rrc_fixture_request_completion_callback(
 
     aws_mutex_lock(&fixture->lock);
 
-    if (payload != NULL) {
-        AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
+    if (error_code == AWS_ERROR_SUCCESS) {
+        AWS_FATAL_ASSERT(topic != NULL && payload != NULL);
 
         aws_byte_buf_init_copy_from_cursor(&record->response, fixture->allocator, *payload);
+        aws_byte_buf_init_copy_from_cursor(&record->response_topic, fixture->allocator, *topic);
     } else {
-        AWS_FATAL_ASSERT(error_code != AWS_ERROR_SUCCESS);
+        AWS_FATAL_ASSERT(topic == NULL && payload == NULL);
         record->error_code = error_code;
     }
 
