@@ -4,6 +4,7 @@
  */
 
 #include <aws/common/clock.h>
+#include <aws/common/json.h>
 #include <aws/common/uuid.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
@@ -2167,7 +2168,197 @@ AWS_TEST_CASE(
     rrc_streaming_operation_success_sandwiched_by_request_operations,
     s_rrc_streaming_operation_success_sandwiched_by_request_operations_fn)
 
-/*
-#add_test_case()
-#add_test_case(rrc_streaming_operation_success_sandwiched_by_request_operations)
- */
+int aws_mqtt5_mock_server_handle_publish_json_request(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)user_data;
+
+    int result = AWS_OP_ERR;
+    struct aws_json_value *payload_json = NULL;
+    struct aws_json_value *response_json = NULL;
+    struct aws_allocator *allocator = connection->allocator;
+
+    struct aws_mqtt5_packet_publish_view *publish_view = packet;
+
+    /* send a PUBACK? */
+    if (publish_view->qos == AWS_MQTT5_QOS_AT_LEAST_ONCE) {
+        struct aws_mqtt5_packet_puback_view puback_view = {
+            .packet_id = publish_view->packet_id,
+            .reason_code = AWS_MQTT5_PARC_SUCCESS,
+        };
+
+        if (aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBACK, &puback_view)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    /* unmarshal the payload as json */
+    payload_json = aws_json_value_new_from_string(allocator, publish_view->payload);
+    if (payload_json == NULL) {
+        goto done;
+    }
+
+    /* 'topic' field is where we should publish to */
+    struct aws_json_value *topic_value =
+        aws_json_value_get_from_object(payload_json, aws_byte_cursor_from_c_str("topic"));
+    if (topic_value == NULL || !aws_json_value_is_string(topic_value)) {
+        goto done;
+    }
+
+    struct aws_byte_cursor topic;
+    AWS_ZERO_STRUCT(topic);
+    if (aws_json_value_get_string(topic_value, &topic)) {
+        goto done;
+    }
+
+    /* 'token' field is the correlation token we should reflect */
+    struct aws_json_value *token_value =
+        aws_json_value_get_from_object(payload_json, aws_byte_cursor_from_c_str("token"));
+    if (token_value == NULL || !aws_json_value_is_string(token_value)) {
+        goto done;
+    }
+
+    struct aws_byte_cursor token;
+    AWS_ZERO_STRUCT(token);
+    if (aws_json_value_get_string(token_value, &token)) {
+        goto done;
+    }
+
+    /* build the json response blob */
+    char response_buffer[512];
+    snprintf(
+        response_buffer, AWS_ARRAY_SIZE(response_buffer), "{\"token\":\"" PRInSTR "\"}", AWS_BYTE_CURSOR_PRI(token));
+
+    /* build the response publish packet */
+    struct aws_mqtt5_packet_publish_view response_publish_view = {
+        .qos = AWS_MQTT5_QOS_AT_MOST_ONCE,
+        .topic = topic,
+        .payload = aws_byte_cursor_from_c_str(response_buffer),
+    };
+
+    result = aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &response_publish_view);
+
+done:
+
+    aws_json_value_destroy(payload_json);
+    aws_json_value_destroy(response_json);
+
+    if (result == AWS_OP_ERR) {
+        aws_raise_error(AWS_ERROR_UNKNOWN);
+    }
+
+    return result;
+}
+
+static int s_init_fixture_request_operation_success(
+    struct aws_rr_client_test_fixture *fixture,
+    struct mqtt5_client_test_options *client_test_options,
+    struct aws_allocator *allocator,
+    modify_fixture_options_fn *config_modifier,
+    void *user_data) {
+
+    aws_mqtt5_client_test_init_default_options(client_test_options);
+
+    client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        aws_mqtt5_server_send_suback_on_subscribe;
+    client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
+        aws_mqtt5_mock_server_handle_publish_json_request;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options client_test_fixture_options = {
+        .client_options = &client_test_options->client_options,
+        .server_function_table = &client_test_options->server_function_table,
+        .mock_server_user_data = user_data,
+    };
+
+    struct aws_mqtt_request_response_client_options rr_client_options = {
+        .max_subscriptions = 2,
+        .operation_timeout_seconds = 20000,
+    };
+
+    if (config_modifier != NULL) {
+        (*config_modifier)(&rr_client_options, client_test_options);
+    }
+
+    ASSERT_SUCCESS(s_aws_rr_client_test_fixture_init_from_mqtt5(
+        fixture, allocator, &rr_client_options, &client_test_fixture_options, NULL));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrc_test_submit_test_request(
+    struct aws_rr_client_test_fixture *fixture,
+    const char *topic_prefix,
+    struct aws_byte_cursor record_key,
+    const char *response_topic,
+    const char *token) {
+
+    char path1_buffer[128];
+    snprintf(path1_buffer, AWS_ARRAY_SIZE(path1_buffer), "%s/accepted", topic_prefix);
+    char path2_buffer[128];
+    snprintf(path2_buffer, AWS_ARRAY_SIZE(path2_buffer), "%s/rejected", topic_prefix);
+
+    struct aws_mqtt_request_operation_response_path response_paths[] = {
+        {
+            .topic = aws_byte_cursor_from_c_str(path1_buffer),
+            .correlation_token_json_path = aws_byte_cursor_from_c_str("token"),
+        },
+        {
+            .topic = aws_byte_cursor_from_c_str(path2_buffer),
+            .correlation_token_json_path = aws_byte_cursor_from_c_str("token"),
+        },
+    };
+
+    char subscription_buffer[128];
+    snprintf(subscription_buffer, AWS_ARRAY_SIZE(subscription_buffer), "%s/+", topic_prefix);
+
+    char publish_topic_buffer[128];
+    snprintf(publish_topic_buffer, AWS_ARRAY_SIZE(publish_topic_buffer), "%s/publish", topic_prefix);
+
+    char request_buffer[512];
+    snprintf(
+        request_buffer, AWS_ARRAY_SIZE(request_buffer), "{\"token\":\"%s\",\"topic\":\"%s\"}", token, response_topic);
+
+    struct aws_mqtt_request_operation_options request = {
+        .subscription_topic_filter = aws_byte_cursor_from_c_str(subscription_buffer),
+        .response_paths = response_paths,
+        .response_path_count = AWS_ARRAY_SIZE(response_paths),
+        .publish_topic = aws_byte_cursor_from_c_str(publish_topic_buffer),
+        .serialized_request = aws_byte_cursor_from_c_str(request_buffer),
+        .correlation_token = aws_byte_cursor_from_c_str(token),
+    };
+
+    struct aws_rr_client_fixture_request_response_record *record =
+        s_rrc_fixture_add_request_record(fixture, record_key);
+
+    request.completion_callback = s_rrc_fixture_request_completion_callback;
+    request.user_data = record;
+
+    return aws_mqtt_request_response_client_submit_request(fixture->rr_client, &request);
+}
+
+static int s_rrc_request_response_success_response_path1_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
+
+    struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(&fixture, "test", record_key, "test/accepted", "token1"));
+
+    s_rrc_wait_on_request_completion(&fixture, record_key);
+
+    struct aws_byte_cursor expected_payload = aws_byte_cursor_from_c_str("{\"token\":\"token1\"}");
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(&fixture, record_key, AWS_ERROR_SUCCESS, &expected_payload));
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrc_request_response_success_response_path1, s_rrc_request_response_success_response_path1_fn)
