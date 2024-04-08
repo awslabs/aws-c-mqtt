@@ -195,6 +195,11 @@ AWS_MQTT_API void aws_rr_subscription_manager_init(
 AWS_MQTT_API void aws_rr_subscription_manager_clean_up(struct aws_rr_subscription_manager *manager);
 
 /*
+ * Requests the the subscription manager unsubscribe from all currently-unused subscriptions
+ */
+AWS_MQTT_API void aws_rr_subscription_manager_purge_unused(struct aws_rr_subscription_manager *manager);
+
+/*
  * Signals to the subscription manager that the native request-response client is processing an operation that
  * needs a subscription to a particular topic.  Return value indicates to the request-response client how it should
  * proceed with processing the operation.

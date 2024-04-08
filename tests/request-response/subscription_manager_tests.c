@@ -2131,13 +2131,8 @@ static int s_do_purge_test(struct aws_allocator *allocator, enum aws_rr_subscrip
     ASSERT_TRUE(s_contains_subscription_event_records(&fixture, 1, expected_empty_subscription_events));
     ASSERT_FALSE(s_contains_subscription_event_records(&fixture, 1, expected_unsubscribe_events));
 
-    // unsubscribe is lazy, so we need to trigger it by acquiring something else
-    struct aws_rr_acquire_subscription_options acquire3_options = {
-        .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
-        .operation_id = 3,
-    };
-    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
+    // purge
+    aws_rr_subscription_manager_purge_unused(manager);
 
     // now the unsubscribe should be present
     ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));

@@ -26,15 +26,26 @@ enum aws_mqtt_request_response_operation_type {
 };
 
 enum aws_mqtt_request_response_operation_state {
-    AWS_MRROS_NONE,                 // creation -> in event loop enqueue
-    AWS_MRROS_QUEUED,               // in event loop queue -> non blocked response from subscription manager
-    AWS_MRROS_PENDING_SUBSCRIPTION, // subscribing response from sub manager -> subscription success/failure event
-    AWS_MRROS_PENDING_RESPONSE,     // (request only) subscription success -> (publish failure OR correlated response
-                                    // received)
-    AWS_MRROS_SUBSCRIBED, // (streaming only) subscription success -> (operation finished OR subscription ended event)
-    AWS_MRROS_TERMINAL,   // (streaming only) (subscription failure OR subscription ended) -> operation close/terminate
-    AWS_MRROS_PENDING_DESTROY, // (request only) the operation's destroy task has been scheduled but not yet
-                               // executed
+    /* creation -> in event loop enqueue */
+    AWS_MRROS_NONE,
+
+    /* in event loop queue -> non blocked response from subscription manager */
+    AWS_MRROS_QUEUED,
+
+    /* subscribing response from sub manager -> subscription success/failure event */
+    AWS_MRROS_PENDING_SUBSCRIPTION,
+
+    /* (request only) subscription success -> (publish failure OR correlated response received) */
+    AWS_MRROS_PENDING_RESPONSE,
+
+    /* (streaming only) subscription success -> (operation finished OR subscription ended event) */
+    AWS_MRROS_SUBSCRIBED,
+
+    /* (streaming only) (subscription failure OR subscription ended) -> operation close/terminate */
+    AWS_MRROS_TERMINAL,
+
+    /* (request only) the operation's destroy task has been scheduled but not yet executed */
+    AWS_MRROS_PENDING_DESTROY,
 };
 
 const char *s_aws_mqtt_request_response_operation_state_to_c_str(enum aws_mqtt_request_response_operation_state state) {
@@ -98,7 +109,7 @@ Client Tables/Lookups
     2. &topic -> &{topic, topic_buffer, correlation token json path buffer} // ref-counted, per-message-path add on
     request dequeue into subscribing/subscribed state, decref/removed on operation completion/destruction
 
-    (Request correlation token -> request operation)
+    (CorrelationToken -> request operation)
     3. &operation.correlation token -> (request) &operation // added on request dequeue into subscribing/subscribed
 state, removed on operation completion/destruction
 
@@ -190,214 +201,6 @@ static void s_aws_rr_response_path_entry_destroy(struct aws_rr_response_path_ent
 static void s_aws_rr_response_path_table_hash_element_destroy(void *value) {
     s_aws_rr_response_path_entry_destroy(value);
 }
-
-/* All operations have an internal ref to the client they are a part of */
-
-/*
- SubmitRequestOperation(options) [Anywhere]:
-
- Validate options
- Allocate id
- Create operation with ref count == 2
- Submit cross-thread task
-
- */
-
-/*
- CreateStreamingOperation(options) [Anywhere]:
-
- Validate options
- Allocate id
- Create operation with ref count == 2
- Submit cross-thread task
- Return (ref-counted) operation
-
- */
-
-/*
- OperationSubmissionThreadTask(operation) [Event Loop, top-level task]:
-
- Add to client.operations table
- (Request) Add message paths to client.paths table if no exist or different value
- Add to client's timeout priority queue
- Add operation to end of client.operation_queue list
- operation.state <- QUEUED
- WakeServiceTask
- operation.decref (2 -> 1)
-
- */
-
-/*
- CompleteRequestOperation(operation, payload, error_code) [Event Loop]:
-
- if operation.state != PENDING_DESTROY
-     CompletionCallback(payload, error_code)
-     operation.state <- PENDING_DESTROY
-     operation.decref // schedules destroy task
- */
-
-/*
- OnOperationZeroRefCount(operation) [Anywhere]:
-
- Schedule operation's destroy task on client event loop
- */
-
-/*
- WakeServiceTask(client) [Event Loop]:
-
- If client.state == ACTIVE && client.connected
-    RescheduleServiceTask(now)
- */
-
-/*
- OperationDestroyTask(operation) [Event Loop, top-level task]:
-
- Remove from client.operations
- Remove from (client) intrusive list
- Remove from client's timeout priority queue
- if operation.type == REQUEST
-    Remove from client's correlation token table
-    Zero publish completion weak ref wrapper around operation
-    dec-ref weak-ref-operation-wrapper
- Check client's topic filter table entry for empty list, remove entry if so. (intrusive list removal already unlinked it
- from table) If client is not shutting down remove from subscription manager (otherwise it's already been cleaned up)
-
- client.subscription_manager.release_subscription(operation.topic_filter)
- WakeServiceTask // queue may now be unblocked, does nothing if shutting down
- (Streaming) Invoke termination callback
- Release client internal ref
-
- */
-
-/*
- OnIncomingPublish(publish) [Event Loop]:
-
- if client.state != ACTIVE
-    // If shutting down, request operations are all in PENDING_DESTROY
-    // If initializing, publish cannot be relevant
-    return
-
- If publish.topic in client's topic filter table
-    for all streaming operations in list
-       if operation.state == SUBSCRIBED
-          invoke publish received callback
-
- If publish.topic in paths table:
-    If correlation token extraction success
-        If operation entry exists in correlation token table
-            CompleteRequestOperation(operation, payload) // Complete does nothing if the operation is being killed
- */
-
-/*
- OnProtocolAdapterConnectionEvent(event) [Event Loop]:
-
- client.connected <- event.connected
- client.subscription_manager.notify(event)
- WakeServiceTask
- */
-
-/*
- OnPublishCompletion(result, userdata) [Event Loop, Direct From Protocol Adapter, Operation as UserData]:
-
- weak-ref-operation-wrapper = userdata
- if weak-ref-operation-wrapper can be resolved to an operation:
-    If result is error
-        CompleteRequestOperation(operation, error)
-
- dec-ref weak-ref-operation-wrapper
- */
-
-/*
- MakeRequest(operation) [Event Loop]:
-
- operation.state <- SUBSCRIBED
- if !client.connected
-    return
-
- // Critical Requirement - the user data for the publish completion callback must be a weak ref that wraps
- // the operation.  On operation destruction, we zero the weak ref (and dec ref it).
- operation.state <- AWAITING_RESPONSE
- if publish fails synchronously
-    CompleteRequestOperation(operation, error)
- */
-
-/*
- RequestOperationOnSubscriptionStatusEvent(operation, event) [Event loop, top-level task loop]:
-
- If event.type == SUBSCRIBE_SUCCESS and operation.state == SUBSCRIBING
-    MakeRequest(operation)
-
- If event.type == {SUBSCRIBE_FAILURE, ENDED}
-    CompleteRequestOperation(failure)
- */
-
-/*
- StreamingOperationOnSubscriptionStatusEvent(operation, event) [Event loop, top-level task loop]:
-
- If event.type == Success
-    Emit SubscriptionEstablished
- Else If event.type == Lost
-    Emit SubscriptionLost
- Else if event.type == Halted
-    operation.state <- TERMINAL
-    Emit SubscriptionHalted
-
- */
-
-/*
- HandleAcquireSubscriptionResult(operation, result) [Event Loop, Service Task Loop]:
-
- // invariant, BLOCKED is not possible, it was already handled
- If result == {No Capacity, Failure}
-    If operation is streaming
-       Invoke failure callback
-       operation.state <- TERMINAL
-    else
-       CompleteRequestOperation(operation, error)
-    return
-
- // invariant, must be SUBSCRIBING or SUBSCRIBED at this point
- Add operation to client's topic filter table
-
- If operation is streaming
-    Add operation to topic filter table
-    operation.state <- {SUBSCRIBING, SUBSCRIBED}
-
- If operation is request
-    if result == SUBSCRIBING
-       operation.state <- SUBSCRIBING
-    else // (SUBSCRIBED)
-       MakeRequest(op)
- */
-
-/*
- Service task [Event Loop]:
-
- For all timed out operations:
-    OnOperationTimeout(operation)
-
- if client connected
-
-     For all request operations where state == SUBSCRIBED
-        MakeRequest(operation)
-
-     While OperationQueue is not empty:
-        operation = peek queue
-        result = subscription manager acquire sub(operation)
-        if result == Blocked
-           break
-        pop operation
-        HandleAcquireSubscriptionResult(operation, result)
-
- Reschedule Service for next timeout if it exists
- */
-
-/*
- OnOperationTimeout(operation) [Event Loop, Service Task Loop, operation is request]:
-
- CompleteRequestOperation(operation, error)
-
- */
 
 struct aws_mqtt_rr_client_operation {
     struct aws_allocator *allocator;
@@ -1643,6 +1446,8 @@ static bool s_can_operation_dequeue(
 }
 
 static void s_process_queued_operations(struct aws_mqtt_request_response_client *client) {
+    aws_rr_subscription_manager_purge_unused(&client->subscription_manager);
+
     while (!aws_linked_list_empty(&client->operation_queue)) {
         struct aws_linked_list_node *head = aws_linked_list_front(&client->operation_queue);
         struct aws_mqtt_rr_client_operation *head_operation =
@@ -1995,6 +1800,13 @@ static void s_remove_operation_from_client_tables(struct aws_mqtt_rr_client_oper
     }
 
     struct aws_mqtt_request_response_client *client = operation->client_internal_ref;
+
+    aws_hash_table_remove(
+        &client->operations_by_correlation_tokens,
+        &operation->storage.request_storage.options.correlation_token,
+        NULL,
+        NULL);
+
     struct aws_array_list *paths = &operation->storage.request_storage.operation_response_paths;
     size_t path_count = aws_array_list_length(paths);
     for (size_t i = 0; i < path_count; ++i) {
