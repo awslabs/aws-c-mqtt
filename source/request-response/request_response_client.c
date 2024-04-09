@@ -6,6 +6,7 @@
 #include <aws/mqtt/request-response/request_response_client.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/json.h>
 #include <aws/common/ref_count.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
@@ -17,6 +18,7 @@
 #include <inttypes.h>
 
 #define MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE 50
+#define MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE 50
 
 enum aws_mqtt_request_response_operation_type {
     AWS_MRROT_REQUEST,
@@ -24,15 +26,26 @@ enum aws_mqtt_request_response_operation_type {
 };
 
 enum aws_mqtt_request_response_operation_state {
-    AWS_MRROS_NONE,                 // creation -> in event loop enqueue
-    AWS_MRROS_QUEUED,               // in event loop queue -> non blocked response from subscription manager
-    AWS_MRROS_PENDING_SUBSCRIPTION, // subscribing response from sub manager -> subscription success/failure event
-    AWS_MRROS_PENDING_RESPONSE,     // (request only) subscription success -> (publish failure OR correlated response
-                                    // received)
-    AWS_MRROS_SUBSCRIBED, // (streaming only) subscription success -> (operation finished OR subscription ended event)
-    AWS_MRROS_TERMINAL,   // (streaming only) (subscription failure OR subscription ended) -> operation close/terminate
-    AWS_MRROS_PENDING_DESTROY, // (request only) the operation's destroy task has been scheduled but not yet
-                               // executed
+    /* creation -> in event loop enqueue */
+    AWS_MRROS_NONE,
+
+    /* in event loop queue -> non blocked response from subscription manager */
+    AWS_MRROS_QUEUED,
+
+    /* subscribing response from sub manager -> subscription success/failure event */
+    AWS_MRROS_PENDING_SUBSCRIPTION,
+
+    /* (request only) subscription success -> (publish failure OR correlated response received) */
+    AWS_MRROS_PENDING_RESPONSE,
+
+    /* (streaming only) subscription success -> (operation finished OR subscription ended event) */
+    AWS_MRROS_SUBSCRIBED,
+
+    /* (streaming only) (subscription failure OR subscription ended) -> operation close/terminate */
+    AWS_MRROS_TERMINAL,
+
+    /* (request only) the operation's destroy task has been scheduled but not yet executed */
+    AWS_MRROS_PENDING_DESTROY,
 };
 
 const char *s_aws_mqtt_request_response_operation_state_to_c_str(enum aws_mqtt_request_response_operation_state state) {
@@ -92,22 +105,17 @@ Client Tables/Lookups
     (Authoritative operation container)
     1. &operation.id -> &operation // added on in-thread enqueue, removed on operation completion/destruction
 
-    (Response topic -> Correlation token extraction info)
-    2. &topic -> &{topic, topic_buffer, correlation token json path buffer} // per-message-path add/replace on in-thread
-enqueue, removed on client destruction
+    (Response path topic -> Correlation token extraction info)
+    2. &topic -> &{topic, topic_buffer, correlation token json path buffer} // ref-counted, per-message-path add on
+    request dequeue into subscribing/subscribed state, decref/removed on operation completion/destruction
 
-    (Correlation token -> request operation)
-    3. &operation.correlation token -> (request) &operation // added on in-thread request op move to awaiting response
+    (CorrelationToken -> request operation)
+    3. &operation.correlation token -> (request) &operation // added on request dequeue into subscribing/subscribed
 state, removed on operation completion/destruction
 
-    (Subscription filter -> all operations using that filter)
-    4. &topic_filter -> &{topic_filter, linked_list} // added on in-thread pop from queue, removed from list on
-operation completion/destruction also checked for empty and removed from table
-
-    Note: 4 tracks both streaming and request-response operations but each uses the table in different ways.  Both use
-    the table to react to subscription status events to move the operation forward state-wise.  Additionally,
-    streaming operations use the table to map incoming publishes to listening streaming operations.  OTOH, request
-    operations use table 2 and then 3 to map incoming publishes to operations.
+    (Streaming subscription filter -> list of all operations using that filter)
+    4. &topic_filter -> &{topic_filter, linked_list} // added on request dequeue into subscribing/subscribed state,
+    removed from list on operation completion/destruction also checked for empty and removed from table
 
 */
 
@@ -152,213 +160,47 @@ static void s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy(void
     s_aws_rr_operation_list_topic_filter_entry_destroy(value);
 }
 
-/* All operations have an internal ref to the client they are a part of */
+struct aws_rr_response_path_entry {
+    struct aws_allocator *allocator;
 
-/*
- SubmitRequestOperation(options) [Anywhere]:
+    size_t ref_count;
 
- Validate options
- Allocate id
- Create operation with ref count == 2
- Submit cross-thread task
+    struct aws_byte_cursor topic_cursor;
+    struct aws_byte_buf topic;
 
- */
+    struct aws_byte_buf correlation_token_json_path;
+};
 
-/*
- CreateStreamingOperation(options) [Anywhere]:
+static struct aws_rr_response_path_entry *s_aws_rr_response_path_entry_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor topic,
+    struct aws_byte_cursor correlation_token_json_path) {
+    struct aws_rr_response_path_entry *entry = aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_response_path_entry));
 
- Validate options
- Allocate id
- Create operation with ref count == 2
- Submit cross-thread task
- Return (ref-counted) operation
+    entry->allocator = allocator;
+    entry->ref_count = 1;
+    aws_byte_buf_init_copy_from_cursor(&entry->topic, allocator, topic);
+    entry->topic_cursor = aws_byte_cursor_from_buf(&entry->topic);
 
- */
+    aws_byte_buf_init_copy_from_cursor(&entry->correlation_token_json_path, allocator, correlation_token_json_path);
 
-/*
- OperationSubmissionThreadTask(operation) [Event Loop, top-level task]:
+    return entry;
+}
 
- Add to client.operations table
- (Request) Add message paths to client.paths table if no exist or different value
- Add to client's timeout priority queue
- Add operation to end of client.operation_queue list
- operation.state <- QUEUED
- WakeServiceTask
- operation.decref (2 -> 1)
+static void s_aws_rr_response_path_entry_destroy(struct aws_rr_response_path_entry *entry) {
+    if (entry == NULL) {
+        return;
+    }
 
- */
+    aws_byte_buf_clean_up(&entry->topic);
+    aws_byte_buf_clean_up(&entry->correlation_token_json_path);
 
-/*
- CompleteRequestOperation(operation, payload, error_code) [Event Loop]:
+    aws_mem_release(entry->allocator, entry);
+}
 
- if operation.state != PENDING_DESTROY
-     CompletionCallback(payload, error_code)
-     operation.state <- PENDING_DESTROY
-     operation.decref // schedules destroy task
- */
-
-/*
- OnOperationZeroRefCount(operation) [Anywhere]:
-
- Schedule operation's destroy task on client event loop
- */
-
-/*
- WakeServiceTask(client) [Event Loop]:
-
- If client.state == ACTIVE && client.connected
-    RescheduleServiceTask(now)
- */
-
-/*
- OperationDestroyTask(operation) [Event Loop, top-level task]:
-
- Remove from client.operations
- Remove from (client) intrusive list
- Remove from client's timeout priority queue
- if operation.type == REQUEST
-    Remove from client's correlation token table
-    Zero publish completion weak ref wrapper around operation
-    dec-ref weak-ref-operation-wrapper
- Check client's topic filter table entry for empty list, remove entry if so. (intrusive list removal already unlinked it
- from table) If client is not shutting down remove from subscription manager (otherwise it's already been cleaned up)
-
- client.subscription_manager.release_subscription(operation.topic_filter)
- WakeServiceTask // queue may now be unblocked, does nothing if shutting down
- (Streaming) Invoke termination callback
- Release client internal ref
-
- */
-
-/*
- OnIncomingPublish(publish) [Event Loop]:
-
- if client.state != ACTIVE
-    // If shutting down, request operations are all in PENDING_DESTROY
-    // If initializing, publish cannot be relevant
-    return
-
- If publish.topic in client's topic filter table
-    for all streaming operations in list
-       if operation.state == SUBSCRIBED
-          invoke publish received callback
-
- If publish.topic in paths table:
-    If correlation token extraction success
-        If operation entry exists in correlation token table
-            CompleteRequestOperation(operation, payload) // Complete does nothing if the operation is being killed
- */
-
-/*
- OnProtocolAdapterConnectionEvent(event) [Event Loop]:
-
- client.connected <- event.connected
- client.subscription_manager.notify(event)
- WakeServiceTask
- */
-
-/*
- OnPublishCompletion(result, userdata) [Event Loop, Direct From Protocol Adapter, Operation as UserData]:
-
- weak-ref-operation-wrapper = userdata
- if weak-ref-operation-wrapper can be resolved to an operation:
-    If result is error
-        CompleteRequestOperation(operation, error)
-
- dec-ref weak-ref-operation-wrapper
- */
-
-/*
- MakeRequest(operation) [Event Loop]:
-
- operation.state <- SUBSCRIBED
- if !client.connected
-    return
-
- // Critical Requirement - the user data for the publish completion callback must be a weak ref that wraps
- // the operation.  On operation destruction, we zero the weak ref (and dec ref it).
- operation.state <- AWAITING_RESPONSE
- if publish fails synchronously
-    CompleteRequestOperation(operation, error)
- */
-
-/*
- RequestOperationOnSubscriptionStatusEvent(operation, event) [Event loop, top-level task loop]:
-
- If event.type == SUBSCRIBE_SUCCESS and operation.state == SUBSCRIBING
-    MakeRequest(operation)
-
- If event.type == {SUBSCRIBE_FAILURE, ENDED}
-    CompleteRequestOperation(failure)
- */
-
-/*
- StreamingOperationOnSubscriptionStatusEvent(operation, event) [Event loop, top-level task loop]:
-
- If event.type == Success
-    Emit SubscriptionEstablished
- Else If event.type == Lost
-    Emit SubscriptionLost
- Else if event.type == Halted
-    operation.state <- TERMINAL
-    Emit SubscriptionHalted
-
- */
-
-/*
- HandleAcquireSubscriptionResult(operation, result) [Event Loop, Service Task Loop]:
-
- // invariant, BLOCKED is not possible, it was already handled
- If result == {No Capacity, Failure}
-    If operation is streaming
-       Invoke failure callback
-       operation.state <- TERMINAL
-    else
-       CompleteRequestOperation(operation, error)
-    return
-
- // invariant, must be SUBSCRIBING or SUBSCRIBED at this point
- Add operation to client's topic filter table
-
- If operation is streaming
-    Add operation to topic filter table
-    operation.state <- {SUBSCRIBING, SUBSCRIBED}
-
- If operation is request
-    if result == SUBSCRIBING
-       operation.state <- SUBSCRIBING
-    else // (SUBSCRIBED)
-       MakeRequest(op)
- */
-
-/*
- Service task [Event Loop]:
-
- For all timed out operations:
-    OnOperationTimeout(operation)
-
- if client connected
-
-     For all request operations where state == SUBSCRIBED
-        MakeRequest(operation)
-
-     While OperationQueue is not empty:
-        operation = peek queue
-        result = subscription manager acquire sub(operation)
-        if result == Blocked
-           break
-        pop operation
-        HandleAcquireSubscriptionResult(operation, result)
-
- Reschedule Service for next timeout if it exists
- */
-
-/*
- OnOperationTimeout(operation) [Event Loop, Service Task Loop, operation is request]:
-
- CompleteRequestOperation(operation, error)
-
- */
+static void s_aws_rr_response_path_table_hash_element_destroy(void *value) {
+    s_aws_rr_response_path_entry_destroy(value);
+}
 
 struct aws_mqtt_rr_client_operation {
     struct aws_allocator *allocator;
@@ -402,6 +244,8 @@ struct aws_mqtt_rr_client_operation {
     struct aws_linked_list_node node;
 
     enum aws_mqtt_request_response_operation_state state;
+
+    bool in_client_tables;
 
     struct aws_task submit_task;
     struct aws_task destroy_task;
@@ -484,7 +328,23 @@ struct aws_mqtt_request_response_client {
      */
     struct aws_priority_queue operations_by_timeout;
 
-    struct aws_hash_table operation_lists_by_subscription_filter;
+    /*
+     * Map from cursor (topic filter) -> list of streaming operations using that filter
+     */
+    struct aws_hash_table streaming_operation_subscription_lists;
+
+    /*
+     * Map from cursor (topic) -> request response path (topic, correlation token json path)
+     *
+     * We don't garbage collect this table over the course of normal client operation.  We only clean it up
+     * when the client is shutting down.
+     */
+    struct aws_hash_table request_response_paths;
+
+    /*
+     * Map from cursor (correlation token) -> request operation
+     */
+    struct aws_hash_table operations_by_correlation_tokens;
 };
 
 struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_acquire_internal(
@@ -527,7 +387,9 @@ static void s_mqtt_request_response_client_final_destroy(struct aws_mqtt_request
     aws_hash_table_clean_up(&client->operations);
 
     aws_priority_queue_clean_up(&client->operations_by_timeout);
-    aws_hash_table_clean_up(&client->operation_lists_by_subscription_filter);
+    aws_hash_table_clean_up(&client->streaming_operation_subscription_lists);
+    aws_hash_table_clean_up(&client->request_response_paths);
+    aws_hash_table_clean_up(&client->operations_by_correlation_tokens);
 
     aws_mem_release(client->allocator, client);
 
@@ -598,7 +460,7 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
     void *user_data = operation->storage.request_storage.options.user_data;
 
     if (completion_callback != NULL) {
-        (*completion_callback)(NULL, error_code, user_data);
+        (*completion_callback)(NULL, NULL, error_code, user_data);
     }
 
     s_change_operation_state(operation, AWS_MRROS_PENDING_DESTROY);
@@ -720,6 +582,93 @@ static void s_mqtt_request_response_client_wake_service(struct aws_mqtt_request_
     }
 }
 
+struct aws_rrc_incomplete_publish {
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt_request_response_client *rr_client;
+
+    uint64_t operation_id;
+};
+
+static void s_aws_rrc_incomplete_publish_destroy(struct aws_rrc_incomplete_publish *user_data) {
+    if (user_data == NULL) {
+        return;
+    }
+
+    aws_mqtt_request_response_client_release_internal(user_data->rr_client);
+
+    aws_mem_release(user_data->allocator, user_data);
+}
+
+static void s_on_request_publish_completion(int error_code, void *userdata) {
+    struct aws_rrc_incomplete_publish *publish_user_data = userdata;
+
+    if (error_code != AWS_ERROR_SUCCESS) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response operation %" PRIu64 " failed publish step due to error %d(%s)",
+            (void *)publish_user_data->rr_client,
+            publish_user_data->operation_id,
+            error_code,
+            aws_error_debug_str(error_code));
+
+        struct aws_hash_element *element = NULL;
+        if (aws_hash_table_find(
+                &publish_user_data->rr_client->operations, &publish_user_data->operation_id, &element) ==
+                AWS_OP_SUCCESS &&
+            element != NULL) {
+            struct aws_mqtt_rr_client_operation *operation = element->value;
+            s_complete_request_operation_with_failure(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_PUBLISH_FAILURE);
+        }
+    }
+
+    s_aws_rrc_incomplete_publish_destroy(publish_user_data);
+}
+
+static void s_make_mqtt_request(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_mqtt_rr_client_operation *operation) {
+    (void)client;
+
+    AWS_FATAL_ASSERT(operation->type == AWS_MRROT_REQUEST);
+
+    struct aws_mqtt_request_operation_options *request_options = &operation->storage.request_storage.options;
+
+    struct aws_rrc_incomplete_publish *publish_user_data =
+        aws_mem_calloc(client->allocator, 1, sizeof(struct aws_rrc_incomplete_publish));
+    publish_user_data->allocator = client->allocator;
+    publish_user_data->rr_client = aws_mqtt_request_response_client_acquire_internal(client);
+    publish_user_data->operation_id = operation->id;
+
+    struct aws_protocol_adapter_publish_options publish_options = {
+        .topic = request_options->publish_topic,
+        .payload = request_options->serialized_request,
+        .ack_timeout_seconds = client->config.operation_timeout_seconds,
+        .completion_callback_fn = s_on_request_publish_completion,
+        .user_data = publish_user_data,
+    };
+
+    if (aws_mqtt_protocol_adapter_publish(client->client_adapter, &publish_options)) {
+        int error_code = aws_last_error();
+
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response operation %" PRIu64 " synchronously failed publish step due to error %d(%s)",
+            (void *)publish_user_data->rr_client,
+            publish_user_data->operation_id,
+            error_code,
+            aws_error_debug_str(error_code));
+        s_complete_request_operation_with_failure(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_PUBLISH_FAILURE);
+        goto error;
+    }
+
+    return;
+
+error:
+
+    s_aws_rrc_incomplete_publish_destroy(publish_user_data);
+}
+
 struct aws_rr_subscription_status_event_task {
     struct aws_allocator *allocator;
 
@@ -741,6 +690,30 @@ static void s_aws_rr_subscription_status_event_task_delete(struct aws_rr_subscri
     aws_mqtt_request_response_client_release_internal(task->rr_client);
 
     aws_mem_release(task->allocator, task);
+}
+
+static void s_on_request_operation_subscription_status_event(
+    struct aws_mqtt_rr_client_operation *operation,
+    struct aws_byte_cursor topic_filter,
+    enum aws_rr_subscription_event_type event_type) {
+    (void)topic_filter;
+
+    switch (event_type) {
+        case ARRSET_REQUEST_SUBSCRIBE_FAILURE:
+        case ARRSET_REQUEST_SUBSCRIPTION_ENDED:
+            s_complete_request_operation_with_failure(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_SUBSCRIBE_FAILURE);
+            break;
+
+        case ARRSET_REQUEST_SUBSCRIBE_SUCCESS:
+            if (operation->state == AWS_MRROS_PENDING_SUBSCRIPTION) {
+                s_change_operation_state(operation, AWS_MRROS_PENDING_RESPONSE);
+                s_make_mqtt_request(operation->client_internal_ref, operation);
+            }
+            break;
+
+        default:
+            AWS_FATAL_ASSERT(false);
+    }
 }
 
 static void s_on_streaming_operation_subscription_status_event(
@@ -799,7 +772,8 @@ static void s_handle_subscription_status_event_task(struct aws_task *task, void 
         case ARRSET_REQUEST_SUBSCRIBE_SUCCESS:
         case ARRSET_REQUEST_SUBSCRIBE_FAILURE:
         case ARRSET_REQUEST_SUBSCRIPTION_ENDED:
-            /* NYI */
+            s_on_request_operation_subscription_status_event(
+                operation, aws_byte_cursor_from_buf(&event_task->topic_filter), event_task->type);
             break;
 
         case ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED:
@@ -913,6 +887,139 @@ static void s_apply_publish_to_streaming_operation_list(
     }
 }
 
+static void s_complete_operation_with_correlation_token(
+    struct aws_mqtt_request_response_client *rr_client,
+    struct aws_byte_cursor correlation_token,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
+    struct aws_hash_element *hash_element = NULL;
+
+    if (aws_hash_table_find(&rr_client->operations_by_correlation_tokens, &correlation_token, &hash_element)) {
+        return;
+    }
+
+    if (hash_element == NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+            "' and correlation token '" PRInSTR "' does not have an originating request entry",
+            (void *)rr_client,
+            AWS_BYTE_CURSOR_PRI(publish_event->topic),
+            AWS_BYTE_CURSOR_PRI(correlation_token));
+        return;
+    }
+
+    struct aws_mqtt_rr_client_operation *operation = hash_element->value;
+    AWS_FATAL_ASSERT(operation->type == AWS_MRROT_REQUEST);
+
+    if (operation->state == AWS_MRROS_PENDING_DESTROY) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response operation %" PRIu64 " cannot be completed, already in pending destruction state",
+            (void *)operation->client_internal_ref,
+            operation->id);
+        return;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response operation %" PRIu64 " completed successfully",
+        (void *)operation->client_internal_ref,
+        operation->id);
+
+    aws_mqtt_request_operation_completion_fn *completion_callback =
+        operation->storage.request_storage.options.completion_callback;
+    void *user_data = operation->storage.request_storage.options.user_data;
+
+    if (completion_callback != NULL) {
+        (*completion_callback)(&publish_event->topic, &publish_event->payload, AWS_ERROR_SUCCESS, user_data);
+    }
+
+    s_change_operation_state(operation, AWS_MRROS_PENDING_DESTROY);
+
+    aws_mqtt_rr_client_operation_release(operation);
+}
+
+static void s_apply_publish_to_response_path_entry(
+    struct aws_mqtt_request_response_client *rr_client,
+    struct aws_rr_response_path_entry *entry,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
+
+    struct aws_json_value *json_payload = NULL;
+
+    struct aws_byte_cursor correlation_token;
+    AWS_ZERO_STRUCT(correlation_token);
+    struct aws_byte_cursor correlation_token_json_path = aws_byte_cursor_from_buf(&entry->correlation_token_json_path);
+    if (correlation_token_json_path.len > 0) {
+        json_payload = aws_json_value_new_from_string(rr_client->allocator, publish_event->payload);
+        if (json_payload == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                "' could not be deserialized into JSON",
+                (void *)rr_client,
+                AWS_BYTE_CURSOR_PRI(publish_event->topic));
+            return;
+        }
+
+        struct aws_byte_cursor segment;
+        AWS_ZERO_STRUCT(segment);
+
+        struct aws_json_value *correlation_token_entry = json_payload;
+        while (aws_byte_cursor_next_split(&correlation_token_json_path, '.', &segment)) {
+            if (!aws_json_value_is_object(correlation_token_entry)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                    "' unable to walk correlation token path '" PRInSTR "'",
+                    (void *)rr_client,
+                    AWS_BYTE_CURSOR_PRI(publish_event->topic),
+                    AWS_BYTE_CURSOR_PRI(correlation_token_json_path));
+                goto done;
+            }
+
+            correlation_token_entry = aws_json_value_get_from_object(correlation_token_entry, segment);
+            if (correlation_token_entry == NULL) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                    "' could not find path segment '" PRInSTR "'",
+                    (void *)rr_client,
+                    AWS_BYTE_CURSOR_PRI(publish_event->topic),
+                    AWS_BYTE_CURSOR_PRI(segment));
+                goto done;
+            }
+        }
+
+        if (!aws_json_value_is_string(correlation_token_entry)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                "' token entry is not a string",
+                (void *)rr_client,
+                AWS_BYTE_CURSOR_PRI(publish_event->topic));
+            goto done;
+        }
+
+        if (aws_json_value_get_string(correlation_token_entry, &correlation_token)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: request-response client incoming publish on response path topic '" PRInSTR
+                "' failed to extract string from token entry",
+                (void *)rr_client,
+                AWS_BYTE_CURSOR_PRI(publish_event->topic));
+            goto done;
+        }
+    }
+
+    s_complete_operation_with_correlation_token(rr_client, correlation_token, publish_event);
+
+done:
+
+    if (json_payload != NULL) {
+        aws_json_value_destroy(json_payload);
+    }
+}
+
 static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     void *user_data) {
@@ -928,20 +1035,31 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
     /* Streaming operation handling */
     struct aws_hash_element *subscription_filter_element = NULL;
     if (aws_hash_table_find(
-            &rr_client->operation_lists_by_subscription_filter, &publish_event->topic, &subscription_filter_element) ==
-        AWS_OP_SUCCESS) {
-        if (subscription_filter_element != NULL) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: request-response client incoming publish on topic '" PRInSTR "'",
-                (void *)rr_client,
-                AWS_BYTE_CURSOR_PRI(publish_event->topic));
+            &rr_client->streaming_operation_subscription_lists, &publish_event->topic, &subscription_filter_element) ==
+            AWS_OP_SUCCESS &&
+        subscription_filter_element != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches streaming topic",
+            (void *)rr_client,
+            AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
-            s_apply_publish_to_streaming_operation_list(subscription_filter_element->value, publish_event);
-        }
+        s_apply_publish_to_streaming_operation_list(subscription_filter_element->value, publish_event);
     }
 
-    /* Request-Response handling NYI */
+    /* Request-Response handling */
+    struct aws_hash_element *response_path_element = NULL;
+    if (aws_hash_table_find(&rr_client->request_response_paths, &publish_event->topic, &response_path_element) ==
+            AWS_OP_SUCCESS &&
+        response_path_element != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches response path",
+            (void *)rr_client,
+            AWS_BYTE_CURSOR_PRI(publish_event->topic));
+
+        s_apply_publish_to_response_path_entry(rr_client, response_path_element->value, publish_event);
+    }
 }
 
 static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data) {
@@ -1039,13 +1157,31 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         s_compare_rr_operation_timeouts);
 
     aws_hash_table_init(
-        &rr_client->operation_lists_by_subscription_filter,
+        &rr_client->streaming_operation_subscription_lists,
         allocator,
         MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
         aws_hash_byte_cursor_ptr,
         aws_mqtt_byte_cursor_hash_equality,
         NULL,
         s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy);
+
+    aws_hash_table_init(
+        &rr_client->request_response_paths,
+        allocator,
+        MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE,
+        aws_hash_byte_cursor_ptr,
+        aws_mqtt_byte_cursor_hash_equality,
+        NULL,
+        s_aws_rr_response_path_table_hash_element_destroy);
+
+    aws_hash_table_init(
+        &rr_client->operations_by_correlation_tokens,
+        allocator,
+        MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
+        aws_hash_byte_cursor_ptr,
+        aws_mqtt_byte_cursor_hash_equality,
+        NULL,
+        NULL);
 
     aws_linked_list_init(&rr_client->operation_queue);
 
@@ -1144,24 +1280,24 @@ static bool s_is_operation_in_list(const struct aws_mqtt_rr_client_operation *op
     return aws_linked_list_node_prev_is_valid(&operation->node) && aws_linked_list_node_next_is_valid(&operation->node);
 }
 
-static int s_add_operation_to_subscription_topic_filter_table(
+static int s_add_streaming_operation_to_subscription_topic_filter_table(
     struct aws_mqtt_request_response_client *client,
     struct aws_mqtt_rr_client_operation *operation) {
 
     struct aws_byte_cursor topic_filter_cursor = s_aws_mqtt_rr_operation_get_subscription_topic_filter(operation);
 
     struct aws_hash_element *element = NULL;
-    if (aws_hash_table_find(&client->operation_lists_by_subscription_filter, &topic_filter_cursor, &element)) {
+    if (aws_hash_table_find(&client->streaming_operation_subscription_lists, &topic_filter_cursor, &element)) {
         return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
     }
 
     struct aws_rr_operation_list_topic_filter_entry *entry = NULL;
     if (element == NULL) {
         entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
-        aws_hash_table_put(&client->operation_lists_by_subscription_filter, &entry->topic_filter_cursor, entry, NULL);
+        aws_hash_table_put(&client->streaming_operation_subscription_lists, &entry->topic_filter_cursor, entry, NULL);
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client adding topic filter '" PRInSTR "' to subscriptions table",
+            "id=%p: request-response client adding topic filter '" PRInSTR "' to streaming subscriptions table",
             (void *)client,
             AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
     } else {
@@ -1176,8 +1312,8 @@ static int s_add_operation_to_subscription_topic_filter_table(
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: request-response client adding operation %" PRIu64 " to subscription table with topic_filter '" PRInSTR
-        "'",
+        "id=%p: request-response client adding streaming operation %" PRIu64
+        " to streaming subscription table with topic_filter '" PRInSTR "'",
         (void *)client,
         operation->id,
         AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
@@ -1187,14 +1323,68 @@ static int s_add_operation_to_subscription_topic_filter_table(
     return AWS_OP_SUCCESS;
 }
 
-static void s_make_mqtt_request(
+static int s_add_request_operation_to_response_path_table(
     struct aws_mqtt_request_response_client *client,
     struct aws_mqtt_rr_client_operation *operation) {
-    (void)client;
 
-    AWS_FATAL_ASSERT(operation->type == AWS_MRROT_REQUEST);
+    struct aws_array_list *paths = &operation->storage.request_storage.operation_response_paths;
+    size_t path_count = aws_array_list_length(paths);
+    for (size_t i = 0; i < path_count; ++i) {
+        struct aws_mqtt_request_operation_response_path path;
+        aws_array_list_get_at(paths, &path, i);
 
-    // TODO: NYI
+        struct aws_hash_element *element = NULL;
+        if (aws_hash_table_find(&client->request_response_paths, &path.topic, &element)) {
+            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        }
+
+        if (element != NULL) {
+            struct aws_rr_response_path_entry *entry = element->value;
+            ++entry->ref_count;
+            continue;
+        }
+
+        struct aws_rr_response_path_entry *entry =
+            s_aws_rr_response_path_entry_new(client->allocator, path.topic, path.correlation_token_json_path);
+        if (aws_hash_table_put(&client->request_response_paths, &entry->topic_cursor, entry, NULL)) {
+            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_add_request_operation_to_correlation_token_table(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_mqtt_rr_client_operation *operation) {
+
+    return aws_hash_table_put(
+        &client->operations_by_correlation_tokens,
+        &operation->storage.request_storage.options.correlation_token,
+        operation,
+        NULL);
+}
+
+static int s_add_in_progress_operation_to_tracking_tables(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_mqtt_rr_client_operation *operation) {
+    if (operation->type == AWS_MRROT_STREAMING) {
+        if (s_add_streaming_operation_to_subscription_topic_filter_table(client, operation)) {
+            return AWS_OP_ERR;
+        }
+    } else {
+        if (s_add_request_operation_to_response_path_table(client, operation)) {
+            return AWS_OP_ERR;
+        }
+
+        if (s_add_request_operation_to_correlation_token_table(client, operation)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    operation->in_client_tables = true;
+
+    return AWS_OP_SUCCESS;
 }
 
 static void s_handle_operation_subscribe_result(
@@ -1209,7 +1399,7 @@ static void s_handle_operation_subscribe_result(
         return;
     }
 
-    if (s_add_operation_to_subscription_topic_filter_table(client, operation)) {
+    if (s_add_in_progress_operation_to_tracking_tables(client, operation)) {
         s_request_response_fail_operation(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
         return;
     }
@@ -1237,11 +1427,35 @@ static enum aws_rr_subscription_type s_rr_operation_type_to_subscription_type(
     return ARRST_EVENT_STREAM;
 }
 
+static bool s_can_operation_dequeue(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_mqtt_rr_client_operation *operation) {
+    if (operation->type != AWS_MRROT_REQUEST) {
+        return true;
+    }
+
+    struct aws_hash_element *token_element = NULL;
+    if (aws_hash_table_find(
+            &client->operations_by_correlation_tokens,
+            &operation->storage.request_storage.options.correlation_token,
+            &token_element)) {
+        return false;
+    }
+
+    return token_element == NULL;
+}
+
 static void s_process_queued_operations(struct aws_mqtt_request_response_client *client) {
+    aws_rr_subscription_manager_purge_unused(&client->subscription_manager);
+
     while (!aws_linked_list_empty(&client->operation_queue)) {
         struct aws_linked_list_node *head = aws_linked_list_front(&client->operation_queue);
         struct aws_mqtt_rr_client_operation *head_operation =
             AWS_CONTAINER_OF(head, struct aws_mqtt_rr_client_operation, node);
+
+        if (!s_can_operation_dequeue(client, head_operation)) {
+            break;
+        }
 
         struct aws_rr_acquire_subscription_options subscribe_options = {
             .topic_filter = s_aws_mqtt_rr_operation_get_subscription_topic_filter(head_operation),
@@ -1467,20 +1681,6 @@ static bool s_are_request_operation_options_valid(
                 AWS_BYTE_CURSOR_PRI(path->topic));
             return false;
         }
-
-        if (path->correlation_token_json_path.len == 0) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "(%p) rr client request options - empty correlation token json path",
-                (void *)client);
-            return false;
-        }
-    }
-
-    if (request_options->correlation_token.len == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_REQUEST_RESPONSE, "(%p) rr client request options - empty correlation token", (void *)client);
-        return false;
     }
 
     if (!aws_mqtt_is_valid_topic(&request_options->publish_topic)) {
@@ -1554,8 +1754,6 @@ static void s_mqtt_rr_client_submit_operation(struct aws_task *task, void *arg, 
     // add appropriate client table entries
     aws_hash_table_put(&client->operations, &operation->id, operation, NULL);
 
-    // NYI other tables
-
     // add to timeout priority queue
     if (operation->type == AWS_MRROT_REQUEST) {
         aws_priority_queue_push_ref(
@@ -1592,6 +1790,60 @@ static void s_aws_mqtt_request_operation_storage_clean_up(struct aws_mqtt_reques
     aws_byte_buf_clean_up(&storage->operation_data);
 }
 
+static void s_remove_operation_from_client_tables(struct aws_mqtt_rr_client_operation *operation) {
+    if (operation->type != AWS_MRROT_REQUEST) {
+        return;
+    }
+
+    if (!operation->in_client_tables) {
+        return;
+    }
+
+    struct aws_mqtt_request_response_client *client = operation->client_internal_ref;
+
+    aws_hash_table_remove(
+        &client->operations_by_correlation_tokens,
+        &operation->storage.request_storage.options.correlation_token,
+        NULL,
+        NULL);
+
+    struct aws_array_list *paths = &operation->storage.request_storage.operation_response_paths;
+    size_t path_count = aws_array_list_length(paths);
+    for (size_t i = 0; i < path_count; ++i) {
+        struct aws_mqtt_request_operation_response_path path;
+        aws_array_list_get_at(paths, &path, i);
+
+        struct aws_hash_element *element = NULL;
+        if (aws_hash_table_find(&client->request_response_paths, &path.topic, &element) || element == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: internal state error removing reference to response path for topic " PRInSTR,
+                (void *)client,
+                AWS_BYTE_CURSOR_PRI(path.topic));
+            continue;
+        }
+
+        struct aws_rr_response_path_entry *entry = element->value;
+        --entry->ref_count;
+
+        if (entry->ref_count == 0) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: removing last reference to response path for topic " PRInSTR,
+                (void *)client,
+                AWS_BYTE_CURSOR_PRI(path.topic));
+            aws_hash_table_remove(&client->request_response_paths, &path.topic, NULL, NULL);
+        } else {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: removing reference to response path for topic " PRInSTR ", %zu references remain",
+                (void *)client,
+                AWS_BYTE_CURSOR_PRI(path.topic),
+                entry->ref_count);
+        }
+    }
+}
+
 static void s_mqtt_rr_client_destroy_operation(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     (void)status;
@@ -1614,12 +1866,7 @@ static void s_mqtt_rr_client_destroy_operation(struct aws_task *task, void *arg,
         aws_rr_subscription_manager_release_subscription(&client->subscription_manager, &release_options);
     }
 
-    /*
-     NYI:
-
-     Remove from correlation token table
-
-     */
+    s_remove_operation_from_client_tables(operation);
 
     aws_mqtt_request_response_client_release_internal(operation->client_internal_ref);
 

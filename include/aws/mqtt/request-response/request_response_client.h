@@ -19,8 +19,11 @@ struct aws_mqtt_request_operation_response_path {
     struct aws_byte_cursor correlation_token_json_path;
 };
 
-typedef void(
-    aws_mqtt_request_operation_completion_fn)(struct aws_byte_cursor *payload, int error_code, void *user_data);
+typedef void(aws_mqtt_request_operation_completion_fn)(
+    const struct aws_byte_cursor *response_topic,
+    const struct aws_byte_cursor *payload,
+    int error_code,
+    void *user_data);
 
 struct aws_mqtt_request_operation_options {
     struct aws_byte_cursor subscription_topic_filter;

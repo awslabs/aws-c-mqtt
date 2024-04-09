@@ -251,6 +251,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR,
                 "Request operation failed due to a non-specific internal error within the client."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_REQUEST_RESPONSE_PUBLISH_FAILURE,
+                "Request-response operation failed because the associated publish failed synchronously."),
 
         };
 /* clang-format on */

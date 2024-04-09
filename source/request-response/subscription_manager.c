@@ -290,7 +290,7 @@ static void s_add_listener_to_subscription_record(struct aws_rr_subscription_rec
         aws_hash_table_get_entry_count(&record->listeners));
 }
 
-static int s_rr_subscription_cull_unused_subscriptions_wrapper(void *context, struct aws_hash_element *elem) {
+static int s_rr_subscription_purge_unused_subscriptions_wrapper(void *context, struct aws_hash_element *elem) {
     struct aws_rr_subscription_record *record = elem->value;
     struct aws_rr_subscription_manager *manager = context;
 
@@ -318,10 +318,10 @@ static int s_rr_subscription_cull_unused_subscriptions_wrapper(void *context, st
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
 
-static void s_cull_unused_subscriptions(struct aws_rr_subscription_manager *manager) {
+void aws_rr_subscription_manager_purge_unused(struct aws_rr_subscription_manager *manager) {
     AWS_LOGF_DEBUG(
-        AWS_LS_MQTT_REQUEST_RESPONSE, "request-response subscription manager - culling unused subscriptions");
-    aws_hash_table_foreach(&manager->subscriptions, s_rr_subscription_cull_unused_subscriptions_wrapper, manager);
+        AWS_LS_MQTT_REQUEST_RESPONSE, "request-response subscription manager - purging unused subscriptions");
+    aws_hash_table_foreach(&manager->subscriptions, s_rr_subscription_purge_unused_subscriptions_wrapper, manager);
 }
 
 static const char *s_rr_subscription_event_type_to_c_str(enum aws_rr_subscription_event_type type) {
@@ -455,8 +455,6 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
 
     // is no subscription present?
     if (existing_record == NULL) {
-        s_cull_unused_subscriptions(manager);
-
         // is the budget used up?
         struct aws_subscription_stats stats;
         s_get_subscription_stats(manager, &stats);
@@ -738,7 +736,7 @@ void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
             s_apply_session_lost(manager);
         }
 
-        s_cull_unused_subscriptions(manager);
+        aws_rr_subscription_manager_purge_unused(manager);
         s_activate_idle_subscriptions(manager);
     } else {
         AWS_LOGF_DEBUG(
