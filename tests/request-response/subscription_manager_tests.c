@@ -942,13 +942,7 @@ static int s_rrsm_release_unsubscribes_request_fn(struct aws_allocator *allocato
     aws_rr_subscription_manager_release_subscription(manager, &release2_options);
     ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
 
-    // unsubscribe is lazy, so we need to trigger it by acquiring something else
-    struct aws_rr_acquire_subscription_options acquire3_options = {
-        .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
-        .operation_id = 3,
-    };
-    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
+    aws_rr_subscription_manager_purge_unused(manager);
 
     // now the unsubscribe should be present
     ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
@@ -1034,13 +1028,7 @@ static int s_rrsm_release_unsubscribes_streaming_fn(struct aws_allocator *alloca
     aws_rr_subscription_manager_release_subscription(manager, &release2_options);
     ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
 
-    // unsubscribe is lazy, so we need to trigger it by acquiring something else
-    struct aws_rr_acquire_subscription_options acquire3_options = {
-        .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
-        .operation_id = 3,
-    };
-    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
+    aws_rr_subscription_manager_purge_unused(manager);
 
     // now the unsubscribe should be present
     ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
@@ -1101,7 +1089,7 @@ static int s_rrsm_do_unsubscribe_test(struct aws_allocator *allocator, bool shou
     aws_rr_subscription_manager_release_subscription(manager, &release1_options);
 
     // unsubscribe should be visible, but we're still blocked because it hasn't completed
-    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+    aws_rr_subscription_manager_purge_unused(manager);
     struct aws_protocol_adapter_api_record expected_unsubscribe = {
         .type = PAAT_UNSUBSCRIBE,
         .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
@@ -1116,6 +1104,8 @@ static int s_rrsm_do_unsubscribe_test(struct aws_allocator *allocator, bool shou
         .error_code = should_succeed ? AWS_ERROR_SUCCESS : AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION,
     };
     aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_unsubscribe_event);
+
+    aws_rr_subscription_manager_purge_unused(manager);
 
     // a successful unsubscribe should clear space, a failed one should not
     ASSERT_INT_EQUALS(
@@ -1893,13 +1883,7 @@ static int s_rrsm_do_no_session_subscription_ended_test(
         ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
 
         // trigger an event that would cull unused subscriptions, causing an unsubscribe
-        struct aws_rr_acquire_subscription_options acquire3_options = {
-            .type = ARRST_REQUEST_RESPONSE,
-            .topic_filter = aws_byte_cursor_from_c_str("hello/world3"),
-            .operation_id = 2,
-        };
-        ASSERT_INT_EQUALS(
-            AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
+        aws_rr_subscription_manager_purge_unused(manager);
 
         // now the unsubscribe should be present
         ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));

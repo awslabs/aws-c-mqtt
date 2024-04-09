@@ -2219,6 +2219,18 @@ int aws_mqtt5_mock_server_handle_publish_json_request(
         aws_json_value_get_string(token_value, &token);
     }
 
+    /* 'reflection' field is an optional field we should reflect.  Used to ensure proper correlation on requests that
+     * don't use correlation tokens */
+    struct aws_byte_cursor reflection;
+    AWS_ZERO_STRUCT(reflection);
+
+    struct aws_json_value *reflection_value =
+        aws_json_value_get_from_object(payload_json, aws_byte_cursor_from_c_str("reflection"));
+    if (reflection_value != NULL) {
+        AWS_FATAL_ASSERT(aws_json_value_is_string(reflection_value));
+        aws_json_value_get_string(reflection_value, &reflection);
+    }
+
     /* 'directive' field indicates how the response handler should behave */
     struct aws_json_value *directive_value =
         aws_json_value_get_from_object(payload_json, aws_byte_cursor_from_c_str("directive"));
@@ -2268,17 +2280,29 @@ int aws_mqtt5_mock_server_handle_publish_json_request(
         case RRC_PHDT_FAILURE_MISMATCHED_CORRELATION_TOKEN:
             snprintf(response_buffer, AWS_ARRAY_SIZE(response_buffer), "{\"token\":\"NotTheToken\"}");
             break;
-        default:
+        default: {
+            int bytes_used = snprintf(response_buffer, AWS_ARRAY_SIZE(response_buffer), "{");
             if (token.len > 0) {
-                snprintf(
-                    response_buffer,
-                    AWS_ARRAY_SIZE(response_buffer),
-                    "{\"token\":\"" PRInSTR "\"}",
+                bytes_used += snprintf(
+                    response_buffer + bytes_used,
+                    AWS_ARRAY_SIZE(response_buffer) - bytes_used,
+                    "\"token\":\"" PRInSTR "\"",
                     AWS_BYTE_CURSOR_PRI(token));
-            } else {
-                snprintf(response_buffer, AWS_ARRAY_SIZE(response_buffer), "{}");
             }
+            if (reflection.len > 0) {
+                if (token.len > 0) {
+                    bytes_used +=
+                        snprintf(response_buffer + bytes_used, AWS_ARRAY_SIZE(response_buffer) - bytes_used, ",");
+                }
+                bytes_used += snprintf(
+                    response_buffer + bytes_used,
+                    AWS_ARRAY_SIZE(response_buffer) - bytes_used,
+                    "\"reflection\":\"" PRInSTR "\"",
+                    AWS_BYTE_CURSOR_PRI(reflection));
+            }
+            snprintf(response_buffer + bytes_used, AWS_ARRAY_SIZE(response_buffer) - bytes_used, "}");
             break;
+        }
     }
 
     /* build the response publish packet */
@@ -2322,7 +2346,7 @@ static int s_init_fixture_request_operation_success(
 
     struct aws_mqtt_request_response_client_options rr_client_options = {
         .max_subscriptions = 2,
-        .operation_timeout_seconds = 20000,
+        .operation_timeout_seconds = 2,
     };
 
     if (config_modifier != NULL) {
@@ -2341,7 +2365,8 @@ static int s_rrc_test_submit_test_request(
     const char *topic_prefix,
     struct aws_byte_cursor record_key,
     const char *response_topic,
-    const char *token) {
+    const char *token,
+    const char *reflection) {
 
     char path1_buffer[128];
     snprintf(path1_buffer, AWS_ARRAY_SIZE(path1_buffer), "%s/accepted", topic_prefix);
@@ -2371,22 +2396,28 @@ static int s_rrc_test_submit_test_request(
     snprintf(publish_topic_buffer, AWS_ARRAY_SIZE(publish_topic_buffer), "%s/publish", topic_prefix);
 
     char request_buffer[512];
+    int used_bytes = snprintf(
+        request_buffer,
+        AWS_ARRAY_SIZE(request_buffer),
+        "{\"topic\":\"%s\",\"directive\":%d",
+        response_topic,
+        (int)test_directive);
+
     if (token != NULL) {
-        snprintf(
-            request_buffer,
-            AWS_ARRAY_SIZE(request_buffer),
-            "{\"token\":\"%s\",\"topic\":\"%s\",\"directive\":%d}",
-            token,
-            response_topic,
-            (int)test_directive);
-    } else {
-        snprintf(
-            request_buffer,
-            AWS_ARRAY_SIZE(request_buffer),
-            "{\"topic\":\"%s\",\"directive\":%d}",
-            response_topic,
-            (int)test_directive);
+        used_bytes += snprintf(
+            request_buffer + used_bytes, AWS_ARRAY_SIZE(request_buffer) - used_bytes, ",\"token\":\"%s\"", token);
     }
+
+    if (reflection != NULL) {
+        used_bytes += snprintf(
+            request_buffer + used_bytes,
+            AWS_ARRAY_SIZE(request_buffer) - used_bytes,
+            ",\"reflection\":\"%s\"",
+            reflection);
+    }
+
+    snprintf(request_buffer + used_bytes, AWS_ARRAY_SIZE(request_buffer) - used_bytes, "}");
+
     struct aws_mqtt_request_operation_options request = {
         .subscription_topic_filter = aws_byte_cursor_from_c_str(subscription_buffer),
         .response_paths = response_paths,
@@ -2415,8 +2446,8 @@ static int s_rrc_request_response_success_response_path_accepted_fn(struct aws_a
     ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
-    ASSERT_SUCCESS(
-        s_rrc_test_submit_test_request(&fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1"));
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1", NULL));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2446,8 +2477,8 @@ static int s_rrc_request_response_success_response_path_rejected_fn(struct aws_a
     ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
-    ASSERT_SUCCESS(
-        s_rrc_test_submit_test_request(&fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/rejected", "token5"));
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/rejected", "token5", NULL));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2478,7 +2509,7 @@ static int s_rrc_request_response_failure_puback_reason_code_fn(struct aws_alloc
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_PUBACK_REASON_CODE, "test", record_key, "test/accepted", "token1"));
+        &fixture, RRC_PHDT_FAILURE_PUBACK_REASON_CODE, "test", record_key, "test/accepted", "token1", NULL));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2505,7 +2536,7 @@ static int s_rrc_request_response_failure_invalid_payload_fn(struct aws_allocato
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_BAD_PAYLOAD_FORMAT, "test", record_key, "test/accepted", "token1"));
+        &fixture, RRC_PHDT_FAILURE_BAD_PAYLOAD_FORMAT, "test", record_key, "test/accepted", "token1", NULL));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2532,7 +2563,7 @@ static int s_rrc_request_response_failure_missing_correlation_token_fn(struct aw
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_MISSING_CORRELATION_TOKEN, "test", record_key, "test/accepted", "token1"));
+        &fixture, RRC_PHDT_FAILURE_MISSING_CORRELATION_TOKEN, "test", record_key, "test/accepted", "token1", NULL));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2563,7 +2594,7 @@ static int s_rrc_request_response_failure_invalid_correlation_token_type_fn(
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_BAD_CORRELATION_TOKEN_TYPE, "test", record_key, "test/accepted", "token1"));
+        &fixture, RRC_PHDT_FAILURE_BAD_CORRELATION_TOKEN_TYPE, "test", record_key, "test/accepted", "token1", NULL));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2594,7 +2625,7 @@ static int s_rrc_request_response_failure_non_matching_correlation_token_fn(
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_MISMATCHED_CORRELATION_TOKEN, "test", record_key, "test/accepted", "token1"));
+        &fixture, RRC_PHDT_FAILURE_MISMATCHED_CORRELATION_TOKEN, "test", record_key, "test/accepted", "token1", NULL));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2623,7 +2654,7 @@ static int s_rrc_request_response_success_empty_correlation_token_fn(struct aws_
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(
-        s_rrc_test_submit_test_request(&fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", NULL));
+        s_rrc_test_submit_test_request(&fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", NULL, NULL));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2654,7 +2685,7 @@ static int s_rrc_request_response_success_empty_correlation_token_sequence_fn(
     struct aws_rr_client_test_fixture fixture;
     ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
 
-    for (size_t i = 0; i < 2; ++i) {
+    for (size_t i = 0; i < 20; ++i) {
         char key_buffer[128];
         snprintf(key_buffer, AWS_ARRAY_SIZE(key_buffer), "testkey%zu", i);
         struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str(key_buffer);
@@ -2666,10 +2697,10 @@ static int s_rrc_request_response_success_empty_correlation_token_sequence_fn(
         snprintf(response_topic_buffer, AWS_ARRAY_SIZE(response_topic_buffer), "test%zu/accepted", i);
 
         ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-            &fixture, RRC_PHDT_SUCCESS, prefix_buffer, record_key, response_topic_buffer, NULL));
+            &fixture, RRC_PHDT_SUCCESS, prefix_buffer, record_key, response_topic_buffer, NULL, NULL));
     }
 
-    for (size_t i = 0; i < 2; ++i) {
+    for (size_t i = 0; i < 20; ++i) {
         char key_buffer[128];
         snprintf(key_buffer, AWS_ARRAY_SIZE(key_buffer), "testkey%zu", i);
         struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str(key_buffer);
@@ -2695,3 +2726,151 @@ static int s_rrc_request_response_success_empty_correlation_token_sequence_fn(
 AWS_TEST_CASE(
     rrc_request_response_success_empty_correlation_token_sequence,
     s_rrc_request_response_success_empty_correlation_token_sequence_fn)
+
+struct rrc_multi_test_operation {
+    const char *prefix;
+    const char *token;
+    const char *reflection;
+};
+
+static int s_do_rrc_operation_sequence_test(
+    struct aws_rr_client_test_fixture *fixture,
+    size_t operation_count,
+    struct rrc_multi_test_operation *operations) {
+    for (size_t i = 0; i < operation_count; ++i) {
+
+        struct rrc_multi_test_operation *operation = &operations[i];
+
+        char key_buffer[128];
+        snprintf(key_buffer, AWS_ARRAY_SIZE(key_buffer), "testkey%zu", i);
+        struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str(key_buffer);
+
+        char response_topic_buffer[128];
+        snprintf(response_topic_buffer, AWS_ARRAY_SIZE(response_topic_buffer), "%s/accepted", operation->prefix);
+
+        ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+            fixture,
+            RRC_PHDT_SUCCESS,
+            operation->prefix,
+            record_key,
+            response_topic_buffer,
+            operation->token,
+            operation->reflection));
+    }
+
+    for (size_t i = 0; i < operation_count; ++i) {
+
+        struct rrc_multi_test_operation *operation = &operations[i];
+
+        char key_buffer[128];
+        snprintf(key_buffer, AWS_ARRAY_SIZE(key_buffer), "testkey%zu", i);
+        struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str(key_buffer);
+
+        char response_topic_buffer[128];
+        snprintf(response_topic_buffer, AWS_ARRAY_SIZE(response_topic_buffer), "%s/accepted", operation->prefix);
+
+        s_rrc_wait_on_request_completion(fixture, record_key);
+
+        struct aws_byte_cursor expected_response_topic = aws_byte_cursor_from_c_str(response_topic_buffer);
+        struct aws_byte_cursor expected_payload;
+        AWS_ZERO_STRUCT(expected_payload);
+        char payload_buffer[256];
+        int bytes_used = snprintf(payload_buffer, AWS_ARRAY_SIZE(payload_buffer), "{");
+        if (operation->token != NULL) {
+            bytes_used += snprintf(
+                payload_buffer + bytes_used,
+                AWS_ARRAY_SIZE(payload_buffer) - bytes_used,
+                "\"token\":\"%s\"",
+                operation->token);
+            if (operation->reflection != NULL) {
+                bytes_used += snprintf(payload_buffer + bytes_used, AWS_ARRAY_SIZE(payload_buffer) - bytes_used, ",");
+            }
+        }
+        if (operation->reflection != NULL) {
+            bytes_used += snprintf(
+                payload_buffer + bytes_used,
+                AWS_ARRAY_SIZE(payload_buffer) - bytes_used,
+                "\"reflection\":\"%s\"",
+                operation->reflection);
+        }
+        snprintf(payload_buffer + bytes_used, AWS_ARRAY_SIZE(payload_buffer) - bytes_used, "}");
+
+        expected_payload = aws_byte_cursor_from_c_str(payload_buffer);
+        ASSERT_SUCCESS(s_rrc_verify_request_completion(
+            fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_rrc_request_response_multi_operation_sequence_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
+
+    struct rrc_multi_test_operation request_sequence[] = {
+        {
+            .prefix = "test",
+            .token = "token1",
+        },
+        {
+            .prefix = "test",
+            .token = "token2",
+        },
+        {
+            .prefix = "test2",
+            .token = "token3",
+        },
+        {
+            .prefix = "whatthe",
+            .token = "hey",
+            .reflection = "something",
+        },
+        {
+            .prefix = "test",
+            .token = "token4",
+        },
+        {
+            .prefix = "test2",
+            .token = "token5",
+        },
+        {
+            .prefix = "provision",
+            .reflection = "provision1",
+        },
+        {
+            .prefix = "provision",
+            .reflection = "provision2",
+        },
+        {
+            .prefix = "create-keys-and-cert",
+            .reflection = "create-keys1",
+        },
+        {
+            .prefix = "test",
+            .token = "token6",
+        },
+        {
+            .prefix = "test2",
+            .token = "token7",
+        },
+        {
+            .prefix = "provision",
+            .reflection = "provision3",
+        },
+    };
+
+    ASSERT_SUCCESS(s_do_rrc_operation_sequence_test(&fixture, AWS_ARRAY_SIZE(request_sequence), request_sequence));
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrc_request_response_multi_operation_sequence, s_rrc_request_response_multi_operation_sequence_fn)
