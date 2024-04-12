@@ -1825,6 +1825,7 @@ static void s_aws_mqtt_streaming_operation_storage_clean_up(struct aws_mqtt_stre
 
 static void s_aws_mqtt_request_operation_storage_clean_up(struct aws_mqtt_request_operation_storage *storage) {
     aws_array_list_clean_up(&storage->operation_response_paths);
+    aws_array_list_clean_up(&storage->subscription_topic_filters);
     aws_byte_buf_clean_up(&storage->operation_data);
 }
 
@@ -2017,6 +2018,8 @@ void s_aws_mqtt_request_operation_storage_init_from_options(
 
         aws_array_list_push_back(&storage->subscription_topic_filters, &subscription_topic_filter);
     }
+
+    storage->options.subscription_topic_filters = storage->subscription_topic_filters.data;
 
     for (size_t i = 0; i < request_options->response_path_count; ++i) {
         struct aws_mqtt_request_operation_response_path response_path = request_options->response_paths[i];

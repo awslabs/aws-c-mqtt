@@ -455,16 +455,18 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
     for (size_t i = 0; i < options->topic_filter_count; ++i) {
         struct aws_byte_cursor topic_filter = options->topic_filters[i];
         struct aws_rr_subscription_record *existing_record = s_get_subscription_record(manager, topic_filter);
-        if (existing_record != NULL) {
-            if (existing_record->poisoned) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_MQTT_REQUEST_RESPONSE,
-                    "request-response subscription manager - acquire subscription for ('" PRInSTR
-                    "'), operation %" PRIu64 " failed - existing subscription is poisoned and has not been released",
-                    AWS_BYTE_CURSOR_PRI(topic_filter),
-                    options->operation_id);
-                return AASRT_FAILURE;
-            }
+        if (existing_record == NULL) {
+            continue;
+        }
+
+        if (existing_record->poisoned) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+                " failed - existing subscription is poisoned and has not been released",
+                AWS_BYTE_CURSOR_PRI(topic_filter),
+                options->operation_id);
+            return AASRT_FAILURE;
         }
 
         if (existing_record->type != options->type) {

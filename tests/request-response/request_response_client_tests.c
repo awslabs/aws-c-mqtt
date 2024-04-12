@@ -309,7 +309,7 @@ static struct aws_rr_client_fixture_streaming_record *s_rrc_fixture_add_streamin
     struct aws_rr_client_fixture_streaming_record *record =
         s_aws_rr_client_fixture_streaming_record_new(fixture->allocator, fixture, key);
 
-    aws_hash_table_put(&fixture->streaming_records, &record->record_key, record, NULL);
+    aws_hash_table_put(&fixture->streaming_records, &record->record_key_cursor, record, NULL);
 
     return record;
 }
@@ -539,7 +539,8 @@ static int s_aws_rr_client_test_fixture_init_from_mqtt5(
     }
 
     struct aws_mqtt_request_response_client_options client_options = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = 5,
     };
 
@@ -597,7 +598,8 @@ static int s_aws_rr_client_test_fixture_init_from_mqtt311(
     aws_test311_setup_mqtt_server_fn(allocator, &fixture->client_test_fixture.mqtt311_test_fixture);
 
     struct aws_mqtt_request_response_client_options client_options = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = 5,
     };
 
@@ -707,6 +709,12 @@ static int s_rrc_mqtt311_create_destroy_fn(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(rrc_mqtt311_create_destroy, s_rrc_mqtt311_create_destroy_fn)
 
+static char s_response_filter_wildcard[] = "response/filter/+";
+static struct aws_byte_cursor s_response_filter_wildcard_cursor = {
+    .ptr = (uint8_t *)s_response_filter_wildcard,
+    .len = AWS_ARRAY_SIZE(s_response_filter_wildcard) - 1,
+};
+
 static int s_rrc_do_submit_request_operation_failure_test(
     struct aws_allocator *allocator,
     void (*request_mutator_fn)(struct aws_mqtt_request_operation_options *)) {
@@ -735,7 +743,8 @@ static int s_rrc_do_submit_request_operation_failure_test(
         },
     };
     struct aws_mqtt_request_operation_options good_request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str("response/filter/+"),
+        .subscription_topic_filters = &s_response_filter_wildcard_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str("get/shadow"),
@@ -801,8 +810,14 @@ AWS_TEST_CASE(
     rrc_submit_request_operation_failure_invalid_publish_topic,
     s_rrc_submit_request_operation_failure_invalid_publish_topic_fn)
 
+static char s_bad_filter[] = "a/#/c";
+static struct aws_byte_cursor s_bad_filter_cursor = {
+    .ptr = (uint8_t *)s_bad_filter,
+    .len = AWS_ARRAY_SIZE(s_bad_filter) - 1,
+};
+
 static void s_invalid_subscription_topic_filter_mutator(struct aws_mqtt_request_operation_options *request_options) {
-    request_options->subscription_topic_filter = aws_byte_cursor_from_c_str("a/#/c");
+    request_options->subscription_topic_filters = &s_bad_filter_cursor;
 }
 
 static int s_rrc_submit_request_operation_failure_invalid_subscription_topic_filter_fn(
@@ -936,7 +951,8 @@ static int s_rrc_submit_request_operation_failure_by_shutdown_fn(struct aws_allo
     };
 
     struct aws_mqtt_request_operation_options request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str("response/filter/+"),
+        .subscription_topic_filters = &s_response_filter_wildcard_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str("get/shadow"),
@@ -1047,7 +1063,8 @@ static int s_rrc_submit_request_operation_failure_by_timeout_fn(struct aws_alloc
     };
 
     struct aws_mqtt_request_operation_options request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str("response/filter/+"),
+        .subscription_topic_filters = &s_response_filter_wildcard_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str("get/shadow"),
@@ -1056,7 +1073,8 @@ static int s_rrc_submit_request_operation_failure_by_timeout_fn(struct aws_alloc
     };
 
     struct aws_mqtt_request_response_client_options rr_client_options = {
-        .max_subscriptions = 2,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 1,
         .operation_timeout_seconds = 2,
     };
 
@@ -1143,7 +1161,8 @@ static int s_init_fixture_streaming_operation_success(
     };
 
     struct aws_mqtt_request_response_client_options rr_client_options = {
-        .max_subscriptions = 2,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 1,
         .operation_timeout_seconds = 2,
     };
 
@@ -1981,6 +2000,8 @@ static int s_submit_request_operation_from_prefix(
         AWS_BYTE_CURSOR_PRI(prefix));
     snprintf(publish_topic, AWS_ARRAY_SIZE(publish_topic), PRInSTR "/get", AWS_BYTE_CURSOR_PRI(prefix));
 
+    struct aws_byte_cursor subscription_topic_filter_cursor = aws_byte_cursor_from_c_str(subscription_topic_filter);
+
     char correlation_token[128];
     struct aws_byte_buf correlation_token_buf =
         aws_byte_buf_from_empty_array(correlation_token, AWS_ARRAY_SIZE(correlation_token));
@@ -2004,7 +2025,8 @@ static int s_submit_request_operation_from_prefix(
         s_rrc_fixture_add_request_record(fixture, record_key);
 
     struct aws_mqtt_request_operation_options request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str(subscription_topic_filter),
+        .subscription_topic_filters = &subscription_topic_filter_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str(publish_topic),
@@ -2345,7 +2367,8 @@ static int s_init_fixture_request_operation_success(
     };
 
     struct aws_mqtt_request_response_client_options rr_client_options = {
-        .max_subscriptions = 2,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = 2,
     };
 
@@ -2391,6 +2414,7 @@ static int s_rrc_test_submit_test_request(
 
     char subscription_buffer[128];
     snprintf(subscription_buffer, AWS_ARRAY_SIZE(subscription_buffer), "%s/+", topic_prefix);
+    struct aws_byte_cursor subscription_buffer_cursor = aws_byte_cursor_from_c_str(subscription_buffer);
 
     char publish_topic_buffer[128];
     snprintf(publish_topic_buffer, AWS_ARRAY_SIZE(publish_topic_buffer), "%s/publish", topic_prefix);
@@ -2419,7 +2443,8 @@ static int s_rrc_test_submit_test_request(
     snprintf(request_buffer + used_bytes, AWS_ARRAY_SIZE(request_buffer) - used_bytes, "}");
 
     struct aws_mqtt_request_operation_options request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str(subscription_buffer),
+        .subscription_topic_filters = &subscription_buffer_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str(publish_topic_buffer),

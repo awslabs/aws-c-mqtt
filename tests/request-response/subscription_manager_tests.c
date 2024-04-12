@@ -651,31 +651,6 @@ static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator
 
 AWS_TEST_CASE(rrsm_acquire_existing_subscribed, s_rrsm_acquire_existing_subscribed_fn)
 
-static int s_do_acquire_blocked_test(
-    struct aws_subscription_manager_test_fixture *fixture,
-    enum aws_rr_subscription_type subscription_type) {
-    struct aws_rr_subscription_manager *manager = &fixture->subscription_manager;
-
-    struct aws_rr_acquire_subscription_options acquire1_options = {
-        .type = ARRST_REQUEST_RESPONSE,
-        .topic_filters = &s_hello_world1_cursor,
-        .topic_filter_count = 1,
-        .operation_id = 1,
-    };
-    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
-
-    // no room, but it could potentially free up in the future
-    struct aws_rr_acquire_subscription_options acquire2_options = {
-        .type = subscription_type,
-        .topic_filters = &s_hello_world2_cursor,
-        .topic_filter_count = 1,
-        .operation_id = 2,
-    };
-    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
-
-    return AWS_OP_SUCCESS;
-}
-
 /*
  * Verify: Acquiring a new request-response subscription when there is no room returns BLOCKED
  */
@@ -685,14 +660,43 @@ static int s_rrsm_acquire_blocked_rr_fn(struct aws_allocator *allocator, void *c
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_request_response_subscriptions = 1,
+        .max_request_response_subscriptions = 2,
         .max_streaming_subscriptions = 1,
         .operation_timeout_seconds = 30,
     };
     struct aws_subscription_manager_test_fixture fixture;
     ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
 
-    ASSERT_SUCCESS(s_do_acquire_blocked_test(&fixture, ARRST_REQUEST_RESPONSE));
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_SUBSCRIBING,
+        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire1_options));
+
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_SUBSCRIBING,
+        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire2_options));
+
+    // no room, but it could potentially free up in the future
+    struct aws_rr_acquire_subscription_options acquire3_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filters = &s_hello_world3_cursor,
+        .topic_filter_count = 1,
+        .operation_id = 3,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_BLOCKED,
+        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire3_options));
 
     s_aws_subscription_manager_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
@@ -711,14 +715,61 @@ static int s_rrsm_acquire_blocked_eventstream_fn(struct aws_allocator *allocator
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_request_response_subscriptions = 1,
+        .max_request_response_subscriptions = 2,
         .max_streaming_subscriptions = 1,
-        .operation_timeout_seconds = 30,
+        .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
     };
     struct aws_subscription_manager_test_fixture fixture;
     ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
 
-    ASSERT_SUCCESS(s_do_acquire_blocked_test(&fixture, ARRST_EVENT_STREAM));
+    struct aws_protocol_adapter_connection_event connected_event = {
+        .event_type = AWS_PACET_CONNECTED,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_connection_event(&fixture.subscription_manager, &connected_event);
+
+    struct aws_rr_acquire_subscription_options acquire1_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
+        .operation_id = 1,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_SUBSCRIBING,
+        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire1_options));
+
+    struct aws_protocol_adapter_subscription_event subscribe_success_event = {
+        .event_type = AWS_PASET_SUBSCRIBE,
+        .topic_filter = s_hello_world1_cursor,
+    };
+    aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
+        &fixture.subscription_manager, &subscribe_success_event);
+
+    // release and trigger an unsubscribe
+    struct aws_rr_release_subscription_options release1_options = {
+        .operation_id = 1,
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
+    };
+    aws_rr_subscription_manager_release_subscription(&fixture.subscription_manager, &release1_options);
+    aws_rr_subscription_manager_purge_unused(&fixture.subscription_manager);
+
+    struct aws_protocol_adapter_api_record expected_unsubscribe = {
+        .type = PAAT_UNSUBSCRIBE,
+        .topic_filter_cursor = s_hello_world1_cursor,
+        .timeout = DEFAULT_SM_TEST_TIMEOUT,
+    };
+    ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
+
+    // acquire while the streaming unsubscribe is in-progress should return blocked
+    struct aws_rr_acquire_subscription_options acquire2_options = {
+        .type = ARRST_EVENT_STREAM,
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
+        .operation_id = 2,
+    };
+    ASSERT_INT_EQUALS(
+        AASRT_BLOCKED,
+        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire2_options));
 
     s_aws_subscription_manager_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
