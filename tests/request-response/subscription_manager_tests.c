@@ -262,7 +262,8 @@ static void s_aws_rr_subscription_status_event_test_callback_fn(
 
 struct aws_subscription_manager_test_fixture_options {
     uint32_t operation_timeout_seconds;
-    size_t max_subscriptions;
+    size_t max_request_response_subscriptions;
+    size_t max_streaming_subscriptions;
     bool start_connected;
     const struct aws_mqtt_protocol_adapter_vtable *adapter_vtable;
 };
@@ -276,7 +277,8 @@ static int s_aws_subscription_manager_test_fixture_init(
     AWS_ZERO_STRUCT(*fixture);
 
     struct aws_subscription_manager_test_fixture_options default_options = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
         .start_connected = true,
     };
@@ -293,7 +295,8 @@ static int s_aws_subscription_manager_test_fixture_init(
         &fixture->subscription_status_records, allocator, 10, sizeof(struct aws_subscription_status_record));
 
     struct aws_rr_subscription_manager_options subscription_manager_options = {
-        .max_subscriptions = options->max_subscriptions,
+        .max_request_response_subscriptions = options->max_request_response_subscriptions,
+        .max_streaming_subscriptions = options->max_streaming_subscriptions,
         .operation_timeout_seconds = options->operation_timeout_seconds,
         .subscription_status_callback = s_aws_rr_subscription_status_event_test_callback_fn,
         .userdata = fixture};
@@ -391,6 +394,24 @@ static bool s_contains_subscription_event_sequential_records(
     return true;
 }
 
+static char s_hello_world1[] = "hello/world1";
+static struct aws_byte_cursor s_hello_world1_cursor = {
+    .ptr = (uint8_t *)s_hello_world1,
+    .len = AWS_ARRAY_SIZE(s_hello_world1) - 1,
+};
+
+static char s_hello_world2[] = "hello/world2";
+static struct aws_byte_cursor s_hello_world2_cursor = {
+    .ptr = (uint8_t *)s_hello_world2,
+    .len = AWS_ARRAY_SIZE(s_hello_world2) - 1,
+};
+
+static char s_hello_world3[] = "hello/world3";
+static struct aws_byte_cursor s_hello_world3_cursor = {
+    .ptr = (uint8_t *)s_hello_world3,
+    .len = AWS_ARRAY_SIZE(s_hello_world3) - 1,
+};
+
 /*
  * Verify: Acquiring a new subscription triggers a protocol client subscribe and returns SUBSCRIBING
  */
@@ -405,17 +426,17 @@ static int s_rrsm_acquire_subscribing_fn(struct aws_allocator *allocator, void *
     struct aws_protocol_adapter_api_record expected_subscribes[] = {
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .topic_filter_cursor = s_hello_world2_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world3"),
+            .topic_filter_cursor = s_hello_world3_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
     };
@@ -424,7 +445,8 @@ static int s_rrsm_acquire_subscribing_fn(struct aws_allocator *allocator, void *
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
@@ -432,7 +454,8 @@ static int s_rrsm_acquire_subscribing_fn(struct aws_allocator *allocator, void *
 
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
@@ -440,7 +463,8 @@ static int s_rrsm_acquire_subscribing_fn(struct aws_allocator *allocator, void *
 
     struct aws_rr_acquire_subscription_options acquire3_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world3"),
+        .topic_filters = &s_hello_world3_cursor,
+        .topic_filter_count = 1,
         .operation_id = 3,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
@@ -469,12 +493,12 @@ static int s_rrsm_acquire_existing_subscribing_fn(struct aws_allocator *allocato
     struct aws_protocol_adapter_api_record expected_subscribes[] = {
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .topic_filter_cursor = s_hello_world2_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
     };
@@ -483,7 +507,8 @@ static int s_rrsm_acquire_existing_subscribing_fn(struct aws_allocator *allocato
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
@@ -491,7 +516,8 @@ static int s_rrsm_acquire_existing_subscribing_fn(struct aws_allocator *allocato
 
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
@@ -499,7 +525,8 @@ static int s_rrsm_acquire_existing_subscribing_fn(struct aws_allocator *allocato
 
     struct aws_rr_acquire_subscription_options reacquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 3,
     };
     ASSERT_INT_EQUALS(
@@ -508,7 +535,8 @@ static int s_rrsm_acquire_existing_subscribing_fn(struct aws_allocator *allocato
 
     struct aws_rr_acquire_subscription_options reacquire2_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 4,
     };
     ASSERT_INT_EQUALS(
@@ -538,12 +566,12 @@ static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator
     struct aws_protocol_adapter_api_record expected_subscribes[] = {
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .topic_filter_cursor = s_hello_world2_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
     };
@@ -552,7 +580,8 @@ static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
@@ -560,14 +589,15 @@ static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator
 
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
     ASSERT_TRUE(s_api_records_equals(fixture.mock_protocol_adapter, 2, expected_subscribes));
 
     struct aws_protocol_adapter_subscription_event successful_subscription1_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_SUCCESS,
     };
@@ -576,18 +606,18 @@ static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator
     struct aws_subscription_status_record expected_subscription_events[] = {
         {
             .type = ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 1,
         },
         {
             .type = ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .topic_filter_cursor = s_hello_world2_cursor,
             .operation_id = 2,
         }};
     ASSERT_TRUE(s_contains_subscription_event_sequential_records(&fixture, 1, expected_subscription_events));
 
     struct aws_protocol_adapter_subscription_event successful_subscription2_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filter = s_hello_world2_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_SUCCESS,
     };
@@ -597,7 +627,8 @@ static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator
 
     struct aws_rr_acquire_subscription_options reacquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 3,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBED, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire1_options));
@@ -605,7 +636,8 @@ static int s_rrsm_acquire_existing_subscribed_fn(struct aws_allocator *allocator
 
     struct aws_rr_acquire_subscription_options reacquire2_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 4,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBED, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire2_options));
@@ -626,7 +658,8 @@ static int s_do_acquire_blocked_test(
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
@@ -634,7 +667,8 @@ static int s_do_acquire_blocked_test(
     // no room, but it could potentially free up in the future
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
@@ -651,7 +685,8 @@ static int s_rrsm_acquire_blocked_rr_fn(struct aws_allocator *allocator, void *c
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_subscriptions = 1,
+        .max_request_response_subscriptions = 1,
+        .max_streaming_subscriptions = 1,
         .operation_timeout_seconds = 30,
     };
     struct aws_subscription_manager_test_fixture fixture;
@@ -676,20 +711,12 @@ static int s_rrsm_acquire_blocked_eventstream_fn(struct aws_allocator *allocator
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_subscriptions = 2,
+        .max_request_response_subscriptions = 1,
+        .max_streaming_subscriptions = 1,
         .operation_timeout_seconds = 30,
     };
     struct aws_subscription_manager_test_fixture fixture;
     ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
-
-    struct aws_rr_acquire_subscription_options acquire1_options = {
-        .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world3"),
-        .operation_id = 3,
-    };
-    ASSERT_INT_EQUALS(
-        AASRT_SUBSCRIBING,
-        aws_rr_subscription_manager_acquire_subscription(&fixture.subscription_manager, &acquire1_options));
 
     ASSERT_SUCCESS(s_do_acquire_blocked_test(&fixture, ARRST_EVENT_STREAM));
 
@@ -706,7 +733,8 @@ static int s_do_acquire_no_capacity_test(struct aws_subscription_manager_test_fi
 
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_NO_CAPACITY, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
@@ -723,7 +751,8 @@ static int s_rrsm_acquire_no_capacity_max1_fn(struct aws_allocator *allocator, v
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_subscriptions = 1,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 0,
         .operation_timeout_seconds = 30,
     };
     struct aws_subscription_manager_test_fixture fixture;
@@ -749,20 +778,22 @@ static int s_rrsm_acquire_no_capacity_too_many_event_stream_fn(struct aws_alloca
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_subscriptions = 5,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 4,
         .operation_timeout_seconds = 30,
     };
     struct aws_subscription_manager_test_fixture fixture;
     ASSERT_SUCCESS(s_aws_subscription_manager_test_fixture_init(&fixture, allocator, &fixture_config));
 
-    // N - 1 event stream subscriptions
     for (size_t i = 0; i < 4; ++i) {
         char topic_filter_buffer[256];
         snprintf(topic_filter_buffer, AWS_ARRAY_SIZE(topic_filter_buffer), "hello/world/%d", (int)(i + 1));
+        struct aws_byte_cursor topic_filter_cursor = aws_byte_cursor_from_c_str(topic_filter_buffer);
 
         struct aws_rr_acquire_subscription_options acquire_options = {
             .type = ARRST_EVENT_STREAM,
-            .topic_filter = aws_byte_cursor_from_c_str(topic_filter_buffer),
+            .topic_filters = &topic_filter_cursor,
+            .topic_filter_count = 1,
             .operation_id = i + 2,
         };
         ASSERT_INT_EQUALS(
@@ -794,7 +825,8 @@ static int s_rrsm_acquire_failure_mixed_subscription_types_fn(struct aws_allocat
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(
@@ -803,7 +835,8 @@ static int s_rrsm_acquire_failure_mixed_subscription_types_fn(struct aws_allocat
 
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(
@@ -819,8 +852,7 @@ static int s_rrsm_acquire_failure_mixed_subscription_types_fn(struct aws_allocat
 AWS_TEST_CASE(rrsm_acquire_failure_mixed_subscription_types, s_rrsm_acquire_failure_mixed_subscription_types_fn)
 
 /*
- * Verify: Acquiring an existing, completed request subscription does not trigger a protocol client subscribe and
- * returns SUBSCRIBED.  Verify request and streaming subscription events are emitted.
+ * Verify: Acquiring a poisoned streaming subscription results in failure.
  */
 static int s_rrsm_acquire_failure_poisoned_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -834,13 +866,14 @@ static int s_rrsm_acquire_failure_poisoned_fn(struct aws_allocator *allocator, v
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
 
     struct aws_protocol_adapter_subscription_event unretryable_failure_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE,
         .retryable = false,
@@ -849,14 +882,15 @@ static int s_rrsm_acquire_failure_poisoned_fn(struct aws_allocator *allocator, v
 
     struct aws_subscription_status_record expected_subscription_events[] = {{
         .type = ARRSET_STREAMING_SUBSCRIPTION_HALTED,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .operation_id = 1,
     }};
     ASSERT_TRUE(s_contains_subscription_event_sequential_records(&fixture, 1, expected_subscription_events));
 
     struct aws_rr_acquire_subscription_options reacquire1_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world1"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 3,
     };
     ASSERT_INT_EQUALS(AASRT_FAILURE, aws_rr_subscription_manager_acquire_subscription(manager, &reacquire1_options));
@@ -885,20 +919,22 @@ static int s_rrsm_release_unsubscribes_request_fn(struct aws_allocator *allocato
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
 
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
 
     struct aws_protocol_adapter_subscription_event successful_subscription_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_SUCCESS,
     };
@@ -908,12 +944,12 @@ static int s_rrsm_release_unsubscribes_request_fn(struct aws_allocator *allocato
     struct aws_subscription_status_record expected_subscription_events[] = {
         {
             .type = ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 1,
         },
         {
             .type = ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 2,
         }};
     ASSERT_TRUE(s_contains_subscription_event_records(&fixture, 2, expected_subscription_events));
@@ -921,14 +957,15 @@ static int s_rrsm_release_unsubscribes_request_fn(struct aws_allocator *allocato
     // verify no unsubscribes
     struct aws_protocol_adapter_api_record expected_unsubscribe = {
         .type = PAAT_UNSUBSCRIBE,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .timeout = DEFAULT_SM_TEST_TIMEOUT,
     };
     ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
 
     // release once, verify no unsubscribe
     struct aws_rr_release_subscription_options release1_options = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     aws_rr_subscription_manager_release_subscription(manager, &release1_options);
@@ -936,7 +973,8 @@ static int s_rrsm_release_unsubscribes_request_fn(struct aws_allocator *allocato
 
     // release second
     struct aws_rr_release_subscription_options release2_options = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     aws_rr_subscription_manager_release_subscription(manager, &release2_options);
@@ -971,20 +1009,22 @@ static int s_rrsm_release_unsubscribes_streaming_fn(struct aws_allocator *alloca
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
 
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
 
     struct aws_protocol_adapter_subscription_event successful_subscription_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_SUCCESS,
     };
@@ -994,12 +1034,12 @@ static int s_rrsm_release_unsubscribes_streaming_fn(struct aws_allocator *alloca
     struct aws_subscription_status_record expected_subscription_events[] = {
         {
             .type = ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 1,
         },
         {
             .type = ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 2,
         }};
     ASSERT_TRUE(s_contains_subscription_event_records(&fixture, 2, expected_subscription_events));
@@ -1007,14 +1047,15 @@ static int s_rrsm_release_unsubscribes_streaming_fn(struct aws_allocator *alloca
     // verify no unsubscribes
     struct aws_protocol_adapter_api_record expected_unsubscribe = {
         .type = PAAT_UNSUBSCRIBE,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .timeout = DEFAULT_SM_TEST_TIMEOUT,
     };
     ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
 
     // release once, verify no unsubscribe
     struct aws_rr_release_subscription_options release1_options = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     aws_rr_subscription_manager_release_subscription(manager, &release1_options);
@@ -1022,7 +1063,8 @@ static int s_rrsm_release_unsubscribes_streaming_fn(struct aws_allocator *alloca
 
     // release second
     struct aws_rr_release_subscription_options release2_options = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     aws_rr_subscription_manager_release_subscription(manager, &release2_options);
@@ -1045,7 +1087,7 @@ static int s_rrsm_do_unsubscribe_test(struct aws_allocator *allocator, bool shou
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_subscriptions = 1,
+        .max_request_response_subscriptions = 2,
         .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
         .start_connected = true,
     };
@@ -1057,33 +1099,44 @@ static int s_rrsm_do_unsubscribe_test(struct aws_allocator *allocator, bool shou
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
 
-    // budget of 1, so new acquires should be blocked
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
-    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+    ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+
+    // budget of 2, so new acquires should be blocked
+    struct aws_rr_acquire_subscription_options acquire3_options = {
+        .type = ARRST_REQUEST_RESPONSE,
+        .topic_filters = &s_hello_world3_cursor,
+        .topic_filter_count = 1,
+        .operation_id = 3,
+    };
+    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
 
     // complete the subscribe
     struct aws_protocol_adapter_subscription_event successful_subscription_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_SUCCESS,
     };
     aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &successful_subscription_event);
 
     // still blocked
-    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+    ASSERT_INT_EQUALS(AASRT_BLOCKED, aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
 
     // release
     struct aws_rr_release_subscription_options release1_options = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     aws_rr_subscription_manager_release_subscription(manager, &release1_options);
@@ -1092,14 +1145,14 @@ static int s_rrsm_do_unsubscribe_test(struct aws_allocator *allocator, bool shou
     aws_rr_subscription_manager_purge_unused(manager);
     struct aws_protocol_adapter_api_record expected_unsubscribe = {
         .type = PAAT_UNSUBSCRIBE,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .timeout = DEFAULT_SM_TEST_TIMEOUT,
     };
     ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
 
     // complete the unsubscribe
     struct aws_protocol_adapter_subscription_event successful_unsubscribe_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_UNSUBSCRIBE,
         .error_code = should_succeed ? AWS_ERROR_SUCCESS : AWS_ERROR_MQTT5_UNSUBSCRIBE_OPTIONS_VALIDATION,
     };
@@ -1110,7 +1163,7 @@ static int s_rrsm_do_unsubscribe_test(struct aws_allocator *allocator, bool shou
     // a successful unsubscribe should clear space, a failed one should not
     ASSERT_INT_EQUALS(
         (should_succeed ? AASRT_SUBSCRIBING : AASRT_BLOCKED),
-        aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
+        aws_rr_subscription_manager_acquire_subscription(manager, &acquire3_options));
 
     s_aws_subscription_manager_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
@@ -1167,7 +1220,8 @@ static int s_rrsm_acquire_failure_subscribe_sync_failure_request_fn(struct aws_a
     failing_vtable.aws_mqtt_protocol_adapter_subscribe_fn = s_aws_mqtt_protocol_adapter_mock_subscribe_fails_first_time;
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
         .start_connected = true,
         .adapter_vtable = &failing_vtable,
@@ -1180,7 +1234,8 @@ static int s_rrsm_acquire_failure_subscribe_sync_failure_request_fn(struct aws_a
 
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_FAILURE, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
@@ -1208,7 +1263,8 @@ static int s_rrsm_acquire_failure_subscribe_sync_failure_streaming_fn(struct aws
     failing_vtable.aws_mqtt_protocol_adapter_subscribe_fn = s_aws_mqtt_protocol_adapter_mock_subscribe_fails_first_time;
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
         .start_connected = true,
         .adapter_vtable = &failing_vtable,
@@ -1221,14 +1277,16 @@ static int s_rrsm_acquire_failure_subscribe_sync_failure_streaming_fn(struct aws
 
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_FAILURE, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
 
     struct aws_rr_acquire_subscription_options acquire_options2 = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_FAILURE, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options2));
@@ -1258,14 +1316,15 @@ static int s_rrsm_acquire_request_subscribe_failure_event_fn(struct aws_allocato
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
 
     // complete the subscribe with a failure
     struct aws_protocol_adapter_subscription_event failed_subscription_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE,
     };
@@ -1274,7 +1333,7 @@ static int s_rrsm_acquire_request_subscribe_failure_event_fn(struct aws_allocato
     // verify subscribe failure event emission
     struct aws_subscription_status_record expected_subscription_event = {
         .type = ARRSET_REQUEST_SUBSCRIBE_FAILURE,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .operation_id = 1,
     };
 
@@ -1305,14 +1364,15 @@ static int s_rrsm_acquire_streaming_subscribe_failure_retryable_resubscribe_fn(
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
 
     // complete the subscribe with a retryable failure
     struct aws_protocol_adapter_subscription_event failed_subscription_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE,
         .retryable = true,
@@ -1322,12 +1382,12 @@ static int s_rrsm_acquire_streaming_subscribe_failure_retryable_resubscribe_fn(
     struct aws_protocol_adapter_api_record expected_subscribes[] = {
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
     };
@@ -1370,7 +1430,8 @@ static int s_do_offline_acquire_online_test(
     aws_mqtt_library_init(allocator);
 
     struct aws_subscription_manager_test_fixture_options fixture_config = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = DEFAULT_SM_TEST_TIMEOUT,
         .start_connected = false,
     };
@@ -1382,7 +1443,8 @@ static int s_do_offline_acquire_online_test(
 
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
@@ -1400,7 +1462,7 @@ static int s_do_offline_acquire_online_test(
     struct aws_protocol_adapter_api_record expected_subscribes[] = {
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
     };
@@ -1409,14 +1471,14 @@ static int s_do_offline_acquire_online_test(
     // complete the subscribe, verify a subscription success/failure event
     struct aws_protocol_adapter_subscription_event subscription_event = {
         .event_type = AWS_PASET_SUBSCRIBE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .error_code = success ? AWS_ERROR_SUCCESS : AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE,
     };
     aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
 
     struct aws_subscription_status_record expected_subscription_event = {
         .type = s_compute_expected_subscription_event_offline_acquire_online(subscription_type, success),
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .operation_id = 1,
     };
     ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
@@ -1494,7 +1556,8 @@ static int s_do_offline_acquire_release_online_test(
     // acquire
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
@@ -1504,7 +1567,8 @@ static int s_do_offline_acquire_release_online_test(
 
     // release while offline, nothing should happen
     struct aws_rr_release_subscription_options release_options = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     aws_rr_subscription_manager_release_subscription(manager, &release_options);
@@ -1520,7 +1584,8 @@ static int s_do_offline_acquire_release_online_test(
     // trigger a different subscription, verify it's the only thing that has reached the protocol adapter
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
@@ -1528,7 +1593,7 @@ static int s_do_offline_acquire_release_online_test(
     struct aws_protocol_adapter_api_record expected_subscribes[] = {
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world2"),
+            .topic_filter_cursor = s_hello_world2_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
     };
@@ -1578,7 +1643,8 @@ static int s_do_acquire_success_offline_release_acquire2_no_unsubscribe_test(
     // acquire
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
@@ -1586,7 +1652,7 @@ static int s_do_acquire_success_offline_release_acquire2_no_unsubscribe_test(
     // successfully complete subscription
     struct aws_protocol_adapter_subscription_event subscription_event = {
         .event_type = AWS_PASET_SUBSCRIBE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .error_code = AWS_ERROR_SUCCESS,
     };
     aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
@@ -1594,7 +1660,7 @@ static int s_do_acquire_success_offline_release_acquire2_no_unsubscribe_test(
     struct aws_subscription_status_record expected_subscription_event = {
         .type = subscription_type == ARRST_REQUEST_RESPONSE ? ARRSET_REQUEST_SUBSCRIBE_SUCCESS
                                                             : ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .operation_id = 1,
     };
     ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
@@ -1607,7 +1673,8 @@ static int s_do_acquire_success_offline_release_acquire2_no_unsubscribe_test(
 
     // release
     struct aws_rr_release_subscription_options release_options = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     aws_rr_subscription_manager_release_subscription(manager, &release_options);
@@ -1615,7 +1682,8 @@ static int s_do_acquire_success_offline_release_acquire2_no_unsubscribe_test(
     // acquire something different, normally that triggers an unsubscribe, but we're offline
     struct aws_rr_acquire_subscription_options acquire2_options = {
         .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world2"),
+        .topic_filters = &s_hello_world2_cursor,
+        .topic_filter_count = 1,
         .operation_id = 2,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire2_options));
@@ -1623,7 +1691,7 @@ static int s_do_acquire_success_offline_release_acquire2_no_unsubscribe_test(
     // verify no unsubscribe has been sent
     struct aws_protocol_adapter_api_record expected_unsubscribe = {
         .type = PAAT_UNSUBSCRIBE,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .timeout = DEFAULT_SM_TEST_TIMEOUT,
     };
     ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
@@ -1689,7 +1757,8 @@ static int s_do_rrsm_acquire_clean_up_test(
     // acquire
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
@@ -1698,7 +1767,7 @@ static int s_do_rrsm_acquire_clean_up_test(
     if (complete_subscribe) {
         struct aws_protocol_adapter_subscription_event subscription_event = {
             .event_type = AWS_PASET_SUBSCRIBE,
-            .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter = s_hello_world1_cursor,
             .error_code = AWS_ERROR_SUCCESS,
         };
         aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
@@ -1706,7 +1775,7 @@ static int s_do_rrsm_acquire_clean_up_test(
         struct aws_subscription_status_record expected_subscription_event = {
             .type = subscription_type == ARRST_REQUEST_RESPONSE ? ARRSET_REQUEST_SUBSCRIBE_SUCCESS
                                                                 : ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 1,
         };
         ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
@@ -1726,7 +1795,7 @@ static int s_do_rrsm_acquire_clean_up_test(
     // verify an unsubscribe was sent even though we are offline
     struct aws_protocol_adapter_api_record expected_unsubscribe = {
         .type = PAAT_UNSUBSCRIBE,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .timeout = DEFAULT_SM_TEST_TIMEOUT,
     };
     ASSERT_TRUE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
@@ -1734,7 +1803,8 @@ static int s_do_rrsm_acquire_clean_up_test(
     // prevent the fixture cleanup from double freeing the subscription manager that was already cleaned up by
     // reinitializing the subscription manager
     struct aws_rr_subscription_manager_options subscription_manager_options = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = 5,
         .subscription_status_callback = s_aws_rr_subscription_status_event_test_callback_fn,
         .userdata = &fixture,
@@ -1847,7 +1917,8 @@ static int s_rrsm_do_no_session_subscription_ended_test(
     // acquire
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
@@ -1855,14 +1926,14 @@ static int s_rrsm_do_no_session_subscription_ended_test(
     // successfully complete subscription
     struct aws_protocol_adapter_subscription_event subscription_event = {
         .event_type = AWS_PASET_SUBSCRIBE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .error_code = AWS_ERROR_SUCCESS,
     };
     aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
 
     struct aws_subscription_status_record expected_subscription_event = {
         .type = ARRSET_REQUEST_SUBSCRIBE_SUCCESS,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .operation_id = 1,
     };
     ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
@@ -1870,14 +1941,15 @@ static int s_rrsm_do_no_session_subscription_ended_test(
     // release if appropriate
     if (offline_while_unsubscribing) {
         struct aws_rr_release_subscription_options release_options = {
-            .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filters = &s_hello_world1_cursor,
+            .topic_filter_count = 1,
             .operation_id = 1,
         };
         aws_rr_subscription_manager_release_subscription(manager, &release_options);
 
         struct aws_protocol_adapter_api_record expected_unsubscribe = {
             .type = PAAT_UNSUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         };
         ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
@@ -1906,7 +1978,7 @@ static int s_rrsm_do_no_session_subscription_ended_test(
     if (!offline_while_unsubscribing) {
         struct aws_subscription_status_record expected_subscription_ended_event = {
             .type = ARRSET_REQUEST_SUBSCRIPTION_ENDED,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 1,
         };
         ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_ended_event));
@@ -1915,7 +1987,8 @@ static int s_rrsm_do_no_session_subscription_ended_test(
     // if we were unsubscribing, verify reacquire is blocked and then complete the unsubscribe
     struct aws_rr_acquire_subscription_options reacquire_options = {
         .type = ARRST_REQUEST_RESPONSE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 3,
     };
 
@@ -1924,7 +1997,7 @@ static int s_rrsm_do_no_session_subscription_ended_test(
 
         struct aws_protocol_adapter_subscription_event unsubscribe_event = {
             .event_type = AWS_PASET_UNSUBSCRIBE,
-            .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter = s_hello_world1_cursor,
             .error_code = AWS_ERROR_SUCCESS,
         };
         aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &unsubscribe_event);
@@ -1986,7 +2059,8 @@ static int s_rrsm_streaming_subscription_lost_resubscribe_on_no_session_fn(struc
     // acquire
     struct aws_rr_acquire_subscription_options acquire_options = {
         .type = ARRST_EVENT_STREAM,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire_options));
@@ -1994,14 +2068,14 @@ static int s_rrsm_streaming_subscription_lost_resubscribe_on_no_session_fn(struc
     // successfully complete subscription
     struct aws_protocol_adapter_subscription_event subscription_event = {
         .event_type = AWS_PASET_SUBSCRIBE,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .error_code = AWS_ERROR_SUCCESS,
     };
     aws_rr_subscription_manager_on_protocol_adapter_subscription_event(manager, &subscription_event);
 
     struct aws_subscription_status_record expected_subscription_event = {
         .type = ARRSET_STREAMING_SUBSCRIPTION_ESTABLISHED,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .operation_id = 1,
     };
     ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_event));
@@ -2022,7 +2096,7 @@ static int s_rrsm_streaming_subscription_lost_resubscribe_on_no_session_fn(struc
     // verify subscription lost on rejoin
     struct aws_subscription_status_record expected_subscription_ended_event = {
         .type = ARRSET_STREAMING_SUBSCRIPTION_LOST,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .operation_id = 1,
     };
     ASSERT_TRUE(s_contains_subscription_event_record(&fixture, &expected_subscription_ended_event));
@@ -2031,12 +2105,12 @@ static int s_rrsm_streaming_subscription_lost_resubscribe_on_no_session_fn(struc
     struct aws_protocol_adapter_api_record expected_subscribes[] = {
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
         {
             .type = PAAT_SUBSCRIBE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .timeout = DEFAULT_SM_TEST_TIMEOUT,
         },
     };
@@ -2064,13 +2138,14 @@ static int s_do_purge_test(struct aws_allocator *allocator, enum aws_rr_subscrip
 
     struct aws_rr_acquire_subscription_options acquire1_options = {
         .type = subscription_type,
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     ASSERT_INT_EQUALS(AASRT_SUBSCRIBING, aws_rr_subscription_manager_acquire_subscription(manager, &acquire1_options));
 
     struct aws_protocol_adapter_subscription_event successful_subscription_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_SUBSCRIBE,
         .error_code = AWS_ERROR_SUCCESS,
     };
@@ -2079,7 +2154,7 @@ static int s_do_purge_test(struct aws_allocator *allocator, enum aws_rr_subscrip
     struct aws_subscription_status_record expected_empty_subscription_events[] = {
         {
             .type = ARRSET_SUBSCRIPTION_EMPTY,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 0,
         },
     };
@@ -2087,7 +2162,7 @@ static int s_do_purge_test(struct aws_allocator *allocator, enum aws_rr_subscrip
     struct aws_subscription_status_record expected_unsubscribe_events[] = {
         {
             .type = ARRSET_UNSUBSCRIBE_COMPLETE,
-            .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+            .topic_filter_cursor = s_hello_world1_cursor,
             .operation_id = 0,
         },
     };
@@ -2098,14 +2173,15 @@ static int s_do_purge_test(struct aws_allocator *allocator, enum aws_rr_subscrip
     // verify no unsubscribes
     struct aws_protocol_adapter_api_record expected_unsubscribe = {
         .type = PAAT_UNSUBSCRIBE,
-        .topic_filter_cursor = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter_cursor = s_hello_world1_cursor,
         .timeout = DEFAULT_SM_TEST_TIMEOUT,
     };
     ASSERT_FALSE(s_api_records_contains_record(fixture.mock_protocol_adapter, &expected_unsubscribe));
 
     // release once, verify no unsubscribe
     struct aws_rr_release_subscription_options release1_options = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filters = &s_hello_world1_cursor,
+        .topic_filter_count = 1,
         .operation_id = 1,
     };
     aws_rr_subscription_manager_release_subscription(manager, &release1_options);
@@ -2123,7 +2199,7 @@ static int s_do_purge_test(struct aws_allocator *allocator, enum aws_rr_subscrip
 
     // complete the unsubscribe
     struct aws_protocol_adapter_subscription_event successful_unsubscribe_event = {
-        .topic_filter = aws_byte_cursor_from_c_str("hello/world"),
+        .topic_filter = s_hello_world1_cursor,
         .event_type = AWS_PASET_UNSUBSCRIBE,
         .error_code = AWS_ERROR_SUCCESS,
     };

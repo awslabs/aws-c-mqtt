@@ -20,6 +20,21 @@
 #define MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE 50
 #define MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE 50
 
+struct aws_mqtt_request_operation_storage {
+    struct aws_mqtt_request_operation_options options;
+
+    struct aws_array_list operation_response_paths;
+    struct aws_array_list subscription_topic_filters;
+
+    struct aws_byte_buf operation_data;
+};
+
+struct aws_mqtt_streaming_operation_storage {
+    struct aws_mqtt_streaming_operation_options options;
+
+    struct aws_byte_buf operation_data;
+};
+
 enum aws_mqtt_request_response_operation_type {
     AWS_MRROT_REQUEST,
     AWS_MRROT_STREAMING,
@@ -1117,7 +1132,8 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
     const struct aws_mqtt_request_response_client_options *options,
     struct aws_event_loop *loop) {
     struct aws_rr_subscription_manager_options sm_options = {
-        .max_subscriptions = options->max_subscriptions,
+        .max_request_response_subscriptions = options->max_request_response_subscriptions,
+        .max_streaming_subscriptions = options->max_streaming_subscriptions,
         .operation_timeout_seconds = options->operation_timeout_seconds,
     };
 
@@ -1215,7 +1231,8 @@ static void s_aws_rr_client_init_subscription_manager(
 
     struct aws_rr_subscription_manager_options subscription_manager_options = {
         .operation_timeout_seconds = rr_client->config.operation_timeout_seconds,
-        .max_subscriptions = rr_client->config.max_subscriptions,
+        .max_request_response_subscriptions = rr_client->config.max_request_response_subscriptions,
+        .max_streaming_subscriptions = rr_client->config.max_streaming_subscriptions,
         .subscription_status_callback = s_aws_rr_client_subscription_status_event_callback,
         .userdata = rr_client,
     };
@@ -1266,15 +1283,6 @@ static uint64_t s_mqtt_request_response_client_get_next_service_time(struct aws_
     return UINT64_MAX;
 }
 
-static struct aws_byte_cursor s_aws_mqtt_rr_operation_get_subscription_topic_filter(
-    struct aws_mqtt_rr_client_operation *operation) {
-    if (operation->type == AWS_MRROT_REQUEST) {
-        return operation->storage.request_storage.options.subscription_topic_filter;
-    } else {
-        return operation->storage.streaming_storage.options.topic_filter;
-    }
-}
-
 /* TODO: add aws-c-common API? */
 static bool s_is_operation_in_list(const struct aws_mqtt_rr_client_operation *operation) {
     return aws_linked_list_node_prev_is_valid(&operation->node) && aws_linked_list_node_next_is_valid(&operation->node);
@@ -1284,7 +1292,7 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
     struct aws_mqtt_request_response_client *client,
     struct aws_mqtt_rr_client_operation *operation) {
 
-    struct aws_byte_cursor topic_filter_cursor = s_aws_mqtt_rr_operation_get_subscription_topic_filter(operation);
+    struct aws_byte_cursor topic_filter_cursor = operation->storage.streaming_storage.options.topic_filter;
 
     struct aws_hash_element *element = NULL;
     if (aws_hash_table_find(&client->streaming_operation_subscription_lists, &topic_filter_cursor, &element)) {
@@ -1445,6 +1453,24 @@ static bool s_can_operation_dequeue(
     return token_element == NULL;
 }
 
+static struct aws_byte_cursor *s_aws_mqtt_rr_operation_get_subscription_topic_filters(
+    struct aws_mqtt_rr_client_operation *operation) {
+    if (operation->type == AWS_MRROT_STREAMING) {
+        return &operation->storage.streaming_storage.options.topic_filter;
+    } else {
+        return operation->storage.request_storage.options.subscription_topic_filters;
+    }
+}
+
+static size_t s_aws_mqtt_rr_operation_get_subscription_topic_filter_count(
+    struct aws_mqtt_rr_client_operation *operation) {
+    if (operation->type == AWS_MRROT_STREAMING) {
+        return 1;
+    } else {
+        return operation->storage.request_storage.options.subscription_topic_filter_count;
+    }
+}
+
 static void s_process_queued_operations(struct aws_mqtt_request_response_client *client) {
     aws_rr_subscription_manager_purge_unused(&client->subscription_manager);
 
@@ -1458,7 +1484,8 @@ static void s_process_queued_operations(struct aws_mqtt_request_response_client 
         }
 
         struct aws_rr_acquire_subscription_options subscribe_options = {
-            .topic_filter = s_aws_mqtt_rr_operation_get_subscription_topic_filter(head_operation),
+            .topic_filters = s_aws_mqtt_rr_operation_get_subscription_topic_filters(head_operation),
+            .topic_filter_count = s_aws_mqtt_rr_operation_get_subscription_topic_filter_count(head_operation),
             .operation_id = head_operation->id,
             .type = s_rr_operation_type_to_subscription_type(head_operation->type),
         };
@@ -1692,13 +1719,24 @@ static bool s_are_request_operation_options_valid(
         return false;
     }
 
-    if (!aws_mqtt_is_valid_topic_filter(&request_options->subscription_topic_filter)) {
+    if (request_options->subscription_topic_filter_count == 0) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_REQUEST_RESPONSE,
-            "(%p) rr client request options - " PRInSTR " is not a valid topic filter",
-            (void *)client,
-            AWS_BYTE_CURSOR_PRI(request_options->subscription_topic_filter));
+            "(%p) rr client request options - no subscription topic filters supplied",
+            (void *)client);
         return false;
+    }
+
+    for (size_t i = 0; i < request_options->subscription_topic_filter_count; ++i) {
+        const struct aws_byte_cursor subscription_topic_filter = request_options->subscription_topic_filters[i];
+        if (!aws_mqtt_is_valid_topic_filter(&subscription_topic_filter)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "(%p) rr client request options - " PRInSTR " is not a valid subscription topic filter",
+                (void *)client,
+                AWS_BYTE_CURSOR_PRI(subscription_topic_filter));
+            return false;
+        }
     }
 
     if (request_options->serialized_request.len == 0) {
@@ -1860,7 +1898,8 @@ static void s_mqtt_rr_client_destroy_operation(struct aws_task *task, void *arg,
 
     if (client->state != AWS_RRCS_SHUTTING_DOWN) {
         struct aws_rr_release_subscription_options release_options = {
-            .topic_filter = s_aws_mqtt_rr_operation_get_subscription_topic_filter(operation),
+            .topic_filters = s_aws_mqtt_rr_operation_get_subscription_topic_filters(operation),
+            .topic_filter_count = s_aws_mqtt_rr_operation_get_subscription_topic_filter_count(operation),
             .operation_id = operation->id,
         };
         aws_rr_subscription_manager_release_subscription(&client->subscription_manager, &release_options);
@@ -1933,7 +1972,12 @@ void s_aws_mqtt_request_operation_storage_init_from_options(
     bytes_needed += request_options->publish_topic.len;
     bytes_needed += request_options->serialized_request.len;
     bytes_needed += request_options->correlation_token.len;
-    bytes_needed += request_options->subscription_topic_filter.len;
+
+    for (size_t i = 0; i < request_options->subscription_topic_filter_count; ++i) {
+        const struct aws_byte_cursor *subscription_topic_filter = &request_options->subscription_topic_filters[i];
+
+        bytes_needed += subscription_topic_filter->len;
+    }
 
     for (size_t i = 0; i < request_options->response_path_count; ++i) {
         const struct aws_mqtt_request_operation_response_path *response_path = &request_options->response_paths[i];
@@ -1950,6 +1994,11 @@ void s_aws_mqtt_request_operation_storage_init_from_options(
         allocator,
         request_options->response_path_count,
         sizeof(struct aws_mqtt_request_operation_response_path));
+    aws_array_list_init_dynamic(
+        &storage->subscription_topic_filters,
+        allocator,
+        request_options->subscription_topic_filter_count,
+        sizeof(struct aws_byte_cursor));
 
     AWS_FATAL_ASSERT(
         aws_byte_buf_append_and_update(&storage->operation_data, &storage->options.publish_topic) == AWS_OP_SUCCESS);
@@ -1959,9 +2008,15 @@ void s_aws_mqtt_request_operation_storage_init_from_options(
     AWS_FATAL_ASSERT(
         aws_byte_buf_append_and_update(&storage->operation_data, &storage->options.correlation_token) ==
         AWS_OP_SUCCESS);
-    AWS_FATAL_ASSERT(
-        aws_byte_buf_append_and_update(&storage->operation_data, &storage->options.subscription_topic_filter) ==
-        AWS_OP_SUCCESS);
+
+    for (size_t i = 0; i < request_options->subscription_topic_filter_count; ++i) {
+        struct aws_byte_cursor subscription_topic_filter = request_options->subscription_topic_filters[i];
+
+        AWS_FATAL_ASSERT(
+            aws_byte_buf_append_and_update(&storage->operation_data, &subscription_topic_filter) == AWS_OP_SUCCESS);
+
+        aws_array_list_push_back(&storage->subscription_topic_filters, &subscription_topic_filter);
+    }
 
     for (size_t i = 0; i < request_options->response_path_count; ++i) {
         struct aws_mqtt_request_operation_response_path response_path = request_options->response_paths[i];
@@ -1988,14 +2043,19 @@ static void s_log_request_response_operation(
 
     struct aws_mqtt_request_operation_options *options = &operation->storage.request_storage.options;
 
-    AWS_LOGUF(
-        log_handle,
-        AWS_LL_DEBUG,
-        AWS_LS_MQTT_REQUEST_RESPONSE,
-        "id=%p: request-response client operation %" PRIu64 " - subscription topic filter: '" PRInSTR "'",
-        (void *)client,
-        operation->id,
-        AWS_BYTE_CURSOR_PRI(options->subscription_topic_filter));
+    for (size_t i = 0; i < options->subscription_topic_filter_count; ++i) {
+        struct aws_byte_cursor subscription_topic_filter = options->subscription_topic_filters[i];
+
+        AWS_LOGUF(
+            log_handle,
+            AWS_LL_DEBUG,
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client operation %" PRIu64 " - subscription topic filter %zu topic '" PRInSTR "'",
+            (void *)client,
+            operation->id,
+            i,
+            AWS_BYTE_CURSOR_PRI(subscription_topic_filter));
+    }
 
     AWS_LOGUF(
         log_handle,

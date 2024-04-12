@@ -26,7 +26,8 @@ typedef void(aws_mqtt_request_operation_completion_fn)(
     void *user_data);
 
 struct aws_mqtt_request_operation_options {
-    struct aws_byte_cursor subscription_topic_filter;
+    struct aws_byte_cursor *subscription_topic_filters;
+    size_t subscription_topic_filter_count;
 
     struct aws_mqtt_request_operation_response_path *response_paths;
     size_t response_path_count;
@@ -37,14 +38,6 @@ struct aws_mqtt_request_operation_options {
 
     aws_mqtt_request_operation_completion_fn *completion_callback;
     void *user_data;
-};
-
-struct aws_mqtt_request_operation_storage {
-    struct aws_mqtt_request_operation_options options;
-
-    struct aws_array_list operation_response_paths;
-
-    struct aws_byte_buf operation_data;
 };
 
 /*
@@ -86,17 +79,13 @@ struct aws_mqtt_streaming_operation_options {
     void *user_data;
 };
 
-struct aws_mqtt_streaming_operation_storage {
-    struct aws_mqtt_streaming_operation_options options;
-
-    struct aws_byte_buf operation_data;
-};
-
 typedef void(aws_mqtt_request_response_client_initialized_callback_fn)(void *user_data);
 typedef void(aws_mqtt_request_response_client_terminated_callback_fn)(void *user_data);
 
 struct aws_mqtt_request_response_client_options {
-    size_t max_subscriptions;
+    size_t max_request_response_subscriptions;
+    size_t max_streaming_subscriptions;
+
     uint32_t operation_timeout_seconds;
 
     /* Do not bind the initialized callback; it exists mostly for tests and should not be exposed */
