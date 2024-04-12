@@ -260,6 +260,8 @@ struct aws_mqtt_rr_client_operation {
 
     enum aws_mqtt_request_response_operation_state state;
 
+    size_t pending_subscriptions;
+
     bool in_client_tables;
 
     struct aws_task submit_task;
@@ -721,8 +723,11 @@ static void s_on_request_operation_subscription_status_event(
 
         case ARRSET_REQUEST_SUBSCRIBE_SUCCESS:
             if (operation->state == AWS_MRROS_PENDING_SUBSCRIPTION) {
-                s_change_operation_state(operation, AWS_MRROS_PENDING_RESPONSE);
-                s_make_mqtt_request(operation->client_internal_ref, operation);
+                --operation->pending_subscriptions;
+                if (operation->pending_subscriptions == 0) {
+                    s_change_operation_state(operation, AWS_MRROS_PENDING_RESPONSE);
+                    s_make_mqtt_request(operation->client_internal_ref, operation);
+                }
             }
             break;
 
@@ -2139,6 +2144,7 @@ int aws_mqtt_request_response_client_submit_request(
     operation->timeout_timepoint_ns =
         now +
         aws_timestamp_convert(client->config.operation_timeout_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    operation->pending_subscriptions = request_options->subscription_topic_filter_count;
 
     s_aws_mqtt_request_operation_storage_init_from_options(
         &operation->storage.request_storage, allocator, request_options);
@@ -2211,6 +2217,7 @@ struct aws_mqtt_rr_client_operation *aws_mqtt_request_response_client_create_str
     operation->allocator = allocator;
     operation->type = AWS_MRROT_STREAMING;
     operation->timeout_timepoint_ns = UINT64_MAX;
+    operation->pending_subscriptions = 1;
 
     s_aws_mqtt_streaming_operation_storage_init_from_options(
         &operation->storage.streaming_storage, allocator, streaming_options);
