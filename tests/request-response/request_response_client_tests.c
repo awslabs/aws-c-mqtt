@@ -309,7 +309,7 @@ static struct aws_rr_client_fixture_streaming_record *s_rrc_fixture_add_streamin
     struct aws_rr_client_fixture_streaming_record *record =
         s_aws_rr_client_fixture_streaming_record_new(fixture->allocator, fixture, key);
 
-    aws_hash_table_put(&fixture->streaming_records, &record->record_key, record, NULL);
+    aws_hash_table_put(&fixture->streaming_records, &record->record_key_cursor, record, NULL);
 
     return record;
 }
@@ -539,7 +539,8 @@ static int s_aws_rr_client_test_fixture_init_from_mqtt5(
     }
 
     struct aws_mqtt_request_response_client_options client_options = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = 5,
     };
 
@@ -597,7 +598,8 @@ static int s_aws_rr_client_test_fixture_init_from_mqtt311(
     aws_test311_setup_mqtt_server_fn(allocator, &fixture->client_test_fixture.mqtt311_test_fixture);
 
     struct aws_mqtt_request_response_client_options client_options = {
-        .max_subscriptions = 3,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = 5,
     };
 
@@ -707,6 +709,12 @@ static int s_rrc_mqtt311_create_destroy_fn(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(rrc_mqtt311_create_destroy, s_rrc_mqtt311_create_destroy_fn)
 
+static char s_response_filter_wildcard[] = "response/filter/+";
+static struct aws_byte_cursor s_response_filter_wildcard_cursor = {
+    .ptr = (uint8_t *)s_response_filter_wildcard,
+    .len = AWS_ARRAY_SIZE(s_response_filter_wildcard) - 1,
+};
+
 static int s_rrc_do_submit_request_operation_failure_test(
     struct aws_allocator *allocator,
     void (*request_mutator_fn)(struct aws_mqtt_request_operation_options *)) {
@@ -735,7 +743,8 @@ static int s_rrc_do_submit_request_operation_failure_test(
         },
     };
     struct aws_mqtt_request_operation_options good_request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str("response/filter/+"),
+        .subscription_topic_filters = &s_response_filter_wildcard_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str("get/shadow"),
@@ -801,8 +810,14 @@ AWS_TEST_CASE(
     rrc_submit_request_operation_failure_invalid_publish_topic,
     s_rrc_submit_request_operation_failure_invalid_publish_topic_fn)
 
+static char s_bad_filter[] = "a/#/c";
+static struct aws_byte_cursor s_bad_filter_cursor = {
+    .ptr = (uint8_t *)s_bad_filter,
+    .len = AWS_ARRAY_SIZE(s_bad_filter) - 1,
+};
+
 static void s_invalid_subscription_topic_filter_mutator(struct aws_mqtt_request_operation_options *request_options) {
-    request_options->subscription_topic_filter = aws_byte_cursor_from_c_str("a/#/c");
+    request_options->subscription_topic_filters = &s_bad_filter_cursor;
 }
 
 static int s_rrc_submit_request_operation_failure_invalid_subscription_topic_filter_fn(
@@ -816,6 +831,22 @@ static int s_rrc_submit_request_operation_failure_invalid_subscription_topic_fil
 AWS_TEST_CASE(
     rrc_submit_request_operation_failure_invalid_subscription_topic_filter,
     s_rrc_submit_request_operation_failure_invalid_subscription_topic_filter_fn)
+
+static void s_no_subscription_topic_filter_mutator(struct aws_mqtt_request_operation_options *request_options) {
+    request_options->subscription_topic_filter_count = 0;
+}
+
+static int s_rrc_submit_request_operation_failure_no_subscription_topic_filters_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    return s_rrc_do_submit_request_operation_failure_test(allocator, s_no_subscription_topic_filter_mutator);
+}
+
+AWS_TEST_CASE(
+    rrc_submit_request_operation_failure_no_subscription_topic_filters,
+    s_rrc_submit_request_operation_failure_no_subscription_topic_filters_fn)
 
 static void s_empty_request_mutator(struct aws_mqtt_request_operation_options *request_options) {
     request_options->serialized_request = aws_byte_cursor_from_c_str("");
@@ -936,7 +967,8 @@ static int s_rrc_submit_request_operation_failure_by_shutdown_fn(struct aws_allo
     };
 
     struct aws_mqtt_request_operation_options request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str("response/filter/+"),
+        .subscription_topic_filters = &s_response_filter_wildcard_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str("get/shadow"),
@@ -1047,7 +1079,8 @@ static int s_rrc_submit_request_operation_failure_by_timeout_fn(struct aws_alloc
     };
 
     struct aws_mqtt_request_operation_options request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str("response/filter/+"),
+        .subscription_topic_filters = &s_response_filter_wildcard_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str("get/shadow"),
@@ -1056,7 +1089,8 @@ static int s_rrc_submit_request_operation_failure_by_timeout_fn(struct aws_alloc
     };
 
     struct aws_mqtt_request_response_client_options rr_client_options = {
-        .max_subscriptions = 2,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 1,
         .operation_timeout_seconds = 2,
     };
 
@@ -1143,7 +1177,8 @@ static int s_init_fixture_streaming_operation_success(
     };
 
     struct aws_mqtt_request_response_client_options rr_client_options = {
-        .max_subscriptions = 2,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 1,
         .operation_timeout_seconds = 2,
     };
 
@@ -1981,6 +2016,8 @@ static int s_submit_request_operation_from_prefix(
         AWS_BYTE_CURSOR_PRI(prefix));
     snprintf(publish_topic, AWS_ARRAY_SIZE(publish_topic), PRInSTR "/get", AWS_BYTE_CURSOR_PRI(prefix));
 
+    struct aws_byte_cursor subscription_topic_filter_cursor = aws_byte_cursor_from_c_str(subscription_topic_filter);
+
     char correlation_token[128];
     struct aws_byte_buf correlation_token_buf =
         aws_byte_buf_from_empty_array(correlation_token, AWS_ARRAY_SIZE(correlation_token));
@@ -2004,7 +2041,8 @@ static int s_submit_request_operation_from_prefix(
         s_rrc_fixture_add_request_record(fixture, record_key);
 
     struct aws_mqtt_request_operation_options request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str(subscription_topic_filter),
+        .subscription_topic_filters = &subscription_topic_filter_cursor,
+        .subscription_topic_filter_count = 1,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str(publish_topic),
@@ -2345,7 +2383,8 @@ static int s_init_fixture_request_operation_success(
     };
 
     struct aws_mqtt_request_response_client_options rr_client_options = {
-        .max_subscriptions = 2,
+        .max_request_response_subscriptions = 2,
+        .max_streaming_subscriptions = 2,
         .operation_timeout_seconds = 2,
     };
 
@@ -2366,7 +2405,8 @@ static int s_rrc_test_submit_test_request(
     struct aws_byte_cursor record_key,
     const char *response_topic,
     const char *token,
-    const char *reflection) {
+    const char *reflection,
+    bool is_multi_subscribe) {
 
     char path1_buffer[128];
     snprintf(path1_buffer, AWS_ARRAY_SIZE(path1_buffer), "%s/accepted", topic_prefix);
@@ -2391,6 +2431,19 @@ static int s_rrc_test_submit_test_request(
 
     char subscription_buffer[128];
     snprintf(subscription_buffer, AWS_ARRAY_SIZE(subscription_buffer), "%s/+", topic_prefix);
+    struct aws_byte_cursor subscription_buffer_cursor = aws_byte_cursor_from_c_str(subscription_buffer);
+
+    struct aws_byte_cursor *subscriptions = &subscription_buffer_cursor;
+    size_t subscription_count = 1;
+
+    struct aws_byte_cursor multi_subs[] = {
+        aws_byte_cursor_from_c_str(path1_buffer),
+        aws_byte_cursor_from_c_str(path2_buffer),
+    };
+    if (is_multi_subscribe) {
+        subscriptions = multi_subs;
+        subscription_count = 2;
+    }
 
     char publish_topic_buffer[128];
     snprintf(publish_topic_buffer, AWS_ARRAY_SIZE(publish_topic_buffer), "%s/publish", topic_prefix);
@@ -2419,7 +2472,8 @@ static int s_rrc_test_submit_test_request(
     snprintf(request_buffer + used_bytes, AWS_ARRAY_SIZE(request_buffer) - used_bytes, "}");
 
     struct aws_mqtt_request_operation_options request = {
-        .subscription_topic_filter = aws_byte_cursor_from_c_str(subscription_buffer),
+        .subscription_topic_filters = subscriptions,
+        .subscription_topic_filter_count = subscription_count,
         .response_paths = response_paths,
         .response_path_count = AWS_ARRAY_SIZE(response_paths),
         .publish_topic = aws_byte_cursor_from_c_str(publish_topic_buffer),
@@ -2447,7 +2501,7 @@ static int s_rrc_request_response_success_response_path_accepted_fn(struct aws_a
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1", NULL));
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1", NULL, false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2467,6 +2521,39 @@ AWS_TEST_CASE(
     rrc_request_response_success_response_path_accepted,
     s_rrc_request_response_success_response_path_accepted_fn)
 
+static int s_rrc_request_response_multi_sub_success_response_path_accepted_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
+
+    struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1", NULL, true));
+
+    s_rrc_wait_on_request_completion(&fixture, record_key);
+
+    struct aws_byte_cursor expected_response_topic = aws_byte_cursor_from_c_str("test/accepted");
+    struct aws_byte_cursor expected_payload = aws_byte_cursor_from_c_str("{\"token\":\"token1\"}");
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrc_request_response_multi_sub_success_response_path_accepted,
+    s_rrc_request_response_multi_sub_success_response_path_accepted_fn)
+
 static int s_rrc_request_response_success_response_path_rejected_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -2478,7 +2565,7 @@ static int s_rrc_request_response_success_response_path_rejected_fn(struct aws_a
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/rejected", "token5", NULL));
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/rejected", "token5", NULL, false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2498,6 +2585,151 @@ AWS_TEST_CASE(
     rrc_request_response_success_response_path_rejected,
     s_rrc_request_response_success_response_path_rejected_fn)
 
+static int s_rrc_request_response_multi_sub_success_response_path_rejected_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
+
+    struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/rejected", "token5", NULL, true));
+
+    s_rrc_wait_on_request_completion(&fixture, record_key);
+
+    struct aws_byte_cursor expected_response_topic = aws_byte_cursor_from_c_str("test/rejected");
+    struct aws_byte_cursor expected_payload = aws_byte_cursor_from_c_str("{\"token\":\"token5\"}");
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrc_request_response_multi_sub_success_response_path_rejected,
+    s_rrc_request_response_multi_sub_success_response_path_rejected_fn)
+
+static void s_fail_all_subscribes_config_modifier_fn(
+    struct aws_mqtt_request_response_client_options *fixture_options,
+    struct mqtt5_client_test_options *client_test_options) {
+
+    client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_handle_subscribe_with_terminal_failure;
+}
+
+static int s_rrc_request_response_subscribe_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+
+    struct rrc_subscribe_handler_context subscribe_context = {
+        .fixture = &fixture,
+        .subscribes_received = 0,
+    };
+    ASSERT_SUCCESS(s_init_fixture_request_operation_success(
+        &fixture, &client_test_options, allocator, s_fail_all_subscribes_config_modifier_fn, &subscribe_context));
+
+    struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1", NULL, false));
+
+    s_rrc_wait_on_request_completion(&fixture, record_key);
+
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_SUBSCRIBE_FAILURE, NULL, NULL));
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrc_request_response_subscribe_failure, s_rrc_request_response_subscribe_failure_fn)
+
+static enum aws_mqtt5_suback_reason_code s_rrc_usuback_success_rcs[] = {
+    AWS_MQTT5_SARC_GRANTED_QOS_1,
+};
+
+int s_handle_second_subscribe_with_failure(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+    (void)packet;
+
+    struct rrc_subscribe_handler_context *context = user_data;
+
+    size_t subscribes_received = 0;
+
+    aws_mutex_lock(&context->fixture->lock);
+    ++context->subscribes_received;
+    subscribes_received = context->subscribes_received;
+    aws_mutex_unlock(&context->fixture->lock);
+
+    struct aws_mqtt5_packet_subscribe_view *subscribe_packet = packet;
+
+    struct aws_mqtt5_packet_suback_view suback_view = {
+        .packet_id = subscribe_packet->packet_id,
+        .reason_code_count = 1,
+        .reason_codes = (subscribes_received == 1) ? s_rrc_usuback_success_rcs : s_rrc_unretryable_suback_rcs,
+    };
+
+    return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view);
+}
+
+static void s_fail_second_subscribe_config_modifier_fn(
+    struct aws_mqtt_request_response_client_options *fixture_options,
+    struct mqtt5_client_test_options *client_test_options) {
+
+    client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
+        s_handle_second_subscribe_with_failure;
+}
+
+static int s_rrc_request_response_multi_subscribe_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+
+    struct rrc_subscribe_handler_context subscribe_context = {
+        .fixture = &fixture,
+        .subscribes_received = 0,
+    };
+    ASSERT_SUCCESS(s_init_fixture_request_operation_success(
+        &fixture, &client_test_options, allocator, s_fail_second_subscribe_config_modifier_fn, &subscribe_context));
+
+    struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1", NULL, true));
+
+    s_rrc_wait_on_request_completion(&fixture, record_key);
+
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_SUBSCRIBE_FAILURE, NULL, NULL));
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrc_request_response_multi_subscribe_failure, s_rrc_request_response_multi_subscribe_failure_fn)
+
 static int s_rrc_request_response_failure_puback_reason_code_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -2509,7 +2741,7 @@ static int s_rrc_request_response_failure_puback_reason_code_fn(struct aws_alloc
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_PUBACK_REASON_CODE, "test", record_key, "test/accepted", "token1", NULL));
+        &fixture, RRC_PHDT_FAILURE_PUBACK_REASON_CODE, "test", record_key, "test/accepted", "token1", NULL, false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2536,7 +2768,7 @@ static int s_rrc_request_response_failure_invalid_payload_fn(struct aws_allocato
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_BAD_PAYLOAD_FORMAT, "test", record_key, "test/accepted", "token1", NULL));
+        &fixture, RRC_PHDT_FAILURE_BAD_PAYLOAD_FORMAT, "test", record_key, "test/accepted", "token1", NULL, false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2563,7 +2795,14 @@ static int s_rrc_request_response_failure_missing_correlation_token_fn(struct aw
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_MISSING_CORRELATION_TOKEN, "test", record_key, "test/accepted", "token1", NULL));
+        &fixture,
+        RRC_PHDT_FAILURE_MISSING_CORRELATION_TOKEN,
+        "test",
+        record_key,
+        "test/accepted",
+        "token1",
+        NULL,
+        false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2594,7 +2833,14 @@ static int s_rrc_request_response_failure_invalid_correlation_token_type_fn(
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_BAD_CORRELATION_TOKEN_TYPE, "test", record_key, "test/accepted", "token1", NULL));
+        &fixture,
+        RRC_PHDT_FAILURE_BAD_CORRELATION_TOKEN_TYPE,
+        "test",
+        record_key,
+        "test/accepted",
+        "token1",
+        NULL,
+        false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2625,7 +2871,14 @@ static int s_rrc_request_response_failure_non_matching_correlation_token_fn(
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_FAILURE_MISMATCHED_CORRELATION_TOKEN, "test", record_key, "test/accepted", "token1", NULL));
+        &fixture,
+        RRC_PHDT_FAILURE_MISMATCHED_CORRELATION_TOKEN,
+        "test",
+        record_key,
+        "test/accepted",
+        "token1",
+        NULL,
+        false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2653,8 +2906,8 @@ static int s_rrc_request_response_success_empty_correlation_token_fn(struct aws_
     ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
 
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
-    ASSERT_SUCCESS(
-        s_rrc_test_submit_test_request(&fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", NULL, NULL));
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", NULL, NULL, false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
@@ -2697,7 +2950,7 @@ static int s_rrc_request_response_success_empty_correlation_token_sequence_fn(
         snprintf(response_topic_buffer, AWS_ARRAY_SIZE(response_topic_buffer), "test%zu/accepted", i);
 
         ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-            &fixture, RRC_PHDT_SUCCESS, prefix_buffer, record_key, response_topic_buffer, NULL, NULL));
+            &fixture, RRC_PHDT_SUCCESS, prefix_buffer, record_key, response_topic_buffer, NULL, NULL, false));
     }
 
     for (size_t i = 0; i < 20; ++i) {
@@ -2755,7 +3008,8 @@ static int s_do_rrc_operation_sequence_test(
             record_key,
             response_topic_buffer,
             operation->token,
-            operation->reflection));
+            operation->reflection,
+            false));
     }
 
     for (size_t i = 0; i < operation_count; ++i) {

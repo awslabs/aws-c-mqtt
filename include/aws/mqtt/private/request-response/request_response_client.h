@@ -8,7 +8,7 @@
 
 #include <aws/mqtt/mqtt.h>
 
-struct aws_mqtt_request_response_client;
+#include <aws/mqtt/request-response/request_response_client.h>
 
 AWS_EXTERN_C_BEGIN
 
