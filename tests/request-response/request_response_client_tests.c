@@ -2621,6 +2621,7 @@ AWS_TEST_CASE(
 static void s_fail_all_subscribes_config_modifier_fn(
     struct aws_mqtt_request_response_client_options *fixture_options,
     struct mqtt5_client_test_options *client_test_options) {
+    (void)fixture_options;
 
     client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
         s_handle_subscribe_with_terminal_failure;
@@ -2692,6 +2693,7 @@ int s_handle_second_subscribe_with_failure(
 static void s_fail_second_subscribe_config_modifier_fn(
     struct aws_mqtt_request_response_client_options *fixture_options,
     struct mqtt5_client_test_options *client_test_options) {
+    (void)fixture_options;
 
     client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
         s_handle_second_subscribe_with_failure;
