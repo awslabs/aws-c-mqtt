@@ -7,7 +7,7 @@
 #include <aws/mqtt/private/client_impl.h>
 #include <aws/mqtt/private/mqtt_client_test_helper.h>
 #include <aws/mqtt/private/packets.h>
-#include <aws/mqtt/private/shared_constants.h>
+#include <aws/mqtt/private/shared.h>
 #include <aws/mqtt/private/topic_tree.h>
 
 #include <aws/http/proxy.h>
