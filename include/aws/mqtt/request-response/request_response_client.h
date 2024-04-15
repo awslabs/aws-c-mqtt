@@ -12,19 +12,41 @@ struct aws_mqtt_request_response_client;
 struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
 
+/*
+ * A response path is a pair of values - MQTT topic and a JSON path - that describe where a response to
+ * an MQTT-based request may arrive.  For a given request type, there may be multiple response paths and each
+ * one is associated with a separate JSON schema for the response body.
+ */
 struct aws_mqtt_request_operation_response_path {
+
+    /*
+     * MQTT topic that a response may arrive on.
+     */
     struct aws_byte_cursor topic;
 
-    /* potential point of expansion into an abstract "extractor" if we ever need to support non-JSON payloads */
+    /*
+     * JSON path for finding correlation tokens within payloads that arrive on this path's topic.
+     */
     struct aws_byte_cursor correlation_token_json_path;
 };
 
+/*
+ * Callback signature for request-response completion.
+ *
+ * Invariants:
+ *   If error_code is non-zero then response_topic and payload will be NULL.
+ *   If response_topic and payload are not NULL then error_code will be 0.
+ *   response_topic and payload are either both set or both not set.
+ */
 typedef void(aws_mqtt_request_operation_completion_fn)(
     const struct aws_byte_cursor *response_topic,
     const struct aws_byte_cursor *payload,
     int error_code,
     void *user_data);
 
+/*
+ * Configuration options for a request-response operation.
+ */
 struct aws_mqtt_request_operation_options {
     struct aws_byte_cursor *subscription_topic_filters;
     size_t subscription_topic_filter_count;
