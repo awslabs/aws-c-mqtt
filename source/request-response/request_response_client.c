@@ -33,6 +33,8 @@ struct aws_mqtt_streaming_operation_storage {
     struct aws_mqtt_streaming_operation_options options;
 
     struct aws_byte_buf operation_data;
+
+    struct aws_atomic_var activated;
 };
 
 enum aws_mqtt_request_response_operation_type {
@@ -2166,6 +2168,8 @@ void s_aws_mqtt_streaming_operation_storage_init_from_options(
 
     AWS_FATAL_ASSERT(
         aws_byte_buf_append_and_update(&storage->operation_data, &storage->options.topic_filter) == AWS_OP_SUCCESS);
+
+    aws_atomic_init_int(&storage->activated, 0);
 }
 
 static void s_log_streaming_operation(
@@ -2226,6 +2230,18 @@ struct aws_mqtt_rr_client_operation *aws_mqtt_request_response_client_create_str
     aws_event_loop_schedule_task_now(client->loop, &operation->submit_task);
 
     return operation;
+}
+
+int aws_mqtt_rr_client_operation_activate(struct aws_mqtt_rr_client_operation *operation) {
+    struct aws_atomic_var *activated = &operation->storage.streaming_storage.activated;
+    size_t unactivated = 0;
+    if (!aws_atomic_compare_exchange_int(activated, &unactivated, 1)) {
+        return aws_raise_error(??);
+    }
+
+    aws_event_loop_schedule_task_now(operation->client_internal_ref->loop, &operation->submit_task);
+
+    return AWS_OP_SUCCESS;
 }
 
 struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_acquire(
