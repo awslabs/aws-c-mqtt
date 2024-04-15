@@ -1062,8 +1062,8 @@ int main(int argc, char **argv) {
         &app_ctx.streaming_operations,
         allocator,
         10,
-        aws_mqtt_hash_uint64_t,
-        aws_mqtt_compare_uint64_t_eq,
+        aws_hash_uint64_t,
+        aws_hash_compare_uint64_t_eq,
         NULL,
         s_release_streaming_operation);
 

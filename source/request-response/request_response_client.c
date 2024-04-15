@@ -1108,14 +1108,6 @@ static void s_aws_rr_client_protocol_adapter_connection_event_callback(
     aws_rr_subscription_manager_on_protocol_adapter_connection_event(&rr_client->subscription_manager, event);
 }
 
-uint64_t aws_mqtt_hash_uint64_t(const void *item) {
-    return *(uint64_t *)item;
-}
-
-bool aws_mqtt_compare_uint64_t_eq(const void *a, const void *b) {
-    return *(uint64_t *)a == *(uint64_t *)b;
-}
-
 static int s_compare_rr_operation_timeouts(const void *a, const void *b) {
     const struct aws_mqtt_rr_client_operation **operation_a_ptr = (void *)a;
     const struct aws_mqtt_rr_client_operation *operation_a = *operation_a_ptr;
@@ -1165,8 +1157,8 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         &rr_client->operations,
         allocator,
         MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
-        aws_mqtt_hash_uint64_t,
-        aws_mqtt_compare_uint64_t_eq,
+        aws_hash_uint64_t,
+        aws_hash_compare_uint64_t_eq,
         NULL,
         NULL);
 
