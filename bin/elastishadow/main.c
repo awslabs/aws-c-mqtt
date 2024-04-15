@@ -3,28 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/common/clock.h>
 #include <aws/common/command_line_parser.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/log_channel.h>
-#include <aws/common/log_formatter.h>
-#include <aws/common/log_writer.h>
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/uuid.h>
 
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
-#include <aws/io/logging.h>
 #include <aws/io/socket.h>
-#include <aws/io/stream.h>
 #include <aws/io/tls_channel_handler.h>
 #include <aws/io/uri.h>
 
 #include <aws/mqtt/private/shared.h>
-#include <aws/mqtt/private/v5/mqtt5_utils.h>
-#include <aws/mqtt/request-response //request_response_client.h>
+#include <aws/mqtt/request-response/request_response_client.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
@@ -768,7 +762,7 @@ static void s_stream_incoming_publish_fn(struct aws_byte_cursor payload, void *u
 static void s_stream_terminated_fn(void *user_data) {
     struct aws_shadow_streaming_operation *operation = user_data;
 
-    printf("Stream %" PRIu64 "terminated\n\n", operation->id);
+    printf("Stream %" PRIu64 " terminated\n\n", operation->id);
 
     s_aws_shadow_streaming_operation_destroy(operation);
 }
@@ -994,14 +988,19 @@ static bool s_handle_input(struct app_ctx *context, struct aws_allocator *alloca
     } else {
         printf("Unknown command: " PRInSTR "\n", AWS_BYTE_CURSOR_PRI(command_cursor));
         printf("\nValid commands:\n");
-        printf(" get-named-shadow - gets the full state of a named shadow\n");
-        printf(" delete-named-shadow - deletes a named shadow\n");
-        printf(" update-named-shadow-reported - updates the reported state of a named shadow\n");
-        printf(" update-named-shadow-desired - updates the desired state of a named shadow\n");
+        printf("  get-named-shadow - gets the full state of a named shadow\n");
+        printf("  delete-named-shadow - deletes a named shadow\n");
+        printf("  update-named-shadow-reported - updates the reported state of a named shadow\n");
+        printf("  update-named-shadow-desired - updates the desired state of a named shadow\n");
         printf("\n");
-        printf(" start - starts the mqtt5 client underlying the request-response client\n");
-        printf(" stop - starts the mqtt5 client underlying the request-response client\n");
-        printf(" quit - quits the program\n");
+        printf("  list-streams - lists all open shadow streams\n");
+        printf("  open-named-shadow-delta-stream - creates and opens a new shadow delta stream\n");
+        printf("  open-named-shadow-document-stream - creates and opens a new shadow document stream\n");
+        printf("  close-stream - closes a specific shadow stream\n");
+        printf("\n");
+        printf("  start - starts the mqtt5 client underlying the request-response client\n");
+        printf("  stop - starts the mqtt5 client underlying the request-response client\n");
+        printf("  quit - quits the program\n");
         printf("\n");
     }
 
