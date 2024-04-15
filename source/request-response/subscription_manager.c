@@ -76,15 +76,6 @@ struct aws_rr_subscription_record {
     bool poisoned;
 };
 
-static void s_aws_rr_subscription_record_log_invariant_violations(const struct aws_rr_subscription_record *record) {
-    if (record->status == ARRSST_SUBSCRIBED && record->pending_action == ARRSPAT_SUBSCRIBING) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response subscription manager - subscription ('" PRInSTR "') invalid state",
-            AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
-    }
-}
-
 static void s_aws_rr_subscription_record_destroy(void *element) {
     struct aws_rr_subscription_record *record = element;
 
@@ -96,11 +87,12 @@ static void s_aws_rr_subscription_record_destroy(void *element) {
 
 static struct aws_rr_subscription_record *s_aws_rr_subscription_new(
     struct aws_allocator *allocator,
-    const struct aws_rr_acquire_subscription_options *options) {
+    struct aws_byte_cursor topic_filter,
+    enum aws_rr_subscription_type type) {
     struct aws_rr_subscription_record *record = aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_subscription_record));
     record->allocator = allocator;
 
-    aws_byte_buf_init_copy_from_cursor(&record->topic_filter, allocator, options->topic_filter);
+    aws_byte_buf_init_copy_from_cursor(&record->topic_filter, allocator, topic_filter);
     record->topic_filter_cursor = aws_byte_cursor_from_buf(&record->topic_filter);
 
     aws_hash_table_init(
@@ -115,7 +107,7 @@ static struct aws_rr_subscription_record *s_aws_rr_subscription_new(
     record->status = ARRSST_NOT_SUBSCRIBED;
     record->pending_action = ARRSPAT_NOTHING;
 
-    record->type = options->type;
+    record->type = type;
 
     return record;
 }
@@ -451,114 +443,150 @@ static int s_rr_activate_idle_subscription(
 enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_subscription(
     struct aws_rr_subscription_manager *manager,
     const struct aws_rr_acquire_subscription_options *options) {
-    struct aws_rr_subscription_record *existing_record = s_get_subscription_record(manager, options->topic_filter);
 
-    // is no subscription present?
-    if (existing_record == NULL) {
-        // is the budget used up?
+    if (options->topic_filter_count == 0) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    /*
+     * Check for poisoned or mismatched records.  This has precedence over the following unsubscribing check,
+     * and so we put them in separate loops
+     */
+    for (size_t i = 0; i < options->topic_filter_count; ++i) {
+        struct aws_byte_cursor topic_filter = options->topic_filters[i];
+        struct aws_rr_subscription_record *existing_record = s_get_subscription_record(manager, topic_filter);
+        if (existing_record == NULL) {
+            continue;
+        }
+
+        if (existing_record->poisoned) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+                " failed - existing subscription is poisoned and has not been released",
+                AWS_BYTE_CURSOR_PRI(topic_filter),
+                options->operation_id);
+            return AASRT_FAILURE;
+        }
+
+        if (existing_record->type != options->type) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
+                " failed - conflicts with subscription type of existing subscription",
+                AWS_BYTE_CURSOR_PRI(topic_filter),
+                options->operation_id);
+            return AASRT_FAILURE;
+        }
+    }
+
+    /* blocked if an existing record is unsubscribing; also compute how many subscriptions are needed */
+    size_t subscriptions_needed = 0;
+    for (size_t i = 0; i < options->topic_filter_count; ++i) {
+        struct aws_byte_cursor topic_filter = options->topic_filters[i];
+        struct aws_rr_subscription_record *existing_record = s_get_subscription_record(manager, topic_filter);
+        if (existing_record != NULL) {
+            if (existing_record->pending_action == ARRSPAT_UNSUBSCRIBING) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "request-response subscription manager - acquire subscription for ('" PRInSTR
+                    "'), operation %" PRIu64 " blocked - existing subscription is unsubscribing",
+                    AWS_BYTE_CURSOR_PRI(topic_filter),
+                    options->operation_id);
+                return AASRT_BLOCKED;
+            }
+        } else {
+            ++subscriptions_needed;
+        }
+    }
+
+    /* Check for space and fail or block as appropriate */
+    if (subscriptions_needed > 0) {
+        /* how much of the budget are we using? */
         struct aws_subscription_stats stats;
         s_get_subscription_stats(manager, &stats);
 
-        bool space_for_subscription =
-            stats.event_stream_subscriptions + stats.request_response_subscriptions < manager->config.max_subscriptions;
-        if (options->type == ARRST_EVENT_STREAM) {
-            // event stream subscriptions cannot hog the entire subscription budget
-            space_for_subscription =
-                space_for_subscription && (stats.event_stream_subscriptions + 1 < manager->config.max_subscriptions);
-        }
-
-        if (!space_for_subscription) {
-            // could space eventually free up?
-            if (options->type == ARRST_REQUEST_RESPONSE || stats.request_response_subscriptions > 1 ||
-                stats.unsubscribing_event_stream_subscriptions > 0) {
+        if (options->type == ARRST_REQUEST_RESPONSE) {
+            if (subscriptions_needed >
+                manager->config.max_request_response_subscriptions - stats.request_response_subscriptions) {
                 AWS_LOGF_DEBUG(
                     AWS_LS_MQTT_REQUEST_RESPONSE,
-                    "request-response subscription manager - acquire subscription for ('" PRInSTR
-                    "'), operation %" PRIu64 " blocked - no room currently",
-                    AWS_BYTE_CURSOR_PRI(options->topic_filter),
+                    "request-response subscription manager - acquire subscription for request operation %" PRIu64
+                    " blocked - no room currently",
                     options->operation_id);
                 return AASRT_BLOCKED;
-            } else {
-                AWS_LOGF_DEBUG(
-                    AWS_LS_MQTT_REQUEST_RESPONSE,
-                    "request-response subscription manager - acquire subscription for ('" PRInSTR
-                    "'), operation %" PRIu64 " failed - no room",
-                    AWS_BYTE_CURSOR_PRI(options->topic_filter),
-                    options->operation_id);
-                return AASRT_NO_CAPACITY;
+            }
+        } else {
+            /*
+             * Streaming subscriptions have more complicated space-checking logic.  Under certain conditions, we may
+             * block rather than failing
+             */
+            if (subscriptions_needed + stats.event_stream_subscriptions > manager->config.max_streaming_subscriptions) {
+                if (subscriptions_needed + stats.event_stream_subscriptions <=
+                    manager->config.max_streaming_subscriptions + stats.unsubscribing_event_stream_subscriptions) {
+                    /* If enough subscriptions are in the process of going away then wait in the blocked state */
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_REQUEST_RESPONSE,
+                        "request-response subscription manager - acquire subscription for streaming operation %" PRIu64
+                        " blocked - no room currently",
+                        options->operation_id);
+                    return AASRT_BLOCKED;
+                } else {
+                    /* Otherwise, there's no hope, fail */
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_MQTT_REQUEST_RESPONSE,
+                        "request-response subscription manager - acquire subscription for operation %" PRIu64
+                        " failed - no room",
+                        options->operation_id);
+                    return AASRT_NO_CAPACITY;
+                }
             }
         }
-
-        // create-and-add subscription
-        existing_record = s_aws_rr_subscription_new(manager->allocator, options);
-        aws_hash_table_put(&manager->subscriptions, &existing_record->topic_filter_cursor, existing_record, NULL);
     }
 
-    AWS_FATAL_ASSERT(existing_record != NULL);
-    if (existing_record->type != options->type) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
-            " failed - conflicts with subscription type of existing subscription",
-            AWS_BYTE_CURSOR_PRI(options->topic_filter),
-            options->operation_id);
-        return AASRT_FAILURE;
+    bool is_fully_subscribed = true;
+    for (size_t i = 0; i < options->topic_filter_count; ++i) {
+        struct aws_byte_cursor topic_filter = options->topic_filters[i];
+        struct aws_rr_subscription_record *existing_record = s_get_subscription_record(manager, topic_filter);
+
+        if (existing_record == NULL) {
+            existing_record = s_aws_rr_subscription_new(manager->allocator, topic_filter, options->type);
+            aws_hash_table_put(&manager->subscriptions, &existing_record->topic_filter_cursor, existing_record, NULL);
+        }
+
+        s_add_listener_to_subscription_record(existing_record, options->operation_id);
+        if (existing_record->status != ARRSST_SUBSCRIBED) {
+            is_fully_subscribed = false;
+        }
     }
 
-    if (existing_record->poisoned) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
-            " failed - existing subscription is poisoned and has not been released",
-            AWS_BYTE_CURSOR_PRI(options->topic_filter),
-            options->operation_id);
-        return AASRT_FAILURE;
-    }
-
-    s_aws_rr_subscription_record_log_invariant_violations(existing_record);
-
-    // for simplicity, we require unsubscribes to complete before re-subscribing
-    if (existing_record->pending_action == ARRSPAT_UNSUBSCRIBING) {
+    if (is_fully_subscribed) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
-            " blocked - existing subscription is unsubscribing",
-            AWS_BYTE_CURSOR_PRI(options->topic_filter),
-            options->operation_id);
-        return AASRT_BLOCKED;
-    }
-
-    // register the operation as a listener
-    s_add_listener_to_subscription_record(existing_record, options->operation_id);
-    if (existing_record->status == ARRSST_SUBSCRIBED) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
-            " subscribed - existing subscription is active",
-            AWS_BYTE_CURSOR_PRI(options->topic_filter),
+            "request-response subscription manager - acquire subscription for operation %" PRIu64
+            " fully subscribed - all required subscriptions are active",
             options->operation_id);
         return AASRT_SUBSCRIBED;
     }
 
-    // do we need to send a subscribe?
-    if (s_rr_activate_idle_subscription(manager, existing_record)) {
-        // error code was already logged at the point of failure
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
-            " failed - synchronous subscribe failure",
-            AWS_BYTE_CURSOR_PRI(options->topic_filter),
-            options->operation_id);
-        return AASRT_FAILURE;
-    }
+    for (size_t i = 0; i < options->topic_filter_count; ++i) {
+        struct aws_byte_cursor topic_filter = options->topic_filters[i];
+        struct aws_rr_subscription_record *existing_record = s_get_subscription_record(manager, topic_filter);
 
-    s_aws_rr_subscription_record_log_invariant_violations(existing_record);
+        if (s_rr_activate_idle_subscription(manager, existing_record)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "request-response subscription manager - acquire subscription for operation %" PRIu64
+                " failed - synchronous subscribe failure",
+                options->operation_id);
+            return AASRT_FAILURE;
+        }
+    }
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_REQUEST_RESPONSE,
-        "request-response subscription manager - acquire subscription for ('" PRInSTR "'), operation %" PRIu64
-        " subscribing - waiting on existing subscription",
-        AWS_BYTE_CURSOR_PRI(options->topic_filter),
+        "request-response subscription manager - acquire subscription for operation %" PRIu64
+        " subscribing - waiting on one or more subscribes to complete",
         options->operation_id);
 
     return AASRT_SUBSCRIBING;
@@ -567,7 +595,10 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
 void aws_rr_subscription_manager_release_subscription(
     struct aws_rr_subscription_manager *manager,
     const struct aws_rr_release_subscription_options *options) {
-    s_remove_listener_from_subscription_record(manager, options->topic_filter, options->operation_id);
+    for (size_t i = 0; i < options->topic_filter_count; ++i) {
+        struct aws_byte_cursor topic_filter = options->topic_filters[i];
+        s_remove_listener_from_subscription_record(manager, topic_filter, options->operation_id);
+    }
 }
 
 static void s_handle_protocol_adapter_request_subscription_event(
@@ -663,8 +694,6 @@ void aws_rr_subscription_manager_on_protocol_adapter_subscription_event(
     } else {
         s_handle_protocol_adapter_streaming_subscription_event(manager, record, event);
     }
-
-    s_aws_rr_subscription_record_log_invariant_violations(record);
 }
 
 static int s_rr_activate_idle_subscriptions_wrapper(void *context, struct aws_hash_element *elem) {
@@ -672,8 +701,6 @@ static int s_rr_activate_idle_subscriptions_wrapper(void *context, struct aws_ha
     struct aws_rr_subscription_manager *manager = context;
 
     s_rr_activate_idle_subscription(manager, record);
-
-    s_aws_rr_subscription_record_log_invariant_violations(record);
 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
@@ -748,7 +775,7 @@ void aws_rr_subscription_manager_on_protocol_adapter_connection_event(
 }
 
 bool aws_rr_subscription_manager_are_options_valid(const struct aws_rr_subscription_manager_options *options) {
-    if (options == NULL || options->max_subscriptions < 1 || options->operation_timeout_seconds == 0) {
+    if (options == NULL || options->max_request_response_subscriptions < 2 || options->operation_timeout_seconds == 0) {
         return false;
     }
 
@@ -771,7 +798,7 @@ void aws_rr_subscription_manager_init(
     aws_hash_table_init(
         &manager->subscriptions,
         allocator,
-        options->max_subscriptions,
+        options->max_request_response_subscriptions + options->max_streaming_subscriptions,
         aws_hash_byte_cursor_ptr,
         aws_mqtt_byte_cursor_hash_equality,
         NULL,
