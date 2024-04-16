@@ -254,6 +254,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_REQUEST_RESPONSE_PUBLISH_FAILURE,
                 "Request-response operation failed because the associated publish failed synchronously."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_REUQEST_RESPONSE_STREAM_ALREADY_ACTIVATED,
+                "Streaming operation activation failed because the operaation had already been activated."),
 
         };
 /* clang-format on */
