@@ -819,7 +819,8 @@ static void s_handle_open_delta_stream(
 
     operation->streaming_operation =
         aws_mqtt_request_response_client_create_streaming_operation(context->rr_client, &open_stream_options);
-    if (operation->streaming_operation == NULL) {
+    if (operation->streaming_operation == NULL ||
+        aws_mqtt_rr_client_operation_activate(operation->streaming_operation)) {
         int error_code = aws_last_error();
         printf(
             "NamedShadow delta stream synchronous open failure: %d(%s)\n", error_code, aws_error_debug_str(error_code));
@@ -882,7 +883,8 @@ static void s_handle_open_document_stream(
 
     operation->streaming_operation =
         aws_mqtt_request_response_client_create_streaming_operation(context->rr_client, &open_stream_options);
-    if (operation->streaming_operation == NULL) {
+    if (operation->streaming_operation == NULL ||
+        aws_mqtt_rr_client_operation_activate(operation->streaming_operation)) {
         int error_code = aws_last_error();
         printf(
             "NamedShadow document stream synchronous open failure: %d(%s)\n",
@@ -1062,7 +1064,7 @@ int main(int argc, char **argv) {
         &app_ctx.streaming_operations,
         allocator,
         10,
-        aws_hash_uint64_t,
+        aws_hash_uint64_t_by_identity,
         aws_hash_compare_uint64_t_eq,
         NULL,
         s_release_streaming_operation);

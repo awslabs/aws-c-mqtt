@@ -1159,7 +1159,7 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         &rr_client->operations,
         allocator,
         MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
-        aws_hash_uint64_t,
+        aws_hash_uint64_t_by_identity,
         aws_hash_compare_uint64_t_eq,
         NULL,
         NULL);
@@ -1941,12 +1941,6 @@ static void s_aws_mqtt_rr_client_operation_init_shared(
     operation->allocator = client->allocator;
     aws_ref_count_init(&operation->ref_count, operation, s_on_mqtt_rr_client_operation_zero_ref_count);
 
-    /*
-     * We hold a second reference to the operation during submission.  This ensures that even if a streaming operation
-     * is immediately dec-refed by the creator (before submission runs), the operation will not get destroyed.
-     */
-    aws_mqtt_rr_client_operation_acquire(operation);
-
     operation->client_internal_ref = aws_mqtt_request_response_client_acquire_internal(client);
     operation->id = s_aws_mqtt_request_response_client_allocate_operation_id(client);
     s_change_operation_state(operation, AWS_MRROS_NONE);
@@ -2152,6 +2146,12 @@ int aws_mqtt_request_response_client_submit_request(
 
     s_log_request_response_operation(operation, client);
 
+    /*
+     * We hold a second reference to the operation during submission.  This ensures that even if a streaming operation
+     * is immediately dec-refed by the creator (before submission runs), the operation will not get destroyed.
+     */
+    aws_mqtt_rr_client_operation_acquire(operation);
+
     aws_event_loop_schedule_task_now(client->loop, &operation->submit_task);
 
     return AWS_OP_SUCCESS;
@@ -2227,8 +2227,6 @@ struct aws_mqtt_rr_client_operation *aws_mqtt_request_response_client_create_str
 
     s_log_streaming_operation(operation, client);
 
-    aws_event_loop_schedule_task_now(client->loop, &operation->submit_task);
-
     return operation;
 }
 
@@ -2236,10 +2234,24 @@ int aws_mqtt_rr_client_operation_activate(struct aws_mqtt_rr_client_operation *o
     struct aws_atomic_var *activated = &operation->storage.streaming_storage.activated;
     size_t unactivated = 0;
     if (!aws_atomic_compare_exchange_int(activated, &unactivated, 1)) {
-        return aws_raise_error(??);
+        return aws_raise_error(AWS_ERROR_MQTT_REUQEST_RESPONSE_STREAM_ALREADY_ACTIVATED);
     }
 
-    aws_event_loop_schedule_task_now(operation->client_internal_ref->loop, &operation->submit_task);
+    struct aws_mqtt_request_response_client *rr_client = operation->client_internal_ref;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response client - activating streaming operation with id %" PRIu64,
+        (void *)rr_client,
+        operation->id);
+
+    /*
+     * We hold a second reference to the operation during submission.  This ensures that even if a streaming operation
+     * is immediately dec-refed by the creator (before submission runs), the operation will not get destroyed.
+     */
+    aws_mqtt_rr_client_operation_acquire(operation);
+
+    aws_event_loop_schedule_task_now(rr_client->loop, &operation->submit_task);
 
     return AWS_OP_SUCCESS;
 }
