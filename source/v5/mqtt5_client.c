@@ -2190,9 +2190,12 @@ static int s_aws_mqtt5_client_change_desired_state(
     struct aws_mqtt5_client *client,
     enum aws_mqtt5_client_state desired_state,
     struct aws_mqtt5_operation_disconnect *disconnect_operation) {
-    AWS_FATAL_ASSERT(client != NULL);
     AWS_FATAL_ASSERT(client->loop != NULL);
     AWS_FATAL_ASSERT(disconnect_operation == NULL || desired_state == AWS_MCS_STOPPED);
+
+    if (client == NULL) {
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+    }
 
     if (!s_is_valid_desired_state(desired_state)) {
         AWS_LOGF_ERROR(
@@ -2225,7 +2228,9 @@ int aws_mqtt5_client_stop(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_disconnect_view *options,
     const struct aws_mqtt5_disconnect_completion_options *completion_options) {
-    AWS_FATAL_ASSERT(client != NULL);
+    if (client == NULL) {
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+    }
     struct aws_mqtt5_operation_disconnect *disconnect_op = NULL;
     if (options != NULL) {
         struct aws_mqtt5_disconnect_completion_options internal_completion_options = {
@@ -2339,7 +2344,10 @@ int aws_mqtt5_client_publish(
     const struct aws_mqtt5_packet_publish_view *publish_options,
     const struct aws_mqtt5_publish_completion_options *completion_options) {
 
-    AWS_PRECONDITION(client != NULL);
+    if (client == NULL) {
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+    }
+
     AWS_PRECONDITION(publish_options != NULL);
 
     struct aws_mqtt5_operation_publish *publish_op =
@@ -2370,7 +2378,10 @@ int aws_mqtt5_client_subscribe(
     const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
     const struct aws_mqtt5_subscribe_completion_options *completion_options) {
 
-    AWS_PRECONDITION(client != NULL);
+    if (client == NULL) {
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+    }
+
     AWS_PRECONDITION(subscribe_options != NULL);
 
     struct aws_mqtt5_operation_subscribe *subscribe_op =
@@ -2402,7 +2413,10 @@ int aws_mqtt5_client_unsubscribe(
     const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_options,
     const struct aws_mqtt5_unsubscribe_completion_options *completion_options) {
 
-    AWS_PRECONDITION(client != NULL);
+    if (client == NULL) {
+        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+    }
+
     AWS_PRECONDITION(unsubscribe_options != NULL);
 
     struct aws_mqtt5_operation_unsubscribe *unsubscribe_op =
@@ -3361,6 +3375,10 @@ void aws_mqtt5_client_statistics_change_operation_statistic_state(
 }
 
 void aws_mqtt5_client_get_stats(struct aws_mqtt5_client *client, struct aws_mqtt5_client_operation_statistics *stats) {
+    if (client == NULL) {
+        aws_raise_error(AWS_ERROR_MQTT5_CLIENT_TERMINATED);
+        return;
+    }
     stats->incomplete_operation_count =
         (uint64_t)aws_atomic_load_int(&client->operation_statistics_impl.incomplete_operation_count_atomic);
     stats->incomplete_operation_size =
