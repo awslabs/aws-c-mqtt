@@ -2190,12 +2190,12 @@ static int s_aws_mqtt5_client_change_desired_state(
     struct aws_mqtt5_client *client,
     enum aws_mqtt5_client_state desired_state,
     struct aws_mqtt5_operation_disconnect *disconnect_operation) {
-    AWS_FATAL_ASSERT(client->loop != NULL);
-    AWS_FATAL_ASSERT(disconnect_operation == NULL || desired_state == AWS_MCS_STOPPED);
 
     if (client == NULL) {
         return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_TERMINATED);
     }
+    AWS_FATAL_ASSERT(client->loop != NULL);
+    AWS_FATAL_ASSERT(disconnect_operation == NULL || desired_state == AWS_MCS_STOPPED);
 
     if (!s_is_valid_desired_state(desired_state)) {
         AWS_LOGF_ERROR(
