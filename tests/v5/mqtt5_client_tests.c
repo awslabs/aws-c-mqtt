@@ -6013,8 +6013,10 @@ struct outbound_alias_publish {
 
 #define DEFINE_OUTBOUND_ALIAS_PUBLISH(topic_suffix, desired_alias, expected_alias_index, reused)                       \
     {                                                                                                                  \
-        .topic = aws_byte_cursor_from_string(s_topic_##topic_suffix), .topic_alias = desired_alias,                    \
-        .expected_alias_id = expected_alias_index, .expected_reuse = reused,                                           \
+        .topic = aws_byte_cursor_from_string(s_topic_##topic_suffix),                                                  \
+        .topic_alias = desired_alias,                                                                                  \
+        .expected_alias_id = expected_alias_index,                                                                     \
+        .expected_reuse = reused,                                                                                      \
     }
 
 static void s_outbound_alias_publish_completion_fn(
