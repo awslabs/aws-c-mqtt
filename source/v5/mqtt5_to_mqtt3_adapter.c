@@ -1551,7 +1551,7 @@ static int s_aws_mqtt_client_connection_5_set_will(
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     /* check qos */
-    if (qos < 0 || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+    if (qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, invalid qos for will", (void *)adapter);
         return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
@@ -1926,7 +1926,7 @@ static uint16_t s_aws_mqtt_client_connection_5_publish(
     AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, invoking publish API", (void *)adapter);
 
     /* check qos */
-    if (qos < 0 || qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+    if (qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, invalid qos for publish", (void *)adapter);
         aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
@@ -2157,7 +2157,7 @@ static int s_validate_adapter_subscribe_options(
         struct aws_mqtt_topic_subscription *subscription = subscriptions + i;
 
         /* check qos */
-        if (subscription->qos < 0 || subscription->qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
+        if (subscription->qos > AWS_MQTT_QOS_EXACTLY_ONCE) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter, invalid qos for subscribe", (void *)adapter);
             return aws_raise_error(AWS_ERROR_MQTT_INVALID_QOS);
