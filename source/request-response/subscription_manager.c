@@ -445,7 +445,12 @@ enum aws_acquire_subscription_result_type aws_rr_subscription_manager_acquire_su
     const struct aws_rr_acquire_subscription_options *options) {
 
     if (options->topic_filter_count == 0) {
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - acquire_subscription for operation %" PRIu64
+            " with no topic filters",
+            options->operation_id);
+        return AASRT_FAILURE;
     }
 
     /*
