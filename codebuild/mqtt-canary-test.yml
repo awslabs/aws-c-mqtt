@@ -8,7 +8,7 @@ env:
     CANARY_CLIENT_COUNT: 10
     CANARY_LOG_FILE: 'canary_log.txt'
     CANARY_LOG_LEVEL: 'ERROR'
-    BUILDER_VERSION: v0.9.40
+    BUILDER_VERSION: v0.9.55
     BUILDER_SOURCE: releases
     BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
     PACKAGE_NAME: 'aws-c-mqtt'

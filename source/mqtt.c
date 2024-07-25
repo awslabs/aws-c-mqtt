@@ -234,6 +234,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 AWS_ERROR_MQTT_CONNECTION_SUBSCRIBE_FAILURE,
                 "MQTT subscribe operation failed"),
             AWS_DEFINE_ERROR_INFO_MQTT(
+                AWS_ERROR_MQTT_ACK_REASON_CODE_FAILURE,
+                "MQTT ack packet received with a failing reason code"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_PROTOCOL_ADAPTER_FAILING_REASON_CODE,
                 "MQTT operation returned a failing reason code"),
             AWS_DEFINE_ERROR_INFO_MQTT(
@@ -257,7 +260,6 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_REUQEST_RESPONSE_STREAM_ALREADY_ACTIVATED,
                 "Streaming operation activation failed because the operaation had already been activated."),
-
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
@@ -346,7 +348,7 @@ static int aws_mqtt_utf8_decoder(uint32_t codepoint, void *user_data) {
         return aws_raise_error(AWS_ERROR_MQTT5_INVALID_UTF8_STRING);
     }
 
-    return AWS_ERROR_SUCCESS;
+    return AWS_OP_SUCCESS;
 }
 
 static struct aws_utf8_decoder_options s_aws_mqtt_utf8_decoder_options = {

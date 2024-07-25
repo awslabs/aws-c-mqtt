@@ -1069,7 +1069,11 @@ static void s_reset_ping(struct aws_mqtt5_client *client) {
 
     uint64_t keep_alive_interval_nanos =
         aws_timestamp_convert(keep_alive_seconds, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    client->next_ping_time = aws_add_u64_saturating(now, keep_alive_interval_nanos);
+    if (keep_alive_interval_nanos == 0) {
+        client->next_ping_time = UINT64_MAX;
+    } else {
+        client->next_ping_time = aws_add_u64_saturating(now, keep_alive_interval_nanos);
+    }
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT5_CLIENT, "id=%p: next PINGREQ scheduled for time %" PRIu64, (void *)client, client->next_ping_time);
@@ -1591,7 +1595,7 @@ static int s_process_read_message(
 
     if (message->message_type != AWS_IO_MESSAGE_APPLICATION_DATA) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: unexpected io message data", (void *)client);
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
     AWS_LOGF_TRACE(
@@ -2940,7 +2944,20 @@ static void s_on_pingreq_send(struct aws_mqtt5_client *client) {
     uint64_t now = client->vtable->get_current_time_fn();
     uint64_t ping_timeout_nanos =
         aws_timestamp_convert(client->config->ping_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
-    client->next_ping_timeout_time = aws_add_u64_saturating(now, ping_timeout_nanos);
+    uint64_t half_keep_alive_nanos =
+        aws_timestamp_convert(
+            client->negotiated_settings.server_keep_alive, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL) /
+        2;
+
+    uint64_t connection_ping_timeout = ping_timeout_nanos;
+    if (connection_ping_timeout == 0 || connection_ping_timeout > half_keep_alive_nanos) {
+        connection_ping_timeout = half_keep_alive_nanos;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT, "id=%p: dynamic ping timeout: %" PRIu64 " ns", (void *)client, connection_ping_timeout);
+
+    client->next_ping_timeout_time = aws_add_u64_saturating(now, connection_ping_timeout);
 }
 
 static int s_apply_throughput_flow_control(struct aws_mqtt5_client *client) {

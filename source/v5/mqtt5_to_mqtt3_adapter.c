@@ -309,16 +309,6 @@ static int s_validate_adapter_connection_options(
         }
     }
 
-    /* The client will not behave properly if ping timeout is not significantly shorter than the keep alive interval */
-    if (!aws_mqtt5_client_keep_alive_options_are_valid(
-            connection_options->keep_alive_time_secs, connection_options->ping_timeout_ms)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
-            "id=%p: mqtt3-to-5-adapter - keep alive interval is too small relative to ping timeout interval",
-            (void *)adapter);
-        return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
-    }
-
     return AWS_OP_SUCCESS;
 }
 
@@ -1823,8 +1813,14 @@ static void s_aws_mqtt5_to_mqtt3_adapter_publish_completion_fn(
     int error_code,
     void *complete_ctx) {
 
-    (void)packet_type;
-    (void)packet;
+    int error_code_final = error_code;
+
+    if (error_code_final == AWS_ERROR_SUCCESS && packet_type == AWS_MQTT5_PT_PUBACK) {
+        const struct aws_mqtt5_packet_puback_view *puback_view = packet;
+        if (puback_view->reason_code >= 128) {
+            error_code_final = AWS_ERROR_MQTT_ACK_REASON_CODE_FAILURE;
+        }
+    }
 
     struct aws_mqtt5_to_mqtt3_adapter_operation_publish *publish_op = complete_ctx;
 
@@ -1832,7 +1828,7 @@ static void s_aws_mqtt5_to_mqtt3_adapter_publish_completion_fn(
         (*publish_op->on_publish_complete)(
             &publish_op->base.adapter->base,
             publish_op->base.id,
-            error_code,
+            error_code_final,
             publish_op->on_publish_complete_user_data);
     }
 

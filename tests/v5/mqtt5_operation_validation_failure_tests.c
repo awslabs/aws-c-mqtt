@@ -1170,20 +1170,6 @@ static void s_make_invalid_connect_client_options(struct aws_mqtt5_client_option
 
 AWS_CLIENT_CREATION_VALIDATION_FAILURE(invalid_connect, s_good_client_options, s_make_invalid_connect_client_options)
 
-static struct aws_mqtt5_packet_connect_view s_short_keep_alive_connect_view = {
-    .keep_alive_interval_seconds = 20,
-};
-
-static void s_make_invalid_keep_alive_client_options(struct aws_mqtt5_client_options *options) {
-    options->connect_options = &s_short_keep_alive_connect_view;
-    options->ping_timeout_ms = 30000;
-}
-
-AWS_CLIENT_CREATION_VALIDATION_FAILURE(
-    invalid_keep_alive,
-    s_good_client_options,
-    s_make_invalid_keep_alive_client_options)
-
 static void s_make_invalid_port_client_options(struct aws_mqtt5_client_options *options) {
     options->port = 0xFFFFFFFF;
 }
