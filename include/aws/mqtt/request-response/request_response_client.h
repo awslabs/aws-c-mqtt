@@ -88,7 +88,7 @@ struct aws_mqtt_request_operation_options {
 };
 
 /*
- * Describes a change to the state of a request operation subscription
+ * Describes a change to the state of a streaming operation subscription
  */
 enum aws_rr_streaming_subscription_event_type {
 

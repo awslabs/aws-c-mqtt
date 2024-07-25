@@ -119,18 +119,18 @@ const char *s_aws_acquire_subscription_result_type(enum aws_acquire_subscription
 
 Client Tables/Lookups
 
-    (Authoritative operation container)
+    (operations: authoritative operation container)
     1. &operation.id -> &operation // added on in-thread enqueue, removed on operation completion/destruction
 
-    (Response path topic -> Correlation token extraction info)
+    (request_response_paths: response path topic -> Correlation token extraction info)
     2. &topic -> &{topic, topic_buffer, correlation token json path buffer} // ref-counted, per-message-path add on
     request dequeue into subscribing/subscribed state, decref/removed on operation completion/destruction
 
-    (CorrelationToken -> request operation)
+    (operations_by_correlation_tokens: correlationToken -> request operation)
     3. &operation.correlation token -> (request) &operation // added on request dequeue into subscribing/subscribed
 state, removed on operation completion/destruction
 
-    (Streaming subscription filter -> list of all operations using that filter)
+    (streaming_operation_subscription_lists: streaming subscription filter -> list of all operations using that filter)
     4. &topic_filter -> &{topic_filter, linked_list} // added on request dequeue into subscribing/subscribed state,
     removed from list on operation completion/destruction also checked for empty and removed from table
 
