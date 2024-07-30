@@ -1171,7 +1171,7 @@ static int s_do_acquire_no_capacity_test(struct aws_subscription_manager_test_fi
 }
 
 /*
- * Verify: Acquiring a new eventstream subscription when the budget is 1 returns NO_CAPACITY
+ * Verify: Acquiring a new eventstream subscription when the budget is 0 returns NO_CAPACITY
  */
 static int s_rrsm_acquire_no_capacity_max1_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
