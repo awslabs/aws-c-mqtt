@@ -167,7 +167,7 @@ int aws_mqtt5_outbound_topic_alias_resolver_reset(
     uint16_t topic_alias_maximum) {
 
     if (resolver == NULL) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
     return (*resolver->vtable->reset_fn)(resolver, topic_alias_maximum);

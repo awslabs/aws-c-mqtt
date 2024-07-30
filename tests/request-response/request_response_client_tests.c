@@ -888,6 +888,7 @@ static int s_rrc_submit_streaming_operation_failure_invalid_subscription_topic_f
     struct aws_mqtt_rr_client_operation *good_operation =
         aws_mqtt_request_response_client_create_streaming_operation(fixture.rr_client, &good_options);
     ASSERT_NOT_NULL(good_operation);
+    ASSERT_SUCCESS(aws_mqtt_rr_client_operation_activate(good_operation));
 
     aws_mqtt_rr_client_operation_release(good_operation);
 
@@ -988,7 +989,7 @@ static int s_do_rrc_single_streaming_operation_test_fn(
     struct aws_mqtt_streaming_operation_options *streaming_options,
     size_t expected_subscription_event_count,
     struct aws_rr_client_fixture_streaming_record_subscription_event *expected_subscription_events,
-    bool shutdown_after_submit) {
+    bool should_activate) {
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options client_test_options;
@@ -1015,26 +1016,28 @@ static int s_do_rrc_single_streaming_operation_test_fn(
         aws_mqtt_request_response_client_create_streaming_operation(fixture.rr_client, streaming_options);
     ASSERT_NOT_NULL(streaming_operation);
 
-    if (shutdown_after_submit) {
-        aws_mqtt_request_response_client_release(fixture.rr_client);
-        fixture.rr_client = NULL;
-
-        /*
-         * Extremely awkward sleep:
-         *
-         * We've submitted the operation and we've decref'd the client to zero.  When the operation submit task
-         * is processed, if the release in the succeeding line has happened-before the client external destroy task
-         * has run, then the operation's destory will be scheduled in-thread and run ahead of the client external
-         * destroy.  This doesn't break correctness, but it does prevent the client from emitting a HALTED event
-         * on the subscription because the subscription/operation will be gone before the client external destroy
-         * task runs.
-         *
-         * So we add a nice, fat sleep to guarantee that the client external destroy task runs before the operation
-         * destroy task.
-         */
-        aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
-        aws_mqtt_rr_client_operation_release(streaming_operation);
+    if (should_activate) {
+        ASSERT_SUCCESS(aws_mqtt_rr_client_operation_activate(streaming_operation));
     }
+
+    aws_mqtt_request_response_client_release(fixture.rr_client);
+    fixture.rr_client = NULL;
+
+    /*
+     * Extremely awkward sleep:
+     *
+     * We've submitted the operation and we've decref'd the client to zero.  When the operation submit task
+     * is processed, if the release in the succeeding line has happened-before the client external destroy task
+     * has run, then the operation's destory will be scheduled in-thread and run ahead of the client external
+     * destroy.  This doesn't break correctness, but it does prevent the client from emitting a HALTED event
+     * on the subscription because the subscription/operation will be gone before the client external destroy
+     * task runs.
+     *
+     * So we add a nice, fat sleep to guarantee that the client external destroy task runs before the operation
+     * destroy task.
+     */
+    aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+    aws_mqtt_rr_client_operation_release(streaming_operation);
 
     s_rrc_wait_on_streaming_termination(&fixture, streaming_id);
 
@@ -1048,7 +1051,7 @@ static int s_do_rrc_single_streaming_operation_test_fn(
     return AWS_OP_SUCCESS;
 }
 
-static int s_rrc_submit_streaming_operation_and_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_rrc_activate_streaming_operation_and_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct aws_rr_client_fixture_streaming_record_subscription_event expected_events[] = {
@@ -1066,7 +1069,19 @@ static int s_rrc_submit_streaming_operation_and_shutdown_fn(struct aws_allocator
         allocator, NULL, &streaming_options, AWS_ARRAY_SIZE(expected_events), expected_events, true);
 }
 
-AWS_TEST_CASE(rrc_submit_streaming_operation_and_shutdown, s_rrc_submit_streaming_operation_and_shutdown_fn)
+AWS_TEST_CASE(rrc_activate_streaming_operation_and_shutdown, s_rrc_activate_streaming_operation_and_shutdown_fn)
+
+static int s_rrc_create_streaming_operation_and_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt_streaming_operation_options streaming_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("derp/filter"),
+    };
+
+    return s_do_rrc_single_streaming_operation_test_fn(allocator, NULL, &streaming_options, 0, NULL, false);
+}
+
+AWS_TEST_CASE(rrc_create_streaming_operation_and_shutdown, s_rrc_create_streaming_operation_and_shutdown_fn)
 
 static int s_rrc_submit_request_operation_failure_by_timeout_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1114,7 +1129,11 @@ static struct aws_mqtt_rr_client_operation *s_create_streaming_operation(
     streaming_options.terminated_callback = s_rrc_fixture_streaming_operation_terminated_callback;
     streaming_options.user_data = record;
 
-    return aws_mqtt_request_response_client_create_streaming_operation(fixture->rr_client, &streaming_options);
+    struct aws_mqtt_rr_client_operation *streaming_operation =
+        aws_mqtt_request_response_client_create_streaming_operation(fixture->rr_client, &streaming_options);
+    aws_mqtt_rr_client_operation_activate(streaming_operation);
+
+    return streaming_operation;
 }
 
 static int s_rrc_publish_5(

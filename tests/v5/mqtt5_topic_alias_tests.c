@@ -411,7 +411,8 @@ struct lru_test_operation {
 
 #define DEFINE_LRU_TEST_OPERATION(topic_type, alias_index, reused)                                                     \
     {                                                                                                                  \
-        .topic = aws_byte_cursor_from_string(s_topic_##topic_type), .expected_alias_id = alias_index,                  \
+        .topic = aws_byte_cursor_from_string(s_topic_##topic_type),                                                    \
+        .expected_alias_id = alias_index,                                                                              \
         .expected_reuse = reused,                                                                                      \
     }
 

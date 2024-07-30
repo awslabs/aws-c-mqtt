@@ -337,10 +337,6 @@ AWS_MQTT_API void aws_mqtt5_client_options_storage_log(
     const struct aws_mqtt5_client_options_storage *options_storage,
     enum aws_log_level level);
 
-AWS_MQTT_API bool aws_mqtt5_client_keep_alive_options_are_valid(
-    uint16_t keep_alive_interval_seconds,
-    uint32_t ping_timeout_ms);
-
 AWS_EXTERN_C_END
 
 #endif /* AWS_MQTT_MQTT5_OPERATION_H */
