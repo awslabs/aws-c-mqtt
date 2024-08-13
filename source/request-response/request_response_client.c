@@ -1282,11 +1282,6 @@ static uint64_t s_mqtt_request_response_client_get_next_service_time(struct aws_
     return UINT64_MAX;
 }
 
-/* TODO: add aws-c-common API? */
-static bool s_is_operation_in_list(const struct aws_mqtt_rr_client_operation *operation) {
-    return aws_linked_list_node_prev_is_valid(&operation->node) && aws_linked_list_node_next_is_valid(&operation->node);
-}
-
 static int s_add_streaming_operation_to_subscription_topic_filter_table(
     struct aws_mqtt_request_response_client *client,
     struct aws_mqtt_rr_client_operation *operation) {
@@ -1313,7 +1308,7 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
 
     AWS_FATAL_ASSERT(entry != NULL);
 
-    if (s_is_operation_in_list(operation)) {
+    if (aws_linked_list_node_is_in_list(&operation->node)) {
         aws_linked_list_remove(&operation->node);
     }
 
@@ -1892,7 +1887,7 @@ static void s_mqtt_rr_client_destroy_operation(struct aws_task *task, void *arg,
     aws_hash_table_remove(&client->operations, &operation->id, NULL, NULL);
     s_remove_operation_from_timeout_queue(operation);
 
-    if (s_is_operation_in_list(operation)) {
+    if (aws_linked_list_node_is_in_list(&operation->node)) {
         aws_linked_list_remove(&operation->node);
     }
 
