@@ -1,10 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-mqtt C)
 
-if (POLICY CMP0069)
-    cmake_policy(SET CMP0069 NEW) # Enable LTO/IPO if available in the compiler, see AwsCFlags
-endif()
-
 option(ASSERT_LOCK_HELD "Enable ASSERT_SYNCED_DATA_LOCK_HELD for checking thread issue" OFF)
 if (ASSERT_LOCK_HELD)
     add_definitions(-DASSERT_LOCK_HELD)
@@ -72,6 +68,7 @@ file(GLOB MQTT_SRC
         ${AWS_MQTT_SRC}
         )
 
+aws_set_common_policies()
 add_library(${PROJECT_NAME} ${MQTT_HEADERS} ${MQTT_SRC})
 aws_set_common_properties(${PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_MQTT")
