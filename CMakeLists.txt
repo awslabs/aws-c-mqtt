@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.13)
 project(aws-c-mqtt C)
 
 option(ASSERT_LOCK_HELD "Enable ASSERT_SYNCED_DATA_LOCK_HELD for checking thread issue" OFF)
@@ -68,7 +68,6 @@ file(GLOB MQTT_SRC
         ${AWS_MQTT_SRC}
         )
 
-aws_set_common_policies()
 add_library(${PROJECT_NAME} ${MQTT_HEADERS} ${MQTT_SRC})
 aws_set_common_properties(${PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_MQTT")
