@@ -2436,8 +2436,8 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_a
     /* publish should complete after the shutdown */
     aws_test311_wait_for_ops_completed(state_test_data);
 
-    ASSERT_SUCCESS(
-        aws_mqtt_client_connection_disconnect(state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
     aws_test311_wait_for_disconnect_to_complete(state_test_data);
 
     return AWS_OP_SUCCESS;
