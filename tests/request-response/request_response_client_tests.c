@@ -1028,7 +1028,7 @@ static int s_do_rrc_single_streaming_operation_test_fn(
      *
      * We've submitted the operation and we've decref'd the client to zero.  When the operation submit task
      * is processed, if the release in the succeeding line has happened-before the client external destroy task
-     * has run, then the operation's destory will be scheduled in-thread and run ahead of the client external
+     * has run, then the operation's destroy will be scheduled in-thread and run ahead of the client external
      * destroy.  This doesn't break correctness, but it does prevent the client from emitting a HALTED event
      * on the subscription because the subscription/operation will be gone before the client external destroy
      * task runs.
