@@ -1740,3 +1740,29 @@ size_t aws_mqtt5_linked_list_length(struct aws_linked_list *list) {
 
     return length;
 }
+
+#define TEST_IO_MESSAGE_LENGTH 4096
+
+int aws_mqtt5_mock_server_send_packet(
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    enum aws_mqtt5_packet_type packet_type,
+    void *packet) {
+    aws_mqtt5_encoder_append_packet_encoding(&connection->encoder, packet_type, packet);
+
+    struct aws_io_message *message = aws_channel_acquire_message_from_pool(
+        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, TEST_IO_MESSAGE_LENGTH);
+    if (message == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    enum aws_mqtt5_encoding_result result =
+        aws_mqtt5_encoder_encode_to_buffer(&connection->encoder, &message->message_data);
+    AWS_FATAL_ASSERT(result == AWS_MQTT5_ER_FINISHED);
+
+    if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}

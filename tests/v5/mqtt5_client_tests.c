@@ -10,7 +10,6 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
-#include <aws/mqtt/client.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
@@ -18,38 +17,11 @@
 
 #include <aws/testing/aws_test_harness.h>
 
-#include <inttypes.h>
 #include <math.h>
-
-#define TEST_IO_MESSAGE_LENGTH 4096
 
 static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_time, double percentage) {
     double actual_percent = 1.0 - (double)actual_time / (double)expected_time;
     return fabs(actual_percent) <= percentage;
-}
-
-int aws_mqtt5_mock_server_send_packet(
-    struct aws_mqtt5_server_mock_connection_context *connection,
-    enum aws_mqtt5_packet_type packet_type,
-    void *packet) {
-    aws_mqtt5_encoder_append_packet_encoding(&connection->encoder, packet_type, packet);
-
-    struct aws_io_message *message = aws_channel_acquire_message_from_pool(
-        connection->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, TEST_IO_MESSAGE_LENGTH);
-    if (message == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    enum aws_mqtt5_encoding_result result =
-        aws_mqtt5_encoder_encode_to_buffer(&connection->encoder, &message->message_data);
-    AWS_FATAL_ASSERT(result == AWS_MQTT5_ER_FINISHED);
-
-    if (aws_channel_slot_send_message(connection->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-        aws_mem_release(message->allocator, message);
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
 }
 
 int aws_mqtt5_mock_server_handle_connect_always_succeed(
@@ -2041,7 +2013,7 @@ static void s_wait_for_suback_received(struct aws_mqtt5_client_mock_test_fixture
     aws_mutex_unlock(&test_context->lock);
 }
 
-static int s_aws_mqtt5_server_send_suback_on_subscribe(
+int aws_mqtt5_server_send_suback_on_subscribe(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -2069,7 +2041,7 @@ static int s_mqtt5_client_subscribe_success_fn(struct aws_allocator *allocator, 
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        s_aws_mqtt5_server_send_suback_on_subscribe;
+        aws_mqtt5_server_send_suback_on_subscribe;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
@@ -2887,7 +2859,7 @@ static int s_aws_mqtt5_mock_server_handle_connect_honor_session_after_success(
     return aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_CONNACK, &connack_view);
 }
 
-static int s_aws_mqtt5_mock_server_handle_connect_honor_session_unconditional(
+int aws_mqtt5_mock_server_handle_connect_honor_session_unconditional(
     void *packet,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *user_data) {
@@ -2929,7 +2901,7 @@ static bool s_received_n_lifecycle_events(void *arg) {
     return matching_events >= context->expected_event_count;
 }
 
-static void s_wait_for_n_lifecycle_events(
+void aws_wait_for_n_lifecycle_events(
     struct aws_mqtt5_client_mock_test_fixture *test_fixture,
     enum aws_mqtt5_client_lifecycle_event_type event_type,
     size_t expected_event_count) {
@@ -2986,7 +2958,7 @@ static int s_do_mqtt5_client_session_resumption_test(
 
     test_options.client_options.session_behavior = session_behavior;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
-        s_aws_mqtt5_mock_server_handle_connect_honor_session_unconditional;
+        aws_mqtt5_mock_server_handle_connect_honor_session_unconditional;
 
     struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
         .client_options = &test_options.client_options,
@@ -3000,7 +2972,7 @@ static int s_do_mqtt5_client_session_resumption_test(
 
     for (size_t i = 0; i < SESSION_RESUMPTION_CONNECT_COUNT; ++i) {
         ASSERT_SUCCESS(aws_mqtt5_client_start(client));
-        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_CONNECTION_SUCCESS, i + 1);
+        aws_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_CONNECTION_SUCCESS, i + 1);
 
         /* not technically truly safe to query depending on memory model.  Remove if it becomes a problem. */
         bool expected_rejoined_session = s_compute_expected_rejoined_session(session_behavior, i);
@@ -3009,7 +2981,7 @@ static int s_do_mqtt5_client_session_resumption_test(
         /* can't use stop as that wipes session state */
         aws_channel_shutdown(test_context.server_channel, AWS_ERROR_UNKNOWN);
 
-        s_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_DISCONNECTION, i + 1);
+        aws_wait_for_n_lifecycle_events(&test_context, AWS_MQTT5_CLET_DISCONNECTION, i + 1);
     }
 
     struct aws_mqtt5_packet_connect_storage clean_start_connect_storage;
@@ -3280,7 +3252,7 @@ int aws_mqtt5_mock_server_handle_unsubscribe_unsuback_success(
 
     struct aws_mqtt5_packet_unsuback_view unsuback_view = {
         .packet_id = unsubscribe_view->packet_id,
-        .reason_code_count = AWS_ARRAY_SIZE(mqtt5_unsuback_codes),
+        .reason_code_count = unsubscribe_view->topic_filter_count,
         .reason_codes = mqtt5_unsuback_codes,
     };
 
@@ -3418,7 +3390,7 @@ static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqt
     test_options.client_options.publish_received_handler_user_data = &full_test_context;
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        s_aws_mqtt5_server_send_suback_on_subscribe;
+        aws_mqtt5_server_send_suback_on_subscribe;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
         aws_mqtt5_mock_server_handle_publish_puback_and_forward;
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_UNSUBSCRIBE] =
@@ -4316,7 +4288,7 @@ static int s_mqtt5_client_statistics_subscribe_fn(struct aws_allocator *allocato
     aws_mqtt5_client_test_init_default_options(&test_options);
 
     test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_SUBSCRIBE] =
-        s_aws_mqtt5_server_send_suback_on_subscribe;
+        aws_mqtt5_server_send_suback_on_subscribe;
 
     struct aws_mqtt5_client_mock_test_fixture test_context;
 
@@ -5530,7 +5502,10 @@ static int s_aws_mqtt5_server_send_aliased_publish_sequence(
     struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet;
 
     struct aws_mqtt5_packet_suback_view suback_view = {
-        .packet_id = subscribe_view->packet_id, .reason_code_count = 1, .reason_codes = s_alias_reason_codes};
+        .packet_id = subscribe_view->packet_id,
+        .reason_code_count = 1,
+        .reason_codes = s_alias_reason_codes,
+    };
 
     // just to be thorough, send a suback
     if (aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view)) {
@@ -5725,7 +5700,10 @@ static int s_aws_mqtt5_server_send_aliased_publish_failure(
     struct aws_mqtt5_packet_subscribe_view *subscribe_view = packet;
 
     struct aws_mqtt5_packet_suback_view suback_view = {
-        .packet_id = subscribe_view->packet_id, .reason_code_count = 1, .reason_codes = s_alias_reason_codes};
+        .packet_id = subscribe_view->packet_id,
+        .reason_code_count = 1,
+        .reason_codes = s_alias_reason_codes,
+    };
 
     // just to be thorough, send a suback
     if (aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_SUBACK, &suback_view)) {
