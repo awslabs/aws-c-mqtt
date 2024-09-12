@@ -2268,3 +2268,9 @@ struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_release(
 
     return NULL;
 }
+
+struct aws_event_loop *aws_mqtt_request_response_client_get_event_loop(
+    struct aws_mqtt_request_response_client *client) {
+
+    return aws_mqtt_protocol_adapter_get_event_loop(client->client_adapter);
+}

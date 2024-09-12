@@ -12,6 +12,7 @@
 #include <aws/common/byte_buf.h>
 
 struct aws_allocator;
+struct aws_event_loop;
 struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
 
@@ -143,6 +144,8 @@ struct aws_mqtt_protocol_adapter_vtable {
     int (*aws_mqtt_protocol_adapter_publish_fn)(void *, struct aws_protocol_adapter_publish_options *);
 
     bool (*aws_mqtt_protocol_adapter_is_connected_fn)(void *);
+
+    struct aws_event_loop *(*aws_mqtt_protocol_adapter_get_event_loop_fn)(void *);
 };
 
 struct aws_mqtt_protocol_adapter {
@@ -200,6 +203,11 @@ AWS_MQTT_API int aws_mqtt_protocol_adapter_publish(
  * protocol client's event loop.
  */
 AWS_MQTT_API bool aws_mqtt_protocol_adapter_is_connected(struct aws_mqtt_protocol_adapter *adapter);
+
+/*
+ * Returns the event loop that the protocol client is bound to.
+ */
+AWS_MQTT_API struct aws_event_loop *aws_mqtt_protocol_adapter_get_event_loop(struct aws_mqtt_protocol_adapter *adapter);
 
 AWS_MQTT_API const char *aws_protocol_adapter_subscription_event_type_to_c_str(
     enum aws_protocol_adapter_subscription_event_type type);

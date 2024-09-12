@@ -457,12 +457,19 @@ static void s_protocol_adapter_mqtt311_listener_termination_callback(void *user_
     }
 }
 
+static struct aws_event_loop *s_aws_mqtt_protocol_adapter_311_get_event_loop(void *impl) {
+    struct aws_mqtt_protocol_adapter_311_impl *adapter = impl;
+
+    return adapter->loop;
+}
+
 static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mqtt311_vtable = {
     .aws_mqtt_protocol_adapter_destroy_fn = s_aws_mqtt_protocol_adapter_311_destroy,
     .aws_mqtt_protocol_adapter_subscribe_fn = s_aws_mqtt_protocol_adapter_311_subscribe,
     .aws_mqtt_protocol_adapter_unsubscribe_fn = s_aws_mqtt_protocol_adapter_311_unsubscribe,
     .aws_mqtt_protocol_adapter_publish_fn = s_aws_mqtt_protocol_adapter_311_publish,
     .aws_mqtt_protocol_adapter_is_connected_fn = s_aws_mqtt_protocol_adapter_311_is_connected,
+    .aws_mqtt_protocol_adapter_get_event_loop_fn = s_aws_mqtt_protocol_adapter_311_get_event_loop,
 };
 
 struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_311(
@@ -848,13 +855,19 @@ static void s_protocol_adapter_mqtt5_listener_termination_callback(void *user_da
     }
 }
 
+static struct aws_event_loop *s_aws_mqtt_protocol_adapter_5_get_event_loop(void *impl) {
+    struct aws_mqtt_protocol_adapter_5_impl *adapter = impl;
+
+    return adapter->loop;
+}
+
 static struct aws_mqtt_protocol_adapter_vtable s_protocol_adapter_mqtt5_vtable = {
     .aws_mqtt_protocol_adapter_destroy_fn = s_aws_mqtt_protocol_adapter_5_destroy,
     .aws_mqtt_protocol_adapter_subscribe_fn = s_aws_mqtt_protocol_adapter_5_subscribe,
     .aws_mqtt_protocol_adapter_unsubscribe_fn = s_aws_mqtt_protocol_adapter_5_unsubscribe,
     .aws_mqtt_protocol_adapter_publish_fn = s_aws_mqtt_protocol_adapter_5_publish,
     .aws_mqtt_protocol_adapter_is_connected_fn = s_aws_mqtt_protocol_adapter_5_is_connected,
-};
+    .aws_mqtt_protocol_adapter_get_event_loop_fn = s_aws_mqtt_protocol_adapter_5_get_event_loop};
 
 struct aws_mqtt_protocol_adapter *aws_mqtt_protocol_adapter_new_from_5(
     struct aws_allocator *allocator,
@@ -919,6 +932,10 @@ int aws_mqtt_protocol_adapter_publish(
 
 bool aws_mqtt_protocol_adapter_is_connected(struct aws_mqtt_protocol_adapter *adapter) {
     return (*adapter->vtable->aws_mqtt_protocol_adapter_is_connected_fn)(adapter->impl);
+}
+
+struct aws_event_loop *aws_mqtt_protocol_adapter_get_event_loop(struct aws_mqtt_protocol_adapter *adapter) {
+    return (*adapter->vtable->aws_mqtt_protocol_adapter_get_event_loop_fn)(adapter->impl);
 }
 
 const char *aws_protocol_adapter_subscription_event_type_to_c_str(

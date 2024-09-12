@@ -8,6 +8,7 @@
 
 #include <aws/mqtt/mqtt.h>
 
+struct aws_event_loop;
 struct aws_mqtt_request_response_client;
 struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
@@ -244,6 +245,12 @@ AWS_MQTT_API int aws_mqtt_request_response_client_submit_request(
 AWS_MQTT_API struct aws_mqtt_rr_client_operation *aws_mqtt_request_response_client_create_streaming_operation(
     struct aws_mqtt_request_response_client *client,
     const struct aws_mqtt_streaming_operation_options *streaming_options);
+
+/*
+ * Returns the event loop used by the request-response client's protocol client
+ */
+AWS_MQTT_API struct aws_event_loop *aws_mqtt_request_response_client_get_event_loop(
+    struct aws_mqtt_request_response_client *client);
 
 /*
  * Initiates a streaming operation's subscription process.
