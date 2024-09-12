@@ -400,6 +400,11 @@ static int s_rr_activate_idle_subscription(
     int result = AWS_OP_SUCCESS;
 
     if (record->poisoned) {
+        AWS_LOGF_WARN(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response subscription manager - attempt to activate subscription for ('" PRInSTR
+            "') failed - existing subscription is poisoned and has not been released",
+            AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
         return AWS_OP_SUCCESS;
     }
 

@@ -98,6 +98,7 @@ void s_aws_shadow_streaming_operation_destroy(struct aws_shadow_streaming_operat
 
     aws_byte_buf_clean_up(&operation->thing);
     aws_byte_buf_clean_up(&operation->shadow);
+    aws_byte_buf_clean_up(&operation->topic_filter);
 
     aws_mem_release(operation->allocator, operation);
 }
@@ -315,6 +316,7 @@ static void s_handle_get(struct app_ctx *context, struct aws_allocator *allocato
 
     char correlation_token[128];
     s_write_correlation_token_string(aws_byte_cursor_from_array(correlation_token, AWS_ARRAY_SIZE(correlation_token)));
+    struct aws_string *correlation_token_string = aws_string_new_from_c_str(allocator, correlation_token);
 
     char request[256];
     snprintf(request, AWS_ARRAY_SIZE(request), "{\"clientToken\":\"%s\"}", correlation_token);
@@ -328,7 +330,7 @@ static void s_handle_get(struct app_ctx *context, struct aws_allocator *allocato
         .serialized_request = aws_byte_cursor_from_c_str(request),
         .correlation_token = aws_byte_cursor_from_c_str(correlation_token),
         .completion_callback = s_on_get_shadow_complete,
-        .user_data = aws_string_new_from_c_str(allocator, correlation_token),
+        .user_data = correlation_token_string,
     };
 
     printf(
@@ -341,6 +343,7 @@ static void s_handle_get(struct app_ctx *context, struct aws_allocator *allocato
     if (aws_mqtt_request_response_client_submit_request(context->rr_client, &get_options) == AWS_OP_ERR) {
         int error_code = aws_last_error();
         printf("GetNamedShadow synchronous failure: %d(%s)\n", error_code, aws_error_debug_str(error_code));
+        aws_string_destroy(correlation_token_string);
     }
 
     printf("\n");
@@ -447,6 +450,8 @@ static void s_handle_update(
         AWS_BYTE_CURSOR_PRI(thing_name_cursor),
         AWS_BYTE_CURSOR_PRI(shadow_name_cursor));
 
+    struct aws_string *correlation_token_string = aws_string_new_from_cursor(allocator, &correlation_token);
+
     struct aws_mqtt_request_operation_options get_options = {
         .subscription_topic_filters = subscription_topic_filters,
         .subscription_topic_filter_count = 2,
@@ -456,7 +461,7 @@ static void s_handle_update(
         .serialized_request = desired_state,
         .correlation_token = correlation_token,
         .completion_callback = s_on_update_shadow_complete,
-        .user_data = aws_string_new_from_cursor(allocator, &correlation_token),
+        .user_data = correlation_token_string,
     };
 
     printf(
@@ -469,6 +474,7 @@ static void s_handle_update(
     if (aws_mqtt_request_response_client_submit_request(context->rr_client, &get_options) == AWS_OP_ERR) {
         int error_code = aws_last_error();
         printf("UpdateNamedShadow synchronous failure: %d(%s)\n", error_code, aws_error_debug_str(error_code));
+        aws_string_destroy(correlation_token_string);
     }
 
     printf("\n");
@@ -646,6 +652,7 @@ static void s_handle_delete(
 
     char request[256];
     snprintf(request, AWS_ARRAY_SIZE(request), "{\"clientToken\":\"%s\"}", correlation_token);
+    struct aws_string *correlation_token_string = aws_string_new_from_c_str(allocator, correlation_token);
 
     struct aws_mqtt_request_operation_options get_options = {
         .subscription_topic_filters = &subscription_topic_filter_cursor,
@@ -656,7 +663,7 @@ static void s_handle_delete(
         .serialized_request = aws_byte_cursor_from_c_str(request),
         .correlation_token = aws_byte_cursor_from_c_str(correlation_token),
         .completion_callback = s_on_delete_shadow_complete,
-        .user_data = aws_string_new_from_c_str(allocator, correlation_token),
+        .user_data = correlation_token_string,
     };
 
     printf(
@@ -669,6 +676,7 @@ static void s_handle_delete(
     if (aws_mqtt_request_response_client_submit_request(context->rr_client, &get_options) == AWS_OP_ERR) {
         int error_code = aws_last_error();
         printf("DeleteNamedShadow synchronous failure: %d(%s)\n", error_code, aws_error_debug_str(error_code));
+        aws_string_destroy(correlation_token_string);
     }
 
     printf("\n");
@@ -970,6 +978,7 @@ static bool s_handle_input(struct app_ctx *context, struct aws_allocator *alloca
         printf("Starting client!\n");
         aws_mqtt5_client_start(client);
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &stop_cursor)) {
+        printf("Stopping client!\n");
         aws_mqtt5_client_stop(client, NULL, NULL);
     } else if (aws_byte_cursor_eq_ignore_case(&command_cursor, &get_cursor)) {
         s_handle_get(context, allocator, &words);
