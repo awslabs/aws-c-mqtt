@@ -55,14 +55,14 @@ enum aws_mqtt_request_response_operation_state {
     /* (request only) subscription success -> (publish failure OR correlated response received) */
     AWS_MRROS_PENDING_RESPONSE,
 
+    /* (request only) the operation's destroy task has been scheduled but not yet executed */
+    AWS_MRROS_PENDING_DESTROY,
+
     /* (streaming only) subscription success -> (operation finished OR subscription ended event) */
     AWS_MRROS_SUBSCRIBED,
 
     /* (streaming only) (subscription failure OR subscription ended) -> operation close/terminate */
     AWS_MRROS_TERMINAL,
-
-    /* (request only) the operation's destroy task has been scheduled but not yet executed */
-    AWS_MRROS_PENDING_DESTROY,
 };
 
 const char *s_aws_mqtt_request_response_operation_state_to_c_str(enum aws_mqtt_request_response_operation_state state) {
