@@ -400,11 +400,10 @@ static int s_rr_activate_idle_subscription(
     int result = AWS_OP_SUCCESS;
 
     if (record->poisoned) {
-        AWS_LOGF_WARN(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response subscription manager - attempt to activate subscription for ('" PRInSTR
-            "') failed - existing subscription is poisoned and has not been released",
-            AWS_BYTE_CURSOR_PRI(record->topic_filter_cursor));
+        /*
+         * Don't try and establish poisoned subscriptions.  This is not an error or a loggable event, it just means
+         * we hit a "try and make subscriptions" event when a poisoned subscription still hadn't been fully released.
+         */
         return AWS_OP_SUCCESS;
     }
 
