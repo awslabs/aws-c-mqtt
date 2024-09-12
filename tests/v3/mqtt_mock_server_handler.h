@@ -69,9 +69,20 @@ int mqtt_mock_server_send_publish_by_id(
     bool retain);
 
 /**
+ * Sets whether or not connacks return session present
+ */
+void mqtt_mock_server_set_session_present(struct aws_channel_handler *handler, bool session_present);
+
+/**
+ * Sets whether or not connacks return session present
+ */
+void mqtt_mock_server_set_publish_reflection(struct aws_channel_handler *handler, bool reflect_publishes);
+
+/**
  * Set max number of PINGRESP that mock server will send back to client
  */
 void mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, size_t max_ping);
+
 /**
  * Set max number of CONACK that mock server will send back to client
  */
@@ -81,10 +92,17 @@ void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_
  * Disable the automatically response (suback/unsuback/puback) to the client
  */
 void mqtt_mock_server_disable_auto_ack(struct aws_channel_handler *handler);
+
 /**
  * Enable the automatically response (suback/unsuback/puback) to the client
  */
 void mqtt_mock_server_enable_auto_ack(struct aws_channel_handler *handler);
+
+/**
+ * Sets what reason code to return in subacks
+ */
+void mqtt_mock_server_suback_reason_code(struct aws_channel_handler *handler, uint8_t reason_code);
+
 /**
  * Send response back the client given the packet ID
  */

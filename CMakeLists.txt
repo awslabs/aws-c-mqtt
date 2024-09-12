@@ -57,6 +57,7 @@ file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
 file(GLOB AWS_MQTT_SRC
         "source/*.c"
         "source/v5/*.c"
+        "source/request-response/*.c"
         )
 
 file(GLOB MQTT_HEADERS
@@ -121,6 +122,7 @@ if (BUILD_TESTING)
     if (NOT CMAKE_CROSSCOMPILING )
         add_subdirectory(bin/elastipubsub)
         add_subdirectory(bin/elastipubsub5)
+        add_subdirectory(bin/elastishadow)
         add_subdirectory(bin/mqtt5canary)
     endif()
 endif ()
