@@ -9,18 +9,14 @@
 #include <aws/common/string.h>
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
-#include <aws/io/event_loop.h>
 #include <aws/mqtt/client.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_to_mqtt3_adapter_impl.h>
-#include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
-#include <aws/mqtt/v5/mqtt5_listener.h>
 
 #include <aws/testing/aws_test_harness.h>
 
 #include <inttypes.h>
-#include <math.h>
 
 enum aws_mqtt3_lifecycle_event_type {
     AWS_MQTT3_LET_CONNECTION_COMPLETE,
