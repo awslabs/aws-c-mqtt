@@ -39,39 +39,44 @@ include(AwsFindPackage)
 
 file(GLOB AWS_MQTT_HEADERS
         "include/aws/mqtt/*.h"
-        )
+)
 
 file(GLOB AWS_MQTT5_HEADERS
         "include/aws/mqtt/v5/*.h"
-        )
+)
+
+file(GLOB AWS_MQTT_RR_HEADERS
+        "include/aws/mqtt/request-response/*.h"
+)
 
 file(GLOB AWS_MQTT_PRIV_HEADERS
         "include/aws/mqtt/private/*.h"
+        "include/aws/mqtt/private/request-response/*.h"
         "include/aws/mqtt/private/v5/*.h"
-        )
+)
 
 file(GLOB AWS_MQTT_PRIV_EXPOSED_HEADERS
         "include/aws/mqtt/private/mqtt_client_test_helper.h"
-        )
+)
 
 file(GLOB AWS_MQTT_SRC
         "source/*.c"
         "source/v5/*.c"
         "source/request-response/*.c"
-        )
+)
 
 file(GLOB MQTT_HEADERS
         ${AWS_MQTT_HEADERS}
         ${AWS_MQTT_PRIV_HEADERS}
-        )
+)
 
 file(GLOB AWS_MQTT5_HEADERS
         ${AWS_MQTT5_HEADERS}
-        )
+)
 
 file(GLOB MQTT_SRC
         ${AWS_MQTT_SRC}
-        )
+)
 
 add_library(${PROJECT_NAME} ${MQTT_HEADERS} ${MQTT_SRC})
 aws_set_common_properties(${PROJECT_NAME})
@@ -94,13 +99,14 @@ aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
 install(FILES ${AWS_MQTT_HEADERS} DESTINATION "include/aws/mqtt" COMPONENT Development)
 install(FILES ${AWS_MQTT5_HEADERS} DESTINATION "include/aws/mqtt/v5" COMPONENT Development)
+install(FILES ${AWS_MQTT_RR_HEADERS} DESTINATION "include/aws/mqtt/request-response" COMPONENT Development)
 install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "include/aws/testing/mqtt" COMPONENT Development)
 install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "include/aws/mqtt/private" COMPONENT Development)
 
 if (BUILD_SHARED_LIBS)
-   set (TARGET_DIR "shared")
+    set (TARGET_DIR "shared")
 else()
-   set (TARGET_DIR "static")
+    set (TARGET_DIR "static")
 endif()
 
 install(EXPORT "${PROJECT_NAME}-targets"
