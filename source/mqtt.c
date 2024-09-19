@@ -259,7 +259,16 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
                 "Request-response operation failed because the associated publish failed synchronously."),
             AWS_DEFINE_ERROR_INFO_MQTT(
                 AWS_ERROR_MQTT_REUQEST_RESPONSE_STREAM_ALREADY_ACTIVATED,
-                "Streaming operation activation failed because the operaation had already been activated."),
+                "Streaming operation activation failed because the operation had already been activated."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                 AWS_ERROR_MQTT_REQUEST_RESPONSE_MODELED_SERVICE_ERROR,
+                 "Request-response operation failed with a modeled service error."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                 AWS_ERROR_MQTT_REQUEST_RESPONSE_PAYLOAD_PARSE_ERROR,
+                 "Request-response operation failed due to an inability to parse the payload."),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                 AWS_ERROR_MQTT_REQUEST_RESPONSE_INVALID_RESPONSE_PATH,
+                 "Request-response operation failed due to arrival on an unknown response path"),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
