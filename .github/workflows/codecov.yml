@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   codecov-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
