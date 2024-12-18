@@ -575,7 +575,7 @@ static void s_mqtt_request_response_client_external_shutdown_task_fn(
      */
     aws_hash_table_foreach(&client->operations, s_rr_client_clean_up_operation, NULL);
 
-    aws_ref_count_release(&client->internal_ref_count);
+    aws_mqtt_request_response_client_release_internal(client);
 }
 
 static void s_mqtt_request_response_client_wake_service(struct aws_mqtt_request_response_client *client) {
@@ -1088,7 +1088,7 @@ static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data)
     struct aws_mqtt_request_response_client *rr_client = user_data;
 
     /* release the internal ref count "held" by the protocol adapter's existence */
-    aws_ref_count_release(&rr_client->internal_ref_count);
+    aws_mqtt_request_response_client_release_internal(rr_client);
 }
 
 static void s_aws_rr_client_protocol_adapter_connection_event_callback(
@@ -1564,15 +1564,15 @@ static void s_mqtt_request_response_client_initialize_task_fn(
     }
 
     /* give up the internal ref we held while the task was pending */
-    aws_ref_count_release(&client->internal_ref_count);
+    aws_mqtt_request_response_client_release_internal(client);
 }
 
 static void s_setup_cross_thread_initialization(struct aws_mqtt_request_response_client *rr_client) {
     /* now that it exists, 1 internal ref belongs to protocol adapter termination */
-    aws_ref_count_acquire(&rr_client->internal_ref_count);
+    aws_mqtt_request_response_client_acquire_internal(rr_client);
 
     /* 1 internal ref belongs to the initialize task until it runs */
-    aws_ref_count_acquire(&rr_client->internal_ref_count);
+    aws_mqtt_request_response_client_acquire_internal(rr_client);
 
     aws_task_init(
         &rr_client->initialize_task,
