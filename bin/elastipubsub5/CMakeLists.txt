@@ -1,7 +1,5 @@
 project(elastipubsub5 C)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_INSTALL_PREFIX}/lib/cmake")
-
 file(GLOB ELASTIPUBSUB_SRC
         "*.c"
         )
@@ -25,5 +23,5 @@ install(TARGETS ${ELASTIPUBSUB_MQTT5_PROJECT_NAME}
         EXPORT ${ELASTIPUBSUB_MQTT5_PROJECT_NAME}-targets
         COMPONENT Runtime
         RUNTIME
-        DESTINATION bin
+        DESTINATION ${RUNTIME_DIRECTORY}
         COMPONENT Runtime)
