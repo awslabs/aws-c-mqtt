@@ -17,6 +17,7 @@ include(AwsSharedLibSetup)
 include(AwsSanitizers)
 include(CheckCCompilerFlag)
 include(AwsFindPackage)
+include(GNUInstallDirs)
 
 file(GLOB AWS_MQTT_HEADERS
         "include/aws/mqtt/*.h"
@@ -78,11 +79,11 @@ aws_use_package(aws-c-http)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
-install(FILES ${AWS_MQTT_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/mqtt" COMPONENT Development)
-install(FILES ${AWS_MQTT5_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/mqtt/v5" COMPONENT Development)
-install(FILES ${AWS_MQTT_RR_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/mqtt/request-response" COMPONENT Development)
-install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/testing/mqtt" COMPONENT Development)
-install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/mqtt/private" COMPONENT Development)
+install(FILES ${AWS_MQTT_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt" COMPONENT Development)
+install(FILES ${AWS_MQTT5_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/v5" COMPONENT Development)
+install(FILES ${AWS_MQTT_RR_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/request-response" COMPONENT Development)
+install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/testing/mqtt" COMPONENT Development)
+install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/private" COMPONENT Development)
 
 if (BUILD_SHARED_LIBS)
     set (TARGET_DIR "shared")
@@ -91,7 +92,7 @@ else()
 endif()
 
 install(EXPORT "${PROJECT_NAME}-targets"
-        DESTINATION "${LIBRARY_DIRECTORY}/cmake/${PROJECT_NAME}/${TARGET_DIR}"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/${TARGET_DIR}"
         NAMESPACE AWS::
         COMPONENT Development)
 
@@ -100,7 +101,7 @@ configure_file("cmake/${PROJECT_NAME}-config.cmake"
         @ONLY)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
-        DESTINATION "${LIBRARY_DIRECTORY}/cmake/${PROJECT_NAME}/"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/"
         COMPONENT Development)
 
 include(CTest)
