@@ -1861,7 +1861,8 @@ static int s_rrc_streaming_operation_first_subscribe_retryable_failure_resub_suc
             payload2,
             topic_filter1,
         },
-    };    ASSERT_SUCCESS(s_rrc_verify_streaming_publishes(
+    };
+    ASSERT_SUCCESS(s_rrc_verify_streaming_publishes(
         &fixture, record_key1, AWS_ARRAY_SIZE(expected_publishes), expected_publishes));
 
     aws_mqtt_rr_client_operation_release(operation);
