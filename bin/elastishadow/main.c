@@ -750,7 +750,11 @@ static void s_stream_subscription_status_fn(
         aws_error_debug_str(error_code));
 }
 
-static void s_stream_incoming_publish_fn(struct aws_byte_cursor payload, void *user_data) {
+static void s_stream_incoming_publish_fn(
+    struct aws_byte_cursor payload,
+    struct aws_byte_cursor topic,
+    void *user_data) {
+    (void)topic;
     struct aws_shadow_streaming_operation *operation = user_data;
 
     struct aws_byte_cursor thing_cursor = aws_byte_cursor_from_buf(&operation->thing);
