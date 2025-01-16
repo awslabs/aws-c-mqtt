@@ -121,7 +121,10 @@ typedef void(aws_mqtt_streaming_operation_subscription_status_fn)(
 /*
  * Callback signature for when a publish arrives that matches a streaming operation's subscription
  */
-typedef void(aws_mqtt_streaming_operation_incoming_publish_fn)(struct aws_byte_cursor payload, void *user_data);
+typedef void(aws_mqtt_streaming_operation_incoming_publish_fn)(
+    struct aws_byte_cursor payload,
+    struct aws_byte_cursor topic,
+    void *user_data);
 
 /*
  * Callback signature for when a streaming operation is fully destroyed and no more events will be emitted.
