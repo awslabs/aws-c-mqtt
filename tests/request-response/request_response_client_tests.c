@@ -1380,8 +1380,9 @@ static int s_rrc_streaming_operation_success_single_fn(struct aws_allocator *all
         s_init_fixture_streaming_operation_success(&fixture, &client_test_options, allocator, NULL, NULL, RRCP_MQTT5));
 
     struct aws_byte_cursor record_key1 = aws_byte_cursor_from_c_str("key1");
+    struct aws_byte_cursor topic = aws_byte_cursor_from_c_str("topic/+");
     struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/1");
-    struct aws_mqtt_rr_client_operation *operation = s_create_streaming_operation(&fixture, record_key1, topic_filter1);
+    struct aws_mqtt_rr_client_operation *operation = s_create_streaming_operation(&fixture, record_key1, topic);
 
     s_rrc_wait_for_n_streaming_subscription_events(&fixture, record_key1, 1);
 
@@ -2290,12 +2291,14 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
         &fixture, &client_test_options, allocator, s_rrc_unsubscribe_success_config, NULL, RRCP_MQTT5));
 
     struct aws_byte_cursor record_key1 = aws_byte_cursor_from_c_str("key1");
-    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/1");
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/1/+");
+    struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("topic/1/abc");
     struct aws_mqtt_rr_client_operation *operation1 =
         s_create_streaming_operation(&fixture, record_key1, topic_filter1);
 
     struct aws_byte_cursor record_key2 = aws_byte_cursor_from_c_str("key2");
-    struct aws_byte_cursor topic_filter2 = aws_byte_cursor_from_c_str("topic/2");
+    struct aws_byte_cursor topic_filter2 = aws_byte_cursor_from_c_str("/topic/2/+");
+    struct aws_byte_cursor topic2 = aws_byte_cursor_from_c_str("/topic/2/def");
     struct aws_mqtt_rr_client_operation *operation2 =
         s_create_streaming_operation(&fixture, record_key2, topic_filter2);
 
@@ -2318,24 +2321,24 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
         },
     };
     ASSERT_SUCCESS(s_rrc_verify_streaming_record_subscription_events(
-        &fixture, record_key2, AWS_ARRAY_SIZE(expected_failure_events), expected_failure_events));
+        &fixture, record_key2, AWS_ARRAY_SIZE(expected_success_events), expected_success_events));
 
     // two publishes on the mqtt client that get reflected into our subscription topic1
     struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
     struct aws_byte_cursor payload2 = aws_byte_cursor_from_c_str("Payload2");
-    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic_filter1, payload1));
-    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic_filter1, payload2));
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic1, payload1));
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic1, payload2));
 
     s_rrc_wait_for_n_streaming_publishes(&fixture, record_key1, 2);
 
     struct aws_rr_client_fixture_publish_message_view expected_publishes[] = {
         {
             payload1,
-            topic_filter1,
+            topic1,
         },
         {
             payload2,
-            topic_filter1,
+            topic1,
         },
     };
     ASSERT_SUCCESS(s_rrc_verify_streaming_publishes(&fixture, record_key1, 2, expected_publishes));
@@ -2354,7 +2357,7 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
     // make a third using topic filter 2
     struct aws_byte_cursor record_key3 = aws_byte_cursor_from_c_str("key3");
     struct aws_mqtt_rr_client_operation *operation3 =
-        s_create_streaming_operation(&fixture, record_key3, topic_filter2);
+        s_create_streaming_operation(&fixture, record_key3, topic2);
 
     s_rrc_wait_for_n_streaming_subscription_events(&fixture, record_key3, 1);
     ASSERT_SUCCESS(s_rrc_verify_streaming_record_subscription_events(
@@ -2362,7 +2365,7 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
 
     // publish again
     struct aws_byte_cursor payload3 = aws_byte_cursor_from_c_str("payload3");
-    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic_filter2, payload3));
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish(&fixture, topic2, payload3));
 
     // verify third operation got the new publish
     s_rrc_wait_for_n_streaming_publishes(&fixture, record_key3, 1);
@@ -2370,7 +2373,7 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
     struct aws_rr_client_fixture_publish_message_view third_expected_publishes[] = {
         {
             payload3,
-            topic_filter2,
+            topic2,
         },
     };
     ASSERT_SUCCESS(s_rrc_verify_streaming_publishes(

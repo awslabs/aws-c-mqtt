@@ -352,6 +352,8 @@ struct aws_mqtt_request_response_client {
      */
     struct aws_hash_table streaming_operation_subscription_lists;
 
+    struct aws_hash_table streaming_operation_wildcards_subscription_lists;
+
     /*
      * Map from cursor (topic) -> request response path (topic, correlation token json path)
      *
@@ -1067,6 +1069,67 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
             AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
         s_apply_publish_to_streaming_operation_list(subscription_filter_element->value, publish_event);
+    } else {
+        AWS_LOGF_INFO(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "= Looking subscription for topic '" PRInSTR "'",
+            AWS_BYTE_CURSOR_PRI(publish_event->topic));
+        for (struct aws_hash_iter iter =
+                 aws_hash_iter_begin(&rr_client->streaming_operation_wildcards_subscription_lists);
+             !aws_hash_iter_done(&iter);
+             aws_hash_iter_next(&iter)) {
+            struct aws_rr_operation_list_topic_filter_entry *entry = iter.element.value;
+            AWS_LOGF_INFO(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "= Checking subscription with topic filter " PRInSTR,
+                AWS_BYTE_CURSOR_PRI(entry->topic_filter_cursor));
+
+            struct aws_byte_cursor subscription_topic_filter_segment;
+            AWS_ZERO_STRUCT(subscription_topic_filter_segment);
+
+            struct aws_byte_cursor topic_segment;
+            AWS_ZERO_STRUCT(topic_segment);
+
+            bool match = true;
+
+            while (aws_byte_cursor_next_split(&entry->topic_filter_cursor, '/', &subscription_topic_filter_segment)) {
+                AWS_LOGF_INFO(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "=== subscription topic filter segment is '" PRInSTR "'",
+                    AWS_BYTE_CURSOR_PRI(subscription_topic_filter_segment));
+
+                if (!aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
+                    AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== topic segment is NULL");
+                    match = false;
+                    break;
+                }
+
+                AWS_LOGF_INFO(
+                    AWS_LS_MQTT_REQUEST_RESPONSE,
+                    "======= topic segment is '" PRInSTR "'",
+                    AWS_BYTE_CURSOR_PRI(topic_segment));
+
+                if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
+                    !aws_byte_cursor_eq_ignore_case(&topic_segment, &subscription_topic_filter_segment)) {
+                    AWS_LOGF_INFO(
+                        AWS_LS_MQTT_REQUEST_RESPONSE,
+                        "======= topic segment differs",
+                        AWS_BYTE_CURSOR_PRI(topic_segment));
+                    match = false;
+                    break;
+                }
+            }
+
+            if (aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
+                match = false;
+            }
+
+            if (match) {
+                AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== found subscription match");
+            } else {
+                AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== this is not the right subscription");
+            }
+        }
     }
 
     /* Request-Response handling */
@@ -1181,6 +1244,15 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy);
 
     aws_hash_table_init(
+        &rr_client->streaming_operation_wildcards_subscription_lists,
+        allocator,
+        10, // TODO
+        aws_hash_byte_cursor_ptr,
+        aws_mqtt_byte_cursor_hash_equality,
+        NULL,
+        s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy);
+
+    aws_hash_table_init(
         &rr_client->request_response_paths,
         allocator,
         MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE,
@@ -1288,20 +1360,45 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
 
     struct aws_byte_cursor topic_filter_cursor = operation->storage.streaming_storage.options.topic_filter;
 
+    bool is_topic_with_wildcard = false;
+    if (memchr(topic_filter_cursor.ptr, '+', topic_filter_cursor.len)) {
+        is_topic_with_wildcard = true;
+    }
+
     struct aws_hash_element *element = NULL;
-    if (aws_hash_table_find(&client->streaming_operation_subscription_lists, &topic_filter_cursor, &element)) {
-        return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+    if (is_topic_with_wildcard) {
+        if (aws_hash_table_find(
+                &client->streaming_operation_wildcards_subscription_lists, &topic_filter_cursor, &element)) {
+            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        }
+    } else {
+        if (aws_hash_table_find(&client->streaming_operation_subscription_lists, &topic_filter_cursor, &element)) {
+            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        }
     }
 
     struct aws_rr_operation_list_topic_filter_entry *entry = NULL;
     if (element == NULL) {
-        entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
-        aws_hash_table_put(&client->streaming_operation_subscription_lists, &entry->topic_filter_cursor, entry, NULL);
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client adding topic filter '" PRInSTR "' to streaming subscriptions table",
-            (void *)client,
-            AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
+        if (is_topic_with_wildcard) {
+            entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
+            aws_hash_table_put(
+                &client->streaming_operation_wildcards_subscription_lists, &entry->topic_filter_cursor, entry, NULL);
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: request-response client adding wildcard topic filter '" PRInSTR
+                "' to streaming subscriptions table",
+                (void *)client,
+                AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
+        } else {
+            entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
+            aws_hash_table_put(
+                &client->streaming_operation_subscription_lists, &entry->topic_filter_cursor, entry, NULL);
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: request-response client adding topic filter '" PRInSTR "' to streaming subscriptions table",
+                (void *)client,
+                AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
+        }
     } else {
         entry = element->value;
     }
