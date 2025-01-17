@@ -101,10 +101,9 @@ AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_remove_request_
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_match(
     const struct aws_request_response_subscriptions *subscriptions,
-    const struct aws_byte_cursor *topic,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
-    aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event);
+    aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match);
 
 AWS_EXTERN_C_END
 

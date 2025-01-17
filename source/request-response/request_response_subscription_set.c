@@ -223,10 +223,13 @@ void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
 
 static void s_match_wildcard_stream_subscriptions(
     const struct aws_hash_table *subscriptions,
-    const struct aws_byte_cursor *topic) {
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match) {
 
     AWS_LOGF_INFO(
-        AWS_LS_MQTT_REQUEST_RESPONSE, "= Looking subscription for topic '" PRInSTR "'", AWS_BYTE_CURSOR_PRI(*topic));
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "= Looking subscription for topic '" PRInSTR "'",
+        AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
     for (struct aws_hash_iter iter = aws_hash_iter_begin(subscriptions); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
@@ -250,7 +253,7 @@ static void s_match_wildcard_stream_subscriptions(
                 "=== subscription topic filter segment is '" PRInSTR "'",
                 AWS_BYTE_CURSOR_PRI(subscription_topic_filter_segment));
 
-            if (!aws_byte_cursor_next_split(topic, '/', &topic_segment)) {
+            if (!aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
                 AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== topic segment is NULL");
                 match = false;
                 break;
@@ -270,12 +273,13 @@ static void s_match_wildcard_stream_subscriptions(
             }
         }
 
-        if (aws_byte_cursor_next_split(topic, '/', &topic_segment)) {
+        if (aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
             match = false;
         }
 
         if (match) {
             AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== found subscription match");
+            on_stream_operation_subscription_match(iter.element.value, publish_event);
         } else {
             AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== this is not the right subscription");
         }
@@ -284,27 +288,30 @@ static void s_match_wildcard_stream_subscriptions(
 
 void aws_mqtt_request_response_client_subscriptions_match(
     const struct aws_request_response_subscriptions *subscriptions,
-    const struct aws_byte_cursor *topic,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
-    aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
+    aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match) {
 
     /* Streaming operation handling */
     struct aws_hash_element *subscription_filter_element = NULL;
     if (aws_hash_table_find(
-            &subscriptions->streaming_operation_subscription_lists, topic, &subscription_filter_element) ==
-            AWS_OP_SUCCESS &&
+            &subscriptions->streaming_operation_subscription_lists,
+            &publish_event->topic,
+            &subscription_filter_element) == AWS_OP_SUCCESS &&
         subscription_filter_element != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
             "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches streaming topic",
             (void *)subscriptions->client,
-            AWS_BYTE_CURSOR_PRI(*topic));
+            AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
         on_stream_operation_subscription_match(subscription_filter_element->value, publish_event);
     }
 
-    s_match_wildcard_stream_subscriptions(&subscriptions->streaming_operation_wildcards_subscription_lists, topic);
+    s_match_wildcard_stream_subscriptions(
+        &subscriptions->streaming_operation_wildcards_subscription_lists,
+        publish_event,
+        on_stream_operation_subscription_match);
 
     /* Request-Response handling */
     struct aws_hash_element *response_path_element = NULL;

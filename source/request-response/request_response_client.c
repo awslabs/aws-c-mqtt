@@ -962,10 +962,9 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
 
     aws_mqtt_request_response_client_subscriptions_match(
         &rr_client->subscriptions,
-        &publish_event->topic,
+        publish_event,
         s_apply_publish_to_streaming_operation_list,
-        s_apply_publish_to_response_path_entry,
-        publish_event);
+        s_apply_publish_to_response_path_entry);
 }
 
 static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data) {
