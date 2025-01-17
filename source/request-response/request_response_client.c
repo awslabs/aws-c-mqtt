@@ -12,6 +12,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
+#include <aws/mqtt/private/request-response/request_response_subscription_set.h>
 #include <aws/mqtt/private/request-response/subscription_manager.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 
@@ -135,18 +136,6 @@ state, removed on operation completion/destruction
     removed from list on operation completion/destruction also checked for empty and removed from table
 
 */
-
-/*
- * This is the (key and) value in hash table (4) above.
- */
-struct aws_rr_operation_list_topic_filter_entry {
-    struct aws_allocator *allocator;
-
-    struct aws_byte_cursor topic_filter_cursor;
-    struct aws_byte_buf topic_filter;
-
-    struct aws_linked_list operations;
-};
 
 static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
     struct aws_allocator *allocator,
@@ -1070,66 +1059,7 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
 
         s_apply_publish_to_streaming_operation_list(subscription_filter_element->value, publish_event);
     } else {
-        AWS_LOGF_INFO(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "= Looking subscription for topic '" PRInSTR "'",
-            AWS_BYTE_CURSOR_PRI(publish_event->topic));
-        for (struct aws_hash_iter iter =
-                 aws_hash_iter_begin(&rr_client->streaming_operation_wildcards_subscription_lists);
-             !aws_hash_iter_done(&iter);
-             aws_hash_iter_next(&iter)) {
-            struct aws_rr_operation_list_topic_filter_entry *entry = iter.element.value;
-            AWS_LOGF_INFO(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "= Checking subscription with topic filter " PRInSTR,
-                AWS_BYTE_CURSOR_PRI(entry->topic_filter_cursor));
-
-            struct aws_byte_cursor subscription_topic_filter_segment;
-            AWS_ZERO_STRUCT(subscription_topic_filter_segment);
-
-            struct aws_byte_cursor topic_segment;
-            AWS_ZERO_STRUCT(topic_segment);
-
-            bool match = true;
-
-            while (aws_byte_cursor_next_split(&entry->topic_filter_cursor, '/', &subscription_topic_filter_segment)) {
-                AWS_LOGF_INFO(
-                    AWS_LS_MQTT_REQUEST_RESPONSE,
-                    "=== subscription topic filter segment is '" PRInSTR "'",
-                    AWS_BYTE_CURSOR_PRI(subscription_topic_filter_segment));
-
-                if (!aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
-                    AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== topic segment is NULL");
-                    match = false;
-                    break;
-                }
-
-                AWS_LOGF_INFO(
-                    AWS_LS_MQTT_REQUEST_RESPONSE,
-                    "======= topic segment is '" PRInSTR "'",
-                    AWS_BYTE_CURSOR_PRI(topic_segment));
-
-                if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
-                    !aws_byte_cursor_eq_ignore_case(&topic_segment, &subscription_topic_filter_segment)) {
-                    AWS_LOGF_INFO(
-                        AWS_LS_MQTT_REQUEST_RESPONSE,
-                        "======= topic segment differs",
-                        AWS_BYTE_CURSOR_PRI(topic_segment));
-                    match = false;
-                    break;
-                }
-            }
-
-            if (aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
-                match = false;
-            }
-
-            if (match) {
-                AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== found subscription match");
-            } else {
-                AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== this is not the right subscription");
-            }
-        }
+        search(&rr_client->streaming_operation_wildcards_subscription_lists, &publish_event->topic);
     }
 
     /* Request-Response handling */
