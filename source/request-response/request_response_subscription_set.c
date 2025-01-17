@@ -8,6 +8,7 @@
 #include <aws/common/logging.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/request-response/request_response_client.h>
 
 #define MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE 50
 #define MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE 50
@@ -131,6 +132,53 @@ struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_clien
     AWS_FATAL_ASSERT(entry != NULL);
 
     return entry;
+}
+
+static struct aws_rr_response_path_entry *s_aws_rr_response_path_entry_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor topic,
+    struct aws_byte_cursor correlation_token_json_path) {
+    struct aws_rr_response_path_entry *entry = aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_response_path_entry));
+
+    entry->allocator = allocator;
+    entry->ref_count = 1;
+    aws_byte_buf_init_copy_from_cursor(&entry->topic, allocator, topic);
+    entry->topic_cursor = aws_byte_cursor_from_buf(&entry->topic);
+
+    aws_byte_buf_init_copy_from_cursor(&entry->correlation_token_json_path, allocator, correlation_token_json_path);
+
+    return entry;
+}
+
+int aws_mqtt_request_response_client_subscriptions_add_request_subscription(
+    struct aws_request_response_subscriptions *subscriptions,
+    const struct aws_array_list *paths) {
+
+    size_t path_count = aws_array_list_length(paths);
+    for (size_t i = 0; i < path_count; ++i) {
+        struct aws_mqtt_request_operation_response_path path;
+        aws_array_list_get_at(paths, &path, i);
+
+        struct aws_hash_element *element = NULL;
+        if (aws_hash_table_find(&subscriptions->request_response_paths, &path.topic, &element)) {
+            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        }
+
+        if (element != NULL) {
+            struct aws_rr_response_path_entry *entry = element->value;
+            ++entry->ref_count;
+            continue;
+        }
+
+        struct aws_rr_response_path_entry *entry =
+            s_aws_rr_response_path_entry_new(subscriptions->allocator, path.topic, path.correlation_token_json_path);
+        if (aws_hash_table_put(&subscriptions->request_response_paths, &entry->topic_cursor, entry, NULL)) {
+            s_aws_rr_response_path_entry_destroy(entry);
+            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        }
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 static void s_match_wildcard_stream_subscriptions(
