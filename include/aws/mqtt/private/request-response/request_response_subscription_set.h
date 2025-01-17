@@ -16,6 +16,8 @@ struct aws_mqtt_request_response_client;
 
 /* Holds subscriptions for request-response client. */
 struct aws_request_response_subscriptions {
+    struct aws_allocator *allocator;
+
     /*
      * Map from cursor (topic filter) -> list of streaming operations using that filter
      */
@@ -74,6 +76,15 @@ AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_init(
     struct aws_allocator *allocator);
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_cleanup(
+    struct aws_request_response_subscriptions *subscriptions);
+
+AWS_MQTT_API struct aws_rr_operation_list_topic_filter_entry *
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
+        struct aws_mqtt_request_response_client *client,
+        struct aws_request_response_subscriptions *subscriptions,
+        const struct aws_byte_cursor *topic_filter);
+
+AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_add_request_subscription(
     struct aws_request_response_subscriptions *subscriptions);
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_match(
