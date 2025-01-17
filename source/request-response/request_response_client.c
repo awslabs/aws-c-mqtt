@@ -336,20 +336,7 @@ struct aws_mqtt_request_response_client {
      */
     struct aws_priority_queue operations_by_timeout;
 
-    /*
-     * Map from cursor (topic filter) -> list of streaming operations using that filter
-     */
-    struct aws_hash_table streaming_operation_subscription_lists;
-
-    struct aws_hash_table streaming_operation_wildcards_subscription_lists;
-
-    /*
-     * Map from cursor (topic) -> request response path (topic, correlation token json path)
-     *
-     * We don't garbage collect this table over the course of normal client operation.  We only clean it up
-     * when the client is shutting down.
-     */
-    struct aws_hash_table request_response_paths;
+    struct aws_request_response_subscriptions subscriptions;
 
     /*
      * Map from cursor (correlation token) -> request operation
@@ -397,8 +384,8 @@ static void s_mqtt_request_response_client_final_destroy(struct aws_mqtt_request
     aws_hash_table_clean_up(&client->operations);
 
     aws_priority_queue_clean_up(&client->operations_by_timeout);
-    aws_hash_table_clean_up(&client->streaming_operation_subscription_lists);
-    aws_hash_table_clean_up(&client->request_response_paths);
+
+    aws_mqtt_request_response_client_subscriptions_destroy(&client->subscriptions);
     aws_hash_table_clean_up(&client->operations_by_correlation_tokens);
 
     aws_mem_release(client->allocator, client);
@@ -1045,36 +1032,13 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
         return;
     }
 
-    /* Streaming operation handling */
-    struct aws_hash_element *subscription_filter_element = NULL;
-    if (aws_hash_table_find(
-            &rr_client->streaming_operation_subscription_lists, &publish_event->topic, &subscription_filter_element) ==
-            AWS_OP_SUCCESS &&
-        subscription_filter_element != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches streaming topic",
-            (void *)rr_client,
-            AWS_BYTE_CURSOR_PRI(publish_event->topic));
-
-        s_apply_publish_to_streaming_operation_list(subscription_filter_element->value, publish_event);
-    } else {
-        search(&rr_client->streaming_operation_wildcards_subscription_lists, &publish_event->topic);
-    }
-
-    /* Request-Response handling */
-    struct aws_hash_element *response_path_element = NULL;
-    if (aws_hash_table_find(&rr_client->request_response_paths, &publish_event->topic, &response_path_element) ==
-            AWS_OP_SUCCESS &&
-        response_path_element != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches response path",
-            (void *)rr_client,
-            AWS_BYTE_CURSOR_PRI(publish_event->topic));
-
-        s_apply_publish_to_response_path_entry(rr_client, response_path_element->value, publish_event);
-    }
+    aws_mqtt_request_response_client_subscriptions_match(
+        &rr_client->subscriptions,
+        &publish_event->topic,
+        s_apply_publish_to_streaming_operation_list,
+        s_apply_publish_to_response_path_entry,
+        publish_event,
+        rr_client);
 }
 
 static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data) {
@@ -1165,7 +1129,7 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         s_compare_rr_operation_timeouts);
 
     aws_hash_table_init(
-        &rr_client->streaming_operation_subscription_lists,
+        &rr_client->subscriptions.streaming_operation_subscription_lists,
         allocator,
         MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
         aws_hash_byte_cursor_ptr,
@@ -1174,7 +1138,7 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy);
 
     aws_hash_table_init(
-        &rr_client->streaming_operation_wildcards_subscription_lists,
+        &rr_client->subscriptions.streaming_operation_wildcards_subscription_lists,
         allocator,
         10, // TODO
         aws_hash_byte_cursor_ptr,
@@ -1183,7 +1147,7 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy);
 
     aws_hash_table_init(
-        &rr_client->request_response_paths,
+        &rr_client->subscriptions.request_response_paths,
         allocator,
         MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE,
         aws_hash_byte_cursor_ptr,
@@ -1298,11 +1262,14 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
     struct aws_hash_element *element = NULL;
     if (is_topic_with_wildcard) {
         if (aws_hash_table_find(
-                &client->streaming_operation_wildcards_subscription_lists, &topic_filter_cursor, &element)) {
+                &client->subscriptions.streaming_operation_wildcards_subscription_lists,
+                &topic_filter_cursor,
+                &element)) {
             return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
         }
     } else {
-        if (aws_hash_table_find(&client->streaming_operation_subscription_lists, &topic_filter_cursor, &element)) {
+        if (aws_hash_table_find(
+                &client->subscriptions.streaming_operation_subscription_lists, &topic_filter_cursor, &element)) {
             return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
         }
     }
@@ -1312,7 +1279,10 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
         if (is_topic_with_wildcard) {
             entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
             aws_hash_table_put(
-                &client->streaming_operation_wildcards_subscription_lists, &entry->topic_filter_cursor, entry, NULL);
+                &client->subscriptions.streaming_operation_wildcards_subscription_lists,
+                &entry->topic_filter_cursor,
+                entry,
+                NULL);
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_REQUEST_RESPONSE,
                 "id=%p: request-response client adding wildcard topic filter '" PRInSTR
@@ -1322,7 +1292,10 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
         } else {
             entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
             aws_hash_table_put(
-                &client->streaming_operation_subscription_lists, &entry->topic_filter_cursor, entry, NULL);
+                &client->subscriptions.streaming_operation_subscription_lists,
+                &entry->topic_filter_cursor,
+                entry,
+                NULL);
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_REQUEST_RESPONSE,
                 "id=%p: request-response client adding topic filter '" PRInSTR "' to streaming subscriptions table",
@@ -1363,7 +1336,7 @@ static int s_add_request_operation_to_response_path_table(
         aws_array_list_get_at(paths, &path, i);
 
         struct aws_hash_element *element = NULL;
-        if (aws_hash_table_find(&client->request_response_paths, &path.topic, &element)) {
+        if (aws_hash_table_find(&client->subscriptions.request_response_paths, &path.topic, &element)) {
             return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
         }
 
@@ -1375,7 +1348,7 @@ static int s_add_request_operation_to_response_path_table(
 
         struct aws_rr_response_path_entry *entry =
             s_aws_rr_response_path_entry_new(client->allocator, path.topic, path.correlation_token_json_path);
-        if (aws_hash_table_put(&client->request_response_paths, &entry->topic_cursor, entry, NULL)) {
+        if (aws_hash_table_put(&client->subscriptions.request_response_paths, &entry->topic_cursor, entry, NULL)) {
             return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
         }
     }
@@ -1874,7 +1847,8 @@ static void s_remove_operation_from_client_tables(struct aws_mqtt_rr_client_oper
         aws_array_list_get_at(paths, &path, i);
 
         struct aws_hash_element *element = NULL;
-        if (aws_hash_table_find(&client->request_response_paths, &path.topic, &element) || element == NULL) {
+        if (aws_hash_table_find(&client->subscriptions.request_response_paths, &path.topic, &element) ||
+            element == NULL) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT_REQUEST_RESPONSE,
                 "id=%p: internal state error removing reference to response path for topic " PRInSTR,
@@ -1892,7 +1866,7 @@ static void s_remove_operation_from_client_tables(struct aws_mqtt_rr_client_oper
                 "id=%p: removing last reference to response path for topic " PRInSTR,
                 (void *)client,
                 AWS_BYTE_CURSOR_PRI(path.topic));
-            aws_hash_table_remove(&client->request_response_paths, &path.topic, NULL, NULL);
+            aws_hash_table_remove(&client->subscriptions.request_response_paths, &path.topic, NULL, NULL);
         } else {
             AWS_LOGF_DEBUG(
                 AWS_LS_MQTT_REQUEST_RESPONSE,
