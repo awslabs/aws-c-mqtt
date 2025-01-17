@@ -44,9 +44,11 @@ static void s_aws_rr_response_path_table_hash_element_destroy(void *value) {
 
 void aws_mqtt_request_response_client_subscriptions_init(
     struct aws_request_response_subscriptions *subscriptions,
+    struct aws_mqtt_request_response_client *client,
     struct aws_allocator *allocator) {
 
     subscriptions->allocator = allocator;
+    subscriptions->client = client;
 
     aws_hash_table_init(
         &subscriptions->streaming_operation_subscription_lists,
@@ -98,7 +100,6 @@ static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_
 }
 
 struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
-    struct aws_mqtt_request_response_client *client,
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_byte_cursor *topic_filter) {
 
@@ -123,7 +124,7 @@ struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_clien
             AWS_LS_MQTT_REQUEST_RESPONSE,
             "id=%p: request-response client adding wildcard topic filter '" PRInSTR
             "' to streaming subscriptions table",
-            (void *)client,
+            (void *)subscriptions->client,
             AWS_BYTE_CURSOR_PRI(*topic_filter));
     } else {
         entry = element->value;
@@ -179,6 +180,45 @@ int aws_mqtt_request_response_client_subscriptions_add_request_subscription(
     }
 
     return AWS_OP_SUCCESS;
+}
+
+void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
+    struct aws_request_response_subscriptions *subscriptions,
+    const struct aws_array_list *paths) {
+    size_t path_count = aws_array_list_length(paths);
+    for (size_t i = 0; i < path_count; ++i) {
+        struct aws_mqtt_request_operation_response_path path;
+        aws_array_list_get_at(paths, &path, i);
+
+        struct aws_hash_element *element = NULL;
+        if (aws_hash_table_find(&subscriptions->request_response_paths, &path.topic, &element) || element == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: internal state error removing reference to response path for topic " PRInSTR,
+                (void *)subscriptions->client,
+                AWS_BYTE_CURSOR_PRI(path.topic));
+            continue;
+        }
+
+        struct aws_rr_response_path_entry *entry = element->value;
+        --entry->ref_count;
+
+        if (entry->ref_count == 0) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: removing last reference to response path for topic " PRInSTR,
+                (void *)subscriptions->client,
+                AWS_BYTE_CURSOR_PRI(path.topic));
+            aws_hash_table_remove(&subscriptions->request_response_paths, &path.topic, NULL, NULL);
+        } else {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: removing reference to response path for topic " PRInSTR ", %zu references remain",
+                (void *)subscriptions->client,
+                AWS_BYTE_CURSOR_PRI(path.topic),
+                entry->ref_count);
+        }
+    }
 }
 
 static void s_match_wildcard_stream_subscriptions(
@@ -247,8 +287,7 @@ void aws_mqtt_request_response_client_subscriptions_match(
     const struct aws_byte_cursor *topic,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
     aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
-    struct aws_mqtt_request_response_client *rr_client) {
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
 
     /* Streaming operation handling */
     struct aws_hash_element *subscription_filter_element = NULL;
@@ -259,7 +298,7 @@ void aws_mqtt_request_response_client_subscriptions_match(
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
             "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches streaming topic",
-            (void *)rr_client,
+            (void *)subscriptions->client,
             AWS_BYTE_CURSOR_PRI(*topic));
 
         on_stream_operation_subscription_match(subscription_filter_element->value, publish_event);
@@ -275,9 +314,9 @@ void aws_mqtt_request_response_client_subscriptions_match(
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
             "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches response path",
-            (void *)rr_client,
+            (void *)subscriptions->client,
             AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
-        on_request_operation_subscription_match(rr_client, response_path_element->value, publish_event);
+        on_request_operation_subscription_match(subscriptions->client, response_path_element->value, publish_event);
     }
 }

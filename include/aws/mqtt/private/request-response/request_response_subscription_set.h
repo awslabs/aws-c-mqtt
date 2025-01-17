@@ -17,6 +17,7 @@ struct aws_mqtt_request_response_client;
 /* Holds subscriptions for request-response client. */
 struct aws_request_response_subscriptions {
     struct aws_allocator *allocator;
+    struct aws_mqtt_request_response_client *client;
 
     /*
      * Map from cursor (topic filter) -> list of streaming operations using that filter
@@ -73,6 +74,7 @@ AWS_EXTERN_C_BEGIN
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_init(
     struct aws_request_response_subscriptions *subscriptions,
+    struct aws_mqtt_request_response_client *client,
     struct aws_allocator *allocator);
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_cleanup(
@@ -80,11 +82,14 @@ AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_cleanup(
 
 AWS_MQTT_API struct aws_rr_operation_list_topic_filter_entry *
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
-        struct aws_mqtt_request_response_client *client,
         struct aws_request_response_subscriptions *subscriptions,
         const struct aws_byte_cursor *topic_filter);
 
 AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_add_request_subscription(
+    struct aws_request_response_subscriptions *subscriptions,
+    const struct aws_array_list *paths);
+
+AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_array_list *paths);
 
@@ -93,8 +98,7 @@ AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_match(
     const struct aws_byte_cursor *topic,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
     aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
-    struct aws_mqtt_request_response_client *rr_client);
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event);
 
 AWS_EXTERN_C_END
 

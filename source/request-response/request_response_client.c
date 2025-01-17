@@ -965,8 +965,7 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
         &publish_event->topic,
         s_apply_publish_to_streaming_operation_list,
         s_apply_publish_to_response_path_entry,
-        publish_event,
-        rr_client);
+        publish_event);
 }
 
 static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data) {
@@ -1056,7 +1055,7 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         sizeof(struct aws_mqtt_rr_client_operation *),
         s_compare_rr_operation_timeouts);
 
-    aws_mqtt_request_response_client_subscriptions_init(&rr_client->subscriptions, allocator);
+    aws_mqtt_request_response_client_subscriptions_init(&rr_client->subscriptions, rr_client, allocator);
 
     aws_hash_table_init(
         &rr_client->operations_by_correlation_tokens,
@@ -1159,7 +1158,7 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
 
     struct aws_rr_operation_list_topic_filter_entry *entry =
         aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
-            client, &client->subscriptions, &topic_filter_cursor);
+            &client->subscriptions, &topic_filter_cursor);
     if (entry == NULL) {
         return AWS_OP_ERR;
     }
@@ -1674,41 +1673,8 @@ static void s_remove_operation_from_client_tables(struct aws_mqtt_rr_client_oper
         NULL);
 
     struct aws_array_list *paths = &operation->storage.request_storage.operation_response_paths;
-    size_t path_count = aws_array_list_length(paths);
-    for (size_t i = 0; i < path_count; ++i) {
-        struct aws_mqtt_request_operation_response_path path;
-        aws_array_list_get_at(paths, &path, i);
 
-        struct aws_hash_element *element = NULL;
-        if (aws_hash_table_find(&client->subscriptions.request_response_paths, &path.topic, &element) ||
-            element == NULL) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: internal state error removing reference to response path for topic " PRInSTR,
-                (void *)client,
-                AWS_BYTE_CURSOR_PRI(path.topic));
-            continue;
-        }
-
-        struct aws_rr_response_path_entry *entry = element->value;
-        --entry->ref_count;
-
-        if (entry->ref_count == 0) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: removing last reference to response path for topic " PRInSTR,
-                (void *)client,
-                AWS_BYTE_CURSOR_PRI(path.topic));
-            aws_hash_table_remove(&client->subscriptions.request_response_paths, &path.topic, NULL, NULL);
-        } else {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: removing reference to response path for topic " PRInSTR ", %zu references remain",
-                (void *)client,
-                AWS_BYTE_CURSOR_PRI(path.topic),
-                entry->ref_count);
-        }
-    }
+    aws_mqtt_request_response_client_subscriptions_remove_request_subscription(&client->subscriptions, paths);
 }
 
 static void s_mqtt_rr_client_destroy_operation(struct aws_task *task, void *arg, enum aws_task_status status) {
