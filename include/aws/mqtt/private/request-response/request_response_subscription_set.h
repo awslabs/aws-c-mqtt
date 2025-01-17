@@ -84,8 +84,9 @@ AWS_MQTT_API struct aws_rr_operation_list_topic_filter_entry *
         struct aws_request_response_subscriptions *subscriptions,
         const struct aws_byte_cursor *topic_filter);
 
-AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_add_request_subscription(
-    struct aws_request_response_subscriptions *subscriptions);
+AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_add_request_subscription(
+    struct aws_request_response_subscriptions *subscriptions,
+    const struct aws_array_list *paths);
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_match(
     const struct aws_request_response_subscriptions *subscriptions,
