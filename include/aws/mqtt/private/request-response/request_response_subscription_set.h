@@ -12,6 +12,8 @@
 #include <aws/mqtt/exports.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
 
+struct aws_mqtt_request_response_client;
+
 /* Holds subscriptions for request-response client. */
 struct aws_request_response_subscriptions {
     /*
@@ -45,8 +47,16 @@ struct aws_rr_operation_list_topic_filter_entry {
     struct aws_linked_list operations;
 };
 
-struct aws_mqtt_request_response_client;
-struct aws_rr_response_path_entry;
+struct aws_rr_response_path_entry {
+    struct aws_allocator *allocator;
+
+    size_t ref_count;
+
+    struct aws_byte_cursor topic_cursor;
+    struct aws_byte_buf topic;
+
+    struct aws_byte_buf correlation_token_json_path;
+};
 
 typedef void(aws_mqtt_stream_operation_subscription_match_fn)(
     struct aws_rr_operation_list_topic_filter_entry *entry,
@@ -59,7 +69,11 @@ typedef void(aws_mqtt_request_operation_subscription_match_fn)(
 
 AWS_EXTERN_C_BEGIN
 
-AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_destroy(
+AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_init(
+    struct aws_request_response_subscriptions *subscriptions,
+    struct aws_allocator *allocator);
+
+AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_cleanup(
     struct aws_request_response_subscriptions *subscriptions);
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_match(
