@@ -136,21 +136,6 @@ state, removed on operation completion/destruction
 
 */
 
-static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
-    struct aws_allocator *allocator,
-    struct aws_byte_cursor topic_filter) {
-    struct aws_rr_operation_list_topic_filter_entry *entry =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_operation_list_topic_filter_entry));
-
-    entry->allocator = allocator;
-    aws_byte_buf_init_copy_from_cursor(&entry->topic_filter, allocator, topic_filter);
-    entry->topic_filter_cursor = aws_byte_cursor_from_buf(&entry->topic_filter);
-
-    aws_linked_list_init(&entry->operations);
-
-    return entry;
-}
-
 static struct aws_rr_response_path_entry *s_aws_rr_response_path_entry_new(
     struct aws_allocator *allocator,
     struct aws_byte_cursor topic,
@@ -1188,59 +1173,12 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
 
     struct aws_byte_cursor topic_filter_cursor = operation->storage.streaming_storage.options.topic_filter;
 
-    bool is_topic_with_wildcard = false;
-    if (memchr(topic_filter_cursor.ptr, '+', topic_filter_cursor.len)) {
-        is_topic_with_wildcard = true;
+    struct aws_rr_operation_list_topic_filter_entry *entry =
+        aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
+            client, &client->subscriptions, &topic_filter_cursor);
+    if (entry == NULL) {
+        return AWS_OP_ERR;
     }
-
-    struct aws_hash_element *element = NULL;
-    if (is_topic_with_wildcard) {
-        if (aws_hash_table_find(
-                &client->subscriptions.streaming_operation_wildcards_subscription_lists,
-                &topic_filter_cursor,
-                &element)) {
-            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
-        }
-    } else {
-        if (aws_hash_table_find(
-                &client->subscriptions.streaming_operation_subscription_lists, &topic_filter_cursor, &element)) {
-            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
-        }
-    }
-
-    struct aws_rr_operation_list_topic_filter_entry *entry = NULL;
-    if (element == NULL) {
-        if (is_topic_with_wildcard) {
-            entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
-            aws_hash_table_put(
-                &client->subscriptions.streaming_operation_wildcards_subscription_lists,
-                &entry->topic_filter_cursor,
-                entry,
-                NULL);
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: request-response client adding wildcard topic filter '" PRInSTR
-                "' to streaming subscriptions table",
-                (void *)client,
-                AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
-        } else {
-            entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
-            aws_hash_table_put(
-                &client->subscriptions.streaming_operation_subscription_lists,
-                &entry->topic_filter_cursor,
-                entry,
-                NULL);
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: request-response client adding topic filter '" PRInSTR "' to streaming subscriptions table",
-                (void *)client,
-                AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
-        }
-    } else {
-        entry = element->value;
-    }
-
-    AWS_FATAL_ASSERT(entry != NULL);
 
     if (aws_linked_list_node_is_in_list(&operation->node)) {
         aws_linked_list_remove(&operation->node);
