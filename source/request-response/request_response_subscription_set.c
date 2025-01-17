@@ -13,6 +13,21 @@
 #define MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE 50
 #define MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE 50
 
+static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor topic_filter) {
+    struct aws_rr_operation_list_topic_filter_entry *entry =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_operation_list_topic_filter_entry));
+
+    entry->allocator = allocator;
+    aws_byte_buf_init_copy_from_cursor(&entry->topic_filter, allocator, topic_filter);
+    entry->topic_filter_cursor = aws_byte_cursor_from_buf(&entry->topic_filter);
+
+    aws_linked_list_init(&entry->operations);
+
+    return entry;
+}
+
 static void s_aws_rr_operation_list_topic_filter_entry_destroy(struct aws_rr_operation_list_topic_filter_entry *entry) {
     if (entry == NULL) {
         return;
@@ -25,6 +40,22 @@ static void s_aws_rr_operation_list_topic_filter_entry_destroy(struct aws_rr_ope
 
 static void s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy(void *value) {
     s_aws_rr_operation_list_topic_filter_entry_destroy(value);
+}
+
+static struct aws_rr_response_path_entry *s_aws_rr_response_path_entry_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor topic,
+    struct aws_byte_cursor correlation_token_json_path) {
+    struct aws_rr_response_path_entry *entry = aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_response_path_entry));
+
+    entry->allocator = allocator;
+    entry->ref_count = 1;
+    aws_byte_buf_init_copy_from_cursor(&entry->topic, allocator, topic);
+    entry->topic_cursor = aws_byte_cursor_from_buf(&entry->topic);
+
+    aws_byte_buf_init_copy_from_cursor(&entry->correlation_token_json_path, allocator, correlation_token_json_path);
+
+    return entry;
 }
 
 static void s_aws_rr_response_path_entry_destroy(struct aws_rr_response_path_entry *entry) {
@@ -84,21 +115,6 @@ void aws_mqtt_request_response_client_subscriptions_cleanup(struct aws_request_r
     aws_hash_table_clean_up(&subscriptions->request_response_paths);
 }
 
-static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
-    struct aws_allocator *allocator,
-    struct aws_byte_cursor topic_filter) {
-    struct aws_rr_operation_list_topic_filter_entry *entry =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_operation_list_topic_filter_entry));
-
-    entry->allocator = allocator;
-    aws_byte_buf_init_copy_from_cursor(&entry->topic_filter, allocator, topic_filter);
-    entry->topic_filter_cursor = aws_byte_cursor_from_buf(&entry->topic_filter);
-
-    aws_linked_list_init(&entry->operations);
-
-    return entry;
-}
-
 struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_byte_cursor *topic_filter) {
@@ -131,22 +147,6 @@ struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_clien
     }
 
     AWS_FATAL_ASSERT(entry != NULL);
-
-    return entry;
-}
-
-static struct aws_rr_response_path_entry *s_aws_rr_response_path_entry_new(
-    struct aws_allocator *allocator,
-    struct aws_byte_cursor topic,
-    struct aws_byte_cursor correlation_token_json_path) {
-    struct aws_rr_response_path_entry *entry = aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_response_path_entry));
-
-    entry->allocator = allocator;
-    entry->ref_count = 1;
-    aws_byte_buf_init_copy_from_cursor(&entry->topic, allocator, topic);
-    entry->topic_cursor = aws_byte_cursor_from_buf(&entry->topic);
-
-    aws_byte_buf_init_copy_from_cursor(&entry->correlation_token_json_path, allocator, correlation_token_json_path);
 
     return entry;
 }
