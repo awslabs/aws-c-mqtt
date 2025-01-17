@@ -17,6 +17,9 @@ struct aws_mqtt_request_response_client;
 /* Holds subscriptions for request-response client. */
 struct aws_request_response_subscriptions {
     struct aws_allocator *allocator;
+
+    /* Convenient access to request-response client instance. Lifetime of aws_request_response_subscriptions is bound to
+     * client, so no ref-counting is required here. */
     struct aws_mqtt_request_response_client *client;
 
     /*
@@ -39,7 +42,7 @@ struct aws_request_response_subscriptions {
 };
 
 /*
- * This is the (key and) value in hash table (4) above.
+ * This is the (key and) value in stream subscriptions tables.
  */
 struct aws_rr_operation_list_topic_filter_entry {
     struct aws_allocator *allocator;
@@ -50,6 +53,9 @@ struct aws_rr_operation_list_topic_filter_entry {
     struct aws_linked_list operations;
 };
 
+/*
+ * Value in request subscriptions table.
+ */
 struct aws_rr_response_path_entry {
     struct aws_allocator *allocator;
 
