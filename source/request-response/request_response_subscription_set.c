@@ -44,6 +44,9 @@ static void s_aws_rr_response_path_table_hash_element_destroy(void *value) {
 void aws_mqtt_request_response_client_subscriptions_init(
     struct aws_request_response_subscriptions *subscriptions,
     struct aws_allocator *allocator) {
+
+    subscriptions->allocator = allocator;
+
     aws_hash_table_init(
         &subscriptions->streaming_operation_subscription_lists,
         allocator,
@@ -78,7 +81,62 @@ void aws_mqtt_request_response_client_subscriptions_cleanup(struct aws_request_r
     aws_hash_table_clean_up(&subscriptions->request_response_paths);
 }
 
-void s_match_wildcard_subscriptions(const struct aws_hash_table *subscriptions, const struct aws_byte_cursor *topic) {
+static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor topic_filter) {
+    struct aws_rr_operation_list_topic_filter_entry *entry =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_operation_list_topic_filter_entry));
+
+    entry->allocator = allocator;
+    aws_byte_buf_init_copy_from_cursor(&entry->topic_filter, allocator, topic_filter);
+    entry->topic_filter_cursor = aws_byte_cursor_from_buf(&entry->topic_filter);
+
+    aws_linked_list_init(&entry->operations);
+
+    return entry;
+}
+
+struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_request_response_subscriptions *subscriptions,
+    const struct aws_byte_cursor *topic_filter) {
+
+    bool is_topic_with_wildcard =
+        (memchr(topic_filter->ptr, '+', topic_filter->len) || memchr(topic_filter->ptr, '#', topic_filter->len));
+
+    struct aws_hash_table *subscription_lists = is_topic_with_wildcard
+                                                    ? &subscriptions->streaming_operation_wildcards_subscription_lists
+                                                    : &subscriptions->streaming_operation_subscription_lists;
+
+    struct aws_hash_element *element = NULL;
+    if (aws_hash_table_find(subscription_lists, topic_filter, &element)) {
+        aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        return NULL;
+    }
+
+    struct aws_rr_operation_list_topic_filter_entry *entry = NULL;
+    if (element == NULL) {
+        entry = s_aws_rr_operation_list_topic_filter_entry_new(subscriptions->allocator, *topic_filter);
+        aws_hash_table_put(subscription_lists, &entry->topic_filter_cursor, entry, NULL);
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client adding wildcard topic filter '" PRInSTR
+            "' to streaming subscriptions table",
+            (void *)client,
+            AWS_BYTE_CURSOR_PRI(*topic_filter));
+    } else {
+        entry = element->value;
+    }
+
+    AWS_FATAL_ASSERT(entry != NULL);
+
+    return entry;
+}
+
+static void s_match_wildcard_stream_subscriptions(
+    const struct aws_hash_table *subscriptions,
+    const struct aws_byte_cursor *topic) {
+
     AWS_LOGF_INFO(
         AWS_LS_MQTT_REQUEST_RESPONSE, "= Looking subscription for topic '" PRInSTR "'", AWS_BYTE_CURSOR_PRI(*topic));
 
@@ -143,6 +201,7 @@ void aws_mqtt_request_response_client_subscriptions_match(
     aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     struct aws_mqtt_request_response_client *rr_client) {
+
     /* Streaming operation handling */
     struct aws_hash_element *subscription_filter_element = NULL;
     if (aws_hash_table_find(
@@ -158,7 +217,7 @@ void aws_mqtt_request_response_client_subscriptions_match(
         on_stream_operation_subscription_match(subscription_filter_element->value, publish_event);
     }
 
-    s_match_wildcard_subscriptions(&subscriptions->streaming_operation_wildcards_subscription_lists, topic);
+    s_match_wildcard_stream_subscriptions(&subscriptions->streaming_operation_wildcards_subscription_lists, topic);
 
     /* Request-Response handling */
     struct aws_hash_element *response_path_element = NULL;
