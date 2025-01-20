@@ -778,12 +778,20 @@ static void s_aws_rr_client_protocol_adapter_subscription_event_callback(
 }
 
 static void s_apply_publish_to_streaming_operation_list(
+<<<<<<< HEAD
     struct aws_rr_operation_list_topic_filter_entry *entry,
     const struct aws_mqtt_rr_incoming_publish_event *publish_event) {
     AWS_FATAL_ASSERT(entry != NULL);
+=======
+    const struct aws_linked_list *operations,
+    const struct aws_byte_cursor *topic_filter,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    void *user_data) {
+    AWS_FATAL_ASSERT(operations != NULL);
+>>>>>>> 8d85817 (Change stream cb)
 
-    struct aws_linked_list_node *node = aws_linked_list_begin(&entry->operations);
-    while (node != aws_linked_list_end(&entry->operations)) {
+    struct aws_linked_list_node *node = aws_linked_list_begin(operations);
+    while (node != aws_linked_list_end(operations)) {
         struct aws_mqtt_rr_client_operation *operation =
             AWS_CONTAINER_OF(node, struct aws_mqtt_rr_client_operation, node);
         node = aws_linked_list_next(node);
@@ -964,7 +972,8 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
         &rr_client->subscriptions,
         publish_event,
         s_apply_publish_to_streaming_operation_list,
-        s_apply_publish_to_response_path_entry);
+        s_apply_publish_to_response_path_entry,
+        NULL);
 }
 
 static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data) {

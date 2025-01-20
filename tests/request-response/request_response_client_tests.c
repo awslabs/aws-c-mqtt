@@ -8,6 +8,7 @@
 #include <aws/common/uuid.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
+#include <aws/mqtt/private/request-response/request_response_subscription_set.h>
 #include <aws/mqtt/request-response/request_response_client.h>
 
 #include <aws/testing/aws_test_harness.h>
@@ -2356,8 +2357,7 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
 
     // make a third using topic filter 2
     struct aws_byte_cursor record_key3 = aws_byte_cursor_from_c_str("key3");
-    struct aws_mqtt_rr_client_operation *operation3 =
-        s_create_streaming_operation(&fixture, record_key3, topic2);
+    struct aws_mqtt_rr_client_operation *operation3 = s_create_streaming_operation(&fixture, record_key3, topic2);
 
     s_rrc_wait_for_n_streaming_subscription_events(&fixture, record_key3, 1);
     ASSERT_SUCCESS(s_rrc_verify_streaming_record_subscription_events(
@@ -3536,3 +3536,68 @@ static int s_rrc_request_response_multi_operation_sequence_fn(struct aws_allocat
 }
 
 AWS_TEST_CASE(rrc_request_response_multi_operation_sequence, s_rrc_request_response_multi_operation_sequence_fn)
+
+static void s_rrs_fixture_on_stream_operation_subscription_match(
+    const struct aws_linked_list *operations,
+    const struct aws_byte_cursor *topic_filter,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    void *user_data) {
+    fprintf(
+        stderr,
+        "====== on stream called: topic %.*s; topic filter %.*s\n",
+        AWS_BYTE_CURSOR_PRI(publish_event->topic),
+        AWS_BYTE_CURSOR_PRI(*topic_filter));
+}
+
+static void s_rrs_fixture_on_request_operation_subscription_match(
+    struct aws_mqtt_request_response_client *rr_client,
+    struct aws_rr_response_path_entry *entry,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
+    fprintf(stderr, "====== on req called\n");
+}
+
+static int s_rrs_match_subscription_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    void *client = (void *)0x08;
+
+    struct aws_request_response_subscriptions subscriptions;
+
+    aws_mqtt_request_response_client_subscriptions_init(&subscriptions, client, allocator);
+
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/123/+");
+    struct aws_byte_cursor topic_filter2 = aws_byte_cursor_from_c_str("topic/+/abc");
+    struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("topic/123/abc");
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
+
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter2);
+
+    struct aws_protocol_adapter_incoming_publish_event publish_event = {
+        .topic = topic1,
+        .payload = payload1,
+    };
+    aws_mqtt_request_response_client_subscriptions_match(
+        &subscriptions,
+        &publish_event,
+        s_rrs_fixture_on_stream_operation_subscription_match,
+        s_rrs_fixture_on_request_operation_subscription_match,
+        NULL);
+
+    struct aws_rr_client_fixture_publish_message_view expected_publishes[] = {
+        {
+            payload1,
+            topic1,
+        },
+        {
+            payload1,
+            topic1,
+        },
+    };
+
+    aws_mqtt_request_response_client_subscriptions_cleanup(&subscriptions);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrs_match_subscription, s_rrs_match_subscription_fn)

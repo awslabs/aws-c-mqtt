@@ -224,7 +224,8 @@ void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
 static void s_match_wildcard_stream_subscriptions(
     const struct aws_hash_table *subscriptions,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
-    aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match) {
+    aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
+    void *user_data) {
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT_REQUEST_RESPONSE,
@@ -279,7 +280,8 @@ static void s_match_wildcard_stream_subscriptions(
 
         if (match) {
             AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== found subscription match");
-            on_stream_operation_subscription_match(iter.element.value, publish_event);
+            on_stream_operation_subscription_match(
+                &entry->operations, &entry->topic_filter_cursor, publish_event, user_data);
         } else {
             AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "=== this is not the right subscription");
         }
@@ -290,7 +292,12 @@ void aws_mqtt_request_response_client_subscriptions_match(
     const struct aws_request_response_subscriptions *subscriptions,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
-    aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match) {
+    aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
+    void *user_data) {
+
+    AWS_FATAL_PRECONDITION(publish_event);
+    AWS_FATAL_PRECONDITION(on_stream_operation_subscription_match);
+    AWS_FATAL_PRECONDITION(on_request_operation_subscription_match);
 
     /* Streaming operation handling */
     struct aws_hash_element *subscription_filter_element = NULL;
@@ -305,13 +312,16 @@ void aws_mqtt_request_response_client_subscriptions_match(
             (void *)subscriptions->client,
             AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
-        on_stream_operation_subscription_match(subscription_filter_element->value, publish_event);
+        struct aws_rr_operation_list_topic_filter_entry *entry = subscription_filter_element->value;
+        on_stream_operation_subscription_match(
+            &entry->operations, &entry->topic_filter_cursor, publish_event, user_data);
     }
 
     s_match_wildcard_stream_subscriptions(
         &subscriptions->streaming_operation_wildcards_subscription_lists,
         publish_event,
-        on_stream_operation_subscription_match);
+        on_stream_operation_subscription_match,
+        user_data);
 
     /* Request-Response handling */
     struct aws_hash_element *response_path_element = NULL;
