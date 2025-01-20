@@ -581,6 +581,8 @@ add_test_case(rrc_request_response_failure_invalid_correlation_token_type)
 add_test_case(rrc_request_response_failure_non_matching_correlation_token)
 add_test_case(rrc_request_response_multi_operation_sequence)
 
+add_test_case(rrs_match_subscription)
+
 generate_test_driver(${PROJECT_NAME}-tests)
 
 set(TEST_PAHO_CLIENT_BINARY_NAME ${PROJECT_NAME}-paho-client)
