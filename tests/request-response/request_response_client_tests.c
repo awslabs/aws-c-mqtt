@@ -3661,7 +3661,7 @@ static void s_rrs_fixture_on_request_operation_subscription_match(
     fprintf(stderr, "====== on req called\n");
 }
 
-static int s_rrs_match_subscription_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_rrs_match_subscription_with_single_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     void *client = (void *)0x08;
@@ -3670,8 +3670,10 @@ static int s_rrs_match_subscription_fn(struct aws_allocator *allocator, void *ct
 
     aws_mqtt_request_response_client_subscriptions_init(&subscriptions, client, allocator);
 
-    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/123/+");
-    struct aws_byte_cursor topic_filter2 = aws_byte_cursor_from_c_str("topic/+/abc");
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/123/abc");
+    struct aws_byte_cursor topic_filter2 = aws_byte_cursor_from_c_str("topic/123/+");
+    struct aws_byte_cursor topic_filter3 = aws_byte_cursor_from_c_str("topic/+/abc");
+
     struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("topic/123/abc");
     struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
 
@@ -3679,6 +3681,7 @@ static int s_rrs_match_subscription_fn(struct aws_allocator *allocator, void *ct
     // TODO This does nothing. Add test case for this.
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter2);
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter3);
 
     struct aws_protocol_adapter_incoming_publish_event publish_event = {
         .topic = topic1,
@@ -3696,8 +3699,9 @@ static int s_rrs_match_subscription_fn(struct aws_allocator *allocator, void *ct
         record);
 
     struct aws_rr_client_fixture_matched_subscription_view matched_subscriptions[] = {
-        {payload1, topic1, topic_filter2},
         {payload1, topic1, topic_filter1},
+        {payload1, topic1, topic_filter2},
+        {payload1, topic1, topic_filter3},
     };
 
     ASSERT_SUCCESS(s_rrc_verify_streaming_subscriptions_publishes(
@@ -3710,4 +3714,59 @@ static int s_rrs_match_subscription_fn(struct aws_allocator *allocator, void *ct
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(rrs_match_subscription, s_rrs_match_subscription_fn)
+AWS_TEST_CASE(
+    rrs_match_subscription_with_single_level_wildcards,
+    s_rrs_match_subscription_with_single_level_wildcards_fn)
+
+static int s_rrs_match_subscription_with_multi_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    void *client = (void *)0x08;
+
+    struct aws_request_response_subscriptions subscriptions;
+
+    aws_mqtt_request_response_client_subscriptions_init(&subscriptions, client, allocator);
+
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/123/abc");
+    struct aws_byte_cursor topic_filter2 = aws_byte_cursor_from_c_str("topic/123/#");
+    struct aws_byte_cursor topic_filter3 = aws_byte_cursor_from_c_str("topic/#");
+
+    struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("topic/123/abc");
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
+
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter2);
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter3);
+
+    struct aws_protocol_adapter_incoming_publish_event publish_event = {
+        .topic = topic1,
+        .payload = payload1,
+    };
+
+    struct aws_rr_client_fixture_streaming_subscriptions_record *record =
+        s_aws_rr_client_fixture_streaming_subscriptions_record_new(allocator);
+
+    aws_mqtt_request_response_client_subscriptions_match(
+        &subscriptions,
+        &publish_event,
+        s_rrs_fixture_on_stream_operation_subscription_match,
+        s_rrs_fixture_on_request_operation_subscription_match,
+        record);
+
+    struct aws_rr_client_fixture_matched_subscription_view matched_subscriptions[] = {
+        {payload1, topic1, topic_filter1},
+        {payload1, topic1, topic_filter2},
+        {payload1, topic1, topic_filter3},
+    };
+
+    ASSERT_SUCCESS(s_rrc_verify_streaming_subscriptions_publishes(
+        record, AWS_ARRAY_SIZE(matched_subscriptions), matched_subscriptions));
+
+    s_aws_rr_client_fixture_streaming_subscriptions_record_delete(record);
+
+    aws_mqtt_request_response_client_subscriptions_cleanup(&subscriptions);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrs_match_subscription_with_multi_level_wildcards, s_rrs_match_subscription_with_multi_level_wildcards_fn)

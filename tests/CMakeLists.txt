@@ -581,7 +581,8 @@ add_test_case(rrc_request_response_failure_invalid_correlation_token_type)
 add_test_case(rrc_request_response_failure_non_matching_correlation_token)
 add_test_case(rrc_request_response_multi_operation_sequence)
 
-add_test_case(rrs_match_subscription)
+add_test_case(rrs_match_subscription_with_single_level_wildcards)
+add_test_case(rrs_match_subscription_with_multi_level_wildcards)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
