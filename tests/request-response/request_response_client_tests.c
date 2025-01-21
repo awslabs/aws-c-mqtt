@@ -2322,7 +2322,7 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
         },
     };
     ASSERT_SUCCESS(s_rrc_verify_streaming_record_subscription_events(
-        &fixture, record_key2, AWS_ARRAY_SIZE(expected_success_events), expected_success_events));
+        &fixture, record_key2, AWS_ARRAY_SIZE(expected_success_events), expected_failure_events));
 
     // two publishes on the mqtt client that get reflected into our subscription topic1
     struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
@@ -3537,16 +3537,115 @@ static int s_rrc_request_response_multi_operation_sequence_fn(struct aws_allocat
 
 AWS_TEST_CASE(rrc_request_response_multi_operation_sequence, s_rrc_request_response_multi_operation_sequence_fn)
 
+struct aws_rr_client_fixture_matched_subscription {
+    struct aws_byte_buf payload;
+    struct aws_byte_buf topic;
+    struct aws_byte_buf topic_filter;
+};
+
+struct aws_rr_client_fixture_matched_subscription_view {
+    struct aws_byte_cursor payload;
+    struct aws_byte_cursor topic;
+    struct aws_byte_cursor topic_filter;
+};
+
+struct aws_rr_client_fixture_streaming_subscriptions_record {
+    struct aws_allocator *allocator;
+    // TODO hash map: topic_filter -> (list?){publish message}
+    struct aws_hash_table matches;
+    struct aws_array_list publishes;
+};
+
+struct aws_rr_client_fixture_streaming_subscriptions_record *s_aws_rr_client_fixture_streaming_subscriptions_record_new(
+    struct aws_allocator *allocator) {
+    struct aws_rr_client_fixture_streaming_subscriptions_record *record =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_client_fixture_streaming_subscriptions_record));
+
+    record->allocator = allocator;
+    aws_array_list_init_dynamic(
+        &record->publishes, allocator, 10, sizeof(struct aws_rr_client_fixture_matched_subscription));
+
+    return record;
+}
+
+void s_aws_rr_client_fixture_streaming_subscriptions_record_delete(
+    struct aws_rr_client_fixture_streaming_subscriptions_record *record) {
+
+    size_t publish_count = aws_array_list_length(&record->publishes);
+    for (size_t i = 0; i < publish_count; ++i) {
+        struct aws_rr_client_fixture_matched_subscription matched_subscription;
+        aws_array_list_get_at(&record->publishes, &matched_subscription, i);
+
+        aws_byte_buf_clean_up(&matched_subscription.payload);
+        aws_byte_buf_clean_up(&matched_subscription.topic);
+        aws_byte_buf_clean_up(&matched_subscription.topic_filter);
+    }
+
+    aws_array_list_clean_up(&record->publishes);
+
+    aws_mem_release(record->allocator, record);
+}
+
+static int s_rrc_verify_streaming_subscriptions_publishes(
+    struct aws_rr_client_fixture_streaming_subscriptions_record *record,
+    size_t expected_publish_count,
+    struct aws_rr_client_fixture_matched_subscription_view *expected_matched_subscriptions) {
+
+    size_t actual_publish_count = aws_array_list_length(&record->publishes);
+    ASSERT_INT_EQUALS(expected_publish_count, actual_publish_count);
+
+    for (size_t i = 0; i < actual_publish_count; ++i) {
+        struct aws_rr_client_fixture_matched_subscription actual_matched_subscription;
+        aws_array_list_get_at(&record->publishes, &actual_matched_subscription, i);
+
+        fprintf(stderr, "================================= %lu\n", actual_matched_subscription.topic_filter.len);
+
+        struct aws_rr_client_fixture_matched_subscription_view *matched_subscription =
+            &expected_matched_subscriptions[i];
+
+        ASSERT_BIN_ARRAYS_EQUALS(
+            matched_subscription->payload.ptr,
+            matched_subscription->payload.len,
+            actual_matched_subscription.payload.buffer,
+            actual_matched_subscription.payload.len);
+        ASSERT_BIN_ARRAYS_EQUALS(
+            matched_subscription->topic.ptr,
+            matched_subscription->topic.len,
+            actual_matched_subscription.topic.buffer,
+            actual_matched_subscription.topic.len);
+        ASSERT_BIN_ARRAYS_EQUALS(
+            matched_subscription->topic_filter.ptr,
+            matched_subscription->topic_filter.len,
+            actual_matched_subscription.topic_filter.buffer,
+            actual_matched_subscription.topic_filter.len);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static void s_rrs_fixture_on_stream_operation_subscription_match(
     const struct aws_linked_list *operations,
     const struct aws_byte_cursor *topic_filter,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     void *user_data) {
+
+    (void)operations;
+
+    struct aws_rr_client_fixture_streaming_subscriptions_record *fixture = user_data;
+
+    struct aws_rr_client_fixture_matched_subscription matched_subscription;
+    aws_byte_buf_init_copy_from_cursor(&matched_subscription.payload, fixture->allocator, publish_event->payload);
+    aws_byte_buf_init_copy_from_cursor(&matched_subscription.topic, fixture->allocator, publish_event->topic);
+    aws_byte_buf_init_copy_from_cursor(&matched_subscription.topic_filter, fixture->allocator, *topic_filter);
+
+    aws_array_list_push_back(&fixture->publishes, &matched_subscription);
+
     fprintf(
         stderr,
-        "====== on stream called: topic %.*s; topic filter %.*s\n",
-        AWS_BYTE_CURSOR_PRI(publish_event->topic),
-        AWS_BYTE_CURSOR_PRI(*topic_filter));
+        "====== on stream called: topic %.*s; payload %.*s; topic filter %.*s\n",
+        AWS_BYTE_BUF_PRI(matched_subscription.topic),
+        AWS_BYTE_BUF_PRI(matched_subscription.payload),
+        AWS_BYTE_BUF_PRI(matched_subscription.topic_filter));
 }
 
 static void s_rrs_fixture_on_request_operation_subscription_match(
@@ -3571,29 +3670,43 @@ static int s_rrs_match_subscription_fn(struct aws_allocator *allocator, void *ct
     struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
 
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
+    // TODO This does nothing. Add test case for this.
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter2);
 
     struct aws_protocol_adapter_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
+
+    struct aws_rr_client_fixture_streaming_subscriptions_record *record =
+        s_aws_rr_client_fixture_streaming_subscriptions_record_new(allocator);
+
     aws_mqtt_request_response_client_subscriptions_match(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
         s_rrs_fixture_on_request_operation_subscription_match,
-        NULL);
+        record);
 
-    struct aws_rr_client_fixture_publish_message_view expected_publishes[] = {
-        {
-            payload1,
-            topic1,
-        },
-        {
-            payload1,
-            topic1,
-        },
+    struct aws_rr_client_fixture_matched_subscription_view matched_subscriptions[] = {
+        {payload1, topic1, topic_filter2},
+        {payload1, topic1, topic_filter1},
     };
+
+    fprintf(
+        stderr,
+        "=============== on stream called: topic filter %.*s\n",
+        AWS_BYTE_CURSOR_PRI(matched_subscriptions[0].topic_filter));
+    fprintf(
+        stderr,
+        "=============== on stream called: topic filter %.*s\n",
+        AWS_BYTE_CURSOR_PRI(matched_subscriptions[1].topic_filter));
+
+    s_rrc_verify_streaming_subscriptions_publishes(
+        record, AWS_ARRAY_SIZE(matched_subscriptions), matched_subscriptions);
+
+    s_aws_rr_client_fixture_streaming_subscriptions_record_delete(record);
 
     aws_mqtt_request_response_client_subscriptions_cleanup(&subscriptions);
 
