@@ -247,6 +247,7 @@ static void s_match_wildcard_stream_subscriptions(
         AWS_ZERO_STRUCT(topic_segment);
 
         bool match = true;
+        bool multi_level_wildcard = false;
 
         while (aws_byte_cursor_next_split(&entry->topic_filter_cursor, '/', &subscription_topic_filter_segment)) {
             AWS_LOGF_INFO(
@@ -265,6 +266,12 @@ static void s_match_wildcard_stream_subscriptions(
                 "======= topic segment is '" PRInSTR "'",
                 AWS_BYTE_CURSOR_PRI(topic_segment));
 
+            if (aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "#")) {
+                multi_level_wildcard = true;
+                match = true;
+                break;
+            }
+
             if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
                 !aws_byte_cursor_eq_ignore_case(&topic_segment, &subscription_topic_filter_segment)) {
                 AWS_LOGF_INFO(
@@ -274,7 +281,7 @@ static void s_match_wildcard_stream_subscriptions(
             }
         }
 
-        if (aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
+        if (!multi_level_wildcard && aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
             match = false;
         }
 
