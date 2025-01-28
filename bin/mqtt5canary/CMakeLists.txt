@@ -1,7 +1,5 @@
 project(mqtt5canary C)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_INSTALL_PREFIX}/lib/cmake")
-
 file(GLOB MQTT5CANARY_SRC
         "*.c"
         )
@@ -25,5 +23,5 @@ install(TARGETS ${MQTT5CANARY_PROJECT_NAME}
         EXPORT ${MQTT5CANARY_PROJECT_NAME}-targets
         COMPONENT Runtime
         RUNTIME
-        DESTINATION bin
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT Runtime)

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.9...3.31)
 project(aws-c-mqtt C)
 
 option(ASSERT_LOCK_HELD "Enable ASSERT_SYNCED_DATA_LOCK_HELD for checking thread issue" OFF)
@@ -6,25 +6,10 @@ if (ASSERT_LOCK_HELD)
     add_definitions(-DASSERT_LOCK_HELD)
 endif()
 
-if (DEFINED CMAKE_PREFIX_PATH)
-    file(TO_CMAKE_PATH "${CMAKE_PREFIX_PATH}" CMAKE_PREFIX_PATH)
+if (NOT IN_SOURCE_BUILD)
+    # this is required so we can use aws-c-common's CMake modules
+    find_package(aws-c-common REQUIRED)
 endif()
-
-if (DEFINED CMAKE_INSTALL_PREFIX)
-    file(TO_CMAKE_PATH "${CMAKE_INSTALL_PREFIX}" CMAKE_INSTALL_PREFIX)
-endif()
-
-if (UNIX AND NOT APPLE)
-    include(GNUInstallDirs)
-elseif(NOT DEFINED CMAKE_INSTALL_LIBDIR)
-    set(CMAKE_INSTALL_LIBDIR "lib")
-endif()
-
-# This is required in order to append /lib/cmake to each element in CMAKE_PREFIX_PATH
-set(AWS_MODULE_DIR "/${CMAKE_INSTALL_LIBDIR}/cmake")
-string(REPLACE ";" "${AWS_MODULE_DIR};" AWS_MODULE_PATH "${CMAKE_PREFIX_PATH}${AWS_MODULE_DIR}")
-# Append that generated list to the module search path
-list(APPEND CMAKE_MODULE_PATH ${AWS_MODULE_PATH})
 
 include(AwsCFlags)
 include(AwsCheckHeaders)
@@ -32,6 +17,7 @@ include(AwsSharedLibSetup)
 include(AwsSanitizers)
 include(CheckCCompilerFlag)
 include(AwsFindPackage)
+include(GNUInstallDirs)
 
 file(GLOB AWS_MQTT_HEADERS
         "include/aws/mqtt/*.h"
@@ -93,11 +79,11 @@ aws_use_package(aws-c-http)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
-install(FILES ${AWS_MQTT_HEADERS} DESTINATION "include/aws/mqtt" COMPONENT Development)
-install(FILES ${AWS_MQTT5_HEADERS} DESTINATION "include/aws/mqtt/v5" COMPONENT Development)
-install(FILES ${AWS_MQTT_RR_HEADERS} DESTINATION "include/aws/mqtt/request-response" COMPONENT Development)
-install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "include/aws/testing/mqtt" COMPONENT Development)
-install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "include/aws/mqtt/private" COMPONENT Development)
+install(FILES ${AWS_MQTT_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt" COMPONENT Development)
+install(FILES ${AWS_MQTT5_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/v5" COMPONENT Development)
+install(FILES ${AWS_MQTT_RR_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/request-response" COMPONENT Development)
+install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/testing/mqtt" COMPONENT Development)
+install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/private" COMPONENT Development)
 
 if (BUILD_SHARED_LIBS)
     set (TARGET_DIR "shared")
@@ -106,7 +92,7 @@ else()
 endif()
 
 install(EXPORT "${PROJECT_NAME}-targets"
-        DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/${TARGET_DIR}"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/${TARGET_DIR}"
         NAMESPACE AWS::
         COMPONENT Development)
 
@@ -115,7 +101,7 @@ configure_file("cmake/${PROJECT_NAME}-config.cmake"
         @ONLY)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
-        DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/"
         COMPONENT Development)
 
 include(CTest)
