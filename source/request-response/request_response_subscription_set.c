@@ -5,7 +5,6 @@
 
 #include <aws/mqtt/private/request-response/request_response_subscription_set.h>
 
-#include <aws/common/logging.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/request-response/request_response_client.h>
@@ -75,11 +74,11 @@ static void s_aws_rr_response_path_table_hash_element_destroy(void *value) {
 
 void aws_mqtt_request_response_client_subscriptions_init(
     struct aws_request_response_subscriptions *subscriptions,
-    struct aws_mqtt_request_response_client *client,
     struct aws_allocator *allocator) {
 
+    AWS_FATAL_ASSERT(subscriptions);
+
     subscriptions->allocator = allocator;
-    subscriptions->client = client;
 
     aws_hash_table_init(
         &subscriptions->streaming_operation_subscription_lists,
@@ -136,12 +135,6 @@ struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_clien
     if (element == NULL) {
         entry = s_aws_rr_operation_list_topic_filter_entry_new(subscriptions->allocator, *topic_filter);
         aws_hash_table_put(subscription_lists, &entry->topic_filter_cursor, entry, NULL);
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client adding wildcard topic filter '" PRInSTR
-            "' to streaming subscriptions table",
-            (void *)subscriptions->client,
-            AWS_BYTE_CURSOR_PRI(*topic_filter));
     } else {
         entry = element->value;
     }

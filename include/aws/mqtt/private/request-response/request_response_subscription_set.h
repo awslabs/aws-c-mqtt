@@ -18,10 +18,6 @@ struct aws_mqtt_request_response_client;
 struct aws_request_response_subscriptions {
     struct aws_allocator *allocator;
 
-    /* Convenient access to request-response client instance. Lifetime of aws_request_response_subscriptions is bound to
-     * client, so no ref-counting is required here. */
-    struct aws_mqtt_request_response_client *client; // TODO Remove
-
     /*
      * Map from cursor (topic filter) -> list of streaming operations using that filter
      */
@@ -82,7 +78,6 @@ AWS_EXTERN_C_BEGIN
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_init(
     struct aws_request_response_subscriptions *subscriptions,
-    struct aws_mqtt_request_response_client *client,
     struct aws_allocator *allocator);
 
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_cleanup(
