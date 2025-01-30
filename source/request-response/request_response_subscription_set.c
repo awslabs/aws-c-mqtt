@@ -284,8 +284,7 @@ static void s_match_wildcard_stream_subscriptions(
 
             if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
                 !aws_byte_cursor_eq_ignore_case(&topic_segment, &subscription_topic_filter_segment)) {
-                AWS_LOGF_INFO(
-                    AWS_LS_MQTT_REQUEST_RESPONSE, "======= topic segment differs", AWS_BYTE_CURSOR_PRI(topic_segment));
+                AWS_LOGF_INFO(AWS_LS_MQTT_REQUEST_RESPONSE, "======= topic segment differs");
                 match = false;
                 break;
             }
