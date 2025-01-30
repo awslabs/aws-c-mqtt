@@ -3655,20 +3655,18 @@ static void s_rrs_fixture_on_stream_operation_subscription_match(
 }
 
 static void s_rrs_fixture_on_request_operation_subscription_match(
-    struct aws_mqtt_request_response_client *rr_client,
     struct aws_rr_response_path_entry *entry,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    void *user_data) {
     fprintf(stderr, "====== on req called\n");
 }
 
 static int s_rrs_match_subscription_with_single_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    void *client = (void *)0x08;
-
     struct aws_request_response_subscriptions subscriptions;
 
-    aws_mqtt_request_response_client_subscriptions_init(&subscriptions, client, allocator);
+    aws_mqtt_request_response_client_subscriptions_init(&subscriptions, allocator);
 
     struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/123/abc");
     struct aws_byte_cursor topic_filter2 = aws_byte_cursor_from_c_str("topic/123/+");
@@ -3721,11 +3719,9 @@ AWS_TEST_CASE(
 static int s_rrs_match_subscription_with_multi_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    void *client = (void *)0x08;
-
     struct aws_request_response_subscriptions subscriptions;
 
-    aws_mqtt_request_response_client_subscriptions_init(&subscriptions, client, allocator);
+    aws_mqtt_request_response_client_subscriptions_init(&subscriptions, allocator);
 
     struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/123/abc");
     struct aws_byte_cursor topic_filter2 = aws_byte_cursor_from_c_str("topic/123/#");

@@ -264,6 +264,10 @@ struct aws_mqtt_request_response_client {
      */
     struct aws_priority_queue operations_by_timeout;
 
+    /*
+     * Structure to handle subscriptions: add/remove subscriptions, match incoming messages.
+     * TODO Add normal description.
+     */
     struct aws_request_response_subscriptions subscriptions;
 
     /*
@@ -778,17 +782,13 @@ static void s_aws_rr_client_protocol_adapter_subscription_event_callback(
 }
 
 static void s_apply_publish_to_streaming_operation_list(
-<<<<<<< HEAD
-    struct aws_rr_operation_list_topic_filter_entry *entry,
-    const struct aws_mqtt_rr_incoming_publish_event *publish_event) {
-    AWS_FATAL_ASSERT(entry != NULL);
-=======
     const struct aws_linked_list *operations,
     const struct aws_byte_cursor *topic_filter,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data) {
+    (void)user_data;
+
     AWS_FATAL_ASSERT(operations != NULL);
->>>>>>> 8d85817 (Change stream cb)
 
     struct aws_linked_list_node *node = aws_linked_list_begin(operations);
     while (node != aws_linked_list_end(operations)) {
@@ -810,8 +810,8 @@ static void s_apply_publish_to_streaming_operation_list(
             continue;
         }
 
-        void *user_data = operation->storage.streaming_storage.options.user_data;
-        (*incoming_publish_callback)(publish_event, user_data);
+        void *operation_user_data = operation->storage.streaming_storage.options.user_data;
+        (*incoming_publish_callback)(publish_event->payload, publish_event->topic, operation_user_data);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
@@ -876,9 +876,11 @@ static void s_complete_operation_with_correlation_token(
 }
 
 static void s_apply_publish_to_response_path_entry(
-    struct aws_mqtt_request_response_client *rr_client,
     struct aws_rr_response_path_entry *entry,
-    const struct aws_mqtt_rr_incoming_publish_event *publish_event) {
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
+    void *user_data) {
+
+    struct aws_mqtt_request_response_client *rr_client = user_data;
 
     struct aws_json_value *json_payload = NULL;
 
@@ -973,7 +975,7 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
         publish_event,
         s_apply_publish_to_streaming_operation_list,
         s_apply_publish_to_response_path_entry,
-        NULL);
+        rr_client);
 }
 
 static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data) {
@@ -1063,7 +1065,7 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         sizeof(struct aws_mqtt_rr_client_operation *),
         s_compare_rr_operation_timeouts);
 
-    aws_mqtt_request_response_client_subscriptions_init(&rr_client->subscriptions, rr_client, allocator);
+    aws_mqtt_request_response_client_subscriptions_init(&rr_client->subscriptions, allocator);
 
     aws_hash_table_init(
         &rr_client->operations_by_correlation_tokens,

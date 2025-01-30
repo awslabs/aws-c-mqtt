@@ -70,9 +70,9 @@ typedef void(aws_mqtt_stream_operation_subscription_match_fn)(
     void *user_data);
 
 typedef void(aws_mqtt_request_operation_subscription_match_fn)(
-    struct aws_mqtt_request_response_client *rr_client,
     struct aws_rr_response_path_entry *entry,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event);
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    void *user_data);
 
 AWS_EXTERN_C_BEGIN
 
