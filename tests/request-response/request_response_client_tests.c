@@ -1220,7 +1220,7 @@ static int s_init_fixture_streaming_operation_success(
 
     struct aws_mqtt_request_response_client_options rr_client_options = {
         .max_request_response_subscriptions = 2,
-        .max_streaming_subscriptions = 2,
+        .max_streaming_subscriptions = 1,
         .operation_timeout_seconds = 2,
     };
 
