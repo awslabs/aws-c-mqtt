@@ -211,6 +211,26 @@ void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
     }
 }
 
+static void s_match_stream_subscriptions(
+    const struct aws_hash_table *subscriptions,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
+    void *user_data) {
+    struct aws_hash_element *subscription_filter_element = NULL;
+    if (aws_hash_table_find(subscriptions, &publish_event->topic, &subscription_filter_element) == AWS_OP_SUCCESS &&
+        subscription_filter_element != NULL) {
+        // TODO Deal with logs without client pointer.
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response client incoming publish on topic '" PRInSTR "' matches streaming topic",
+            AWS_BYTE_CURSOR_PRI(publish_event->topic));
+
+        struct aws_rr_operation_list_topic_filter_entry *entry = subscription_filter_element->value;
+        on_stream_operation_subscription_match(
+            &entry->operations, &entry->topic_filter_cursor, publish_event, user_data);
+    }
+}
+
 static void s_match_wildcard_stream_subscriptions(
     const struct aws_hash_table *subscriptions,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
@@ -285,6 +305,24 @@ static void s_match_wildcard_stream_subscriptions(
     }
 }
 
+void s_match_request_response_subscriptions(
+    const struct aws_hash_table *request_response_paths,
+    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
+    void *user_data) {
+
+    struct aws_hash_element *response_path_element = NULL;
+    if (aws_hash_table_find(request_response_paths, &publish_event->topic, &response_path_element) == AWS_OP_SUCCESS &&
+        response_path_element != NULL) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "request-response client incoming publish on topic '" PRInSTR "' matches response path",
+            AWS_BYTE_CURSOR_PRI(publish_event->topic));
+
+        on_request_operation_subscription_match(response_path_element->value, publish_event, user_data);
+    }
+}
+
 void aws_mqtt_request_response_client_subscriptions_match(
     const struct aws_request_response_subscriptions *subscriptions,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
@@ -297,21 +335,11 @@ void aws_mqtt_request_response_client_subscriptions_match(
     AWS_FATAL_PRECONDITION(on_request_operation_subscription_match);
 
     /* Streaming operation handling */
-    struct aws_hash_element *subscription_filter_element = NULL;
-    if (aws_hash_table_find(
-            &subscriptions->streaming_operation_subscription_lists,
-            &publish_event->topic,
-            &subscription_filter_element) == AWS_OP_SUCCESS &&
-        subscription_filter_element != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response client incoming publish on topic '" PRInSTR "' matches streaming topic",
-            AWS_BYTE_CURSOR_PRI(publish_event->topic));
-
-        struct aws_rr_operation_list_topic_filter_entry *entry = subscription_filter_element->value;
-        on_stream_operation_subscription_match(
-            &entry->operations, &entry->topic_filter_cursor, publish_event, user_data);
-    }
+    s_match_stream_subscriptions(
+        &subscriptions->streaming_operation_subscription_lists,
+        publish_event,
+        on_stream_operation_subscription_match,
+        user_data);
 
     s_match_wildcard_stream_subscriptions(
         &subscriptions->streaming_operation_wildcards_subscription_lists,
@@ -320,15 +348,6 @@ void aws_mqtt_request_response_client_subscriptions_match(
         user_data);
 
     /* Request-Response handling */
-    struct aws_hash_element *response_path_element = NULL;
-    if (aws_hash_table_find(&subscriptions->request_response_paths, &publish_event->topic, &response_path_element) ==
-            AWS_OP_SUCCESS &&
-        response_path_element != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "request-response client incoming publish on topic '" PRInSTR "' matches response path",
-            AWS_BYTE_CURSOR_PRI(publish_event->topic));
-
-        on_request_operation_subscription_match(response_path_element->value, publish_event, user_data);
-    }
+    s_match_request_response_subscriptions(
+        &subscriptions->request_response_paths, publish_event, on_request_operation_subscription_match, user_data);
 }

@@ -3658,6 +3658,9 @@ static void s_rrs_fixture_on_request_operation_subscription_match(
     struct aws_rr_response_path_entry *entry,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     void *user_data) {
+    (void)entry;
+    (void)publish_event;
+    (void)user_data;
     fprintf(stderr, "====== on req called\n");
 }
 

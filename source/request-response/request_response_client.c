@@ -786,6 +786,7 @@ static void s_apply_publish_to_streaming_operation_list(
     const struct aws_byte_cursor *topic_filter,
     const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data) {
+    (void)topic_filter;
     (void)user_data;
 
     AWS_FATAL_ASSERT(operations != NULL);
