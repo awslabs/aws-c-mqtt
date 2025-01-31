@@ -3674,7 +3674,7 @@ static int s_rrs_init_cleanup_fn(struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(rrs_init_cleanup, s_rrs_init_cleanup_fn)
 
-static int s_rrs_match_subscription_with_single_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_rrs_stream_subscriptions_match_single_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct aws_request_response_subscriptions subscriptions;
@@ -3688,8 +3688,6 @@ static int s_rrs_match_subscription_with_single_level_wildcards_fn(struct aws_al
     struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("topic/123/abc");
     struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
 
-    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
-    // TODO This does nothing. Add test case for this.
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter2);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter3);
@@ -3726,10 +3724,10 @@ static int s_rrs_match_subscription_with_single_level_wildcards_fn(struct aws_al
 }
 
 AWS_TEST_CASE(
-    rrs_match_subscription_with_single_level_wildcards,
-    s_rrs_match_subscription_with_single_level_wildcards_fn)
+    rrs_stream_subscriptions_match_single_level_wildcards,
+    s_rrs_stream_subscriptions_match_single_level_wildcards_fn)
 
-static int s_rrs_match_subscription_with_multi_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_rrs_stream_subscriptions_match_multi_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct aws_request_response_subscriptions subscriptions;
@@ -3778,4 +3776,53 @@ static int s_rrs_match_subscription_with_multi_level_wildcards_fn(struct aws_all
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(rrs_match_subscription_with_multi_level_wildcards, s_rrs_match_subscription_with_multi_level_wildcards_fn)
+AWS_TEST_CASE(
+    rrs_stream_subscriptions_match_multi_level_wildcards,
+    s_rrs_stream_subscriptions_match_multi_level_wildcards_fn)
+
+/* Adding multiple identical stream subscriptions should add only one. */
+static int s_rrs_stream_subscriptions_add_duplicate_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_request_response_subscriptions subscriptions;
+
+    aws_mqtt_request_response_client_subscriptions_init(&subscriptions, allocator);
+
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/123/+");
+
+    struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("topic/123/abc");
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
+
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
+
+    struct aws_protocol_adapter_incoming_publish_event publish_event = {
+        .topic = topic1,
+        .payload = payload1,
+    };
+
+    struct aws_rr_client_fixture_streaming_subscriptions_record *record =
+        s_aws_rr_client_fixture_streaming_subscriptions_record_new(allocator);
+
+    aws_mqtt_request_response_client_subscriptions_match(
+        &subscriptions,
+        &publish_event,
+        s_rrs_fixture_on_stream_operation_subscription_match,
+        s_rrs_fixture_on_request_operation_subscription_match,
+        record);
+
+    struct aws_rr_client_fixture_matched_subscription_view matched_subscriptions[] = {
+        {payload1, topic1, topic_filter1},
+    };
+
+    ASSERT_SUCCESS(s_rrc_verify_streaming_subscriptions_publishes(
+        record, AWS_ARRAY_SIZE(matched_subscriptions), matched_subscriptions));
+
+    s_aws_rr_client_fixture_streaming_subscriptions_record_delete(record);
+
+    aws_mqtt_request_response_client_subscriptions_clean_up(&subscriptions);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrs_stream_subscriptions_add_duplicate, s_rrs_stream_subscriptions_add_duplicate_fn)

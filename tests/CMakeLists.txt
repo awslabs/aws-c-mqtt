@@ -583,8 +583,9 @@ add_test_case(rrc_request_response_multi_operation_sequence)
 
 # "rrs" = request-response subscriptions
 add_test_case(rrs_init_cleanup)
-add_test_case(rrs_match_subscription_with_single_level_wildcards)
-add_test_case(rrs_match_subscription_with_multi_level_wildcards)
+add_test_case(rrs_stream_subscriptions_match_single_level_wildcards)
+add_test_case(rrs_stream_subscriptions_match_multi_level_wildcards)
+add_test_case(rrs_stream_subscriptions_add_duplicate)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 
