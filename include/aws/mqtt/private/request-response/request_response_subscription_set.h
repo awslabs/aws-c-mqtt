@@ -9,12 +9,9 @@
 #include <aws/common/byte_buf.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/linked_list.h>
-#include <aws/mqtt/exports.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
 
-struct aws_mqtt_request_response_client;
-
-/* Holds subscriptions for request-response client. */
+/* Handles subscriptions for request-response client. */
 struct aws_request_response_subscriptions {
     struct aws_allocator *allocator;
 
@@ -63,12 +60,18 @@ struct aws_rr_response_path_entry {
     struct aws_byte_buf correlation_token_json_path;
 };
 
+/*
+ * Callback type for matched stream subscriptions.
+ */
 typedef void(aws_mqtt_stream_operation_subscription_match_fn)(
     const struct aws_linked_list *operations,
     const struct aws_byte_cursor *topic_filter, // TODO Do we need this for anything other than tests?
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     void *user_data);
 
+/*
+ * Callback type for matched request subscriptions.
+ */
 typedef void(aws_mqtt_request_operation_subscription_match_fn)(
     struct aws_rr_response_path_entry *entry,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
@@ -76,26 +79,46 @@ typedef void(aws_mqtt_request_operation_subscription_match_fn)(
 
 AWS_EXTERN_C_BEGIN
 
-AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_init(
+/*
+ * Initialize internal state of a provided request-response subscriptions structure.
+ */
+AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_init(
     struct aws_request_response_subscriptions *subscriptions,
     struct aws_allocator *allocator);
 
-AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_cleanup(
+/*
+ * Clean up internals of a provided request-response subscriptions structure.
+ */
+AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_clean_up(
     struct aws_request_response_subscriptions *subscriptions);
 
+/*
+ * Add a subscription for stream operations.
+ * If subscription with the same topic filter is already added, previously created
+ * aws_rr_operation_list_topic_filter_entry instance is returned.
+ */
 AWS_MQTT_API struct aws_rr_operation_list_topic_filter_entry *
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
         struct aws_request_response_subscriptions *subscriptions,
         const struct aws_byte_cursor *topic_filter);
 
-AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_add_request_subscription(
+/*
+ * Add subscriptions for request operations for topics specified in paths list.
+ */
+AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_add_request_subscriptions(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_array_list *paths);
 
+/*
+ * Remove subscriptions for request operations for topics specified in paths list.
+ */
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_array_list *paths);
 
+/*
+ * Call specified callbacks for all stream and request operations with subscriptions matching a provided publish event.
+ */
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_match(
     const struct aws_request_response_subscriptions *subscriptions,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,

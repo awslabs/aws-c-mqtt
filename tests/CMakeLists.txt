@@ -581,6 +581,8 @@ add_test_case(rrc_request_response_failure_invalid_correlation_token_type)
 add_test_case(rrc_request_response_failure_non_matching_correlation_token)
 add_test_case(rrc_request_response_multi_operation_sequence)
 
+# "rrs" = request-response subscriptions
+add_test_case(rrs_init_cleanup)
 add_test_case(rrs_match_subscription_with_single_level_wildcards)
 add_test_case(rrs_match_subscription_with_multi_level_wildcards)
 

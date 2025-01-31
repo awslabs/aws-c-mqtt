@@ -317,7 +317,7 @@ static void s_mqtt_request_response_client_final_destroy(struct aws_mqtt_request
 
     aws_priority_queue_clean_up(&client->operations_by_timeout);
 
-    aws_mqtt_request_response_client_subscriptions_cleanup(&client->subscriptions);
+    aws_mqtt_request_response_client_subscriptions_clean_up(&client->subscriptions);
     aws_hash_table_clean_up(&client->operations_by_correlation_tokens);
 
     aws_mem_release(client->allocator, client);
@@ -1196,7 +1196,7 @@ static int s_add_request_operation_to_response_path_table(
     struct aws_mqtt_rr_client_operation *operation) {
 
     struct aws_array_list *paths = &operation->storage.request_storage.operation_response_paths;
-    return aws_mqtt_request_response_client_subscriptions_add_request_subscription(&client->subscriptions, paths);
+    return aws_mqtt_request_response_client_subscriptions_add_request_subscriptions(&client->subscriptions, paths);
 }
 
 static int s_add_request_operation_to_correlation_token_table(

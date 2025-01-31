@@ -12,21 +12,6 @@
 #define MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE 50
 #define MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE 50
 
-static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
-    struct aws_allocator *allocator,
-    struct aws_byte_cursor topic_filter) {
-    struct aws_rr_operation_list_topic_filter_entry *entry =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_operation_list_topic_filter_entry));
-
-    entry->allocator = allocator;
-    aws_byte_buf_init_copy_from_cursor(&entry->topic_filter, allocator, topic_filter);
-    entry->topic_filter_cursor = aws_byte_cursor_from_buf(&entry->topic_filter);
-
-    aws_linked_list_init(&entry->operations);
-
-    return entry;
-}
-
 static void s_aws_rr_operation_list_topic_filter_entry_destroy(struct aws_rr_operation_list_topic_filter_entry *entry) {
     if (entry == NULL) {
         return;
@@ -72,51 +57,88 @@ static void s_aws_rr_response_path_table_hash_element_destroy(void *value) {
     s_aws_rr_response_path_entry_destroy(value);
 }
 
-void aws_mqtt_request_response_client_subscriptions_init(
+int aws_mqtt_request_response_client_subscriptions_init(
     struct aws_request_response_subscriptions *subscriptions,
     struct aws_allocator *allocator) {
-
     AWS_FATAL_ASSERT(subscriptions);
 
     subscriptions->allocator = allocator;
 
-    aws_hash_table_init(
-        &subscriptions->streaming_operation_subscription_lists,
-        allocator,
-        MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
-        aws_hash_byte_cursor_ptr,
-        aws_mqtt_byte_cursor_hash_equality,
-        NULL,
-        s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy);
+    if (aws_hash_table_init(
+            &subscriptions->streaming_operation_subscription_lists,
+            allocator,
+            MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
+            aws_hash_byte_cursor_ptr,
+            aws_mqtt_byte_cursor_hash_equality,
+            NULL,
+            s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy)) {
+        goto clean_up;
+    }
 
-    aws_hash_table_init(
-        &subscriptions->streaming_operation_wildcards_subscription_lists,
-        allocator,
-        MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
-        aws_hash_byte_cursor_ptr,
-        aws_mqtt_byte_cursor_hash_equality,
-        NULL,
-        s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy);
+    if (aws_hash_table_init(
+            &subscriptions->streaming_operation_wildcards_subscription_lists,
+            allocator,
+            MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
+            aws_hash_byte_cursor_ptr,
+            aws_mqtt_byte_cursor_hash_equality,
+            NULL,
+            s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy)) {
+        goto clean_up;
+    }
 
-    aws_hash_table_init(
-        &subscriptions->request_response_paths,
-        allocator,
-        MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE,
-        aws_hash_byte_cursor_ptr,
-        aws_mqtt_byte_cursor_hash_equality,
-        NULL,
-        s_aws_rr_response_path_table_hash_element_destroy);
+    if (aws_hash_table_init(
+            &subscriptions->request_response_paths,
+            allocator,
+            MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE,
+            aws_hash_byte_cursor_ptr,
+            aws_mqtt_byte_cursor_hash_equality,
+            NULL,
+            s_aws_rr_response_path_table_hash_element_destroy)) {
+        goto clean_up;
+    }
+
+    return AWS_OP_SUCCESS;
+
+clean_up:
+    aws_mqtt_request_response_client_subscriptions_clean_up(subscriptions);
+    return AWS_OP_ERR;
 }
 
-void aws_mqtt_request_response_client_subscriptions_cleanup(struct aws_request_response_subscriptions *subscriptions) {
-    aws_hash_table_clean_up(&subscriptions->streaming_operation_subscription_lists);
-    aws_hash_table_clean_up(&subscriptions->streaming_operation_wildcards_subscription_lists);
-    aws_hash_table_clean_up(&subscriptions->request_response_paths);
+void aws_mqtt_request_response_client_subscriptions_clean_up(struct aws_request_response_subscriptions *subscriptions) {
+    if (subscriptions == NULL) {
+        return;
+    }
+
+    if (aws_hash_table_is_valid(&subscriptions->streaming_operation_subscription_lists)) {
+        aws_hash_table_clean_up(&subscriptions->streaming_operation_subscription_lists);
+    }
+    if (aws_hash_table_is_valid(&subscriptions->streaming_operation_wildcards_subscription_lists)) {
+        aws_hash_table_clean_up(&subscriptions->streaming_operation_wildcards_subscription_lists);
+    }
+    if (aws_hash_table_is_valid(&subscriptions->request_response_paths)) {
+        aws_hash_table_clean_up(&subscriptions->request_response_paths);
+    }
+}
+
+static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor topic_filter) {
+    struct aws_rr_operation_list_topic_filter_entry *entry =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_operation_list_topic_filter_entry));
+
+    entry->allocator = allocator;
+    aws_byte_buf_init_copy_from_cursor(&entry->topic_filter, allocator, topic_filter);
+    entry->topic_filter_cursor = aws_byte_cursor_from_buf(&entry->topic_filter);
+
+    aws_linked_list_init(&entry->operations);
+
+    return entry;
 }
 
 struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_byte_cursor *topic_filter) {
+    AWS_FATAL_ASSERT(subscriptions);
 
     bool is_topic_with_wildcard =
         (memchr(topic_filter->ptr, '+', topic_filter->len) || memchr(topic_filter->ptr, '#', topic_filter->len));
@@ -144,9 +166,11 @@ struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_clien
     return entry;
 }
 
-int aws_mqtt_request_response_client_subscriptions_add_request_subscription(
+int aws_mqtt_request_response_client_subscriptions_add_request_subscriptions(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_array_list *paths) {
+    AWS_FATAL_ASSERT(subscriptions);
+    AWS_FATAL_ASSERT(paths);
 
     size_t path_count = aws_array_list_length(paths);
     for (size_t i = 0; i < path_count; ++i) {
@@ -178,6 +202,9 @@ int aws_mqtt_request_response_client_subscriptions_add_request_subscription(
 void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_array_list *paths) {
+    AWS_FATAL_ASSERT(subscriptions);
+    AWS_FATAL_ASSERT(paths);
+
     size_t path_count = aws_array_list_length(paths);
     for (size_t i = 0; i < path_count; ++i) {
         struct aws_mqtt_request_operation_response_path path;
@@ -329,7 +356,9 @@ void aws_mqtt_request_response_client_subscriptions_match(
     aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
     void *user_data) {
 
+    AWS_FATAL_PRECONDITION(subscriptions);
     AWS_FATAL_PRECONDITION(publish_event);
+    // TODO ? Allow NULLs?
     AWS_FATAL_PRECONDITION(on_stream_operation_subscription_match);
     AWS_FATAL_PRECONDITION(on_request_operation_subscription_match);
 
