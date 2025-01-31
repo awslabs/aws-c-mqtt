@@ -3368,6 +3368,16 @@ static void s_rrs_fixture_on_request_operation_subscription_match(
     fprintf(stderr, "====== on req called\n");
 }
 
+static int s_rrs_init_cleanup_fn(struct aws_allocator *allocator, void *ctx) {
+    struct aws_request_response_subscriptions subscriptions;
+
+    ASSERT_SUCCESS(aws_mqtt_request_response_client_subscriptions_init(&subscriptions, allocator));
+    aws_mqtt_request_response_client_subscriptions_clean_up(&subscriptions);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(rrs_init_cleanup, s_rrs_init_cleanup_fn)
+
 static int s_rrs_match_subscription_with_single_level_wildcards_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -3414,7 +3424,7 @@ static int s_rrs_match_subscription_with_single_level_wildcards_fn(struct aws_al
 
     s_aws_rr_client_fixture_streaming_subscriptions_record_delete(record);
 
-    aws_mqtt_request_response_client_subscriptions_cleanup(&subscriptions);
+    aws_mqtt_request_response_client_subscriptions_clean_up(&subscriptions);
 
     return AWS_OP_SUCCESS;
 }
@@ -3467,7 +3477,7 @@ static int s_rrs_match_subscription_with_multi_level_wildcards_fn(struct aws_all
 
     s_aws_rr_client_fixture_streaming_subscriptions_record_delete(record);
 
-    aws_mqtt_request_response_client_subscriptions_cleanup(&subscriptions);
+    aws_mqtt_request_response_client_subscriptions_clean_up(&subscriptions);
 
     return AWS_OP_SUCCESS;
 }
