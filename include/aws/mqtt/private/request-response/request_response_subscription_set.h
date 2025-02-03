@@ -11,25 +11,31 @@
 #include <aws/common/linked_list.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
 
-/* Handles subscriptions for request-response client. */
+/*
+ * Handles subscriptions for request-response client.
+ * Lifetime of this struct is bound to request-response client.
+ */
 struct aws_request_response_subscriptions {
     struct aws_allocator *allocator;
 
     /*
      * Map from cursor (topic filter) -> list of streaming operations using that filter
+     *
+     * We don't garbage collect this table over the course of normal client operation.  We only clean it up
+     * when the client is shutting down.
      */
     struct aws_hash_table streaming_operation_subscription_lists;
 
     /*
      * Map from cursor (topic filter with wildcards) -> list of streaming operations using that filter
+     *
+     * We don't garbage collect this table over the course of normal client operation.  We only clean it up
+     * when the client is shutting down.
      */
     struct aws_hash_table streaming_operation_wildcards_subscription_lists;
 
     /*
      * Map from cursor (topic) -> request response path (topic, correlation token json path)
-     *
-     * We don't garbage collect this table over the course of normal client operation.  We only clean it up
-     * when the client is shutting down.
      */
     struct aws_hash_table request_response_paths;
 };
