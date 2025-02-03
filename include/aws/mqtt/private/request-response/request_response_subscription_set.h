@@ -65,7 +65,7 @@ struct aws_rr_response_path_entry {
  */
 typedef void(aws_mqtt_stream_operation_subscription_match_fn)(
     const struct aws_linked_list *operations,
-    const struct aws_byte_cursor *topic_filter, // TODO Do we need this for anything other than tests?
+    const struct aws_byte_cursor *topic_filter,
     const struct aws_protocol_adapter_incoming_publish_event *publish_event,
     void *user_data);
 
@@ -113,7 +113,7 @@ AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_add_request_subs
 /*
  * Remove a subscription for a given request operation.
  */
-AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
+AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_byte_cursor *topic_filter);
 
