@@ -257,15 +257,15 @@ static void s_match_wildcard_stream_subscriptions(
                 break;
             }
 
-            if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
-                !aws_byte_cursor_eq_ignore_case(&topic_segment, &subscription_topic_filter_segment)) {
-                match = false;
-                break;
-            }
-
             if (aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "#")) {
                 multi_level_wildcard = true;
                 match = true;
+                break;
+            }
+
+            if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
+                !aws_byte_cursor_eq_ignore_case(&topic_segment, &subscription_topic_filter_segment)) {
+                match = false;
                 break;
             }
         }
