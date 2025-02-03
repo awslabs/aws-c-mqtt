@@ -103,18 +103,19 @@ AWS_MQTT_API struct aws_rr_operation_list_topic_filter_entry *
         const struct aws_byte_cursor *topic_filter);
 
 /*
- * Add subscriptions for request operations for topics specified in paths list.
+ * Add a subscription for request operation.
  */
-AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_add_request_subscriptions(
+AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_add_request_subscription(
     struct aws_request_response_subscriptions *subscriptions,
-    const struct aws_array_list *paths);
+    const struct aws_byte_cursor *topic_filter,
+    const struct aws_byte_cursor *correlation_token_json_path);
 
 /*
- * Remove subscriptions for request operations for topics specified in paths list.
+ * Remove a subscription for a given request operation.
  */
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
     struct aws_request_response_subscriptions *subscriptions,
-    const struct aws_array_list *paths);
+    const struct aws_byte_cursor *topic_filter);
 
 /*
  * Call specified callbacks for all stream and request operations with subscriptions matching a provided publish event.
