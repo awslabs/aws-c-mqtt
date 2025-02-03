@@ -4002,7 +4002,6 @@ static int s_rrs_stream_subscriptions_too_short_publish_topic_fn(struct aws_allo
         0, /* expected_request_matches_count */
         NULL));
 
-
     s_aws_rr_client_fixture_subscriptions_macthes_record_delete(record);
 
     aws_mqtt_request_response_client_subscriptions_clean_up(&subscriptions);
