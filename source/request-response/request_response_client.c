@@ -265,8 +265,7 @@ struct aws_mqtt_request_response_client {
     struct aws_priority_queue operations_by_timeout;
 
     /*
-     * Structure to handle subscriptions: add/remove subscriptions, match incoming messages.
-     * TODO Add normal description.
+     * Structure to handle stream and request subscriptions.
      */
     struct aws_request_response_subscriptions subscriptions;
 
@@ -786,10 +785,18 @@ static void s_apply_publish_to_streaming_operation_list(
     const struct aws_byte_cursor *topic_filter,
     const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data) {
-    (void)topic_filter;
-    (void)user_data;
 
     AWS_FATAL_ASSERT(operations != NULL);
+
+    struct aws_mqtt_request_response_client *rr_client = user_data;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response client incoming publish on topic '" PRInSTR
+        "' matches streaming subscription on topic filter '" PRInSTR "'",
+        (void *)rr_client,
+        AWS_BYTE_CURSOR_PRI(publish_event->topic),
+        AWS_BYTE_CURSOR_PRI(*topic_filter));
 
     struct aws_linked_list_node *node = aws_linked_list_begin(operations);
     while (node != aws_linked_list_end(operations)) {
@@ -882,6 +889,12 @@ static void s_apply_publish_to_response_path_entry(
     void *user_data) {
 
     struct aws_mqtt_request_response_client *rr_client = user_data;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches response path",
+        (void *)rr_client,
+        AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
     struct aws_json_value *json_payload = NULL;
 
@@ -1698,7 +1711,14 @@ static void s_remove_operation_from_client_tables(struct aws_mqtt_rr_client_oper
     for (size_t i = 0; i < path_count; ++i) {
         struct aws_mqtt_request_operation_response_path path;
         aws_array_list_get_at(paths, &path, i);
-        aws_mqtt_request_response_client_subscriptions_remove_request_subscription(&client->subscriptions, &path.topic);
+        if (aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
+                &client->subscriptions, &path.topic) == AWS_OP_ERR) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "id=%p: internal state error removing reference to response path for topic " PRInSTR,
+                (void *)client,
+                AWS_BYTE_CURSOR_PRI(path.topic));
+        }
     }
 }
 
