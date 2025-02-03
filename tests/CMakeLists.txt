@@ -590,6 +590,7 @@ add_test_case(rrs_request_subscriptions_add_single_subscription)
 add_test_case(rrs_request_subscriptions_remove_subscription)
 add_test_case(rrs_request_subscriptions_add_duplicate_then_remove)
 add_test_case(rrs_request_subscriptions_remove_nonexistent_subscription)
+add_test_case(rrs_stream_and_request_subscriptions_add_same_subscription)
 
 generate_test_driver(${PROJECT_NAME}-tests)
 

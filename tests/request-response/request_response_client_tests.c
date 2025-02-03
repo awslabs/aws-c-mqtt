@@ -4143,3 +4143,61 @@ static int s_rrs_request_subscriptions_remove_nonexistent_subscription_fn(struct
 AWS_TEST_CASE(
     rrs_request_subscriptions_remove_nonexistent_subscription,
     s_rrs_request_subscriptions_remove_nonexistent_subscription_fn)
+
+static int s_rrs_stream_and_request_subscriptions_add_same_subscription_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_request_response_subscriptions subscriptions;
+
+    aws_mqtt_request_response_client_subscriptions_init(&subscriptions, allocator);
+
+    struct aws_byte_cursor topic1 = aws_byte_cursor_from_c_str("topic/123/abc");
+    struct aws_byte_cursor topic2 = aws_byte_cursor_from_c_str("topic/123/+");
+    struct aws_byte_cursor token_path1 = aws_byte_cursor_from_c_str("token1");
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
+
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic1);
+    aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic2);
+    aws_mqtt_request_response_client_subscriptions_add_request_subscription(&subscriptions, &topic1, &token_path1);
+
+    struct aws_protocol_adapter_incoming_publish_event publish_event = {
+        .topic = topic1,
+        .payload = payload1,
+    };
+
+    struct aws_rr_client_fixture_subscriptions_matches_record *record =
+        s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
+
+    aws_mqtt_request_response_client_subscriptions_match(
+        &subscriptions,
+        &publish_event,
+        s_rrs_fixture_on_stream_operation_subscription_match,
+        s_rrs_fixture_on_request_operation_subscription_match,
+        record);
+
+    struct aws_rr_client_fixture_matched_stream_subscription_view matched_stream_subscriptions[] = {
+        {payload1, topic1, topic1},
+        {payload1, topic1, topic2},
+    };
+
+    struct aws_rr_client_fixture_matched_request_subscription_view matched_request_subscriptions[] = {
+        {payload1, topic1, topic1, token_path1},
+    };
+
+    ASSERT_SUCCESS(s_rrc_verify_subscriptions_publishes(
+        record,
+        AWS_ARRAY_SIZE(matched_stream_subscriptions),
+        matched_stream_subscriptions,
+        AWS_ARRAY_SIZE(matched_request_subscriptions),
+        matched_request_subscriptions));
+
+    s_aws_rr_client_fixture_subscriptions_macthes_record_delete(record);
+
+    aws_mqtt_request_response_client_subscriptions_clean_up(&subscriptions);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrs_stream_and_request_subscriptions_add_same_subscription,
+    s_rrs_stream_and_request_subscriptions_add_same_subscription_fn)
