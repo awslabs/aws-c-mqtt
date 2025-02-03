@@ -4021,7 +4021,7 @@ static int s_rrs_request_subscriptions_remove_subscription_fn(struct aws_allocat
         record2);
 
     ASSERT_SUCCESS(s_rrc_verify_subscriptions_publishes(
-        record, 0 /* expected_stream_matches_count */, NULL, 0 /* expected_request_matches_count */, NULL));
+        record2, 0 /* expected_stream_matches_count */, NULL, 0 /* expected_request_matches_count */, NULL));
 
     s_aws_rr_client_fixture_subscriptions_macthes_record_delete(record2);
 
