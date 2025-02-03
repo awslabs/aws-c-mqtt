@@ -1196,7 +1196,16 @@ static int s_add_request_operation_to_response_path_table(
     struct aws_mqtt_rr_client_operation *operation) {
 
     struct aws_array_list *paths = &operation->storage.request_storage.operation_response_paths;
-    return aws_mqtt_request_response_client_subscriptions_add_request_subscriptions(&client->subscriptions, paths);
+    size_t path_count = aws_array_list_length(paths);
+    for (size_t i = 0; i < path_count; ++i) {
+        struct aws_mqtt_request_operation_response_path path;
+        aws_array_list_get_at(paths, &path, i);
+        if (aws_mqtt_request_response_client_subscriptions_add_request_subscription(
+                &client->subscriptions, &path.topic, &path.correlation_token_json_path)) {
+            return AWS_OP_ERR;
+        }
+    }
+    return AWS_OP_SUCCESS;
 }
 
 static int s_add_request_operation_to_correlation_token_table(
@@ -1685,7 +1694,12 @@ static void s_remove_operation_from_client_tables(struct aws_mqtt_rr_client_oper
 
     struct aws_array_list *paths = &operation->storage.request_storage.operation_response_paths;
 
-    aws_mqtt_request_response_client_subscriptions_remove_request_subscription(&client->subscriptions, paths);
+    size_t path_count = aws_array_list_length(paths);
+    for (size_t i = 0; i < path_count; ++i) {
+        struct aws_mqtt_request_operation_response_path path;
+        aws_array_list_get_at(paths, &path, i);
+        aws_mqtt_request_response_client_subscriptions_remove_request_subscription(&client->subscriptions, &path.topic);
+    }
 }
 
 static void s_mqtt_rr_client_destroy_operation(struct aws_task *task, void *arg, enum aws_task_status status) {
