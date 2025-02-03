@@ -233,6 +233,11 @@ static void s_match_wildcard_stream_subscriptions(
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
     void *user_data) {
 
+    /*
+     * Incoming event's topic is checked against each registered stream with wildcard. While this approach is far from
+     * optimal, it should be sufficient for request-response client where not many subscriptions with wildcards are
+     * used.
+     */
     for (struct aws_hash_iter iter = aws_hash_iter_begin(subscriptions); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
         struct aws_rr_operation_list_topic_filter_entry *entry = iter.element.value;
@@ -252,15 +257,15 @@ static void s_match_wildcard_stream_subscriptions(
                 break;
             }
 
-            if (aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "#")) {
-                multi_level_wildcard = true;
-                match = true;
-                break;
-            }
-
             if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
                 !aws_byte_cursor_eq_ignore_case(&topic_segment, &subscription_topic_filter_segment)) {
                 match = false;
+                break;
+            }
+
+            if (aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "#")) {
+                multi_level_wildcard = true;
+                match = true;
                 break;
             }
         }
