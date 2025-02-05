@@ -4,7 +4,7 @@ on:
   push:
 
 env:
-  BUILDER_VERSION: v0.9.73
+  BUILDER_VERSION: v0.9.74
   BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-mqtt
@@ -28,4 +28,4 @@ jobs:
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} --compiler=gcc-9 --coverage
+        ./builder build -p ${{ env.PACKAGE_NAME }} --compiler=gcc --coverage
