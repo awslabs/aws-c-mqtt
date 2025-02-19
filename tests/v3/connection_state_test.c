@@ -3968,3 +3968,40 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_validation_failure_invalid_username_utf8_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+static void s_mqtt_client_test_websocket_failed_transform(
+    struct aws_http_message *request,
+    void *user_data,
+    aws_mqtt_transform_websocket_handshake_complete_fn *complete_fn,
+    void *complete_ctx) {
+
+    (void)user_data;
+
+    (*complete_fn)(request, AWS_ERROR_INVALID_STATE, complete_ctx);
+}
+
+static int s_test_mqtt_websocket_failed_transform_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .socket_options = &state_test_data->socket_options,
+    };
+
+    aws_mqtt_client_connection_use_websockets(
+        state_test_data->mqtt_connection, s_mqtt_client_test_websocket_failed_transform, NULL, NULL, NULL);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_fail(state_test_data);
+
+    ASSERT_INT_EQUALS(AWS_ERROR_INVALID_STATE, state_test_data->error);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_websocket_failed_transform,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_websocket_failed_transform_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
