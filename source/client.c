@@ -1364,6 +1364,7 @@ error:
 }
 
 struct mqtt_on_websocket_setup_task_arg {
+    struct aws_allocator *allocator;
     struct aws_task task;
     struct aws_mqtt_client_connection_311_impl *connection;
     int error_code;
@@ -1377,31 +1378,10 @@ static void s_on_websocket_setup_task_fn(struct aws_task *task, void *userdata, 
     struct aws_mqtt_client_connection_311_impl *connection = on_websocket_setup_task_arg->connection;
     int error_code = on_websocket_setup_task_arg->error_code;
 
-    aws_mem_release(connection->allocator, on_websocket_setup_task_arg);
+    aws_mem_release(on_websocket_setup_task_arg->allocator, on_websocket_setup_task_arg);
 
     struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = error_code};
     s_on_websocket_setup(&websocket_setup, connection);
-}
-
-void s_on_websocket_handshake_failure(struct aws_mqtt_client_connection_311_impl *connection, int error_code) {
-    AWS_FATAL_ASSERT(connection);
-
-    /* s_on_websocket_setup shutdowns mqtt connection, this must happen on the MQTT connection's event loop. */
-    if (aws_event_loop_thread_is_callers_thread(connection->loop)) {
-        struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = error_code};
-        s_on_websocket_setup(&websocket_setup, connection);
-    } else {
-        struct mqtt_on_websocket_setup_task_arg *on_websocket_setup_task_arg =
-            aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_on_websocket_setup_task_arg));
-        on_websocket_setup_task_arg->connection = connection;
-        on_websocket_setup_task_arg->error_code = error_code;
-        aws_task_init(
-            &on_websocket_setup_task_arg->task,
-            s_on_websocket_setup_task_fn,
-            (void *)on_websocket_setup_task_arg,
-            "on_websocket_setup_task");
-        aws_event_loop_schedule_task_now(connection->loop, &on_websocket_setup_task_arg->task);
-    }
 }
 
 static void s_websocket_handshake_transform_complete(
@@ -1457,9 +1437,22 @@ static void s_websocket_handshake_transform_complete(
     /* Success */
     return;
 
-error:
-    /* Proceed to next step, telling it that we failed. */
-    s_on_websocket_handshake_failure(connection, error_code);
+error:;
+    /* Proceed to next step, telling it that we failed.
+     * s_on_websocket_setup will shutdown MQTT connection, and this MUST happen on the MQTT connection's event loop. */
+    struct mqtt_on_websocket_setup_task_arg *on_websocket_setup_task_arg =
+        aws_mem_calloc(connection->allocator, 1, sizeof(struct mqtt_on_websocket_setup_task_arg));
+    on_websocket_setup_task_arg->allocator = connection->allocator;
+    /* NOTE: No need in acquiring MQTT connection ref counter, as it is already acquired at the start of connection
+     * process. s_on_websocket_setup will release it. */
+    on_websocket_setup_task_arg->connection = connection;
+    on_websocket_setup_task_arg->error_code = error_code;
+    aws_task_init(
+        &on_websocket_setup_task_arg->task,
+        s_on_websocket_setup_task_fn,
+        (void *)on_websocket_setup_task_arg,
+        "on_websocket_setup_task");
+    aws_event_loop_schedule_task_now(connection->loop, &on_websocket_setup_task_arg->task);
 }
 
 /*******************************************************************************

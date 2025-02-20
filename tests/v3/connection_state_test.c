@@ -3975,11 +3975,16 @@ static void s_mqtt_client_test_websocket_failed_transform(
     aws_mqtt_transform_websocket_handshake_complete_fn *complete_fn,
     void *complete_ctx) {
 
-    (void)user_data;
+    struct mqtt_connection_state_test *state_test_data = user_data;
+    struct aws_mqtt_client_connection_311_impl *mqtt311_connection = state_test_data->mqtt_connection->impl;
+    /* This test should also perform a regression check: websocket transform failed on a non-eventloop thread does not
+     * cause crash. */
+    AWS_FATAL_ASSERT(!aws_event_loop_thread_is_callers_thread(mqtt311_connection->loop));
 
     (*complete_fn)(request, AWS_ERROR_INVALID_STATE, complete_ctx);
 }
 
+/* Connection failure test where websocket MQTT channel establishment fails due to handshake transform failure */
 static int s_test_mqtt_websocket_failed_transform_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
@@ -3989,7 +3994,7 @@ static int s_test_mqtt_websocket_failed_transform_fn(struct aws_allocator *alloc
     };
 
     aws_mqtt_client_connection_use_websockets(
-        state_test_data->mqtt_connection, s_mqtt_client_test_websocket_failed_transform, NULL, NULL, NULL);
+        state_test_data->mqtt_connection, s_mqtt_client_test_websocket_failed_transform, state_test_data, NULL, NULL);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
     aws_test311_wait_for_connection_to_fail(state_test_data);
