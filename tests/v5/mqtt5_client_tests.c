@@ -2727,7 +2727,10 @@ AWS_TEST_CASE(mqtt5_client_flow_control_iot_core_throughput, s_mqtt5_client_flow
 
 #define IOT_CORE_PUBLISH_TPS_PACKETS 650
 
-static int s_do_iot_core_publish_tps_test(struct aws_allocator *allocator, bool use_iot_core_limits) {
+static int s_do_iot_core_publish_tps_test(
+    struct aws_allocator *allocator,
+    bool use_iot_core_limits,
+    uint64_t *test_time) {
 
     struct mqtt5_client_test_options test_options;
     aws_mqtt5_client_test_init_default_options(&test_options);
@@ -2791,6 +2794,8 @@ static int s_do_iot_core_publish_tps_test(struct aws_allocator *allocator, bool 
 
     aws_wait_for_stopped_lifecycle_event(&test_context);
 
+    aws_high_res_clock_get_ticks(test_time);
+
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
 
     return AWS_OP_SUCCESS;
@@ -2803,21 +2808,17 @@ static int s_mqtt5_client_flow_control_iot_core_publish_tps_fn(struct aws_alloca
 
     uint64_t start_time1 = 0;
     aws_high_res_clock_get_ticks(&start_time1);
-
-    ASSERT_SUCCESS(s_do_iot_core_publish_tps_test(allocator, false));
-
     uint64_t end_time1 = 0;
-    aws_high_res_clock_get_ticks(&end_time1);
+
+    ASSERT_SUCCESS(s_do_iot_core_publish_tps_test(allocator, false, &end_time1));
 
     uint64_t test_time1 = end_time1 - start_time1;
 
     uint64_t start_time2 = 0;
     aws_high_res_clock_get_ticks(&start_time2);
 
-    ASSERT_SUCCESS(s_do_iot_core_publish_tps_test(allocator, true));
-
     uint64_t end_time2 = 0;
-    aws_high_res_clock_get_ticks(&end_time2);
+    ASSERT_SUCCESS(s_do_iot_core_publish_tps_test(allocator, true, &end_time2));
 
     uint64_t test_time2 = end_time2 - start_time2;
 
