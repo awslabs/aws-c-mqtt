@@ -108,6 +108,8 @@ add_test_case(mqtt_validation_failure_connect_invalid_client_id_utf8)
 add_test_case(mqtt_validation_failure_invalid_will_topic_utf8)
 add_test_case(mqtt_validation_failure_invalid_username_utf8)
 
+add_test_case(mqtt_websocket_failed_transform)
+
 # Operation statistics tests
 add_test_case(mqtt_operation_statistics_simple_publish)
 add_test_case(mqtt_operation_statistics_offline_publish)
