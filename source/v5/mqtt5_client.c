@@ -537,7 +537,9 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
      * This causes the client to only reevaluate service schedule time at the end of the service call or in
      * a callback from an external event.
      */
+    AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: start s_reevaluate_service_task ...", (void *)client);
     if (client->in_service) {
+        AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: s_reevaluate_service_task in service...", (void *)client);
         return;
     }
 
@@ -562,6 +564,13 @@ static void s_reevaluate_service_task(struct aws_mqtt5_client *client) {
         AWS_LOGF_TRACE(
             AWS_LS_MQTT5_CLIENT, "id=%p: scheduled service task for time %" PRIu64, (void *)client, next_service_time);
     }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_MQTT5_CLIENT,
+        "id=%p: s_reevaluate_service_task has next_service_time %" PRIu64 ", next_service_task_runtime %" PRIu64,
+        (void *)client,
+        next_service_time,
+        client->next_service_task_run_time);
 
     client->next_service_task_run_time = next_service_time;
 }
