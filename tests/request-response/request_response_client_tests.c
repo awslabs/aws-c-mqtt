@@ -1560,6 +1560,7 @@ static int s_rrc_streaming_operation_success_capture_publish_packet_fn(
 static int s_rrc_streaming_operation_success_capture_mqtt5_publish_packet_fn(
     struct aws_allocator *allocator,
     void *ctx) {
+    (void)ctx;
     return s_rrc_streaming_operation_success_capture_publish_packet_fn(allocator, RRCP_MQTT5);
 }
 
@@ -1570,6 +1571,7 @@ AWS_TEST_CASE(
 static int s_rrc_streaming_operation_success_capture_mqtt311_publish_packet_fn(
     struct aws_allocator *allocator,
     void *ctx) {
+    (void)ctx;
     return s_rrc_streaming_operation_success_capture_publish_packet_fn(allocator, RRCP_MQTT311);
 }
 
