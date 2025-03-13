@@ -51,6 +51,11 @@ static void s_pushoff_next_ping_time(
         last_request_send_timestamp_ns, connection->keep_alive_time_ns, &last_request_send_timestamp_ns);
     if (last_request_send_timestamp_ns > connection->next_ping_time) {
         connection->next_ping_time = last_request_send_timestamp_ns;
+        AWS_LOGF_TRACE(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: pushing off next ping time to %" PRIu64,
+            (void *)connection,
+            connection->next_ping_time);
     }
 }
 
