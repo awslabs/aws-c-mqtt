@@ -352,6 +352,8 @@ static void s_protocol_adapter_mqtt311_listener_publish_received(
         .payload = *payload,
     };
 
+    /* This will potentially include messages that are completely unrelated to MQTT request-response.
+     * The topic is the first thing that should be checked for relevance. */
     (*adapter->config.incoming_publish_callback)(&publish_event, adapter->config.user_data);
 }
 
@@ -810,6 +812,8 @@ static bool s_protocol_adapter_mqtt5_listener_publish_received(
         .message_expiry_interval_seconds = publish->message_expiry_interval_seconds,
     };
 
+    /* This will potentially include messages that are completely unrelated to MQTT request-response.
+     * The topic is the first thing that should be checked for relevance. */
     (*adapter->config.incoming_publish_callback)(&publish_event, adapter->config.user_data);
 
     return false;

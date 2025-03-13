@@ -32,9 +32,7 @@ struct aws_mqtt_request_operation_response_path {
 };
 
 /*
- * An event emitted by the protocol adapter whenever a publish is received by the protocol client.  This will
- * potentially include messages that are completely unrelated to MQTT request-response.  The topic is the first
- * thing that should be checked for relevance.
+ * An event emitted by a streaming operation's subscription.
  */
 struct aws_mqtt_request_response_publish_event {
     struct aws_byte_cursor payload;
