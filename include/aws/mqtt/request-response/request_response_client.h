@@ -32,6 +32,24 @@ struct aws_mqtt_request_operation_response_path {
 };
 
 /*
+ * An event emitted by the protocol adapter whenever a publish is received by the protocol client.  This will
+ * potentially include messages that are completely unrelated to MQTT request-response.  The topic is the first
+ * thing that should be checked for relevance.
+ */
+struct aws_mqtt_request_response_publish_event {
+    struct aws_byte_cursor payload;
+    struct aws_byte_cursor topic;
+    /* Below are MQTT optional fields. For MQTT3, they will always be empty, as MQTT3 does not support them. For MQTT5,
+     * they will be set if they are present in a packet. */
+    const struct aws_byte_cursor *content_type;
+    size_t user_property_count;
+    const struct aws_mqtt5_user_property *user_properties;
+    /* Even though this field is supposed to be used by MQTT broker to determine if a message-to-be-sent is expired,
+     * certain services use this field to specify client-side timeouts. */
+    const uint32_t *message_expiry_interval_seconds;
+};
+
+/*
  * Callback signature for request-response completion.
  *
  * Invariants:
@@ -122,8 +140,7 @@ typedef void(aws_mqtt_streaming_operation_subscription_status_fn)(
  * Callback signature for when a publish arrives that matches a streaming operation's subscription
  */
 typedef void(aws_mqtt_streaming_operation_incoming_publish_fn)(
-    struct aws_byte_cursor payload,
-    struct aws_byte_cursor topic,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     void *user_data);
 
 /*
