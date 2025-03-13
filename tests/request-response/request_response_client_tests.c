@@ -189,14 +189,29 @@ static int s_rrc_verify_request_completion(
     return AWS_OP_SUCCESS;
 }
 
+struct aws_rr_client_fixture_user_properties {
+    struct aws_byte_buf name;
+    struct aws_byte_buf value;
+};
+
 struct aws_rr_client_fixture_publish_message {
     struct aws_byte_buf payload;
     struct aws_byte_buf topic;
+    struct aws_byte_buf content_type;
+    size_t user_property_count;
+    struct aws_rr_client_fixture_user_properties *user_properties;
+    /* A view for user_properties field, for convenient comparison with expected results. */
+    struct aws_mqtt5_user_property *user_properties_view;
+    uint32_t message_expiry_interval_seconds;
 };
 
 struct aws_rr_client_fixture_publish_message_view {
     struct aws_byte_cursor payload;
     struct aws_byte_cursor topic;
+    struct aws_byte_cursor content_type;
+    size_t user_property_count;
+    const struct aws_mqtt5_user_property *user_properties;
+    uint32_t message_expiry_interval_seconds;
 };
 
 struct aws_rr_client_fixture_streaming_record {
@@ -252,6 +267,13 @@ void s_aws_rr_client_fixture_streaming_record_delete(struct aws_rr_client_fixtur
 
         aws_byte_buf_clean_up(&publish_message.payload);
         aws_byte_buf_clean_up(&publish_message.topic);
+        aws_byte_buf_clean_up(&publish_message.content_type);
+        aws_mem_release(record->allocator, publish_message.user_properties_view);
+        for (size_t j = 0; j < publish_message.user_property_count; ++j) {
+            aws_byte_buf_clean_up(&publish_message.user_properties[j].name);
+            aws_byte_buf_clean_up(&publish_message.user_properties[j].value);
+        }
+        aws_mem_release(record->allocator, publish_message.user_properties);
     }
 
     aws_array_list_clean_up(&record->publishes);
@@ -287,8 +309,7 @@ static void s_rrc_fixture_streaming_operation_subscription_status_callback(
 }
 
 static void s_rrc_fixture_streaming_operation_incoming_publish_callback(
-    struct aws_byte_cursor payload,
-    struct aws_byte_cursor topic,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     void *user_data) {
     struct aws_rr_client_fixture_streaming_record *record = user_data;
     struct aws_rr_client_test_fixture *fixture = record->fixture;
@@ -296,8 +317,38 @@ static void s_rrc_fixture_streaming_operation_incoming_publish_callback(
     aws_mutex_lock(&fixture->lock);
 
     struct aws_rr_client_fixture_publish_message publish_message;
-    aws_byte_buf_init_copy_from_cursor(&publish_message.payload, fixture->allocator, payload);
-    aws_byte_buf_init_copy_from_cursor(&publish_message.topic, fixture->allocator, topic);
+    AWS_ZERO_STRUCT(publish_message);
+
+    aws_byte_buf_init_copy_from_cursor(&publish_message.payload, fixture->allocator, publish_event->payload);
+    aws_byte_buf_init_copy_from_cursor(&publish_message.topic, fixture->allocator, publish_event->topic);
+    if (publish_event->content_type) {
+        aws_byte_buf_init_copy_from_cursor(
+            &publish_message.content_type, fixture->allocator, *publish_event->content_type);
+    }
+
+    publish_message.user_property_count = publish_event->user_property_count;
+    if (publish_event->user_property_count > 0) {
+        publish_message.user_properties = aws_mem_calloc(
+            fixture->allocator,
+            publish_event->user_property_count,
+            sizeof(struct aws_rr_client_fixture_user_properties));
+        publish_message.user_properties_view = aws_mem_calloc(
+            fixture->allocator, publish_event->user_property_count, sizeof(struct aws_mqtt5_user_property));
+        for (size_t i = 0; i < publish_event->user_property_count; ++i) {
+            aws_byte_buf_init_copy_from_cursor(
+                &publish_message.user_properties[i].name, fixture->allocator, publish_event->user_properties[i].name);
+            aws_byte_buf_init_copy_from_cursor(
+                &publish_message.user_properties[i].value, fixture->allocator, publish_event->user_properties[i].value);
+            publish_message.user_properties_view[i].name =
+                aws_byte_cursor_from_buf(&publish_message.user_properties[i].name);
+            publish_message.user_properties_view[i].value =
+                aws_byte_cursor_from_buf(&publish_message.user_properties[i].value);
+        }
+    }
+
+    if (publish_event->message_expiry_interval_seconds) {
+        publish_message.message_expiry_interval_seconds = *publish_event->message_expiry_interval_seconds;
+    }
 
     aws_array_list_push_back(&record->publishes, &publish_message);
 
@@ -411,18 +462,31 @@ static int s_rrc_verify_streaming_publishes(
         struct aws_rr_client_fixture_publish_message actual_publish_message;
         aws_array_list_get_at(&record->publishes, &actual_publish_message, i);
 
-        struct aws_rr_client_fixture_publish_message_view *expected_payload = &expected_publishes[i];
+        struct aws_rr_client_fixture_publish_message_view *expected_publish_message = &expected_publishes[i];
 
         ASSERT_BIN_ARRAYS_EQUALS(
-            expected_payload->payload.ptr,
-            expected_payload->payload.len,
+            expected_publish_message->payload.ptr,
+            expected_publish_message->payload.len,
             actual_publish_message.payload.buffer,
             actual_publish_message.payload.len);
         ASSERT_BIN_ARRAYS_EQUALS(
-            expected_payload->topic.ptr,
-            expected_payload->topic.len,
+            expected_publish_message->topic.ptr,
+            expected_publish_message->topic.len,
             actual_publish_message.topic.buffer,
             actual_publish_message.topic.len);
+        ASSERT_BIN_ARRAYS_EQUALS(
+            expected_publish_message->content_type.ptr,
+            expected_publish_message->content_type.len,
+            actual_publish_message.content_type.buffer,
+            actual_publish_message.content_type.len);
+        aws_mqtt5_test_verify_user_properties_raw(
+            actual_publish_message.user_property_count,
+            actual_publish_message.user_properties_view,
+            expected_publish_message->user_property_count,
+            expected_publish_message->user_properties);
+        ASSERT_INT_EQUALS(
+            expected_publish_message->message_expiry_interval_seconds,
+            actual_publish_message.message_expiry_interval_seconds);
     }
 
     aws_mutex_unlock(&fixture->lock);
@@ -1161,12 +1225,19 @@ static struct aws_mqtt_rr_client_operation *s_create_streaming_operation(
 static int s_rrc_publish_5(
     struct aws_mqtt5_client *client,
     struct aws_byte_cursor topic,
-    struct aws_byte_cursor payload) {
+    struct aws_byte_cursor payload,
+    const struct aws_byte_cursor *content_type,
+    size_t user_property_count,
+    const struct aws_mqtt5_user_property *user_properties,
+    const uint32_t *message_expiry_interval_seconds) {
     struct aws_mqtt5_packet_publish_view publish_options = {
         .topic = topic,
         .qos = AWS_MQTT5_QOS_AT_LEAST_ONCE,
         .payload = payload,
-    };
+        .content_type = content_type,
+        .user_property_count = user_property_count,
+        .user_properties = user_properties,
+        .message_expiry_interval_seconds = message_expiry_interval_seconds};
 
     struct aws_mqtt5_publish_completion_options completion_options;
     AWS_ZERO_STRUCT(completion_options);
@@ -1190,7 +1261,41 @@ static int s_rrc_protocol_client_publish(
     if (fixture->test_protocol == RRCP_MQTT311) {
         return s_rrc_publish_311(fixture->client_test_fixture.mqtt311_test_fixture.mqtt_connection, topic, payload);
     } else {
-        return s_rrc_publish_5(fixture->client_test_fixture.mqtt5_test_fixture.client, topic, payload);
+        const struct aws_byte_cursor *content_type = NULL;
+        size_t user_property_count = 0;
+        const struct aws_mqtt5_user_property *user_properties = NULL;
+        const uint32_t *message_expiry_interval_seconds = NULL;
+        return s_rrc_publish_5(
+            fixture->client_test_fixture.mqtt5_test_fixture.client,
+            topic,
+            payload,
+            content_type,
+            user_property_count,
+            user_properties,
+            message_expiry_interval_seconds);
+    }
+}
+
+static int s_rrc_protocol_client_publish_with_extra_fields(
+    struct aws_rr_client_test_fixture *fixture,
+    struct aws_byte_cursor topic,
+    struct aws_byte_cursor payload,
+    const struct aws_byte_cursor *content_type,
+    size_t user_property_count,
+    const struct aws_mqtt5_user_property *user_properties,
+    const uint32_t *message_expiry_interval_seconds) {
+
+    if (fixture->test_protocol == RRCP_MQTT311) {
+        return s_rrc_publish_311(fixture->client_test_fixture.mqtt311_test_fixture.mqtt_connection, topic, payload);
+    } else {
+        return s_rrc_publish_5(
+            fixture->client_test_fixture.mqtt5_test_fixture.client,
+            topic,
+            payload,
+            content_type,
+            user_property_count,
+            user_properties,
+            message_expiry_interval_seconds);
     }
 }
 
@@ -1294,6 +1399,139 @@ static int s_rrc_streaming_operation_success_single_fn(struct aws_allocator *all
 }
 
 AWS_TEST_CASE(rrc_streaming_operation_success_single, s_rrc_streaming_operation_success_single_fn)
+
+/*
+ * Test that all required PUBLISH packet fields are passed to stream operation.
+ * TODO Test both MQTT3 and MQTT5.
+ */
+static int s_rrc_streaming_operation_success_capture_publish_packet_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_streaming_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
+
+    struct aws_byte_cursor record_key1 = aws_byte_cursor_from_c_str("key1");
+    struct aws_byte_cursor topic_filter1 = aws_byte_cursor_from_c_str("topic/1");
+    struct aws_mqtt_rr_client_operation *operation = s_create_streaming_operation(&fixture, record_key1, topic_filter1);
+
+    s_rrc_wait_for_n_streaming_subscription_events(&fixture, record_key1, 1);
+
+    struct aws_rr_client_fixture_streaming_record_subscription_event expected_events[] = {
+        {
+            .status = ARRSSET_SUBSCRIPTION_ESTABLISHED,
+            .error_code = AWS_ERROR_SUCCESS,
+        },
+    };
+    ASSERT_SUCCESS(s_rrc_verify_streaming_record_subscription_events(
+        &fixture, record_key1, AWS_ARRAY_SIZE(expected_events), expected_events));
+
+    // two publishes on the mqtt client that get reflected into our subscription topic
+    struct aws_byte_cursor payload1 = aws_byte_cursor_from_c_str("Payload1");
+    struct aws_byte_cursor content_type1 = aws_byte_cursor_from_c_str("application/json");
+    uint32_t message_expiry_interval_seconds1 = 10;
+
+    char user_prop1_name[] = "Property1";
+    char user_prop1_value[] = "Value1";
+    char user_prop2_name[] = "Property2";
+    char user_prop2_value[] = "Value2";
+    const struct aws_mqtt5_user_property user_properties1[] = {
+        {
+            .name =
+                {
+                    .ptr = (uint8_t *)user_prop1_name,
+                    .len = AWS_ARRAY_SIZE(user_prop1_name) - 1,
+                },
+            .value =
+                {
+                    .ptr = (uint8_t *)user_prop1_value,
+                    .len = AWS_ARRAY_SIZE(user_prop1_value) - 1,
+                },
+        },
+        {
+            .name =
+                {
+                    .ptr = (uint8_t *)user_prop2_name,
+                    .len = AWS_ARRAY_SIZE(user_prop2_name) - 1,
+                },
+            .value =
+                {
+                    .ptr = (uint8_t *)user_prop2_value,
+                    .len = AWS_ARRAY_SIZE(user_prop2_value) - 1,
+                },
+        },
+    };
+
+    struct aws_byte_cursor payload2 = aws_byte_cursor_from_c_str("Payload2");
+    struct aws_byte_cursor content_type2 = aws_byte_cursor_from_c_str("");
+    uint32_t message_expiry_interval_seconds2 = 0;
+    const struct aws_mqtt5_user_property user_properties2[] = {{
+        .name =
+            {
+                .ptr = (uint8_t *)user_prop1_name,
+                .len = AWS_ARRAY_SIZE(user_prop1_name) - 1,
+            },
+        .value =
+            {
+                .ptr = (uint8_t *)user_prop1_value,
+                .len = AWS_ARRAY_SIZE(user_prop1_value) - 1,
+            },
+    }};
+
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish_with_extra_fields(
+        &fixture,
+        topic_filter1,
+        payload1,
+        &content_type1,
+        AWS_ARRAY_SIZE(user_properties1),
+        user_properties1,
+        &message_expiry_interval_seconds1));
+    ASSERT_SUCCESS(s_rrc_protocol_client_publish_with_extra_fields(
+        &fixture,
+        topic_filter1,
+        payload2,
+        &content_type2,
+        AWS_ARRAY_SIZE(user_properties2),
+        user_properties2,
+        &message_expiry_interval_seconds2));
+
+    s_rrc_wait_for_n_streaming_publishes(&fixture, record_key1, 2);
+
+    struct aws_rr_client_fixture_publish_message_view expected_publishes[] = {
+        {
+            payload1,
+            topic_filter1,
+            content_type1,
+            AWS_ARRAY_SIZE(user_properties1),
+            user_properties1,
+            message_expiry_interval_seconds1,
+        },
+        {
+            payload2,
+            topic_filter1,
+            content_type2,
+            AWS_ARRAY_SIZE(user_properties2),
+            user_properties2,
+            message_expiry_interval_seconds2,
+        },
+    };
+    ASSERT_SUCCESS(s_rrc_verify_streaming_publishes(
+        &fixture, record_key1, AWS_ARRAY_SIZE(expected_publishes), expected_publishes));
+
+    aws_mqtt_rr_client_operation_release(operation);
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrc_streaming_operation_success_capture_publish_packet,
+    s_rrc_streaming_operation_success_capture_publish_packet_fn)
 
 /*
  * Variant of the minimal success test where we create two operations on the same topic filter, verify they both

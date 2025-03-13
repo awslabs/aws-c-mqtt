@@ -16,6 +16,8 @@ struct aws_event_loop;
 struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
 
+struct aws_mqtt_request_response_publish_event;
+
 /*
  * The request-response protocol adapter is a translation layer that sits between the request-response native client
  * implementation and a protocol client capable of subscribing, unsubscribing, and publishing MQTT messages.
@@ -80,16 +82,6 @@ struct aws_protocol_adapter_subscription_event {
     bool retryable;
 };
 
-/*
- * An event emitted by the protocol adapter whenever a publish is received by the protocol client.  This will
- * potentially include messages that are completely unrelated to MQTT request-response.  The topic is the first
- * thing that should be checked for relevance.
- */
-struct aws_protocol_adapter_incoming_publish_event {
-    struct aws_byte_cursor topic;
-    struct aws_byte_cursor payload;
-};
-
 enum aws_protocol_adapter_connection_event_type {
     AWS_PACET_CONNECTED,
     AWS_PACET_DISCONNECTED,
@@ -108,7 +100,7 @@ typedef void(aws_protocol_adapter_subscription_event_fn)(
     void *user_data);
 
 typedef void(aws_protocol_adapter_incoming_publish_fn)(
-    const struct aws_protocol_adapter_incoming_publish_event *publish,
+    const struct aws_mqtt_request_response_publish_event *publish,
     void *user_data);
 
 typedef void(aws_protocol_adapter_terminate_callback_fn)(void *user_data);
