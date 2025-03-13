@@ -15,7 +15,6 @@ struct aws_allocator;
 struct aws_event_loop;
 struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
-
 struct aws_mqtt_request_response_publish_event;
 
 /*
