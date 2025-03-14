@@ -286,6 +286,8 @@ static void s_mqtt5_client_final_destroy(struct aws_mqtt5_client *client) {
 static void s_on_mqtt5_client_zero_ref_count(void *user_data) {
     struct aws_mqtt5_client *client = user_data;
 
+    AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: start s_on_mqtt5_client_zero_ref_count.", (void *)client);
+
     s_aws_mqtt5_client_change_desired_state(client, AWS_MCS_TERMINATED, NULL);
 }
 
