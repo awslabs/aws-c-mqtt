@@ -858,6 +858,27 @@ static void s_on_websocket_setup(const struct aws_websocket_on_connection_setup_
     s_mqtt5_client_setup(client->config->bootstrap, setup->error_code, channel, client);
 }
 
+struct mqtt_on_websocket_setup_task_arg {
+    struct aws_allocator *allocator;
+    struct aws_task task;
+    struct aws_mqtt5_client *client;
+    int error_code;
+};
+
+static void s_on_websocket_setup_task_fn(struct aws_task *task, void *userdata, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct mqtt_on_websocket_setup_task_arg *on_websocket_setup_task_arg = userdata;
+    struct aws_mqtt5_client *client = on_websocket_setup_task_arg->client;
+    int error_code = on_websocket_setup_task_arg->error_code;
+
+    aws_mem_release(on_websocket_setup_task_arg->allocator, on_websocket_setup_task_arg);
+
+    struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = error_code};
+    s_on_websocket_setup(&websocket_setup, client);
+}
+
 struct aws_mqtt5_websocket_transform_complete_task {
     struct aws_task task;
     struct aws_allocator *allocator;
@@ -917,8 +938,21 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
     }
 
 error:;
-    struct aws_websocket_on_connection_setup_data websocket_setup = {.error_code = error_code};
-    s_on_websocket_setup(&websocket_setup, client);
+    /* Proceed to next step, telling it that we failed.
+     * s_on_websocket_setup will shutdown MQTT connection, and this MUST happen on the MQTT connection's event loop. */
+    struct mqtt_on_websocket_setup_task_arg *on_websocket_setup_task_arg =
+        aws_mem_calloc(client->allocator, 1, sizeof(struct mqtt_on_websocket_setup_task_arg));
+    on_websocket_setup_task_arg->allocator = client->allocator;
+    /* NOTE: No need in acquiring MQTT connection ref counter, as it is already acquired at the start of connection
+     * process. s_on_websocket_setup will release it. */
+    on_websocket_setup_task_arg->client = client;
+    on_websocket_setup_task_arg->error_code = error_code;
+    aws_task_init(
+        &on_websocket_setup_task_arg->task,
+        s_on_websocket_setup_task_fn,
+        (void *)on_websocket_setup_task_arg,
+        "on_websocket_setup_task");
+    aws_event_loop_schedule_task_now(client->loop, &on_websocket_setup_task_arg->task);
 
 done:
 
