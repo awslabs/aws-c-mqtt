@@ -7,7 +7,6 @@
 #include "../v3/mqtt_mock_server_handler.h"
 #include "../v5/mqtt5_testing_utils.h"
 #include <aws/common/common.h>
-#include <aws/mqtt/request-response/request_response_client.h>
 
 #include "aws/mqtt/private/request-response/protocol_adapter.h"
 
@@ -111,7 +110,7 @@ static void s_rr_mqtt_protocol_adapter_test_on_subscription_event(
 }
 
 static void s_rr_mqtt_protocol_adapter_test_on_incoming_publish(
-    const struct aws_mqtt_request_response_publish_event *publish,
+    const struct aws_protocol_adapter_incoming_publish_event *publish,
     void *user_data) {
     struct aws_request_response_protocol_adapter_test_fixture *fixture = user_data;
 

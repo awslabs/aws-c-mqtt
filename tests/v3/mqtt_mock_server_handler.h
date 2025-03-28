@@ -74,7 +74,7 @@ int mqtt_mock_server_send_publish_by_id(
 void mqtt_mock_server_set_session_present(struct aws_channel_handler *handler, bool session_present);
 
 /**
- * Sets whether or not server should reflect received PUBLISH packets.
+ * Sets whether or not connacks return session present
  */
 void mqtt_mock_server_set_publish_reflection(struct aws_channel_handler *handler, bool reflect_publishes);
 
