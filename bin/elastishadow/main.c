@@ -751,8 +751,10 @@ static void s_stream_subscription_status_fn(
 }
 
 static void s_stream_incoming_publish_fn(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    struct aws_byte_cursor payload,
+    struct aws_byte_cursor topic,
     void *user_data) {
+    (void)topic;
     struct aws_shadow_streaming_operation *operation = user_data;
 
     struct aws_byte_cursor thing_cursor = aws_byte_cursor_from_buf(&operation->thing);
@@ -766,7 +768,7 @@ static void s_stream_incoming_publish_fn(
         AWS_BYTE_CURSOR_PRI(thing_cursor),
         AWS_BYTE_CURSOR_PRI(shadow_cursor),
         AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
-    printf("  " PRInSTR "\n\n", AWS_BYTE_CURSOR_PRI(publish_event->payload));
+    printf("  " PRInSTR "\n\n", AWS_BYTE_CURSOR_PRI(payload));
 }
 
 static void s_stream_terminated_fn(void *user_data) {
