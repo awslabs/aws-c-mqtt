@@ -783,7 +783,7 @@ static void s_aws_rr_client_protocol_adapter_subscription_event_callback(
 static void s_apply_publish_to_streaming_operation_list(
     const struct aws_linked_list *operations,
     const struct aws_byte_cursor *topic_filter,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     void *user_data) {
 
     AWS_FATAL_ASSERT(operations != NULL);
@@ -819,7 +819,7 @@ static void s_apply_publish_to_streaming_operation_list(
         }
 
         void *operation_user_data = operation->storage.streaming_storage.options.user_data;
-        (*incoming_publish_callback)(publish_event->payload, publish_event->topic, operation_user_data);
+        (*incoming_publish_callback)(publish_event, operation_user_data);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
@@ -834,7 +834,7 @@ static void s_apply_publish_to_streaming_operation_list(
 static void s_complete_operation_with_correlation_token(
     struct aws_mqtt_request_response_client *rr_client,
     struct aws_byte_cursor correlation_token,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event) {
+    const struct aws_mqtt_request_response_publish_event *publish_event) {
     struct aws_hash_element *hash_element = NULL;
 
     if (aws_hash_table_find(&rr_client->operations_by_correlation_tokens, &correlation_token, &hash_element)) {
@@ -885,7 +885,7 @@ static void s_complete_operation_with_correlation_token(
 
 static void s_apply_publish_to_response_path_entry(
     struct aws_rr_response_path_entry *entry,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     void *user_data) {
 
     struct aws_mqtt_request_response_client *rr_client = user_data;
@@ -973,7 +973,7 @@ done:
 }
 
 static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     void *user_data) {
 
     struct aws_mqtt_request_response_client *rr_client = user_data;
