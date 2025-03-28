@@ -265,7 +265,7 @@ static void s_match_wildcard_stream_subscriptions(
             }
 
             if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
-                !aws_byte_cursor_eq_ignore_case(&topic_segment, &subscription_topic_filter_segment)) {
+                !aws_byte_cursor_eq(&topic_segment, &subscription_topic_filter_segment)) {
                 match = false;
                 break;
             }
@@ -296,7 +296,7 @@ void s_match_request_response_subscriptions(
     }
 }
 
-void aws_mqtt_request_response_client_subscriptions_match(
+void aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
     const struct aws_request_response_subscriptions *subscriptions,
     const struct aws_mqtt_request_response_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,

@@ -1,5 +1,5 @@
-#ifndef AWS_MQTT_PRIVATE_REQUEST_RESPONSE_REQUEST_RESPONSE_SUBSCRIPTION_SET_H
-#define AWS_MQTT_PRIVATE_REQUEST_RESPONSE_REQUEST_RESPONSE_SUBSCRIPTION_SET_H
+#ifndef AWS_MQTT_PRIVATE_REQUEST_RESPONSE_SUBSCRIPTION_SET_H
+#define AWS_MQTT_PRIVATE_REQUEST_RESPONSE_SUBSCRIPTION_SET_H
 
 /**
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -128,7 +128,7 @@ AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_remove_request_s
 /*
  * Call specified callbacks for all stream and request operations with subscriptions matching a provided publish event.
  */
-AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_match(
+AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
     const struct aws_request_response_subscriptions *subscriptions,
     const struct aws_mqtt_request_response_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
@@ -137,4 +137,4 @@ AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_match(
 
 AWS_EXTERN_C_END
 
-#endif /* AWS_MQTT_PRIVATE_REQUEST_RESPONSE_REQUEST_RESPONSE_SUBSCRIPTION_SET_H */
+#endif /* AWS_MQTT_PRIVATE_REQUEST_RESPONSE_REQUEST_SET_H */

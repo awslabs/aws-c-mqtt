@@ -3780,7 +3780,7 @@ static int s_rrs_stream_subscriptions_match_single_level_wildcards_fn(struct aws
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -3837,7 +3837,7 @@ static int s_rrs_stream_subscriptions_match_multi_level_wildcards_fn(struct aws_
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -3892,7 +3892,7 @@ static int s_rrs_stream_subscriptions_add_duplicate_fn(struct aws_allocator *all
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -3942,7 +3942,7 @@ static int s_rrs_stream_subscriptions_too_long_publish_topic_fn(struct aws_alloc
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -3988,7 +3988,7 @@ static int s_rrs_stream_subscriptions_too_short_publish_topic_fn(struct aws_allo
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -4032,7 +4032,7 @@ static int s_rrs_request_subscriptions_add_single_subscription_fn(struct aws_all
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -4080,7 +4080,7 @@ static int s_rrs_request_subscriptions_remove_subscription_fn(struct aws_allocat
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -4105,7 +4105,7 @@ static int s_rrs_request_subscriptions_remove_subscription_fn(struct aws_allocat
     struct aws_rr_client_fixture_subscriptions_matches_record *record2 =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -4148,7 +4148,7 @@ static int s_rrs_request_subscriptions_add_duplicate_then_remove_fn(struct aws_a
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -4174,7 +4174,7 @@ static int s_rrs_request_subscriptions_add_duplicate_then_remove_fn(struct aws_a
     struct aws_rr_client_fixture_subscriptions_matches_record *record2 =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -4196,7 +4196,7 @@ static int s_rrs_request_subscriptions_add_duplicate_then_remove_fn(struct aws_a
     struct aws_rr_client_fixture_subscriptions_matches_record *record3 =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
@@ -4260,7 +4260,7 @@ static int s_rrs_stream_and_request_subscriptions_add_same_subscription_fn(struc
     struct aws_rr_client_fixture_subscriptions_matches_record *record =
         s_aws_rr_client_fixture_subscriptions_matches_record_new(allocator);
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &subscriptions,
         &publish_event,
         s_rrs_fixture_on_stream_operation_subscription_match,
