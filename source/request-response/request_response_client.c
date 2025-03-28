@@ -984,7 +984,7 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
         return;
     }
 
-    aws_mqtt_request_response_client_subscriptions_match(
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
         &rr_client->subscriptions,
         publish_event,
         s_apply_publish_to_streaming_operation_list,
