@@ -783,7 +783,7 @@ static void s_aws_rr_client_protocol_adapter_subscription_event_callback(
 static void s_apply_publish_to_streaming_operation_list(
     const struct aws_linked_list *operations,
     const struct aws_byte_cursor *topic_filter,
-    const struct aws_protocol_adapter_incoming_publish_event *publish_event,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     void *user_data) {
 
     AWS_FATAL_ASSERT(operations != NULL);
@@ -819,7 +819,7 @@ static void s_apply_publish_to_streaming_operation_list(
         }
 
         void *operation_user_data = operation->storage.streaming_storage.options.user_data;
-        (*incoming_publish_callback)(publish_event->payload, publish_event->topic, operation_user_data);
+        (*incoming_publish_callback)(publish_event, operation_user_data);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
