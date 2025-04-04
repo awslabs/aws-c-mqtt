@@ -819,7 +819,7 @@ static void s_apply_publish_to_streaming_operation_list(
         }
 
         void *operation_user_data = operation->storage.streaming_storage.options.user_data;
-        (*incoming_publish_callback)(publish_event->payload, publish_event->topic, operation_user_data);
+        (*incoming_publish_callback)(publish_event, operation_user_data);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,

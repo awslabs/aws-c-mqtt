@@ -1332,10 +1332,10 @@ static int s_init_fixture_streaming_operation_success(
         client_test_options->server_function_table.packet_handlers[AWS_MQTT5_PT_PUBLISH] =
             aws_mqtt5_mock_server_handle_publish_puback_and_forward;
 
-        struct aws_mqtt_request_response_client_options rr_client_options = {
-            .max_request_response_subscriptions = 2,
-            .max_streaming_subscriptions = 1,
-            .operation_timeout_seconds = 2,
+        struct aws_mqtt5_client_mqtt5_mock_test_fixture_options client_test_fixture_options = {
+            .client_options = &client_test_options->client_options,
+            .server_function_table = &client_test_options->server_function_table,
+            .mock_server_user_data = user_data,
         };
 
         struct aws_mqtt_request_response_client_options rr_client_options = {
