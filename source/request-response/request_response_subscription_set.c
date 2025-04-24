@@ -135,15 +135,17 @@ static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_
     return entry;
 }
 
+static bool s_is_topic_filter_with_wildcard(const struct aws_byte_cursor *topic_filter) {
+    bool res = (memchr(topic_filter->ptr, '+', topic_filter->len) || memchr(topic_filter->ptr, '#', topic_filter->len));
+    return res;
+}
+
 struct aws_rr_operation_list_topic_filter_entry *aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
     struct aws_request_response_subscriptions *subscriptions,
     const struct aws_byte_cursor *topic_filter) {
     AWS_FATAL_ASSERT(subscriptions);
 
-    bool is_topic_with_wildcard =
-        (memchr(topic_filter->ptr, '+', topic_filter->len) || memchr(topic_filter->ptr, '#', topic_filter->len));
-
-    struct aws_hash_table *subscription_lists = is_topic_with_wildcard
+    struct aws_hash_table *subscription_lists = s_is_topic_filter_with_wildcard(topic_filter)
                                                     ? &subscriptions->streaming_operation_wildcards_subscription_lists
                                                     : &subscriptions->streaming_operation_subscription_lists;
 
@@ -228,6 +230,43 @@ static void s_match_stream_subscriptions(
     }
 }
 
+static bool s_is_topic_matched_to_subscription(
+    struct aws_byte_cursor topic,
+    struct aws_byte_cursor topic_filter_cursor) {
+    bool is_matched = true;
+    bool multi_level_wildcard = false;
+
+    struct aws_byte_cursor subscription_topic_filter_segment;
+    AWS_ZERO_STRUCT(subscription_topic_filter_segment);
+
+    struct aws_byte_cursor topic_segment;
+    AWS_ZERO_STRUCT(topic_segment);
+
+    while (aws_byte_cursor_next_split(&topic_filter_cursor, '/', &subscription_topic_filter_segment)) {
+        if (!aws_byte_cursor_next_split(&topic, '/', &topic_segment)) {
+            is_matched = false;
+            break;
+        }
+
+        if (aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "#")) {
+            multi_level_wildcard = true;
+            is_matched = true;
+            break;
+        }
+
+        if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
+            !aws_byte_cursor_eq(&topic_segment, &subscription_topic_filter_segment)) {
+            is_matched = false;
+            break;
+        }
+    }
+    if (!multi_level_wildcard && aws_byte_cursor_next_split(&topic, '/', &topic_segment)) {
+        is_matched = false;
+    }
+
+    return is_matched;
+}
+
 static void s_match_wildcard_stream_subscriptions(
     const struct aws_hash_table *subscriptions,
     const struct aws_mqtt_request_response_publish_event *publish_event,
@@ -242,40 +281,10 @@ static void s_match_wildcard_stream_subscriptions(
     for (struct aws_hash_iter iter = aws_hash_iter_begin(subscriptions); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
         struct aws_rr_operation_list_topic_filter_entry *entry = iter.element.value;
+        struct aws_byte_cursor topic_filter_cursor = entry->topic_filter_cursor;
 
-        struct aws_byte_cursor subscription_topic_filter_segment;
-        AWS_ZERO_STRUCT(subscription_topic_filter_segment);
-
-        struct aws_byte_cursor topic_segment;
-        AWS_ZERO_STRUCT(topic_segment);
-
-        bool match = true;
-        bool multi_level_wildcard = false;
-
-        while (aws_byte_cursor_next_split(&entry->topic_filter_cursor, '/', &subscription_topic_filter_segment)) {
-            if (!aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
-                match = false;
-                break;
-            }
-
-            if (aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "#")) {
-                multi_level_wildcard = true;
-                match = true;
-                break;
-            }
-
-            if (!aws_byte_cursor_eq_c_str(&subscription_topic_filter_segment, "+") &&
-                !aws_byte_cursor_eq(&topic_segment, &subscription_topic_filter_segment)) {
-                match = false;
-                break;
-            }
-        }
-
-        if (!multi_level_wildcard && aws_byte_cursor_next_split(&publish_event->topic, '/', &topic_segment)) {
-            match = false;
-        }
-
-        if (match) {
+        bool is_matched = s_is_topic_matched_to_subscription(publish_event->topic, topic_filter_cursor);
+        if (is_matched) {
             on_stream_operation_subscription_match(
                 &entry->operations, &entry->topic_filter_cursor, publish_event, user_data);
         }
