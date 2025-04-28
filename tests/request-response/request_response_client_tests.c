@@ -100,7 +100,6 @@ static void s_rrc_fixture_request_completion_callback(
 
     if (error_code == AWS_ERROR_SUCCESS) {
         AWS_FATAL_ASSERT(publish_event != NULL);
-        AWS_FATAL_ASSERT(publish_event->topic.len != 0 && publish_event->payload.len != 0);
 
         aws_byte_buf_init_copy_from_cursor(&record->response, fixture->allocator, publish_event->payload);
         aws_byte_buf_init_copy_from_cursor(&record->response_topic, fixture->allocator, publish_event->topic);

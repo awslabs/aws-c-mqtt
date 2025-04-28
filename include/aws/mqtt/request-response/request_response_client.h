@@ -53,7 +53,6 @@ struct aws_mqtt_rr_incoming_publish_event {
  * Invariants:
  *   If error_code is non-zero then publish_event will be NULL.
  *   If publish_event is not NULL, then error_code will be 0.
- *   topic and payload fields are either both set or both not set.
  */
 typedef void(aws_mqtt_request_operation_completion_fn)(
     const struct aws_mqtt_rr_incoming_publish_event *publish_event,
