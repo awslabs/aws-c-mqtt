@@ -51,13 +51,12 @@ struct aws_mqtt_request_response_publish_event {
  * Callback signature for request-response completion.
  *
  * Invariants:
- *   If error_code is non-zero then response_topic and payload will be NULL.
- *   If response_topic and payload are not NULL then error_code will be 0.
- *   response_topic and payload are either both set or both not set.
+ *   If error_code is non-zero then publish_event will be NULL.
+ *   If publish_event is not NULL, then error_code will be 0.
+ *   topic and payload fields are either both set or both not set.
  */
 typedef void(aws_mqtt_request_operation_completion_fn)(
-    const struct aws_byte_cursor *response_topic,
-    const struct aws_byte_cursor *payload,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     int error_code,
     void *user_data);
 

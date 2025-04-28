@@ -479,7 +479,7 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
     void *user_data = operation->storage.request_storage.options.user_data;
 
     if (completion_callback != NULL) {
-        (*completion_callback)(NULL, NULL, error_code, user_data);
+        (*completion_callback)(NULL, error_code, user_data);
     }
 
     s_change_operation_state(operation, AWS_MRROS_PENDING_DESTROY);
@@ -953,7 +953,7 @@ static void s_complete_operation_with_correlation_token(
     void *user_data = operation->storage.request_storage.options.user_data;
 
     if (completion_callback != NULL) {
-        (*completion_callback)(&publish_event->topic, &publish_event->payload, AWS_ERROR_SUCCESS, user_data);
+        (*completion_callback)(publish_event, AWS_ERROR_SUCCESS, user_data);
     }
 
     s_change_operation_state(operation, AWS_MRROS_PENDING_DESTROY);

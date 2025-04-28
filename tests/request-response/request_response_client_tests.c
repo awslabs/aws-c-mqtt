@@ -90,8 +90,7 @@ static void s_aws_rr_client_fixture_request_response_record_hash_destroy(void *e
 }
 
 static void s_rrc_fixture_request_completion_callback(
-    const struct aws_byte_cursor *topic,
-    const struct aws_byte_cursor *payload,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     int error_code,
     void *user_data) {
     struct aws_rr_client_fixture_request_response_record *record = user_data;
@@ -100,12 +99,13 @@ static void s_rrc_fixture_request_completion_callback(
     aws_mutex_lock(&fixture->lock);
 
     if (error_code == AWS_ERROR_SUCCESS) {
-        AWS_FATAL_ASSERT(topic != NULL && payload != NULL);
+        AWS_FATAL_ASSERT(publish_event != NULL);
+        AWS_FATAL_ASSERT(publish_event->topic.len != 0 && publish_event->payload.len != 0);
 
-        aws_byte_buf_init_copy_from_cursor(&record->response, fixture->allocator, *payload);
-        aws_byte_buf_init_copy_from_cursor(&record->response_topic, fixture->allocator, *topic);
+        aws_byte_buf_init_copy_from_cursor(&record->response, fixture->allocator, publish_event->payload);
+        aws_byte_buf_init_copy_from_cursor(&record->response_topic, fixture->allocator, publish_event->topic);
     } else {
-        AWS_FATAL_ASSERT(topic == NULL && payload == NULL);
+        AWS_FATAL_ASSERT(publish_event == NULL);
         record->error_code = error_code;
     }
 
