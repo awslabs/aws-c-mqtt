@@ -347,7 +347,7 @@ static void s_protocol_adapter_mqtt311_listener_publish_received(
 
     struct aws_mqtt_protocol_adapter_311_impl *adapter = userdata;
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = *topic,
         .payload = *payload,
     };
@@ -803,7 +803,7 @@ static bool s_protocol_adapter_mqtt5_listener_publish_received(
     void *user_data) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = user_data;
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = publish->topic,
         .payload = publish->payload,
         .content_type = publish->content_type,

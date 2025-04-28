@@ -228,7 +228,7 @@ static void s_write_correlation_token_string(struct aws_byte_cursor scratch_spac
 }
 
 static void s_on_get_shadow_complete(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     int error_code,
     void *user_data) {
 
@@ -349,7 +349,7 @@ static void s_handle_get(struct app_ctx *context, struct aws_allocator *allocato
 }
 
 static void s_on_update_shadow_complete(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     int error_code,
     void *user_data) {
 
@@ -551,7 +551,7 @@ static void s_handle_update_reported(
 }
 
 static void s_on_delete_shadow_complete(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     int error_code,
     void *user_data) {
 
@@ -748,7 +748,7 @@ static void s_stream_subscription_status_fn(
 }
 
 static void s_stream_incoming_publish_fn(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data) {
     struct aws_shadow_streaming_operation *operation = user_data;
 

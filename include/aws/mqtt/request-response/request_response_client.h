@@ -34,7 +34,7 @@ struct aws_mqtt_request_operation_response_path {
 /*
  * An event emitted by a streaming operation's subscription.
  */
-struct aws_mqtt_request_response_publish_event {
+struct aws_mqtt_rr_incoming_publish_event {
     struct aws_byte_cursor payload;
     struct aws_byte_cursor topic;
     /* Below are MQTT optional fields. For MQTT3, they will always be empty, as MQTT3 does not support them. For MQTT5,
@@ -56,7 +56,7 @@ struct aws_mqtt_request_response_publish_event {
  *   topic and payload fields are either both set or both not set.
  */
 typedef void(aws_mqtt_request_operation_completion_fn)(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     int error_code,
     void *user_data);
 
@@ -137,7 +137,7 @@ typedef void(aws_mqtt_streaming_operation_subscription_status_fn)(
  * Callback signature for when a publish arrives that matches a streaming operation's subscription
  */
 typedef void(aws_mqtt_streaming_operation_incoming_publish_fn)(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data);
 
 /*

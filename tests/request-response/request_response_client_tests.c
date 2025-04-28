@@ -90,7 +90,7 @@ static void s_aws_rr_client_fixture_request_response_record_hash_destroy(void *e
 }
 
 static void s_rrc_fixture_request_completion_callback(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     int error_code,
     void *user_data) {
     struct aws_rr_client_fixture_request_response_record *record = user_data;
@@ -310,7 +310,7 @@ static void s_rrc_fixture_streaming_operation_subscription_status_callback(
 }
 
 static void s_rrc_fixture_streaming_operation_incoming_publish_callback(
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data) {
     struct aws_rr_client_fixture_streaming_record *record = user_data;
     struct aws_rr_client_test_fixture *fixture = record->fixture;
