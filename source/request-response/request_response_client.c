@@ -12,13 +12,13 @@
 #include <aws/io/event_loop.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
+#include <aws/mqtt/private/request-response/request_response_subscription_set.h>
 #include <aws/mqtt/private/request-response/subscription_manager.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 
 #include <inttypes.h>
 
 #define MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE 50
-#define MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE 50
 
 struct aws_mqtt_request_operation_storage {
     struct aws_mqtt_request_operation_options options;
@@ -135,89 +135,6 @@ state, removed on operation completion/destruction
     removed from list on operation completion/destruction also checked for empty and removed from table
 
 */
-
-/*
- * This is the (key and) value in hash table (4) above.
- */
-struct aws_rr_operation_list_topic_filter_entry {
-    struct aws_allocator *allocator;
-
-    struct aws_byte_cursor topic_filter_cursor;
-    struct aws_byte_buf topic_filter;
-
-    struct aws_linked_list operations;
-};
-
-static struct aws_rr_operation_list_topic_filter_entry *s_aws_rr_operation_list_topic_filter_entry_new(
-    struct aws_allocator *allocator,
-    struct aws_byte_cursor topic_filter) {
-    struct aws_rr_operation_list_topic_filter_entry *entry =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_operation_list_topic_filter_entry));
-
-    entry->allocator = allocator;
-    aws_byte_buf_init_copy_from_cursor(&entry->topic_filter, allocator, topic_filter);
-    entry->topic_filter_cursor = aws_byte_cursor_from_buf(&entry->topic_filter);
-
-    aws_linked_list_init(&entry->operations);
-
-    return entry;
-}
-
-static void s_aws_rr_operation_list_topic_filter_entry_destroy(struct aws_rr_operation_list_topic_filter_entry *entry) {
-    if (entry == NULL) {
-        return;
-    }
-
-    aws_byte_buf_clean_up(&entry->topic_filter);
-
-    aws_mem_release(entry->allocator, entry);
-}
-
-static void s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy(void *value) {
-    s_aws_rr_operation_list_topic_filter_entry_destroy(value);
-}
-
-struct aws_rr_response_path_entry {
-    struct aws_allocator *allocator;
-
-    size_t ref_count;
-
-    struct aws_byte_cursor topic_cursor;
-    struct aws_byte_buf topic;
-
-    struct aws_byte_buf correlation_token_json_path;
-};
-
-static struct aws_rr_response_path_entry *s_aws_rr_response_path_entry_new(
-    struct aws_allocator *allocator,
-    struct aws_byte_cursor topic,
-    struct aws_byte_cursor correlation_token_json_path) {
-    struct aws_rr_response_path_entry *entry = aws_mem_calloc(allocator, 1, sizeof(struct aws_rr_response_path_entry));
-
-    entry->allocator = allocator;
-    entry->ref_count = 1;
-    aws_byte_buf_init_copy_from_cursor(&entry->topic, allocator, topic);
-    entry->topic_cursor = aws_byte_cursor_from_buf(&entry->topic);
-
-    aws_byte_buf_init_copy_from_cursor(&entry->correlation_token_json_path, allocator, correlation_token_json_path);
-
-    return entry;
-}
-
-static void s_aws_rr_response_path_entry_destroy(struct aws_rr_response_path_entry *entry) {
-    if (entry == NULL) {
-        return;
-    }
-
-    aws_byte_buf_clean_up(&entry->topic);
-    aws_byte_buf_clean_up(&entry->correlation_token_json_path);
-
-    aws_mem_release(entry->allocator, entry);
-}
-
-static void s_aws_rr_response_path_table_hash_element_destroy(void *value) {
-    s_aws_rr_response_path_entry_destroy(value);
-}
 
 struct aws_mqtt_rr_client_operation {
     struct aws_allocator *allocator;
@@ -348,17 +265,9 @@ struct aws_mqtt_request_response_client {
     struct aws_priority_queue operations_by_timeout;
 
     /*
-     * Map from cursor (topic filter) -> list of streaming operations using that filter
+     * Structure to handle stream and request subscriptions.
      */
-    struct aws_hash_table streaming_operation_subscription_lists;
-
-    /*
-     * Map from cursor (topic) -> request response path (topic, correlation token json path)
-     *
-     * We don't garbage collect this table over the course of normal client operation.  We only clean it up
-     * when the client is shutting down.
-     */
-    struct aws_hash_table request_response_paths;
+    struct aws_request_response_subscriptions subscriptions;
 
     /*
      * Map from cursor (correlation token) -> request operation
@@ -406,8 +315,8 @@ static void s_mqtt_request_response_client_final_destroy(struct aws_mqtt_request
     aws_hash_table_clean_up(&client->operations);
 
     aws_priority_queue_clean_up(&client->operations_by_timeout);
-    aws_hash_table_clean_up(&client->streaming_operation_subscription_lists);
-    aws_hash_table_clean_up(&client->request_response_paths);
+
+    aws_mqtt_request_response_client_subscriptions_clean_up(&client->subscriptions);
     aws_hash_table_clean_up(&client->operations_by_correlation_tokens);
 
     aws_mem_release(client->allocator, client);
@@ -872,12 +781,25 @@ static void s_aws_rr_client_protocol_adapter_subscription_event_callback(
 }
 
 static void s_apply_publish_to_streaming_operation_list(
-    struct aws_rr_operation_list_topic_filter_entry *entry,
-    const struct aws_mqtt_rr_incoming_publish_event *publish_event) {
-    AWS_FATAL_ASSERT(entry != NULL);
+    const struct aws_linked_list *operations,
+    const struct aws_byte_cursor *topic_filter,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
+    void *user_data) {
 
-    struct aws_linked_list_node *node = aws_linked_list_begin(&entry->operations);
-    while (node != aws_linked_list_end(&entry->operations)) {
+    AWS_FATAL_ASSERT(operations != NULL);
+
+    struct aws_mqtt_request_response_client *rr_client = user_data;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response client incoming publish on topic '" PRInSTR
+        "' matches streaming subscription on topic filter '" PRInSTR "'",
+        (void *)rr_client,
+        AWS_BYTE_CURSOR_PRI(publish_event->topic),
+        AWS_BYTE_CURSOR_PRI(*topic_filter));
+
+    struct aws_linked_list_node *node = aws_linked_list_begin(operations);
+    while (node != aws_linked_list_end(operations)) {
         struct aws_mqtt_rr_client_operation *operation =
             AWS_CONTAINER_OF(node, struct aws_mqtt_rr_client_operation, node);
         node = aws_linked_list_next(node);
@@ -896,8 +818,8 @@ static void s_apply_publish_to_streaming_operation_list(
             continue;
         }
 
-        void *user_data = operation->storage.streaming_storage.options.user_data;
-        (*incoming_publish_callback)(publish_event, user_data);
+        void *operation_user_data = operation->storage.streaming_storage.options.user_data;
+        (*incoming_publish_callback)(publish_event, operation_user_data);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
@@ -962,9 +884,17 @@ static void s_complete_operation_with_correlation_token(
 }
 
 static void s_apply_publish_to_response_path_entry(
-    struct aws_mqtt_request_response_client *rr_client,
     struct aws_rr_response_path_entry *entry,
-    const struct aws_mqtt_rr_incoming_publish_event *publish_event) {
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
+    void *user_data) {
+
+    struct aws_mqtt_request_response_client *rr_client = user_data;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT_REQUEST_RESPONSE,
+        "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches response path",
+        (void *)rr_client,
+        AWS_BYTE_CURSOR_PRI(publish_event->topic));
 
     struct aws_json_value *json_payload = NULL;
 
@@ -1054,34 +984,12 @@ static void s_aws_rr_client_protocol_adapter_incoming_publish_callback(
         return;
     }
 
-    /* Streaming operation handling */
-    struct aws_hash_element *subscription_filter_element = NULL;
-    if (aws_hash_table_find(
-            &rr_client->streaming_operation_subscription_lists, &publish_event->topic, &subscription_filter_element) ==
-            AWS_OP_SUCCESS &&
-        subscription_filter_element != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches streaming topic",
-            (void *)rr_client,
-            AWS_BYTE_CURSOR_PRI(publish_event->topic));
-
-        s_apply_publish_to_streaming_operation_list(subscription_filter_element->value, publish_event);
-    }
-
-    /* Request-Response handling */
-    struct aws_hash_element *response_path_element = NULL;
-    if (aws_hash_table_find(&rr_client->request_response_paths, &publish_event->topic, &response_path_element) ==
-            AWS_OP_SUCCESS &&
-        response_path_element != NULL) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client incoming publish on topic '" PRInSTR "' matches response path",
-            (void *)rr_client,
-            AWS_BYTE_CURSOR_PRI(publish_event->topic));
-
-        s_apply_publish_to_response_path_entry(rr_client, response_path_element->value, publish_event);
-    }
+    aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
+        &rr_client->subscriptions,
+        publish_event,
+        s_apply_publish_to_streaming_operation_list,
+        s_apply_publish_to_response_path_entry,
+        rr_client);
 }
 
 static void s_aws_rr_client_protocol_adapter_terminate_callback(void *user_data) {
@@ -1171,23 +1079,7 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         sizeof(struct aws_mqtt_rr_client_operation *),
         s_compare_rr_operation_timeouts);
 
-    aws_hash_table_init(
-        &rr_client->streaming_operation_subscription_lists,
-        allocator,
-        MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
-        aws_hash_byte_cursor_ptr,
-        aws_mqtt_byte_cursor_hash_equality,
-        NULL,
-        s_aws_rr_operation_list_topic_filter_entry_hash_element_destroy);
-
-    aws_hash_table_init(
-        &rr_client->request_response_paths,
-        allocator,
-        MQTT_RR_CLIENT_RESPONSE_TABLE_DEFAULT_SIZE,
-        aws_hash_byte_cursor_ptr,
-        aws_mqtt_byte_cursor_hash_equality,
-        NULL,
-        s_aws_rr_response_path_table_hash_element_destroy);
+    aws_mqtt_request_response_client_subscriptions_init(&rr_client->subscriptions, allocator);
 
     aws_hash_table_init(
         &rr_client->operations_by_correlation_tokens,
@@ -1288,25 +1180,12 @@ static int s_add_streaming_operation_to_subscription_topic_filter_table(
 
     struct aws_byte_cursor topic_filter_cursor = operation->storage.streaming_storage.options.topic_filter;
 
-    struct aws_hash_element *element = NULL;
-    if (aws_hash_table_find(&client->streaming_operation_subscription_lists, &topic_filter_cursor, &element)) {
-        return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+    struct aws_rr_operation_list_topic_filter_entry *entry =
+        aws_mqtt_request_response_client_subscriptions_add_stream_subscription(
+            &client->subscriptions, &topic_filter_cursor);
+    if (entry == NULL) {
+        return AWS_OP_ERR;
     }
-
-    struct aws_rr_operation_list_topic_filter_entry *entry = NULL;
-    if (element == NULL) {
-        entry = s_aws_rr_operation_list_topic_filter_entry_new(client->allocator, topic_filter_cursor);
-        aws_hash_table_put(&client->streaming_operation_subscription_lists, &entry->topic_filter_cursor, entry, NULL);
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client adding topic filter '" PRInSTR "' to streaming subscriptions table",
-            (void *)client,
-            AWS_BYTE_CURSOR_PRI(topic_filter_cursor));
-    } else {
-        entry = element->value;
-    }
-
-    AWS_FATAL_ASSERT(entry != NULL);
 
     if (aws_linked_list_node_is_in_list(&operation->node)) {
         aws_linked_list_remove(&operation->node);
@@ -1334,25 +1213,11 @@ static int s_add_request_operation_to_response_path_table(
     for (size_t i = 0; i < path_count; ++i) {
         struct aws_mqtt_request_operation_response_path path;
         aws_array_list_get_at(paths, &path, i);
-
-        struct aws_hash_element *element = NULL;
-        if (aws_hash_table_find(&client->request_response_paths, &path.topic, &element)) {
-            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
-        }
-
-        if (element != NULL) {
-            struct aws_rr_response_path_entry *entry = element->value;
-            ++entry->ref_count;
-            continue;
-        }
-
-        struct aws_rr_response_path_entry *entry =
-            s_aws_rr_response_path_entry_new(client->allocator, path.topic, path.correlation_token_json_path);
-        if (aws_hash_table_put(&client->request_response_paths, &entry->topic_cursor, entry, NULL)) {
-            return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        if (aws_mqtt_request_response_client_subscriptions_add_request_subscription(
+                &client->subscriptions, &path.topic, &path.correlation_token_json_path)) {
+            return AWS_OP_ERR;
         }
     }
-
     return AWS_OP_SUCCESS;
 }
 
@@ -1841,38 +1706,18 @@ static void s_remove_operation_from_client_tables(struct aws_mqtt_rr_client_oper
         NULL);
 
     struct aws_array_list *paths = &operation->storage.request_storage.operation_response_paths;
+
     size_t path_count = aws_array_list_length(paths);
     for (size_t i = 0; i < path_count; ++i) {
         struct aws_mqtt_request_operation_response_path path;
         aws_array_list_get_at(paths, &path, i);
-
-        struct aws_hash_element *element = NULL;
-        if (aws_hash_table_find(&client->request_response_paths, &path.topic, &element) || element == NULL) {
+        if (aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
+                &client->subscriptions, &path.topic) == AWS_OP_ERR) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT_REQUEST_RESPONSE,
                 "id=%p: internal state error removing reference to response path for topic " PRInSTR,
                 (void *)client,
                 AWS_BYTE_CURSOR_PRI(path.topic));
-            continue;
-        }
-
-        struct aws_rr_response_path_entry *entry = element->value;
-        --entry->ref_count;
-
-        if (entry->ref_count == 0) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: removing last reference to response path for topic " PRInSTR,
-                (void *)client,
-                AWS_BYTE_CURSOR_PRI(path.topic));
-            aws_hash_table_remove(&client->request_response_paths, &path.topic, NULL, NULL);
-        } else {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_REQUEST_RESPONSE,
-                "id=%p: removing reference to response path for topic " PRInSTR ", %zu references remain",
-                (void *)client,
-                AWS_BYTE_CURSOR_PRI(path.topic),
-                entry->ref_count);
         }
     }
 }
