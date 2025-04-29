@@ -12,6 +12,7 @@
 #include <aws/mqtt/private/mqtt311_listener.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_to_mqtt3_adapter_impl.h>
+#include <aws/mqtt/request-response/request_response_client.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
@@ -346,11 +347,13 @@ static void s_protocol_adapter_mqtt311_listener_publish_received(
 
     struct aws_mqtt_protocol_adapter_311_impl *adapter = userdata;
 
-    struct aws_protocol_adapter_incoming_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = *topic,
         .payload = *payload,
     };
 
+    /* This will potentially include messages that are completely unrelated to MQTT request-response.
+     * The topic is the first thing that should be checked for relevance. */
     (*adapter->config.incoming_publish_callback)(&publish_event, adapter->config.user_data);
 }
 
@@ -800,11 +803,17 @@ static bool s_protocol_adapter_mqtt5_listener_publish_received(
     void *user_data) {
     struct aws_mqtt_protocol_adapter_5_impl *adapter = user_data;
 
-    struct aws_protocol_adapter_incoming_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = publish->topic,
         .payload = publish->payload,
+        .content_type = publish->content_type,
+        .user_property_count = publish->user_property_count,
+        .user_properties = publish->user_properties,
+        .message_expiry_interval_seconds = publish->message_expiry_interval_seconds,
     };
 
+    /* This will potentially include messages that are completely unrelated to MQTT request-response.
+     * The topic is the first thing that should be checked for relevance. */
     (*adapter->config.incoming_publish_callback)(&publish_event, adapter->config.user_data);
 
     return false;

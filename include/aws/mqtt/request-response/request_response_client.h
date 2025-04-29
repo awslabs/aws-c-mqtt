@@ -32,16 +32,30 @@ struct aws_mqtt_request_operation_response_path {
 };
 
 /*
+ * An event emitted by a streaming operation's subscription.
+ */
+struct aws_mqtt_rr_incoming_publish_event {
+    struct aws_byte_cursor payload;
+    struct aws_byte_cursor topic;
+    /* Below are MQTT optional fields. For MQTT3, they will always be empty, as MQTT3 does not support them. For MQTT5,
+     * they will be set if they are present in a packet. */
+    const struct aws_byte_cursor *content_type;
+    size_t user_property_count;
+    const struct aws_mqtt5_user_property *user_properties;
+    /* Even though this field is supposed to be used by MQTT broker to determine if a message-to-be-sent is expired,
+     * certain services use this field to specify client-side timeouts. */
+    const uint32_t *message_expiry_interval_seconds;
+};
+
+/*
  * Callback signature for request-response completion.
  *
  * Invariants:
- *   If error_code is non-zero then response_topic and payload will be NULL.
- *   If response_topic and payload are not NULL then error_code will be 0.
- *   response_topic and payload are either both set or both not set.
+ *   If error_code is non-zero then publish_event will be NULL.
+ *   If publish_event is not NULL, then error_code will be 0.
  */
 typedef void(aws_mqtt_request_operation_completion_fn)(
-    const struct aws_byte_cursor *response_topic,
-    const struct aws_byte_cursor *payload,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     int error_code,
     void *user_data);
 
@@ -122,8 +136,7 @@ typedef void(aws_mqtt_streaming_operation_subscription_status_fn)(
  * Callback signature for when a publish arrives that matches a streaming operation's subscription
  */
 typedef void(aws_mqtt_streaming_operation_incoming_publish_fn)(
-    struct aws_byte_cursor payload,
-    struct aws_byte_cursor topic,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data);
 
 /*
