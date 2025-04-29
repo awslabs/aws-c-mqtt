@@ -11,7 +11,7 @@
 #include <aws/common/linked_list.h>
 #include <aws/mqtt/exports.h>
 
-struct aws_mqtt_request_response_publish_event;
+struct aws_mqtt_rr_incoming_publish_event;
 
 /*
  * Handles subscriptions for request-response client.
@@ -74,7 +74,7 @@ struct aws_rr_response_path_entry {
 typedef void(aws_mqtt_stream_operation_subscription_match_fn)(
     const struct aws_linked_list *operations,
     const struct aws_byte_cursor *topic_filter,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data);
 
 /*
@@ -82,7 +82,7 @@ typedef void(aws_mqtt_stream_operation_subscription_match_fn)(
  */
 typedef void(aws_mqtt_request_operation_subscription_match_fn)(
     struct aws_rr_response_path_entry *entry,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data);
 
 AWS_EXTERN_C_BEGIN
@@ -130,7 +130,7 @@ AWS_MQTT_API int aws_mqtt_request_response_client_subscriptions_remove_request_s
  */
 AWS_MQTT_API void aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
     const struct aws_request_response_subscriptions *subscriptions,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
     aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
     void *user_data);

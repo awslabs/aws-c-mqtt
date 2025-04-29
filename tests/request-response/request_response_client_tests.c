@@ -3704,7 +3704,7 @@ static int s_rrc_verify_subscriptions_publishes(
 static void s_rrs_fixture_on_stream_operation_subscription_match(
     const struct aws_linked_list *operations,
     const struct aws_byte_cursor *topic_filter,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data) {
 
     (void)operations;
@@ -3724,7 +3724,7 @@ static void s_rrs_fixture_on_stream_operation_subscription_match(
 
 static void s_rrs_fixture_on_request_operation_subscription_match(
     struct aws_rr_response_path_entry *entry,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     void *user_data) {
     (void)entry;
     (void)publish_event;
@@ -3772,7 +3772,7 @@ static int s_rrs_stream_subscriptions_match_single_level_wildcards_fn(struct aws
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter2);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter3);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
@@ -3829,7 +3829,7 @@ static int s_rrs_stream_subscriptions_match_multi_level_wildcards_fn(struct aws_
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter2);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter3);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
@@ -3884,7 +3884,7 @@ static int s_rrs_stream_subscriptions_add_duplicate_fn(struct aws_allocator *all
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
@@ -3934,7 +3934,7 @@ static int s_rrs_stream_subscriptions_too_long_publish_topic_fn(struct aws_alloc
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
@@ -3980,7 +3980,7 @@ static int s_rrs_stream_subscriptions_too_short_publish_topic_fn(struct aws_allo
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic_filter1);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
@@ -4024,7 +4024,7 @@ static int s_rrs_request_subscriptions_add_single_subscription_fn(struct aws_all
 
     aws_mqtt_request_response_client_subscriptions_add_request_subscription(&subscriptions, &topic1, &token_path1);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
@@ -4072,7 +4072,7 @@ static int s_rrs_request_subscriptions_remove_subscription_fn(struct aws_allocat
 
     aws_mqtt_request_response_client_subscriptions_add_request_subscription(&subscriptions, &topic1, &token_path1);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
@@ -4140,7 +4140,7 @@ static int s_rrs_request_subscriptions_add_duplicate_then_remove_fn(struct aws_a
     aws_mqtt_request_response_client_subscriptions_add_request_subscription(&subscriptions, &topic1, &token_path1);
     aws_mqtt_request_response_client_subscriptions_add_request_subscription(&subscriptions, &topic1, &token_path1);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };
@@ -4252,7 +4252,7 @@ static int s_rrs_stream_and_request_subscriptions_add_same_subscription_fn(struc
     aws_mqtt_request_response_client_subscriptions_add_stream_subscription(&subscriptions, &topic2);
     aws_mqtt_request_response_client_subscriptions_add_request_subscription(&subscriptions, &topic1, &token_path1);
 
-    struct aws_mqtt_request_response_publish_event publish_event = {
+    struct aws_mqtt_rr_incoming_publish_event publish_event = {
         .topic = topic1,
         .payload = payload1,
     };

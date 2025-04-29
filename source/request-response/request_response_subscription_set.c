@@ -217,7 +217,7 @@ int aws_mqtt_request_response_client_subscriptions_remove_request_subscription(
 
 static void s_match_stream_subscriptions(
     const struct aws_hash_table *subscriptions,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
     void *user_data) {
     struct aws_hash_element *subscription_filter_element = NULL;
@@ -269,7 +269,7 @@ static bool s_is_topic_matched_to_subscription(
 
 static void s_match_wildcard_stream_subscriptions(
     const struct aws_hash_table *subscriptions,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
     void *user_data) {
 
@@ -293,7 +293,7 @@ static void s_match_wildcard_stream_subscriptions(
 
 void s_match_request_response_subscriptions(
     const struct aws_hash_table *request_response_paths,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
     void *user_data) {
 
@@ -307,7 +307,7 @@ void s_match_request_response_subscriptions(
 
 void aws_mqtt_request_response_client_subscriptions_handle_incoming_publish(
     const struct aws_request_response_subscriptions *subscriptions,
-    const struct aws_mqtt_request_response_publish_event *publish_event,
+    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
     aws_mqtt_stream_operation_subscription_match_fn *on_stream_operation_subscription_match,
     aws_mqtt_request_operation_subscription_match_fn *on_request_operation_subscription_match,
     void *user_data) {
