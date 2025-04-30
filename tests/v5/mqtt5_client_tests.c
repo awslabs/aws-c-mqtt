@@ -1845,6 +1845,7 @@ static int s_mqtt5_client_reconnect_backoff_insufficient_reset_fn(struct aws_all
 
 AWS_TEST_CASE(mqtt5_client_reconnect_backoff_insufficient_reset, s_mqtt5_client_reconnect_backoff_insufficient_reset_fn)
 
+// DEBUG WIP currently FLAKY
 /*
  * Fail-until-max-backoff variant, followed by a success that disconnects after enough time has passed that the backoff
  * should be reset.  Verify that the next reconnect is back to using the minimum backoff value.

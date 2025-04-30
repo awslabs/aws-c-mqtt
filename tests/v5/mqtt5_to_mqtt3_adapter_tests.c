@@ -868,6 +868,7 @@ static int s_mqtt5to3_adapter_set_login_fn(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(mqtt5to3_adapter_set_login, s_mqtt5to3_adapter_set_login_fn)
 
+// DEBUG WIP currently FLAKY
 static int s_mqtt5to3_adapter_set_reconnect_timeout_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
