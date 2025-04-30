@@ -1508,6 +1508,13 @@ int aws_verify_reconnection_exponential_backoff_timestamps(struct aws_mqtt5_clie
                 uint64_t time_diff = aws_timestamp_convert(
                     record->timestamp - last_timestamp, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
 
+                AWS_LOGF_DEBUG(
+                    AWS_LS_MQTT5_CLIENT,
+                    "record timestamp: %llu, last timestamp: %llu, expected backoff: %llu, time diff: %llu",
+                    (unsigned long long)record->timestamp,
+                    (unsigned long long)last_timestamp,
+                    (unsigned long long)expected_backoff,
+                    (unsigned long long)time_diff);
                 if (!s_is_within_percentage_of(expected_backoff, time_diff, .3)) {
                     return AWS_OP_ERR;
                 }

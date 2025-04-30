@@ -3383,6 +3383,7 @@ static int s_test_mqtt_connection_ping_norm_fn(struct aws_allocator *allocator, 
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
 
     /* Wait for 4.5 seconds (to account for slight drift/jitter) */
     aws_thread_current_sleep(4500000000);
