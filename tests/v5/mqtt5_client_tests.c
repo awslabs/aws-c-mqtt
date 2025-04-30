@@ -1724,6 +1724,15 @@ static int s_verify_reconnection_after_success_used_backoff(
         AWS_TIMESTAMP_MILLIS,
         NULL);
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_MQTT5_CLIENT,
+        "disconneting timestamp: %llu, connection failure after success: %llu, post success reconnect time: %llu, "
+        "expected reconnect time: %llu",
+        (unsigned long long)disconnect_after_success_timestamp,
+        (unsigned long long)reconnect_failure_after_disconnect_timestamp,
+        (unsigned long long)post_success_reconnect_time_ms,
+        (unsigned long long)expected_reconnect_delay_ms);
+
     if (!s_is_within_percentage_of(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .3)) {
         return AWS_OP_ERR;
     }
