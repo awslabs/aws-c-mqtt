@@ -15,6 +15,7 @@ struct aws_allocator;
 struct aws_event_loop;
 struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
+struct aws_mqtt_request_response_publish_event;
 
 /*
  * The request-response protocol adapter is a translation layer that sits between the request-response native client
@@ -98,7 +99,7 @@ typedef void(aws_protocol_adapter_subscription_event_fn)(
     void *user_data);
 
 typedef void(aws_protocol_adapter_incoming_publish_fn)(
-    const struct aws_protocol_adapter_incoming_publish_event *publish,
+    const struct aws_mqtt_request_response_publish_event *publish,
     void *user_data);
 
 typedef void(aws_protocol_adapter_terminate_callback_fn)(void *user_data);

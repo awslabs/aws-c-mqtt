@@ -228,18 +228,19 @@ static void s_write_correlation_token_string(struct aws_byte_cursor scratch_spac
 }
 
 static void s_on_get_shadow_complete(
-    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
+    const struct aws_byte_cursor *response_topic,
+    const struct aws_byte_cursor *payload,
     int error_code,
     void *user_data) {
 
     struct aws_string *correlation_token = user_data;
 
-    if (publish_event != NULL) {
+    if (payload != NULL) {
         printf(
             "GetNamedShadow request '%s' response received on topic '" PRInSTR "' with body:\n  " PRInSTR "\n\n",
             correlation_token->bytes,
-            AWS_BYTE_CURSOR_PRI(publish_event->topic),
-            AWS_BYTE_CURSOR_PRI(publish_event->payload));
+            AWS_BYTE_CURSOR_PRI(*response_topic),
+            AWS_BYTE_CURSOR_PRI(*payload));
     } else {
         printf(
             "GetNamedShadow request '%s' failed with error code %d(%s)\n\n",
@@ -349,18 +350,19 @@ static void s_handle_get(struct app_ctx *context, struct aws_allocator *allocato
 }
 
 static void s_on_update_shadow_complete(
-    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
+    const struct aws_byte_cursor *response_topic,
+    const struct aws_byte_cursor *payload,
     int error_code,
     void *user_data) {
 
     struct aws_string *correlation_token = user_data;
 
-    if (publish_event != NULL) {
+    if (payload != NULL) {
         printf(
             "UpdateNamedShadow request '%s' response received on topic '" PRInSTR "' with body:\n  " PRInSTR "\n\n",
             correlation_token->bytes,
-            AWS_BYTE_CURSOR_PRI(publish_event->topic),
-            AWS_BYTE_CURSOR_PRI(publish_event->payload));
+            AWS_BYTE_CURSOR_PRI(*response_topic),
+            AWS_BYTE_CURSOR_PRI(*payload));
     } else {
         printf(
             "UpdateNamedShadow request '%s' failed with error code %d(%s)\n\n",
@@ -551,18 +553,19 @@ static void s_handle_update_reported(
 }
 
 static void s_on_delete_shadow_complete(
-    const struct aws_mqtt_rr_incoming_publish_event *publish_event,
+    const struct aws_byte_cursor *response_topic,
+    const struct aws_byte_cursor *payload,
     int error_code,
     void *user_data) {
 
     struct aws_string *correlation_token = user_data;
 
-    if (publish_event != NULL) {
+    if (payload != NULL) {
         printf(
             "DeleteNamedShadow request '%s' response received on topic '" PRInSTR "' with body:\n  " PRInSTR "\n\n",
             correlation_token->bytes,
-            AWS_BYTE_CURSOR_PRI(publish_event->topic),
-            AWS_BYTE_CURSOR_PRI(publish_event->payload));
+            AWS_BYTE_CURSOR_PRI(*response_topic),
+            AWS_BYTE_CURSOR_PRI(*payload));
     } else {
         printf(
             "DeleteNamedShadow request '%s' failed with error code %d(%s)\n\n",
@@ -748,8 +751,7 @@ static void s_stream_subscription_status_fn(
 }
 
 static void s_stream_incoming_publish_fn(
-    struct aws_byte_cursor payload,
-    struct aws_byte_cursor topic,
+    const struct aws_mqtt_request_response_publish_event *publish_event,
     void *user_data) {
     struct aws_shadow_streaming_operation *operation = user_data;
 
