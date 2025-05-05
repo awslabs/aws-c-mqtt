@@ -111,7 +111,7 @@ static void s_rr_mqtt_protocol_adapter_test_on_subscription_event(
 }
 
 static void s_rr_mqtt_protocol_adapter_test_on_incoming_publish(
-    const struct aws_mqtt_request_response_publish_event *publish,
+    const struct aws_protocol_adapter_incoming_publish_event *publish,
     void *user_data) {
     struct aws_request_response_protocol_adapter_test_fixture *fixture = user_data;
 
