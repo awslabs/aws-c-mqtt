@@ -25,8 +25,8 @@ static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_ti
     return fabs(actual_percent) <= percentage;
 }
 
-static bool s_validate_time(uint64_t expected_time, uint64_t actual_time, double percentage) {
-    uint64_t delta = actual_time > expected_time : actual_time - expected_time : expected_time - actual_time;
+static bool s_validate_time_interval(uint64_t expected_time, uint64_t actual_time, double percentage) {
+    uint64_t delta = actual_time > expected_time ? actual_time - expected_time : expected_time - actual_time;
     return delta < AWS_MQTT5_TESTING_DELAY_NS || s_is_within_percentage_of(expected_time, actual_time, percentage);
 }
 
@@ -1727,7 +1727,7 @@ static int s_verify_reconnection_after_success_used_backoff(
         AWS_TIMESTAMP_MILLIS,
         NULL);
 
-    if (!s_validate_expected_time(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .3)) {
+    if (!s_validate_time_interval(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .3)) {
         return AWS_OP_ERR;
     }
 
