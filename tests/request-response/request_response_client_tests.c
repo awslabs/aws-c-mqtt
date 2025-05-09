@@ -1087,7 +1087,8 @@ static int s_do_rrc_single_streaming_operation_test_fn(
     struct aws_mqtt_streaming_operation_options *streaming_options,
     size_t expected_subscription_event_count,
     struct aws_rr_client_fixture_streaming_record_subscription_event *expected_subscription_events,
-    bool should_activate) {
+    bool should_activate,
+    bool should_activate_after_shutdown) {
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options client_test_options;
@@ -1114,7 +1115,7 @@ static int s_do_rrc_single_streaming_operation_test_fn(
         aws_mqtt_request_response_client_create_streaming_operation(fixture.rr_client, streaming_options);
     ASSERT_NOT_NULL(streaming_operation);
 
-    if (should_activate) {
+    if (should_activate && !should_activate_after_shutdown) {
         ASSERT_SUCCESS(aws_mqtt_rr_client_operation_activate(streaming_operation));
     }
 
@@ -1135,6 +1136,11 @@ static int s_do_rrc_single_streaming_operation_test_fn(
      * destroy task.
      */
     aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+
+    if (should_activate && should_activate_after_shutdown) {
+        ASSERT_SUCCESS(aws_mqtt_rr_client_operation_activate(streaming_operation));
+    }
+
     aws_mqtt_rr_client_operation_release(streaming_operation);
 
     s_rrc_wait_on_streaming_termination(&fixture, streaming_id);
@@ -1164,10 +1170,42 @@ static int s_rrc_activate_streaming_operation_and_shutdown_fn(struct aws_allocat
     };
 
     return s_do_rrc_single_streaming_operation_test_fn(
-        allocator, NULL, &streaming_options, AWS_ARRAY_SIZE(expected_events), expected_events, true);
+        allocator,
+        NULL,
+        &streaming_options,
+        AWS_ARRAY_SIZE(expected_events),
+        expected_events,
+        /*should_activate=*/true,
+        /*should_activate_after_shutdown=*/false);
 }
 
 AWS_TEST_CASE(rrc_activate_streaming_operation_and_shutdown, s_rrc_activate_streaming_operation_and_shutdown_fn)
+
+static int s_rrc_shutdown_and_activate_streaming_operation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_rr_client_fixture_streaming_record_subscription_event expected_events[] = {
+        {
+            .status = ARRSSET_SUBSCRIPTION_HALTED,
+            .error_code = AWS_ERROR_MQTT_REQUEST_RESPONSE_CLIENT_SHUT_DOWN,
+        },
+    };
+
+    struct aws_mqtt_streaming_operation_options streaming_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("derp/filter"),
+    };
+
+    return s_do_rrc_single_streaming_operation_test_fn(
+        allocator,
+        NULL,
+        &streaming_options,
+        AWS_ARRAY_SIZE(expected_events),
+        expected_events,
+        /*should_activate=*/true,
+        /*should_activate_after_shutdown=*/true);
+}
+
+AWS_TEST_CASE(rrc_shutdown_and_activate_streaming_operation, s_rrc_shutdown_and_activate_streaming_operation_fn)
 
 static int s_rrc_create_streaming_operation_and_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1176,7 +1214,14 @@ static int s_rrc_create_streaming_operation_and_shutdown_fn(struct aws_allocator
         .topic_filter = aws_byte_cursor_from_c_str("derp/filter"),
     };
 
-    return s_do_rrc_single_streaming_operation_test_fn(allocator, NULL, &streaming_options, 0, NULL, false);
+    return s_do_rrc_single_streaming_operation_test_fn(
+        allocator,
+        NULL,
+        &streaming_options,
+        0,
+        NULL,
+        /*should_activate=*/false,
+        /*should_activate_after_shutdown=*/false);
 }
 
 AWS_TEST_CASE(rrc_create_streaming_operation_and_shutdown, s_rrc_create_streaming_operation_and_shutdown_fn)
