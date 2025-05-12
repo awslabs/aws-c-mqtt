@@ -1654,6 +1654,11 @@ static void s_mqtt_rr_client_submit_operation(struct aws_task *task, void *arg, 
         goto done;
     }
 
+    if (client->state == AWS_RRCS_SHUTTING_DOWN) {
+        s_request_response_fail_operation(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_CLIENT_SHUT_DOWN);
+        goto done;
+    }
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_REQUEST_RESPONSE,
         "id=%p: request-response client, queuing operation %" PRIu64,
