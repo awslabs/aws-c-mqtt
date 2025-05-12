@@ -25,6 +25,8 @@ static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_ti
     return fabs(actual_percent) <= percentage;
 }
 
+/* The function is used to validate the time interval for the expected and actual time. We used a user determined
+ * percentage for margin and a minimal of AWS_MQTT5_TESTING_DELAY_NS considering the system delay. */
 static bool s_validate_time_interval(uint64_t expected_time, uint64_t actual_time, double percentage) {
     uint64_t delta = actual_time > expected_time ? actual_time - expected_time : expected_time - actual_time;
     return delta < AWS_MQTT5_TESTING_DELAY_NS || s_is_within_percentage_of(expected_time, actual_time, percentage);
@@ -1727,7 +1729,13 @@ static int s_verify_reconnection_after_success_used_backoff(
         AWS_TIMESTAMP_MILLIS,
         NULL);
 
-    if (!s_validate_time_interval(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .3)) {
+    /* The reconnect delay should be at least the expected backoff time.
+     * Meanwhile, to make sure the backoff time is reset to minimal properly, we also would like to validate the upper
+     * bound of the reconnect time. With function `s_validate_time_interval()`, we used a 30% margin and a minimal of
+     * AWS_MQTT5_TESTING_DELAY_NS for system delay to validate the upper bound.
+     */
+    if (!s_check_time_lower_bound(expected_reconnect_delay_ms, post_success_reconnect_time_ms) &&
+        !s_validate_time_interval(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .3)) {
         return AWS_OP_ERR;
     }
 
