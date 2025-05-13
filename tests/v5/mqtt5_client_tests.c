@@ -18,6 +18,10 @@
 #include <aws/testing/aws_test_harness.h>
 
 #include <math.h>
+/* The delay margin accounts for system-level latencies, particularly when scheduling tasks on dispatch queues. In
+ * typical test environments, we observe delays of around 150–170ms before the task begins execution. To ensure
+ * stability, we define a margin of 200ms (AWS_MQTT5_TESTING_DELAY_NS). If related tests fail, it may indicate this
+ * margin is insufficient—consider increasing the value. */
 #define AWS_MQTT5_TESTING_DELAY_NS 200 * 1000 * 1000 /*200ms*/
 
 static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_time, double percentage) {
