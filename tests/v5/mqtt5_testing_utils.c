@@ -1475,8 +1475,6 @@ void aws_mqtt5_client_mock_test_fixture_clean_up(struct aws_mqtt5_client_mock_te
     aws_event_loop_group_release(test_fixture->server_elg);
     aws_event_loop_group_release(test_fixture->client_elg);
 
-    aws_thread_join_all_managed();
-
     for (size_t i = 0; i < aws_array_list_length(&test_fixture->server_received_packets); ++i) {
         struct aws_mqtt5_mock_server_packet_record *packet = NULL;
         aws_array_list_get_at_ptr(&test_fixture->server_received_packets, (void **)&packet, i);

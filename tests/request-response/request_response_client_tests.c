@@ -144,6 +144,17 @@ static bool s_is_request_complete(void *context) {
     return record->completed;
 }
 
+// static bool s_is_mqtt5_client_terminated(void *arg) {
+//     struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+//     return test_fixture->client_terminated;
+// }
+
+// static void s_wait_for_mqtt5_client_terminated(struct aws_mqtt5_client_mock_test_fixture *test_context) {
+//     aws_mutex_lock(&test_context->lock);
+//     aws_condition_variable_wait_pred(&test_context->signal, &test_context->lock, s_is_mqtt5_client_terminated,
+//     test_context); aws_mutex_unlock(&test_context->lock);
+// }
+
 static void s_rrc_wait_on_request_completion(
     struct aws_rr_client_test_fixture *fixture,
     struct aws_byte_cursor record_key) {
@@ -740,21 +751,26 @@ static bool s_rr_client_test_fixture_terminated(void *context) {
     return fixture->client_destroyed;
 }
 
-static void s_aws_rr_client_test_fixture_clean_up(struct aws_rr_client_test_fixture *fixture) {
+static void s_aws_rr_client_test_fixture_clean_up(
+    struct aws_rr_client_test_fixture *fixture,
+    bool protocol_has_terminated) {
     aws_mqtt_request_response_client_release(fixture->rr_client);
 
     aws_mutex_lock(&fixture->lock);
     aws_condition_variable_wait_pred(&fixture->signal, &fixture->lock, s_rr_client_test_fixture_terminated, fixture);
     aws_mutex_unlock(&fixture->lock);
 
-    if (fixture->test_protocol == RRCP_MQTT5) {
-        aws_mqtt5_client_mock_test_fixture_clean_up(&fixture->client_test_fixture.mqtt5_test_fixture);
-    } else {
-        struct mqtt_connection_state_test *mqtt311_test_fixture = &fixture->client_test_fixture.mqtt311_test_fixture;
-        aws_mqtt_client_connection_disconnect(
-            mqtt311_test_fixture->mqtt_connection, aws_test311_on_disconnect_fn, mqtt311_test_fixture);
-        aws_test311_clean_up_mqtt_server_fn(
-            fixture->allocator, AWS_OP_SUCCESS, &fixture->client_test_fixture.mqtt311_test_fixture);
+    if (!protocol_has_terminated) {
+        if (fixture->test_protocol == RRCP_MQTT5) {
+            aws_mqtt5_client_mock_test_fixture_clean_up(&fixture->client_test_fixture.mqtt5_test_fixture);
+        } else {
+            struct mqtt_connection_state_test *mqtt311_test_fixture =
+                &fixture->client_test_fixture.mqtt311_test_fixture;
+            aws_mqtt_client_connection_disconnect(
+                mqtt311_test_fixture->mqtt_connection, aws_test311_on_disconnect_fn, mqtt311_test_fixture);
+            aws_test311_clean_up_mqtt_server_fn(
+                fixture->allocator, AWS_OP_SUCCESS, &fixture->client_test_fixture.mqtt311_test_fixture);
+        }
     }
 
     aws_mutex_clean_up(&fixture->lock);
@@ -781,7 +797,7 @@ static int s_rrc_mqtt5_create_destroy_fn(struct aws_allocator *allocator, void *
     ASSERT_SUCCESS(
         s_aws_rr_client_test_fixture_init_from_mqtt5(&fixture, allocator, NULL, &client_test_fixture_options, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -798,7 +814,7 @@ static int s_rrc_mqtt311_create_destroy_fn(struct aws_allocator *allocator, void
     struct aws_rr_client_test_fixture fixture;
     ASSERT_SUCCESS(s_aws_rr_client_test_fixture_init_from_mqtt311(&fixture, allocator, NULL, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -856,7 +872,7 @@ static int s_rrc_do_submit_request_operation_failure_test(
 
     ASSERT_FAILS(aws_mqtt_request_response_client_submit_request(fixture.rr_client, &bad_request));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -997,7 +1013,7 @@ static int s_rrc_submit_streaming_operation_failure_invalid_subscription_topic_f
         aws_mqtt_request_response_client_create_streaming_operation(fixture.rr_client, &bad_options);
     ASSERT_NULL(bad_operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -1048,7 +1064,7 @@ static int s_do_rrc_single_request_operation_test_fn(
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, request_options->serialized_request, expected_error_code, expected_response_topic, expected_payload));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -1088,7 +1104,8 @@ static int s_do_rrc_single_streaming_operation_test_fn(
     size_t expected_subscription_event_count,
     struct aws_rr_client_fixture_streaming_record_subscription_event *expected_subscription_events,
     bool should_activate,
-    bool should_activate_after_shutdown) {
+    bool should_activate_after_shutdown,
+    bool release_after_client_shutdown) {
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options client_test_options;
@@ -1137,6 +1154,13 @@ static int s_do_rrc_single_streaming_operation_test_fn(
      */
     aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
 
+    /* Wait for the client finish termination. */
+    if (release_after_client_shutdown) {
+        // aws_mqtt5_client_release(fixture.client_test_fixture.mqtt5_test_fixture.client);
+        // s_wait_for_mqtt5_client_terminated(&fixture.client_test_fixture.mqtt5_test_fixture);
+        aws_mqtt5_client_mock_test_fixture_clean_up(&fixture.client_test_fixture.mqtt5_test_fixture);
+    }
+
     if (should_activate && should_activate_after_shutdown) {
         ASSERT_SUCCESS(aws_mqtt_rr_client_operation_activate(streaming_operation));
     }
@@ -1148,7 +1172,7 @@ static int s_do_rrc_single_streaming_operation_test_fn(
     ASSERT_SUCCESS(s_rrc_verify_streaming_record_subscription_events(
         &fixture, streaming_id, expected_subscription_event_count, expected_subscription_events));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, release_after_client_shutdown);
 
     aws_mqtt_library_clean_up();
 
@@ -1176,7 +1200,8 @@ static int s_rrc_activate_streaming_operation_and_shutdown_fn(struct aws_allocat
         AWS_ARRAY_SIZE(expected_events),
         expected_events,
         /*should_activate=*/true,
-        /*should_activate_after_shutdown=*/false);
+        /*should_activate_after_shutdown=*/false,
+        /*release_after_client_shutdown=*/false);
 }
 
 AWS_TEST_CASE(rrc_activate_streaming_operation_and_shutdown, s_rrc_activate_streaming_operation_and_shutdown_fn)
@@ -1202,7 +1227,8 @@ static int s_rrc_shutdown_and_activate_streaming_operation_fn(struct aws_allocat
         AWS_ARRAY_SIZE(expected_events),
         expected_events,
         /*should_activate=*/true,
-        /*should_activate_after_shutdown=*/true);
+        /*should_activate_after_shutdown=*/true,
+        /*release_after_client_shutdown=*/false);
 }
 
 AWS_TEST_CASE(rrc_shutdown_and_activate_streaming_operation, s_rrc_shutdown_and_activate_streaming_operation_fn)
@@ -1221,10 +1247,32 @@ static int s_rrc_create_streaming_operation_and_shutdown_fn(struct aws_allocator
         0,
         NULL,
         /*should_activate=*/false,
-        /*should_activate_after_shutdown=*/false);
+        /*should_activate_after_shutdown=*/false,
+        /*release_after_client_shutdown=*/false);
 }
 
 AWS_TEST_CASE(rrc_create_streaming_operation_and_shutdown, s_rrc_create_streaming_operation_and_shutdown_fn)
+
+static int s_rrc_release_streaming_operation_after_client_shutdown_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt_streaming_operation_options streaming_options = {
+        .topic_filter = aws_byte_cursor_from_c_str("derp/filter")};
+
+    return s_do_rrc_single_streaming_operation_test_fn(
+        allocator,
+        NULL,
+        &streaming_options,
+        0,
+        NULL,
+        /*should_activate=*/false,
+        /*should_activate_after_shutdown=*/false,
+        /*release_after_client_shutdown=*/true);
+}
+
+AWS_TEST_CASE(
+    rrc_release_streaming_operation_after_client_shutdown,
+    s_rrc_release_streaming_operation_after_client_shutdown_fn)
 
 static int s_rrc_submit_request_operation_failure_by_timeout_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1464,7 +1512,7 @@ static int s_rrc_streaming_operation_success_single_fn(struct aws_allocator *all
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -1596,7 +1644,7 @@ static int s_rrc_streaming_operation_success_capture_publish_packet_fn(
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -1707,7 +1755,7 @@ static int s_rrc_streaming_operation_success_overlapping_fn(struct aws_allocator
 
     aws_mqtt_rr_client_operation_release(operation2);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -1781,7 +1829,7 @@ static int s_rrc_streaming_operation_success_starting_offline_fn(struct aws_allo
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -1871,7 +1919,7 @@ static int s_rrc_streaming_operation_clean_session_reestablish_subscription_fn(
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -1956,7 +2004,7 @@ static int s_rrc_streaming_operation_resume_session_fn(struct aws_allocator *all
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -2082,7 +2130,7 @@ static int s_rrc_streaming_operation_first_subscribe_times_out_resub_succeeds_fn
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -2205,7 +2253,7 @@ static int s_rrc_streaming_operation_first_subscribe_retryable_failure_resub_suc
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -2300,7 +2348,7 @@ static int s_rrc_streaming_operation_subscribe_unretryable_failure_fn(struct aws
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -2426,7 +2474,7 @@ static int s_rrc_streaming_operation_failure_exceeds_subscription_budget_fn(
 
     aws_mqtt_rr_client_operation_release(operation3);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -2562,7 +2610,7 @@ static int s_rrc_streaming_operation_success_delayed_by_request_operations_fn(
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -2652,7 +2700,7 @@ static int s_rrc_streaming_operation_success_sandwiched_by_request_operations_fn
 
     aws_mqtt_rr_client_operation_release(operation);
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -2961,7 +3009,7 @@ static int s_rrc_request_response_success_response_path_accepted_fn(struct aws_a
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -2994,7 +3042,7 @@ static int s_rrc_request_response_multi_sub_success_response_path_accepted_fn(
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3025,7 +3073,7 @@ static int s_rrc_request_response_success_response_path_rejected_fn(struct aws_a
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3058,7 +3106,7 @@ static int s_rrc_request_response_multi_sub_success_response_path_rejected_fn(
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3102,7 +3150,7 @@ static int s_rrc_request_response_subscribe_failure_fn(struct aws_allocator *all
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_SUBSCRIBE_FAILURE, NULL, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3174,7 +3222,7 @@ static int s_rrc_request_response_multi_subscribe_failure_fn(struct aws_allocato
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_SUBSCRIBE_FAILURE, NULL, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3201,7 +3249,7 @@ static int s_rrc_request_response_failure_puback_reason_code_fn(struct aws_alloc
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_PUBLISH_FAILURE, NULL, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3228,7 +3276,7 @@ static int s_rrc_request_response_failure_invalid_payload_fn(struct aws_allocato
     ASSERT_SUCCESS(
         s_rrc_verify_request_completion(&fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3262,7 +3310,7 @@ static int s_rrc_request_response_failure_missing_correlation_token_fn(struct aw
     ASSERT_SUCCESS(
         s_rrc_verify_request_completion(&fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3300,7 +3348,7 @@ static int s_rrc_request_response_failure_invalid_correlation_token_type_fn(
     ASSERT_SUCCESS(
         s_rrc_verify_request_completion(&fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3338,7 +3386,7 @@ static int s_rrc_request_response_failure_non_matching_correlation_token_fn(
     ASSERT_SUCCESS(
         s_rrc_verify_request_completion(&fixture, record_key, AWS_ERROR_MQTT_REQUEST_RESPONSE_TIMEOUT, NULL, NULL));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3369,7 +3417,7 @@ static int s_rrc_request_response_success_empty_correlation_token_fn(struct aws_
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3422,7 +3470,7 @@ static int s_rrc_request_response_success_empty_correlation_token_sequence_fn(
             &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
     }
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
@@ -3573,7 +3621,7 @@ static int s_rrc_request_response_multi_operation_sequence_fn(struct aws_allocat
 
     ASSERT_SUCCESS(s_do_rrc_operation_sequence_test(&fixture, AWS_ARRAY_SIZE(request_sequence), request_sequence));
 
-    s_aws_rr_client_test_fixture_clean_up(&fixture);
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
     aws_mqtt_library_clean_up();
 
