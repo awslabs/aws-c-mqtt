@@ -603,6 +603,7 @@ static void s_aws_rr_client_test_fixture_on_terminated(void *user_data) {
 
     aws_mutex_lock(&fixture->lock);
     fixture->client_destroyed = true;
+    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Request-response client destroyed.", &fixture->rr_client);
     aws_mutex_unlock(&fixture->lock);
     aws_condition_variable_notify_one(&fixture->signal);
 }
@@ -1156,8 +1157,6 @@ static int s_do_rrc_single_streaming_operation_test_fn(
 
     /* Wait for the client finish termination. */
     if (release_after_client_shutdown) {
-        // aws_mqtt5_client_release(fixture.client_test_fixture.mqtt5_test_fixture.client);
-        // s_wait_for_mqtt5_client_terminated(&fixture.client_test_fixture.mqtt5_test_fixture);
         aws_mqtt5_client_mock_test_fixture_clean_up(&fixture.client_test_fixture.mqtt5_test_fixture);
     }
 
