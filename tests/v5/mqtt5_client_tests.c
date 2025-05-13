@@ -2692,7 +2692,7 @@ static int s_do_iot_core_throughput_test(struct aws_allocator *allocator, bool u
     aws_wait_for_stopped_lifecycle_event(&test_context);
 
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
-    aws_mqtt_library_clean_up();
+    aws_thread_join_all_managed();
 
     return AWS_OP_SUCCESS;
 }
@@ -2798,7 +2798,7 @@ static int s_do_iot_core_publish_tps_test(
     aws_high_res_clock_get_ticks(test_time);
 
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
-    aws_mqtt_library_clean_up();
+    aws_thread_join_all_managed();
 
     return AWS_OP_SUCCESS;
 }
