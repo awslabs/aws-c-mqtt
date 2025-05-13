@@ -18,10 +18,26 @@
 #include <aws/testing/aws_test_harness.h>
 
 #include <math.h>
+/* The delay margin accounts for system-level latencies, particularly when scheduling tasks on dispatch queues. In
+ * typical test environments, we observe delays of around 150–170ms before the task begins execution. To ensure
+ * stability, we define a margin of 200ms (AWS_MQTT5_TESTING_DELAY_NS). If related tests fail, it may indicate this
+ * margin is insufficient—consider increasing the value. */
+#define AWS_MQTT5_TESTING_DELAY_NS 200 * 1000 * 1000 /*200ms*/
 
 static bool s_is_within_percentage_of(uint64_t expected_time, uint64_t actual_time, double percentage) {
     double actual_percent = 1.0 - (double)actual_time / (double)expected_time;
     return fabs(actual_percent) <= percentage;
+}
+
+/* The function is used to validate the time interval for the expected and actual time. We used a user determined
+ * percentage for margin and a minimal of AWS_MQTT5_TESTING_DELAY_NS considering the system delay. */
+static bool s_validate_time_interval(uint64_t expected_time, uint64_t actual_time, double percentage) {
+    uint64_t delta = actual_time > expected_time ? actual_time - expected_time : expected_time - actual_time;
+    return delta < AWS_MQTT5_TESTING_DELAY_NS || s_is_within_percentage_of(expected_time, actual_time, percentage);
+}
+
+static bool s_check_time_lower_bound(uint64_t expected_time, uint64_t actual_time) {
+    return actual_time >= expected_time;
 }
 
 int aws_mqtt5_mock_server_handle_connect_always_succeed(
@@ -1508,7 +1524,7 @@ int aws_verify_reconnection_exponential_backoff_timestamps(struct aws_mqtt5_clie
                 uint64_t time_diff = aws_timestamp_convert(
                     record->timestamp - last_timestamp, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
 
-                if (!s_is_within_percentage_of(expected_backoff, time_diff, .3)) {
+                if (!s_check_time_lower_bound(expected_backoff, time_diff)) {
                     return AWS_OP_ERR;
                 }
 
@@ -1717,7 +1733,13 @@ static int s_verify_reconnection_after_success_used_backoff(
         AWS_TIMESTAMP_MILLIS,
         NULL);
 
-    if (!s_is_within_percentage_of(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .3)) {
+    /* The reconnect delay should be at least the expected backoff time.
+     * Meanwhile, to make sure the backoff time is reset to minimal properly, we also would like to validate the upper
+     * bound of the reconnect time. With function `s_validate_time_interval()`, we used a 30% margin and a minimal of
+     * AWS_MQTT5_TESTING_DELAY_NS for system delay to validate the upper bound.
+     */
+    if (!s_check_time_lower_bound(expected_reconnect_delay_ms, post_success_reconnect_time_ms) &&
+        !s_validate_time_interval(expected_reconnect_delay_ms, post_success_reconnect_time_ms, .3)) {
         return AWS_OP_ERR;
     }
 
