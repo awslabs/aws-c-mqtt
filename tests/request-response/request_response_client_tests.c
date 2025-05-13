@@ -583,7 +583,7 @@ static void s_aws_rr_client_test_fixture_on_initialized(void *user_data) {
     aws_mutex_lock(&fixture->lock);
     fixture->client_initialized = true;
     aws_mutex_unlock(&fixture->lock);
-    aws_condition_variable_notify_all(&fixture->signal);
+    aws_condition_variable_notify_one(&fixture->signal);
 }
 
 static bool s_rr_client_test_fixture_initialized(void *context) {
@@ -604,7 +604,7 @@ static void s_aws_rr_client_test_fixture_on_terminated(void *user_data) {
     aws_mutex_lock(&fixture->lock);
     fixture->client_destroyed = true;
     aws_mutex_unlock(&fixture->lock);
-    aws_condition_variable_notify_all(&fixture->signal);
+    aws_condition_variable_notify_one(&fixture->signal);
 }
 
 static int s_aws_rr_client_test_fixture_init_from_mqtt5(
