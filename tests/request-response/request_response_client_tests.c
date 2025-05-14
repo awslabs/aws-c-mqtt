@@ -774,6 +774,7 @@ static void s_aws_rr_client_test_fixture_clean_up(
         }
     }
 
+    aws_thread_join_all_managed();
     aws_mutex_clean_up(&fixture->lock);
     aws_condition_variable_clean_up(&fixture->signal);
 
