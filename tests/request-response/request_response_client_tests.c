@@ -144,17 +144,6 @@ static bool s_is_request_complete(void *context) {
     return record->completed;
 }
 
-// static bool s_is_mqtt5_client_terminated(void *arg) {
-//     struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
-//     return test_fixture->client_terminated;
-// }
-
-// static void s_wait_for_mqtt5_client_terminated(struct aws_mqtt5_client_mock_test_fixture *test_context) {
-//     aws_mutex_lock(&test_context->lock);
-//     aws_condition_variable_wait_pred(&test_context->signal, &test_context->lock, s_is_mqtt5_client_terminated,
-//     test_context); aws_mutex_unlock(&test_context->lock);
-// }
-
 static void s_rrc_wait_on_request_completion(
     struct aws_rr_client_test_fixture *fixture,
     struct aws_byte_cursor record_key) {
@@ -583,7 +572,7 @@ static void s_aws_rr_client_test_fixture_on_initialized(void *user_data) {
     aws_mutex_lock(&fixture->lock);
     fixture->client_initialized = true;
     aws_mutex_unlock(&fixture->lock);
-    aws_condition_variable_notify_one(&fixture->signal);
+    aws_condition_variable_notify_all(&fixture->signal);
 }
 
 static bool s_rr_client_test_fixture_initialized(void *context) {
@@ -603,9 +592,8 @@ static void s_aws_rr_client_test_fixture_on_terminated(void *user_data) {
 
     aws_mutex_lock(&fixture->lock);
     fixture->client_destroyed = true;
-    AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Request-response client destroyed.", &fixture->rr_client);
     aws_mutex_unlock(&fixture->lock);
-    aws_condition_variable_notify_one(&fixture->signal);
+    aws_condition_variable_notify_all(&fixture->signal);
 }
 
 static int s_aws_rr_client_test_fixture_init_from_mqtt5(
