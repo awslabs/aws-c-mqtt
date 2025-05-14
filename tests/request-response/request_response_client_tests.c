@@ -1156,13 +1156,19 @@ static int s_do_rrc_single_streaming_operation_test_fn(
      */
     aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
 
-    /* Wait for the client finish termination. */
-    if (release_after_client_shutdown) {
-        aws_mqtt5_client_mock_test_fixture_clean_up(&fixture.client_test_fixture.mqtt5_test_fixture);
-    }
-
     if (should_activate && should_activate_after_shutdown) {
         ASSERT_SUCCESS(aws_mqtt_rr_client_operation_activate(streaming_operation));
+    }
+
+    /* Wait for the client finish termination.
+     * This option is used for a regression test. In the previous implementation, releasing of the protocol client would
+     * potentially release the event loop group if no other component acquire the event loop group. This would cause a
+     * race condition where the rr_client or streaming operation is trying to use the event loop to process its tasks
+     * while the event loop has already be released. We fixed it by acquire the event loop group for rr client. */
+    if (release_after_client_shutdown) {
+        aws_mqtt5_client_mock_test_fixture_clean_up(&fixture.client_test_fixture.mqtt5_test_fixture);
+        // We sleep here to wait for event loop to be released by the client.
+        aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
     }
 
     aws_mqtt_rr_client_operation_release(streaming_operation);
