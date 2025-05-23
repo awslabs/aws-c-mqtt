@@ -3297,3 +3297,60 @@ static int s_mqtt5_client_options_defaults_set_fn(struct aws_allocator *allocato
 }
 
 AWS_TEST_CASE(mqtt5_client_options_defaults_set, s_mqtt5_client_options_defaults_set_fn)
+
+/* Regression test for a case when proxy options set to unsupported type. */
+static int s_mqtt5_client_options_set_invalid_proxy_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct aws_event_loop_group *elg = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    struct aws_host_resolver_default_options hr_options = {
+        .el_group = elg,
+        .max_entries = 1,
+    };
+    struct aws_host_resolver *hr = aws_host_resolver_new_default(allocator, &hr_options);
+
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = elg,
+        .host_resolver = hr,
+    };
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+
+    struct aws_mqtt5_packet_connect_view connect_options;
+    AWS_ZERO_STRUCT(connect_options);
+
+    struct aws_http_proxy_options http_proxy_options;
+    AWS_ZERO_STRUCT(http_proxy_options);
+    http_proxy_options.host = aws_byte_cursor_from_string(s_host_name);
+    http_proxy_options.port = 1234;
+    /* This connection type is not supported anymore, aws_mqtt5_client_options_storage_new should properly handle it */
+    http_proxy_options.connection_type = AWS_HPCT_HTTP_LEGACY;
+
+    struct aws_mqtt5_client_options client_options = {
+        .host_name = aws_byte_cursor_from_string(s_host_name),
+        .port = 1883,
+        .bootstrap = bootstrap,
+        .lifecycle_event_handler = s_dummy_lifecycle_handler,
+        .publish_received_handler = s_dummy_publish_received_,
+        .connect_options = &connect_options,
+        .http_proxy_options = &http_proxy_options};
+
+    struct aws_mqtt5_client_options_storage *client_options_storage =
+        aws_mqtt5_client_options_storage_new(allocator, &client_options);
+
+    ASSERT_NULL(client_options_storage);
+
+    aws_mqtt5_client_options_storage_destroy(client_options_storage);
+    aws_client_bootstrap_release(bootstrap);
+    aws_host_resolver_release(hr);
+    aws_event_loop_group_release(elg);
+
+    aws_thread_join_all_managed();
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5_client_options_set_invalid_proxy, s_mqtt5_client_options_set_invalid_proxy_fn)
