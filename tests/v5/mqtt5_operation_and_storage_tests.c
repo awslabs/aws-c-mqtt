@@ -3340,7 +3340,20 @@ static int s_mqtt5_client_options_set_invalid_proxy_fn(struct aws_allocator *all
     struct aws_mqtt5_client_options_storage *client_options_storage =
         aws_mqtt5_client_options_storage_new(allocator, &client_options);
 
-    ASSERT_NULL(client_options_storage);
+    /* Even though the provided proxy connection type is unsupported, MQTT5 client should ignore it and be initialized
+     * with TUNNEL. */
+    ASSERT_INT_EQUALS(AWS_HPCT_HTTP_TUNNEL, client_options_storage->http_proxy_options.connection_type);
+
+    ASSERT_INT_EQUALS(
+        AWS_MQTT5_DEFAULT_SOCKET_CONNECT_TIMEOUT_MS, client_options_storage->socket_options.connect_timeout_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_MIN_RECONNECT_DELAY_MS, client_options_storage->min_reconnect_delay_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_MAX_RECONNECT_DELAY_MS, client_options_storage->max_reconnect_delay_ms);
+    ASSERT_INT_EQUALS(
+        AWS_MQTT5_CLIENT_DEFAULT_MIN_CONNECTED_TIME_TO_RESET_RECONNECT_DELAY_MS,
+        client_options_storage->min_connected_time_to_reset_reconnect_delay_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_PING_TIMEOUT_MS, client_options_storage->ping_timeout_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_CONNACK_TIMEOUT_MS, client_options_storage->connack_timeout_ms);
+    ASSERT_INT_EQUALS(AWS_MQTT5_CLIENT_DEFAULT_OPERATION_TIMEOUNT_SECONDS, client_options_storage->ack_timeout_seconds);
 
     aws_mqtt5_client_options_storage_destroy(client_options_storage);
     aws_client_bootstrap_release(bootstrap);
