@@ -3825,8 +3825,9 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     }
 
     if (options->http_proxy_options != NULL) {
+        /* Ignore a specified proxy connection type and use TUNNEL unconditionally as only this proxy type works. */
         options_storage->http_proxy_config =
-            aws_http_proxy_config_new_from_proxy_options(allocator, options->http_proxy_options);
+            aws_http_proxy_config_new_tunneling_from_proxy_options(allocator, options->http_proxy_options);
         if (options_storage->http_proxy_config == NULL) {
             goto error;
         }
