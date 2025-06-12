@@ -1237,6 +1237,18 @@ static int s_add_request_operation_to_correlation_token_table(
     struct aws_mqtt_request_response_client *client,
     struct aws_mqtt_rr_client_operation *operation) {
 
+    // First inspect whether the correlation token is already in use
+    struct aws_hash_element *elem = NULL;
+    aws_hash_table_find(
+        &client->operations_by_correlation_tokens,
+        &operation->storage.request_storage.options.correlation_token,
+        &elem);
+    if (elem != NULL) {
+        // correlation token is already in use. Return appropriate error.
+        aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN);
+        return AWS_OP_ERR;
+    }
+
     return aws_hash_table_put(
         &client->operations_by_correlation_tokens,
         &operation->storage.request_storage.options.correlation_token,
@@ -1684,8 +1696,9 @@ static void s_mqtt_rr_client_submit_operation(struct aws_task *task, void *arg, 
 done:
 
     /*
-     * We hold a second reference to the operation during submission.  This ensures that even if a streaming operation
-     * is immediately dec-refed by the creator (before submission completes), the operation will not get destroyed.
+     * We hold a second reference to the operation during submission.  This ensures that even if a streaming
+     * operation is immediately dec-refed by the creator (before submission completes), the operation will not get
+     * destroyed.
      *
      * It is now safe and correct to release that reference.
      *
@@ -2004,8 +2017,9 @@ int aws_mqtt_request_response_client_submit_request(
     s_log_request_response_operation(operation, client);
 
     /*
-     * We hold a second reference to the operation during submission.  This ensures that even if a streaming operation
-     * is immediately dec-refed by the creator (before submission runs), the operation will not get destroyed.
+     * We hold a second reference to the operation during submission.  This ensures that even if a streaming
+     * operation is immediately dec-refed by the creator (before submission runs), the operation will not get
+     * destroyed.
      */
     aws_mqtt_rr_client_operation_acquire(operation);
 
@@ -2103,8 +2117,9 @@ int aws_mqtt_rr_client_operation_activate(struct aws_mqtt_rr_client_operation *o
         operation->id);
 
     /*
-     * We hold a second reference to the operation during submission.  This ensures that even if a streaming operation
-     * is immediately dec-refed by the creator (before submission runs), the operation will not get destroyed.
+     * We hold a second reference to the operation during submission.  This ensures that even if a streaming
+     * operation is immediately dec-refed by the creator (before submission runs), the operation will not get
+     * destroyed.
      */
     aws_mqtt_rr_client_operation_acquire(operation);
 

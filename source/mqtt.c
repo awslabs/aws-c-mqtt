@@ -269,6 +269,9 @@ bool aws_mqtt_is_valid_topic_filter(const struct aws_byte_cursor *topic_filter) 
             AWS_DEFINE_ERROR_INFO_MQTT(
                  AWS_ERROR_MQTT_REQUEST_RESPONSE_INVALID_RESPONSE_PATH,
                  "Request-response operation failed due to arrival on an unknown response path"),
+            AWS_DEFINE_ERROR_INFO_MQTT(
+                 AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN,
+                 "Request-response operation failed due to a duplicate correlation token."),
         };
 /* clang-format on */
 #undef AWS_DEFINE_ERROR_INFO_MQTT
