@@ -3376,25 +3376,36 @@ static int s_rrc_request_response_success_duplicate_correlation_token_fn(struct 
     struct aws_rr_client_test_fixture fixture;
     ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
 
+    struct aws_byte_cursor expected_response_topic = aws_byte_cursor_from_c_str("test/accepted");
+    struct aws_byte_cursor expected_payload = aws_byte_cursor_from_c_str("{\"token\":\"token1\"}");
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
         &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1", NULL, false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key);
 
-    struct aws_byte_cursor expected_response_topic = aws_byte_cursor_from_c_str("test/accepted");
-    struct aws_byte_cursor expected_payload = aws_byte_cursor_from_c_str("{\"token\":\"token1\"}");
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
         &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
 
+    struct aws_byte_cursor expected_response_topic_2 = aws_byte_cursor_from_c_str("test2/accepted");
+    struct aws_byte_cursor expected_payload_2 = aws_byte_cursor_from_c_str("{\"token\":\"token2\"}");
     struct aws_byte_cursor record_key_2 = aws_byte_cursor_from_c_str("testkey2");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
-        &fixture, RRC_PHDT_SUCCESS, "test", record_key_2, "test/accepted", "token1", NULL, false));
+        &fixture, RRC_PHDT_SUCCESS, "test2", record_key_2, "test2/accepted", "token2", NULL, false));
 
     s_rrc_wait_on_request_completion(&fixture, record_key_2);
 
     ASSERT_SUCCESS(s_rrc_verify_request_completion(
-        &fixture, record_key_2, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
+        &fixture, record_key_2, AWS_ERROR_SUCCESS, &expected_response_topic_2, &expected_payload_2));
+
+    struct aws_byte_cursor record_key_3 = aws_byte_cursor_from_c_str("testkey3");
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key_3, "test/accepted", "token1", NULL, false));
+
+    s_rrc_wait_on_request_completion(&fixture, record_key_3);
+
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key_3, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
 
     s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
