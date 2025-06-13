@@ -3337,20 +3337,17 @@ static int s_rrc_request_response_failure_duplicate_correlation_token_fn(struct 
         false));
 
     struct aws_byte_cursor record_key_2 = aws_byte_cursor_from_c_str("testkey2");
-    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+    s_rrc_test_submit_test_request(
         &fixture,
         RRC_PHDT_FAILURE_DUPLICATE_CORRELATION_TOKEN,
-        "test",
+        "test2",
         record_key_2,
-        "test/accepted",
+        "test2/accepted",
         "token1",
         NULL,
-        false));
+        false);
 
-    s_rrc_wait_on_request_completion(&fixture, record_key_2);
-
-    ASSERT_SUCCESS(s_rrc_verify_request_completion(
-        &fixture, record_key_2, AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN, NULL, NULL));
+    ASSERT_INT_EQUALS(aws_last_error(), AWS_ERROR_INVALID_ARGUMENT);
 
     s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 

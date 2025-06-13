@@ -273,6 +273,9 @@ struct aws_mqtt_request_response_client {
      * Map from cursor (correlation token) -> request operation
      */
     struct aws_hash_table operations_by_correlation_tokens;
+
+    /* Track correlation tokens currently in use by operations in queued or active states */
+    struct aws_hash_table correlation_tokens_in_use;
 };
 
 struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_acquire_internal(
@@ -318,6 +321,7 @@ static void s_mqtt_request_response_client_final_destroy(struct aws_mqtt_request
 
     aws_mqtt_request_response_client_subscriptions_clean_up(&client->subscriptions);
     aws_hash_table_clean_up(&client->operations_by_correlation_tokens);
+    aws_hash_table_clean_up(&client->correlation_tokens_in_use);
 
     aws_event_loop_group_release_from_event_loop(client->loop);
     aws_mem_release(client->allocator, client);
@@ -1102,6 +1106,15 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         NULL,
         NULL);
 
+    aws_hash_table_init(
+        &rr_client->correlation_tokens_in_use,
+        allocator,
+        MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE,
+        aws_hash_byte_cursor_ptr,
+        aws_mqtt_byte_cursor_hash_equality,
+        NULL,
+        NULL);
+
     aws_linked_list_init(&rr_client->operation_queue);
 
     aws_task_init(
@@ -1234,24 +1247,16 @@ static int s_add_request_operation_to_response_path_table(
 }
 
 static bool s_is_correlation_token_in_use(
-    struct aws_mqtt_request_response_client *client,
-    struct aws_mqtt_rr_client_operation *operation) {
+    const struct aws_mqtt_request_response_client *client,
+    const struct aws_byte_cursor *correlation_token) {
     struct aws_hash_element *elem = NULL;
-    aws_hash_table_find(
-        &client->operations_by_correlation_tokens,
-        &operation->storage.request_storage.options.correlation_token,
-        &elem);
+    aws_hash_table_find(&client->correlation_tokens_in_use, correlation_token, &elem);
     return elem != NULL;
 }
 
 static int s_add_request_operation_to_correlation_token_table(
     struct aws_mqtt_request_response_client *client,
     struct aws_mqtt_rr_client_operation *operation) {
-
-    if (s_is_correlation_token_in_use(client, operation)) {
-        aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN);
-        return AWS_OP_ERR;
-    }
 
     return aws_hash_table_put(
         &client->operations_by_correlation_tokens,
@@ -1632,6 +1637,17 @@ static bool s_are_request_operation_options_valid(
         return false;
     }
 
+    if (request_options->correlation_token.len > 0) {
+        // do a correlation token check
+        if (s_is_correlation_token_in_use(client, &request_options->correlation_token)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_REQUEST_RESPONSE,
+                "(%p) rr client request options - correlation token is already in use.",
+                (void *)client);
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -1710,6 +1726,15 @@ done:
      * completely client-internal.
      */
     aws_mqtt_rr_client_operation_release(operation);
+}
+
+static void s_remove_correlation_token_from_in_use(struct aws_mqtt_rr_client_operation *operation) {
+    if (operation == NULL || operation->type != AWS_MRROT_REQUEST) {
+        return;
+    }
+    struct aws_mqtt_request_response_client *client = operation->client_internal_ref;
+    aws_hash_table_remove(
+        &client->correlation_tokens_in_use, &operation->storage.request_storage.options.correlation_token, NULL, NULL);
 }
 
 static void s_aws_mqtt_streaming_operation_storage_clean_up(struct aws_mqtt_streaming_operation_storage *storage) {
@@ -1993,6 +2018,11 @@ int aws_mqtt_request_response_client_submit_request(
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
+    // Store the correlation token to prevent allowing a duplicate correlation token to be used.
+    if (request_options->correlation_token.len > 0) {
+        aws_hash_table_put(&client->correlation_tokens_in_use, &request_options->correlation_token, NULL, NULL);
+    }
+
     uint64_t now = 0;
     if (aws_high_res_clock_get_ticks(&now)) {
         return aws_raise_error(AWS_ERROR_CLOCK_FAILURE);
@@ -2144,6 +2174,7 @@ struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_acquire(
 struct aws_mqtt_rr_client_operation *aws_mqtt_rr_client_operation_release(
     struct aws_mqtt_rr_client_operation *operation) {
     if (operation != NULL) {
+        s_remove_correlation_token_from_in_use(operation);
         aws_ref_count_release(&operation->ref_count);
     }
 
