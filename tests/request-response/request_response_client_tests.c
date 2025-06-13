@@ -2712,6 +2712,7 @@ enum rrc_publish_handler_directive_type {
     RRC_PHDT_FAILURE_MISSING_CORRELATION_TOKEN,
     RRC_PHDT_FAILURE_BAD_CORRELATION_TOKEN_TYPE,
     RRC_PHDT_FAILURE_MISMATCHED_CORRELATION_TOKEN,
+    RRC_PHDT_FAILURE_DUPLICATE_CORRELATION_TOKEN,
 };
 
 int aws_mqtt5_mock_server_handle_publish_json_request(
@@ -2784,7 +2785,7 @@ int aws_mqtt5_mock_server_handle_publish_json_request(
         }
     }
 
-    if (directive == RRC_PHDT_FAILURE_PUBACK_REASON_CODE) {
+    if (directive == RRC_PHDT_FAILURE_PUBACK_REASON_CODE || directive == RRC_PHDT_FAILURE_DUPLICATE_CORRELATION_TOKEN) {
         goto done;
     }
 
@@ -3314,6 +3315,53 @@ static int s_rrc_request_response_failure_missing_correlation_token_fn(struct aw
 AWS_TEST_CASE(
     rrc_request_response_failure_missing_correlation_token,
     s_rrc_request_response_failure_missing_correlation_token_fn)
+
+static int s_rrc_request_response_failure_duplicate_correlation_token_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
+
+    struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture,
+        RRC_PHDT_FAILURE_DUPLICATE_CORRELATION_TOKEN,
+        "test",
+        record_key,
+        "test/accepted",
+        "token1",
+        NULL,
+        false));
+
+    struct aws_byte_cursor record_key_2 = aws_byte_cursor_from_c_str("testkey");
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture,
+        RRC_PHDT_FAILURE_DUPLICATE_CORRELATION_TOKEN,
+        "test",
+        record_key_2,
+        "test/accepted",
+        "token1",
+        NULL,
+        false));
+
+    s_rrc_wait_on_request_completion(&fixture, record_key_2);
+
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key_2, AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN, NULL, NULL));
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrc_request_response_failure_duplicate_correlation_token,
+    s_rrc_request_response_failure_duplicate_correlation_token_fn)
 
 static int s_rrc_request_response_failure_invalid_correlation_token_type_fn(
     struct aws_allocator *allocator,
