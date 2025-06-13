@@ -1241,7 +1241,7 @@ static bool s_is_correlation_token_in_use(
         &client->operations_by_correlation_tokens,
         &operation->storage.request_storage.options.correlation_token,
         &elem);
-    return elem == NULL;
+    return elem != NULL;
 }
 
 static int s_add_request_operation_to_correlation_token_table(
