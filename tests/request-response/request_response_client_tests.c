@@ -3336,7 +3336,7 @@ static int s_rrc_request_response_failure_duplicate_correlation_token_fn(struct 
         NULL,
         false));
 
-    struct aws_byte_cursor record_key_2 = aws_byte_cursor_from_c_str("testkey");
+    struct aws_byte_cursor record_key_2 = aws_byte_cursor_from_c_str("testkey2");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
         &fixture,
         RRC_PHDT_FAILURE_DUPLICATE_CORRELATION_TOKEN,

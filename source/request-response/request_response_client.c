@@ -1233,18 +1233,22 @@ static int s_add_request_operation_to_response_path_table(
     return AWS_OP_SUCCESS;
 }
 
-static int s_add_request_operation_to_correlation_token_table(
+static bool s_is_correlation_token_in_use(
     struct aws_mqtt_request_response_client *client,
     struct aws_mqtt_rr_client_operation *operation) {
-
-    // First inspect whether the correlation token is already in use
     struct aws_hash_element *elem = NULL;
     aws_hash_table_find(
         &client->operations_by_correlation_tokens,
         &operation->storage.request_storage.options.correlation_token,
         &elem);
-    if (elem != NULL) {
-        // correlation token is already in use. Return appropriate error.
+    return elem == NULL;
+}
+
+static int s_add_request_operation_to_correlation_token_table(
+    struct aws_mqtt_request_response_client *client,
+    struct aws_mqtt_rr_client_operation *operation) {
+
+    if (s_is_correlation_token_in_use(client, operation)) {
         aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN);
         return AWS_OP_ERR;
     }
@@ -1291,7 +1295,7 @@ static void s_handle_operation_subscribe_result(
     }
 
     if (s_add_in_progress_operation_to_tracking_tables(client, operation)) {
-        s_request_response_fail_operation(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
+        s_request_response_fail_operation(operation, aws_last_error());
         return;
     }
 
