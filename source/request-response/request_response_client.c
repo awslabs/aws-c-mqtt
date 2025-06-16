@@ -1317,7 +1317,7 @@ static void s_handle_operation_subscribe_result(
     }
 
     if (s_add_in_progress_operation_to_tracking_tables(client, operation)) {
-        s_request_response_fail_operation(operation, aws_last_error());
+        s_request_response_fail_operation(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_INTERNAL_ERROR);
         return;
     }
 
