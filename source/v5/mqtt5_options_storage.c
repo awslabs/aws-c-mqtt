@@ -3705,7 +3705,7 @@ void aws_mqtt5_client_options_storage_log(
         log_handle,
         level,
         AWS_LS_MQTT5_GENERAL,
-        "id=%p: aws_mqtt5_client_options_storage QoS 1 packet ack timeout interval set to %" PRIu32 " ms",
+        "id=%p: aws_mqtt5_client_options_storage QoS 1 packet ack timeout interval set to %" PRIu32 " seconds",
         (void *)options_storage,
         options_storage->ack_timeout_seconds);
 
