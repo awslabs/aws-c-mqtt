@@ -1713,7 +1713,7 @@ static void s_mqtt_rr_client_submit_operation(struct aws_task *task, void *arg, 
 
     // If a correlation token is used with the operation, check if it's already in use. Fail the operation if it is,
     // store the correlation token if it isn't.
-    if (operation->storage.request_storage.options.correlation_token.len > 0) {
+    if (operation->type == AWS_MRROT_REQUEST && operation->storage.request_storage.options.correlation_token.len > 0) {
         if (s_is_correlation_token_in_use(client, &operation->storage.request_storage.options.correlation_token)) {
             s_request_response_fail_operation(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN);
             goto done;
