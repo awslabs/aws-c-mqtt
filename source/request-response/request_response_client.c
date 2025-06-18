@@ -419,7 +419,9 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
 
     s_change_operation_state(operation, AWS_MRROS_PENDING_DESTROY);
 
-    s_remove_correlation_token_from_in_use(operation);
+    if (operation->storage.request_storage.options.correlation_token.len > 0) {
+        s_remove_correlation_token_from_in_use(operation);
+    }
 
     aws_mqtt_rr_client_operation_release(operation);
 }
@@ -1708,6 +1710,20 @@ static void s_mqtt_rr_client_submit_operation(struct aws_task *task, void *arg, 
         goto done;
     }
 
+    // If a correlation token is used with the operation, check if it's already in use. Fail the operation if it is,
+    // store the correlation token if it isn't.
+    if (operation->storage.request_storage.options.correlation_token.len > 0) {
+        if (s_is_correlation_token_in_use(client, &operation->storage.request_storage.options.correlation_token)) {
+            s_request_response_fail_operation(operation, AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN);
+            goto done;
+        }
+        aws_hash_table_put(
+            &client->correlation_tokens_in_use,
+            &operation->storage.request_storage.options.correlation_token,
+            NULL,
+            NULL);
+    }
+
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_REQUEST_RESPONSE,
         "id=%p: request-response client, queuing operation %" PRIu64,
@@ -2044,15 +2060,6 @@ int aws_mqtt_request_response_client_submit_request(
     s_aws_mqtt_request_operation_storage_init_from_options(
         &operation->storage.request_storage, allocator, request_options);
     s_aws_mqtt_rr_client_operation_init_shared(operation, client);
-
-    // Store the correlation token to prevent allowing a duplicate correlation token to be used.
-    if (operation->storage.request_storage.options.correlation_token.len > 0) {
-        aws_hash_table_put(
-            &client->correlation_tokens_in_use,
-            &operation->storage.request_storage.options.correlation_token,
-            NULL,
-            NULL);
-    }
 
     AWS_LOGF_INFO(
         AWS_LS_MQTT_REQUEST_RESPONSE,
