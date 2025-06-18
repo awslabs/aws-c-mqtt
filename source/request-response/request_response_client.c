@@ -419,7 +419,8 @@ static void s_complete_request_operation_with_failure(struct aws_mqtt_rr_client_
 
     s_change_operation_state(operation, AWS_MRROS_PENDING_DESTROY);
 
-    if (operation->storage.request_storage.options.correlation_token.len > 0) {
+    if (operation->storage.request_storage.options.correlation_token.len > 0 &&
+        error_code != AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN) {
         s_remove_correlation_token_from_in_use(operation);
     }
 

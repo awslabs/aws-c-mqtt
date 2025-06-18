@@ -3329,6 +3329,8 @@ static int s_rrc_request_response_failure_duplicate_correlation_token_fn(struct 
     struct aws_rr_client_test_fixture fixture;
     ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
 
+    // First operation will use the duplicate correlation key but won't complete the publish
+    // so that the token is held by the request response client.
     struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
     ASSERT_SUCCESS(s_rrc_test_submit_test_request(
         &fixture,
@@ -3340,6 +3342,7 @@ static int s_rrc_request_response_failure_duplicate_correlation_token_fn(struct 
         NULL,
         false));
 
+    // Second operation is scheduled immediately following the first making it so both should be in the task manager
     struct aws_byte_cursor record_key_2 = aws_byte_cursor_from_c_str("testkey2");
     s_rrc_test_submit_test_request(
         &fixture,
@@ -3351,13 +3354,34 @@ static int s_rrc_request_response_failure_duplicate_correlation_token_fn(struct 
         NULL,
         false);
 
+    // The second operation will be scheduled as the correlation token is not held by the RR client yet but will
+    // fail with completion when the scheduled task attempts to be run.
     s_rrc_wait_on_request_completion(&fixture, record_key_2);
 
+    // This task should have failed with the AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN.
     struct aws_hash_element *element = NULL;
     aws_hash_table_find(&fixture.request_response_records, &record_key_2, &element);
     AWS_FATAL_ASSERT(element != NULL && element->value != NULL);
     struct aws_rr_client_fixture_request_response_record *record = element->value;
     ASSERT_INT_EQUALS(AWS_ERROR_MQTT_REQUEST_RESPONSE_DUPLICATE_CORRELATION_TOKEN, record->error_code);
+
+    // Third operation is scheduled after the second has failed meaning that the correlation key is already
+    // held by the RR client. This task will not be scheduled and will fail immediately when the options are
+    // validated.
+    struct aws_byte_cursor record_key_3 = aws_byte_cursor_from_c_str("testkey3");
+    s_rrc_test_submit_test_request(
+        &fixture,
+        RRC_PHDT_FAILURE_DUPLICATE_CORRELATION_TOKEN,
+        "test3",
+        record_key_3,
+        "test3/accepted",
+        "token1",
+        NULL,
+        false);
+
+    // The log will show that the failed option validation is a duplicate correlation token but the error that
+    // is raised will be AWS_ERROR_INVALID_ARGUMENT.
+    ASSERT_INT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, aws_last_error());
 
     s_aws_rr_client_test_fixture_clean_up(&fixture, false);
 
