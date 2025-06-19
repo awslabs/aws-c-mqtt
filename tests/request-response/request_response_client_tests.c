@@ -3475,6 +3475,52 @@ AWS_TEST_CASE(
     rrc_request_response_success_empty_correlation_token_sequence,
     s_rrc_request_response_success_empty_correlation_token_sequence_fn)
 
+/*
+ * Test that multiple rr operations with identical correlation tokens all get executed
+ */
+static int s_rrc_request_response_success_duplicate_correlation_token_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options client_test_options;
+    struct aws_rr_client_test_fixture fixture;
+    ASSERT_SUCCESS(s_init_fixture_request_operation_success(&fixture, &client_test_options, allocator, NULL, NULL));
+
+    struct aws_byte_cursor expected_response_topic = aws_byte_cursor_from_c_str("test/accepted");
+    struct aws_byte_cursor expected_payload = aws_byte_cursor_from_c_str("{\"token\":\"token1\"}");
+    struct aws_byte_cursor record_key = aws_byte_cursor_from_c_str("testkey");
+    struct aws_byte_cursor record_key_2 = aws_byte_cursor_from_c_str("testkey2");
+    struct aws_byte_cursor record_key_3 = aws_byte_cursor_from_c_str("testkey3");
+
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key, "test/accepted", "token1", NULL, false));
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key_2, "test/accepted", "token1", NULL, false));
+    ASSERT_SUCCESS(s_rrc_test_submit_test_request(
+        &fixture, RRC_PHDT_SUCCESS, "test", record_key_3, "test/accepted", "token1", NULL, false));
+
+    // Requests using a duplicate correlation token should all complete. They will be executed in-order and
+    // the queue blocked until a previous operation using the duplicate correlation token completes its task.
+    s_rrc_wait_on_request_completion(&fixture, record_key_3);
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key_2, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
+    ASSERT_SUCCESS(s_rrc_verify_request_completion(
+        &fixture, record_key_3, AWS_ERROR_SUCCESS, &expected_response_topic, &expected_payload));
+
+    s_aws_rr_client_test_fixture_clean_up(&fixture, false);
+
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    rrc_request_response_success_duplicate_correlation_token,
+    s_rrc_request_response_success_duplicate_correlation_token_fn)
+
 struct rrc_multi_test_operation {
     const char *prefix;
     const char *token;
