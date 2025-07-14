@@ -3909,7 +3909,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
             struct aws_uuid uuid;
             AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
 
-            aws_uuid_to_str(&uuid, &auto_assign_id_buf);
+            aws_uuid_to_str_compact(&uuid, &auto_assign_id_buf);
 
             connect_options.client_id = aws_byte_cursor_from_buf(&auto_assign_id_buf);
 

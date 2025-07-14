@@ -6626,7 +6626,7 @@ static int s_mqtt5_do_auto_assigned_client_id_test(struct aws_allocator *allocat
 
     const struct aws_byte_cursor auto_assigned_client_id = client->config->connect->storage_view.client_id;
     if (use_iot_core_validation) {
-        ASSERT_INT_EQUALS(39, auto_assigned_client_id.len); /* "gen" + uuid as string with dashes length */
+        ASSERT_INT_EQUALS(35, auto_assigned_client_id.len); /* "gen" + uuid as string no dashes length */
     } else {
         ASSERT_INT_EQUALS(0, auto_assigned_client_id.len);
     }
