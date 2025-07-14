@@ -11,14 +11,11 @@
 #include <aws/common/uuid.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
-#include <aws/io/stream.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 
 #include <inttypes.h>
-
-#include "aws/compression/huffman.h"
 
 /*********************************************************************************************************************
  * Property set
