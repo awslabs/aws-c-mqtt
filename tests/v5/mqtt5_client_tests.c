@@ -18,6 +18,7 @@
 #include <aws/testing/aws_test_harness.h>
 
 #include <math.h>
+
 /* The delay margin accounts for system-level latencies, particularly when scheduling tasks on dispatch queues. In
  * typical test environments, we observe delays of around 150–170ms before the task begins execution. To ensure
  * stability, we define a margin of 200ms (AWS_MQTT5_TESTING_DELAY_NS). If related tests fail, it may indicate this
@@ -6601,3 +6602,53 @@ static int s_mqtt5_client_dynamic_operation_timeout_default_fn(struct aws_alloca
 }
 
 AWS_TEST_CASE(mqtt5_client_dynamic_operation_timeout_default, s_mqtt5_client_dynamic_operation_timeout_default_fn)
+
+static int s_mqtt5_do_auto_assigned_client_id_test(struct aws_allocator *allocator, bool use_iot_core_validation) {
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+    AWS_ZERO_STRUCT(((struct aws_mqtt5_packet_connect_view *)test_options.client_options.connect_options)->client_id);
+    if (use_iot_core_validation) {
+        test_options.client_options.extended_validation_and_flow_control_options =
+            AWS_MQTT5_EVAFCO_AWS_IOT_CORE_DEFAULTS;
+    }
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+
+    const struct aws_byte_cursor auto_assigned_client_id = client->config->connect->storage_view.client_id;
+    if (use_iot_core_validation) {
+        ASSERT_INT_EQUALS(35, auto_assigned_client_id.len); /* "gen" + uuid as string no dashes length */
+    } else {
+        ASSERT_INT_EQUALS(0, auto_assigned_client_id.len);
+    }
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_mqtt5_client_auto_assigned_client_id_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_mqtt5_do_auto_assigned_client_id_test(allocator, false);
+}
+
+AWS_TEST_CASE(mqtt5_client_auto_assigned_client_id, s_mqtt5_client_auto_assigned_client_id_fn)
+
+static int s_mqtt5_client_auto_assigned_client_id_iot_core_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    return s_mqtt5_do_auto_assigned_client_id_test(allocator, true);
+}
+
+AWS_TEST_CASE(mqtt5_client_auto_assigned_client_id_iot_core, s_mqtt5_client_auto_assigned_client_id_iot_core_fn)
