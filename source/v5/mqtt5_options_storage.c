@@ -3922,7 +3922,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
              */
             AWS_LOGF_WARN(
                 AWS_LS_MQTT5_GENERAL,
-                "Letting server assigned the client id.  If reconnects fail with a connect reason code of "
+                "Letting server assign the client id.  If reconnects fail with a connect reason code of "
                 "AWS_MQTT5_CRC_CLIENT_IDENTIFIER_NOT_VALID (133), then consider manually setting the client id to a "
                 "UUID.");
         }
