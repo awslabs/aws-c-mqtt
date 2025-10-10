@@ -64,7 +64,7 @@ struct mqtt_connection_state_test {
     size_t publishes_received;
     size_t expected_publishes;
     /* The returned QoS from mock server */
-    struct aws_array_list qos_returned; /* list of uint_8 */
+    struct aws_array_list qos_returned; /* list of enum aws_mqtt_qos */
     size_t ops_completed;
     size_t expected_ops_completed;
 };
@@ -253,7 +253,7 @@ static int s_operation_statistics_setup_mqtt_server_fn(struct aws_allocator *all
         &state_test_data->published_messages, allocator, 4, sizeof(struct received_publish_packet)));
     ASSERT_SUCCESS(aws_array_list_init_dynamic(
         &state_test_data->any_published_messages, allocator, 4, sizeof(struct received_publish_packet)));
-    ASSERT_SUCCESS(aws_array_list_init_dynamic(&state_test_data->qos_returned, allocator, 2, sizeof(uint8_t)));
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&state_test_data->qos_returned, allocator, 2, sizeof(enum aws_mqtt_qos)));
     return AWS_OP_SUCCESS;
 }
 
