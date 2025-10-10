@@ -75,7 +75,7 @@ struct mqtt_connection_state_test {
     size_t publishes_received;
     size_t expected_publishes;
     /* The returned QoS from mock server */
-    struct aws_array_list qos_returned; /* list of uint_8 */
+    struct aws_array_list qos_returned; /* list of enum aws_mqtt_qos */
     size_t ops_completed;
     size_t expected_ops_completed;
     size_t connection_close_calls; /* All of the times on_connection_closed has been called */
