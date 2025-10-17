@@ -3743,11 +3743,6 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
         aws_mem_release(options_storage->allocator, options_storage->socks5_proxy_options);
     }
 
-    if (options_storage->socks5_proxy_options != NULL) {
-        aws_socks5_proxy_options_clean_up(options_storage->socks5_proxy_options);
-        aws_mem_release(options_storage->allocator, options_storage->socks5_proxy_options);
-    }
-    
     if (options_storage->connect != NULL) {
         aws_mqtt5_packet_connect_storage_clean_up(options_storage->connect);
         aws_mem_release(options_storage->connect->allocator, options_storage->connect);
