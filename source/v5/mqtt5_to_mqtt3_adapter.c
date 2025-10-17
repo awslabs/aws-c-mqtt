@@ -13,6 +13,7 @@
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_to_mqtt3_adapter_impl.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
+#include <aws/io/socks5.h>
 
 /*
  * A best-effort-but-not-100%-accurate translation from mqtt5 error codes to mqtt311 error codes.
@@ -1216,6 +1217,107 @@ done:
     aws_http_proxy_config_destroy(set_task->proxy_config);
 
     aws_mem_release(set_task->allocator, set_task);
+}
+
+struct aws_mqtt_set_socks5_proxy_options_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection_5_impl *adapter;
+    struct aws_allocator *proxy_allocator;
+    struct aws_socks5_proxy_options *proxy_options;
+};
+
+static void s_set_socks5_proxy_options_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_set_socks5_proxy_options_task *set_task = arg;
+    struct aws_mqtt_client_connection_5_impl *adapter = set_task->adapter;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_mqtt5_client_options_storage *config = adapter->client->config;
+
+        if (config->socks5_proxy_options != NULL) {
+            aws_socks5_proxy_options_clean_up(config->socks5_proxy_options);
+            aws_mem_release(config->allocator, config->socks5_proxy_options);
+            config->socks5_proxy_options = NULL;
+        }
+
+        config->socks5_proxy_options = set_task->proxy_options;
+        set_task->proxy_options = NULL;
+    }
+
+    aws_ref_count_release(&adapter->internal_refs);
+
+    if (set_task->proxy_options != NULL) {
+        aws_socks5_proxy_options_clean_up(set_task->proxy_options);
+        aws_mem_release(set_task->proxy_allocator, set_task->proxy_options);
+    }
+
+    aws_mem_release(set_task->allocator, set_task);
+}
+
+static struct aws_mqtt_set_socks5_proxy_options_task *s_aws_mqtt_set_socks5_proxy_options_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    struct aws_socks5_proxy_options *proxy_options) {
+
+    struct aws_mqtt5_client_options_storage *config = adapter->client->config;
+    struct aws_allocator *config_allocator = config->allocator;
+
+    struct aws_socks5_proxy_options *proxy_copy = NULL;
+    if (proxy_options != NULL) {
+        proxy_copy = aws_mem_calloc(config_allocator, 1, sizeof(struct aws_socks5_proxy_options));
+        if (!proxy_copy) {
+            return NULL;
+        }
+
+        if (aws_socks5_proxy_options_copy(proxy_copy, proxy_options) != AWS_OP_SUCCESS) {
+            aws_mem_release(config_allocator, proxy_copy);
+            return NULL;
+        }
+    }
+
+    struct aws_mqtt_set_socks5_proxy_options_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_socks5_proxy_options_task));
+    if (set_task == NULL) {
+        if (proxy_copy != NULL) {
+            aws_socks5_proxy_options_clean_up(proxy_copy);
+            aws_mem_release(config_allocator, proxy_copy);
+        }
+        return NULL;
+    }
+
+    aws_task_init(&set_task->task, s_set_socks5_proxy_options_task_fn, (void *)set_task, "SetSocks5ProxyOptionsTask");
+    set_task->allocator = adapter->allocator;
+    set_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
+    set_task->proxy_allocator = config_allocator;
+    set_task->proxy_options = proxy_copy;
+
+    return set_task;
+}
+
+static int s_aws_mqtt_client_connection_5_set_socks5_proxy_options(
+    void *impl,
+    struct aws_socks5_proxy_options *proxy_options) {
+
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_mqtt_set_socks5_proxy_options_task *task =
+        s_aws_mqtt_set_socks5_proxy_options_task_new(adapter->allocator, adapter, proxy_options);
+    if (task == NULL) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+            "id=%p: failed to create set socks5 proxy options task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
 }
 
 static struct aws_mqtt_set_http_proxy_options_task *s_aws_mqtt_set_http_proxy_options_task_new(
@@ -2869,6 +2971,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_login_fn = s_aws_mqtt_client_connection_5_set_login,
     .use_websockets_fn = s_aws_mqtt_client_connection_5_use_websockets,
     .set_http_proxy_options_fn = s_aws_mqtt_client_connection_5_set_http_proxy_options,
+    .set_socks5_proxy_options_fn = s_aws_mqtt_client_connection_5_set_socks5_proxy_options,
     .set_host_resolution_options_fn = s_aws_mqtt_client_connection_5_set_host_resolution_options,
     .set_reconnect_timeout_fn = s_aws_mqtt_client_connection_5_set_reconnect_timeout,
     .set_connection_result_handlers = s_aws_mqtt_client_connection_5_set_connection_result_handlers,

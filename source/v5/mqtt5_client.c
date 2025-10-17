@@ -12,6 +12,8 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/socks5_channel_handler.h>
+#include <aws/io/socks5.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/shared.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
@@ -888,7 +890,10 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
             .requested_event_loop = client->loop,
             .host_resolution_config = &client->config->host_resolution_override};
 
-        if (client->config->http_proxy_config != NULL) {
+        // SOCKS5 and HTTP proxy are mutually exclusive, prefer SOCKS5 if both are set
+        if (client->config->socks5_proxy_options != NULL) {
+            websocket_options.socks5_proxy_options = client->config->socks5_proxy_options;
+        } else if (client->config->http_proxy_config != NULL) {
             websocket_options.proxy_options = &client->config->http_proxy_options;
         }
 
@@ -1007,11 +1012,15 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
         channel_options.requested_event_loop = client->loop;
         channel_options.host_resolution_override_config = &client->config->host_resolution_override;
 
-        if (client->config->http_proxy_config == NULL) {
-            result = (*client->vtable->client_bootstrap_new_socket_channel_fn)(&channel_options);
-        } else {
+        // SOCKS5 and HTTP proxy are mutually exclusive, prefer SOCKS5 if both are set
+        if (client->config->socks5_proxy_options != NULL) {
+            result = aws_client_bootstrap_new_socket_channel_with_socks5(
+                client->allocator, &channel_options, client->config->socks5_proxy_options);
+        } else if (client->config->http_proxy_config != NULL) {
             result = (*client->vtable->http_proxy_new_socket_channel_fn)(
                 &channel_options, &client->config->http_proxy_options);
+        } else {
+            result = (*client->vtable->client_bootstrap_new_socket_channel_fn)(&channel_options);
         }
     }
 

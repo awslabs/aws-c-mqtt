@@ -18,6 +18,8 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
+#include <aws/io/socks5_channel_handler.h>
+#include <aws/io/socks5.h>
 #include <aws/io/uri.h>
 
 #include <aws/common/clock.h>
@@ -844,6 +846,12 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
         connection->http_proxy_config = NULL;
     }
 
+    if (connection->socks5_proxy_options) {
+        aws_socks5_proxy_options_clean_up(connection->socks5_proxy_options);
+        aws_mem_release(connection->allocator, connection->socks5_proxy_options);
+        connection->socks5_proxy_options = NULL;
+    }
+
     aws_mqtt_client_release(connection->client);
 
     /* Frees all allocated memory */
@@ -1235,6 +1243,35 @@ static int s_aws_mqtt_client_connection_311_set_http_proxy_options(
     return connection->http_proxy_config != NULL ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
 
+static int s_aws_mqtt_client_connection_311_set_socks5_proxy_options(
+    void *impl,
+    struct aws_socks5_proxy_options *socks5_proxy_options) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    if (connection->socks5_proxy_options) {
+        aws_socks5_proxy_options_clean_up(connection->socks5_proxy_options);
+        aws_mem_release(connection->allocator, connection->socks5_proxy_options);
+        connection->socks5_proxy_options = NULL;
+    }
+
+    if (socks5_proxy_options) {
+        connection->socks5_proxy_options =
+            aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_socks5_proxy_options));
+        if (!connection->socks5_proxy_options) {
+            return AWS_OP_ERR;
+        }
+
+        if (aws_socks5_proxy_options_copy(connection->socks5_proxy_options, socks5_proxy_options) != AWS_OP_SUCCESS) {
+            aws_mem_release(connection->allocator, connection->socks5_proxy_options);
+            connection->socks5_proxy_options = NULL;
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_aws_mqtt_client_connection_311_set_host_resolution_options(
     void *impl,
     const struct aws_host_resolution_config *host_resolution_config) {
@@ -1426,6 +1463,8 @@ static void s_websocket_handshake_transform_complete(
     if (connection->http_proxy_config != NULL) {
         aws_http_proxy_options_init_from_config(&proxy_options, connection->http_proxy_config);
         websocket_options.proxy_options = &proxy_options;
+    } else if (connection->socks5_proxy_options != NULL) {
+        websocket_options.socks5_proxy_options = connection->socks5_proxy_options;
     }
 
     if (aws_websocket_client_connect(&websocket_options)) {
@@ -1695,14 +1734,17 @@ static int s_mqtt_client_connect(
         channel_options.requested_event_loop = connection->loop;
         channel_options.host_resolution_override_config = &connection->host_resolution_config;
 
-        if (connection->http_proxy_config == NULL) {
-            result = aws_client_bootstrap_new_socket_channel(&channel_options);
-        } else {
+        // SOCKS5 proxy takes precedence if both HTTP and SOCKS5 are configured
+        if (connection->socks5_proxy_options != NULL) {
+            result = aws_client_bootstrap_new_socket_channel_with_socks5(
+                connection->allocator, &channel_options, connection->socks5_proxy_options);
+        } else if (connection->http_proxy_config != NULL) {
             struct aws_http_proxy_options proxy_options;
             AWS_ZERO_STRUCT(proxy_options);
-
             aws_http_proxy_options_init_from_config(&proxy_options, connection->http_proxy_config);
             result = aws_http_proxy_new_socket_channel(&channel_options, &proxy_options);
+        } else {
+            result = aws_client_bootstrap_new_socket_channel(&channel_options);
         }
     }
 
@@ -3374,6 +3416,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .set_login_fn = s_aws_mqtt_client_connection_311_set_login,
     .use_websockets_fn = s_aws_mqtt_client_connection_311_use_websockets,
     .set_http_proxy_options_fn = s_aws_mqtt_client_connection_311_set_http_proxy_options,
+    .set_socks5_proxy_options_fn = s_aws_mqtt_client_connection_311_set_socks5_proxy_options,
     .set_host_resolution_options_fn = s_aws_mqtt_client_connection_311_set_host_resolution_options,
     .set_reconnect_timeout_fn = s_aws_mqtt_client_connection_311_set_reconnect_timeout,
     .set_connection_result_handlers = s_aws_mqtt_client_connection_311_set_connection_result_handlers,

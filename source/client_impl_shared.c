@@ -56,6 +56,13 @@ int aws_mqtt_client_connection_set_http_proxy_options(
     return (*connection->vtable->set_http_proxy_options_fn)(connection->impl, proxy_options);
 }
 
+int aws_mqtt_client_connection_set_socks5_proxy_options(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_socks5_proxy_options *proxy_options) {
+
+    return (*connection->vtable->set_socks5_proxy_options_fn)(connection->impl, proxy_options);
+}
+
 int aws_mqtt_client_connection_set_host_resolution_options(
     struct aws_mqtt_client_connection *connection,
     const struct aws_host_resolution_config *host_resolution_config) {

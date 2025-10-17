@@ -657,6 +657,9 @@ struct aws_mqtt5_client_options {
      * configuration but changes the refresh frequency to a value that prevents DNS pinging.
      */
     struct aws_host_resolution_config *host_resolution_override;
+
+    /** Options for SOCKS5 proxy */
+    const struct aws_socks5_proxy_options * socks5_proxy_options;
 };
 
 AWS_EXTERN_C_BEGIN

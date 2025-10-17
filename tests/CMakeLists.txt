@@ -28,6 +28,9 @@ add_test_case(mqtt_packet_pingreq)
 add_test_case(mqtt_packet_pingresp)
 add_test_case(mqtt_packet_disconnect)
 
+add_test_case(mqtt_set_socks5_proxy_options_invokes_vtable)
+add_test_case(mqtt_connect_uses_socks5_after_set)
+
 add_test_case(mqtt_packet_connack_decode_failure_reserved)
 add_test_case(mqtt_packet_ack_decode_failure_reserved)
 add_test_case(mqtt_packet_pingresp_decode_failure_reserved)

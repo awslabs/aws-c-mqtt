@@ -226,6 +226,7 @@ struct aws_mqtt_client_connection_311_impl {
     struct aws_tls_connection_options tls_options;
     struct aws_socket_options socket_options;
     struct aws_http_proxy_config *http_proxy_config;
+    struct aws_socks5_proxy_options *socks5_proxy_options;
     struct aws_event_loop *loop;
     struct aws_host_resolution_config host_resolution_config;
 
