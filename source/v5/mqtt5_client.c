@@ -302,7 +302,7 @@ static void s_aws_mqtt5_client_emit_stopped_lifecycle_event(struct aws_mqtt5_cli
 }
 
 static void s_aws_mqtt5_client_emit_connecting_lifecycle_event(struct aws_mqtt5_client *client) {
-    AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: emitting connecting lifecycle event", (void *)client);
+    AWS_LOGF_INFO(AWS_LS_MQTT5_CLIENT, "id=%p: emitting attempting connect lifecycle event", (void *)client);
 
     client->lifecycle_state = AWS_MQTT5_LS_CONNECTING;
 
