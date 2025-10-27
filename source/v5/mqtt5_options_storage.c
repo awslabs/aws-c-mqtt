@@ -3854,7 +3854,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         if (!options_storage->socks5_proxy_options) {
             goto error;
         }
-    
+
         if (aws_socks5_proxy_options_copy(options_storage->socks5_proxy_options, options->socks5_proxy_options)) {
             goto error;
         }
