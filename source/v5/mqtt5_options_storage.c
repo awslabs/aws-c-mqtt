@@ -3738,6 +3738,11 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
     aws_tls_connection_options_clean_up(&options_storage->tls_options);
     aws_http_proxy_config_destroy(options_storage->http_proxy_config);
 
+    if (options_storage->socks5_proxy_options != NULL) {
+        aws_socks5_proxy_options_clean_up(options_storage->socks5_proxy_options);
+        aws_mem_release(options_storage->allocator, options_storage->socks5_proxy_options);
+    }
+
     if (options_storage->connect != NULL) {
         aws_mqtt5_packet_connect_storage_clean_up(options_storage->connect);
         aws_mem_release(options_storage->connect->allocator, options_storage->connect);
@@ -3842,6 +3847,17 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
 
         aws_http_proxy_options_init_from_config(
             &options_storage->http_proxy_options, options_storage->http_proxy_config);
+    }
+
+    if (options->socks5_proxy_options != NULL) {
+        options_storage->socks5_proxy_options = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_proxy_options));
+        if (!options_storage->socks5_proxy_options) {
+            goto error;
+        }
+
+        if (aws_socks5_proxy_options_copy(options_storage->socks5_proxy_options, options->socks5_proxy_options)) {
+            goto error;
+        }
     }
 
     options_storage->websocket_handshake_transform = options->websocket_handshake_transform;

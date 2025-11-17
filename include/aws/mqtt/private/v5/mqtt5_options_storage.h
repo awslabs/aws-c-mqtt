@@ -16,6 +16,7 @@
 #include <aws/io/retry_strategy.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
+#include <aws/io/socks5.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_packet_storage.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
@@ -182,6 +183,8 @@ struct aws_mqtt5_client_options_storage {
     void *client_termination_handler_user_data;
 
     struct aws_host_resolution_config host_resolution_override;
+
+    struct aws_socks5_proxy_options *socks5_proxy_options;
 };
 
 AWS_EXTERN_C_BEGIN

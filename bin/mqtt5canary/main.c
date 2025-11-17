@@ -6,6 +6,7 @@
 #include <aws/common/clock.h>
 #include <aws/common/command_line_parser.h>
 #include <aws/common/condition_variable.h>
+#include <aws/common/error.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/log_channel.h>
 #include <aws/common/log_formatter.h>
@@ -20,6 +21,8 @@
 #include <aws/io/stream.h>
 #include <aws/io/tls_channel_handler.h>
 #include <aws/io/uri.h>
+#include <aws/io/socks5.h>
+#include <aws/io/socks5_channel_handler.h>
 
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
@@ -27,6 +30,9 @@
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 #include <inttypes.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifdef _MSC_VER
 #    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */
@@ -39,6 +45,120 @@
 #define AWS_MQTT5_CANARY_TOPIC_ARRAY_SIZE 256
 #define AWS_MQTT5_CANARY_CLIENT_MAX 50
 #define AWS_MQTT5_CANARY_PAYLOAD_SIZE_MAX UINT16_MAX
+
+struct socks5_proxy_settings {
+    char *host;
+    char *username;
+    char *password;
+    uint16_t port;
+    bool resolve_host_with_proxy;
+};
+
+static void s_socks5_proxy_settings_clean_up(
+    struct socks5_proxy_settings *settings,
+    struct aws_allocator *allocator) {
+    if (!settings) {
+        return;
+    }
+    if (settings->host) {
+        aws_mem_release(allocator, settings->host);
+    }
+    if (settings->username) {
+        aws_mem_release(allocator, settings->username);
+    }
+    if (settings->password) {
+        aws_mem_release(allocator, settings->password);
+    }
+    AWS_ZERO_STRUCT(*settings);
+}
+
+static int s_socks5_proxy_settings_init_from_uri(
+    struct socks5_proxy_settings *settings,
+    struct aws_allocator *allocator,
+    const char *proxy_uri) {
+
+    if (!settings || !allocator || !proxy_uri) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    s_socks5_proxy_settings_clean_up(settings, allocator);
+
+    struct aws_byte_cursor uri_cursor = aws_byte_cursor_from_c_str(proxy_uri);
+    struct aws_uri uri;
+    AWS_ZERO_STRUCT(uri);
+
+    if (aws_uri_init_parse(&uri, allocator, &uri_cursor)) {
+        fprintf(stderr, "Failed to parse proxy URI \"%s\": %s\n", proxy_uri, aws_error_debug_str(aws_last_error()));
+        goto on_error;
+    }
+
+    const struct aws_byte_cursor *scheme = aws_uri_scheme(&uri);
+    if (!scheme || !scheme->len) {
+        fprintf(stderr, "Proxy URI \"%s\" must include scheme socks5h://\n", proxy_uri);
+        goto on_error;
+    }
+
+    if (aws_byte_cursor_eq_c_str_ignore_case(scheme, "socks5h")) {
+        settings->resolve_host_with_proxy = true;
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(scheme, "socks5")) {
+        settings->resolve_host_with_proxy = false;
+    } else {
+        fprintf(stderr, "Unsupported proxy scheme in \"%s\". Expected socks5h://\n", proxy_uri);
+        goto on_error;
+    }
+
+    const struct aws_byte_cursor *host = aws_uri_host_name(&uri);
+    if (!host || host->len == 0) {
+        fprintf(stderr, "Proxy URI \"%s\" must include a host\n", proxy_uri);
+        goto on_error;
+    }
+
+    settings->host = aws_mem_calloc(allocator, host->len + 1, sizeof(char));
+    if (!settings->host) {
+        fprintf(stderr, "Failed to allocate memory for proxy host\n");
+        goto on_error;
+    }
+    memcpy(settings->host, host->ptr, host->len);
+    settings->host[host->len] = '\0';
+
+    uint32_t parsed_port = aws_uri_port(&uri);
+    if (parsed_port == 0) {
+        parsed_port = 1080;
+    }
+    if (parsed_port > UINT16_MAX) {
+        fprintf(stderr, "Proxy port %" PRIu32 " exceeds uint16_t range\n", parsed_port);
+        goto on_error;
+    }
+    settings->port = (uint16_t)parsed_port;
+
+    if (uri.user.len > 0) {
+        settings->username = aws_mem_calloc(allocator, uri.user.len + 1, sizeof(char));
+        if (!settings->username) {
+            fprintf(stderr, "Failed to allocate memory for proxy username\n");
+            goto on_error;
+        }
+        memcpy(settings->username, uri.user.ptr, uri.user.len);
+        settings->username[uri.user.len] = '\0';
+    }
+
+    if (uri.password.len > 0) {
+        settings->password = aws_mem_calloc(allocator, uri.password.len + 1, sizeof(char));
+        if (!settings->password) {
+            fprintf(stderr, "Failed to allocate memory for proxy password\n");
+            goto on_error;
+        }
+        memcpy(settings->password, uri.password.ptr, uri.password.len);
+        settings->password[uri.password.len] = '\0';
+    }
+
+    aws_uri_clean_up(&uri);
+    return AWS_OP_SUCCESS;
+
+on_error:
+    aws_uri_clean_up(&uri);
+    s_socks5_proxy_settings_clean_up(settings, allocator);
+    return AWS_OP_ERR;
+}
 
 struct app_ctx {
     struct aws_allocator *allocator;
@@ -56,6 +176,8 @@ struct app_ctx {
 
     const char *log_filename;
     enum aws_log_level log_level;
+    struct socks5_proxy_settings proxy;
+    bool use_proxy;
 };
 
 enum aws_mqtt5_canary_operations {
@@ -94,6 +216,7 @@ static void s_usage(int exit_code) {
     fprintf(stderr, "      --cert FILE: path to a PEM encoded certificate to use with mTLS\n");
     fprintf(stderr, "      --key FILE: Path to a PEM encoded private key that matches cert.\n");
     fprintf(stderr, "      --connect-timeout INT: time in milliseconds to wait for a connection.\n");
+    fprintf(stderr, "      --proxy URL: SOCKS5 proxy URI (socks5h://... for proxy DNS, socks5://... for local DNS)\n");
     fprintf(stderr, "  -l, --log FILE: dumps logs to FILE instead of stderr.\n");
     fprintf(stderr, "  -v, --verbose: ERROR|INFO|DEBUG|TRACE: log level to configure. Default is none.\n");
     fprintf(stderr, "  -w, --websockets: use mqtt-over-websockets rather than direct mqtt\n");
@@ -115,6 +238,7 @@ static struct aws_cli_option s_long_options[] = {
     {"connect-timeout", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'f'},
     {"log", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'l'},
     {"verbose", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'v'},
+    {"proxy", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'x'},
     {"websockets", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'w'},
     {"port", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'p'},
     {"help", AWS_CLI_OPTIONS_NO_ARGUMENT, NULL, 'h'},
@@ -136,7 +260,7 @@ static void s_parse_options(
 
     while (true) {
         int option_index = 0;
-        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wht:p:C:T:s:", s_long_options, &option_index);
+        int c = aws_cli_getopt_long(argc, argv, "a:c:e:f:l:v:wht:p:C:T:s:x:", s_long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -173,6 +297,12 @@ static void s_parse_options(
                     fprintf(stderr, "unsupported log level %s.\n", aws_cli_optarg);
                     s_usage(1);
                 }
+                break;
+            case 'x':
+                if (s_socks5_proxy_settings_init_from_uri(&ctx->proxy, ctx->allocator, aws_cli_optarg)) {
+                    s_usage(1);
+                }
+                ctx->use_proxy = true;
                 break;
             case 'h':
                 s_usage(0);
@@ -831,6 +961,9 @@ int main(int argc, char **argv) {
      * TLS
      **********************************************************/
     bool use_tls = false;
+    bool socks5_options_valid = false;
+    struct aws_socks5_proxy_options socks5_options;
+    AWS_ZERO_STRUCT(socks5_options);
     struct aws_tls_ctx *tls_ctx = NULL;
     struct aws_tls_ctx_options tls_ctx_options;
     AWS_ZERO_STRUCT(tls_ctx_options);
@@ -905,6 +1038,40 @@ int main(int argc, char **argv) {
         .keep_alive_interval_sec = 0,
     };
 
+    if (app_ctx.use_proxy) {
+        if (!app_ctx.proxy.host) {
+            fprintf(stderr, "Proxy URI was requested but no host was parsed.\n");
+            exit(1);
+        }
+
+        struct aws_byte_cursor proxy_host = aws_byte_cursor_from_c_str(app_ctx.proxy.host);
+        if (aws_socks5_proxy_options_init(&socks5_options, allocator, proxy_host, app_ctx.proxy.port) != AWS_OP_SUCCESS) {
+            fprintf(
+                stderr,
+                "Failed to initialize SOCKS5 proxy options: %s\n",
+                aws_error_debug_str(aws_last_error()));
+            exit(1);
+        }
+        aws_socks5_proxy_options_set_host_resolution_mode(
+            &socks5_options,
+            app_ctx.proxy.resolve_host_with_proxy ? AWS_SOCKS5_HOST_RESOLUTION_PROXY
+                                                  : AWS_SOCKS5_HOST_RESOLUTION_CLIENT);
+
+        if (app_ctx.proxy.username && app_ctx.proxy.password) {
+            struct aws_byte_cursor username = aws_byte_cursor_from_c_str(app_ctx.proxy.username);
+            struct aws_byte_cursor password = aws_byte_cursor_from_c_str(app_ctx.proxy.password);
+            if (aws_socks5_proxy_options_set_auth(&socks5_options, allocator, username, password) != AWS_OP_SUCCESS) {
+                fprintf(
+                    stderr,
+                    "Failed to set SOCKS5 auth: %s\n",
+                    aws_error_debug_str(aws_last_error()));
+                exit(1);
+            }
+        }
+
+        socks5_options_valid = true;
+    }
+
     uint16_t receive_maximum = 9;
     uint32_t maximum_packet_size = 128 * 1024;
 
@@ -932,6 +1099,7 @@ int main(int argc, char **argv) {
         .socket_options = &socket_options,
         .tls_options = (use_tls) ? &tls_connection_options : NULL,
         .connect_options = &connect_options,
+        .socks5_proxy_options = socks5_options_valid ? &socks5_options : NULL,
         .session_behavior = AWS_MQTT5_CSBT_CLEAN,
         .lifecycle_event_handler = s_lifecycle_event_callback,
         .retry_jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
@@ -1013,6 +1181,10 @@ int main(int argc, char **argv) {
         aws_mqtt5_client_release(client);
     }
 
+    if (socks5_options_valid) {
+        aws_socks5_proxy_options_clean_up(&socks5_options);
+    }
+
     aws_client_bootstrap_release(bootstrap);
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
@@ -1034,6 +1206,7 @@ int main(int argc, char **argv) {
         aws_logger_clean_up(&logger);
     }
 
+    s_socks5_proxy_settings_clean_up(&app_ctx.proxy, app_ctx.allocator);
     aws_uri_clean_up(&app_ctx.uri);
 
     aws_mqtt_library_clean_up();
