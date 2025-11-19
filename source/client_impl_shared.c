@@ -227,3 +227,109 @@ bool aws_mqtt_byte_cursor_hash_equality(const void *a, const void *b) {
 struct aws_event_loop *aws_mqtt_client_connection_get_event_loop(const struct aws_mqtt_client_connection *connection) {
     return (*connection->vtable->get_event_loop)(connection->impl);
 }
+
+/*********************************************************************************************************************
+ * IoT SDK Metrics
+ ********************************************************************************************************************/
+
+static size_t s_aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics) {
+    if (metrics == NULL) {
+        return 0;
+    }
+
+    size_t storage_size = 0;
+
+    storage_size += metrics->library_name.len;
+    storage_size += metrics->library_version.len;
+
+    for (size_t i = 0; i < metrics->metadata_count; ++i) {
+        storage_size += metrics->metadata_entries[i].key.len;
+        storage_size += metrics->metadata_entries[i].value.len;
+    }
+
+    return storage_size;
+}
+
+int aws_mqtt_iot_sdk_metrics_storage_init(
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt_iot_sdk_metrics *metrics_options) {
+
+    if (metrics_storage == NULL || allocator == NULL) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    AWS_ZERO_STRUCT(*metrics_storage);
+
+    if (metrics_options == NULL) {
+        return AWS_OP_SUCCESS;
+    }
+
+    size_t storage_capacity = s_aws_mqtt_iot_sdk_metrics_compute_storage_size(metrics_options);
+    if (aws_byte_buf_init(&metrics_storage->storage, allocator, storage_capacity)) {
+        return AWS_OP_ERR;
+    }
+
+    metrics_storage->allocator = allocator;
+
+    struct aws_mqtt_iot_sdk_metrics *storage_view = &metrics_storage->storage_view;
+
+    if (aws_array_list_init_dynamic(
+            &metrics_storage->metadata_entries,
+            allocator,
+            metrics_options->metadata_count,
+            sizeof(struct aws_mqtt_metadata_entry))) {
+        goto metrics_storage_error;
+    }
+
+    for (size_t i = 0; i < metrics_options->metadata_count; ++i) {
+        struct aws_mqtt_metadata_entry entry = metrics_options->metadata_entries[i];
+
+        if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.key)) {
+            goto metrics_storage_error;
+        }
+
+        if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.value)) {
+            goto metrics_storage_error;
+        }
+
+        if (aws_array_list_push_back(&metrics_storage->metadata_entries, &entry)) {
+            goto metrics_storage_error;
+        }
+    }
+
+    storage_view->metadata_entries = metrics_storage->metadata_entries.data;
+    storage_view->metadata_count = aws_array_list_length(&metrics_storage->metadata_entries);
+
+    if (metrics_options->library_name.len > 0) {
+        metrics_storage->library_name = metrics_options->library_name;
+        if (aws_byte_buf_append_and_update(&metrics_storage->storage, &metrics_storage->library_name)) {
+            goto metrics_storage_error;
+        }
+        storage_view->library_name = metrics_storage->library_name;
+    }
+
+    if (metrics_options->library_version.len > 0) {
+        metrics_storage->library_version = metrics_options->library_version;
+        if (aws_byte_buf_append_and_update(&metrics_storage->storage, &metrics_storage->library_version)) {
+            goto metrics_storage_error;
+        }
+        storage_view->library_version = metrics_storage->library_version;
+    }
+
+    return AWS_OP_SUCCESS;
+storage_error:
+    aws_mqtt_iot_sdk_metrics_storage_clean_up(metrics_storage);
+    return AWS_OP_ERR;
+}
+
+void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage) {
+    if (metrics_storage == NULL) {
+        return;
+    }
+
+    aws_array_list_clean_up(&metrics_storage->metadata_entries);
+    aws_byte_buf_clean_up(&metrics_storage->storage);
+
+    AWS_ZERO_STRUCT(*metrics_storage);
+}

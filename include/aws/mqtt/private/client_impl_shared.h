@@ -122,6 +122,8 @@ struct aws_mqtt_client_connection_vtable {
 
     int (*get_stats_fn)(void *impl, struct aws_mqtt_connection_operation_statistics *stats);
 
+    int (*set_metrics_fn)(void *impl, const struct aws_mqtt_iot_sdk_metrics *metrics);
+
     enum aws_mqtt311_impl_type (*get_impl_type)(const void *impl);
 
     struct aws_event_loop *(*get_event_loop)(const void *impl);
@@ -131,6 +133,33 @@ struct aws_mqtt_client_connection {
     struct aws_mqtt_client_connection_vtable *vtable;
     void *impl;
 };
+
+struct aws_mqtt_metadata_entry_storage {
+    struct aws_string *key;
+    struct aws_string *value;
+} struct aws_mqtt_iot_sdk_metrics_storage {
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt_iot_sdk_metrics storage_view;
+
+    struct aws_array_list metadata_entries;
+
+    struct aws_byte_cursor library_version;
+
+    struct aws_byte_cursor library_name;
+
+    struct aws_byte_buf storage;
+};
+
+/* IoT SDK Metrics */
+
+// TODO: the function will zero out metrics_storage, properly deallocate the storage before pass in
+AWS_MQTT_API int aws_mqtt_iot_sdk_metrics_storage_init(
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt_iot_sdk_metrics *metrics_options);
+
+AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
 
 AWS_MQTT_API enum aws_mqtt311_impl_type aws_mqtt_client_connection_get_impl_type(
     const struct aws_mqtt_client_connection *connection);
@@ -143,5 +172,21 @@ AWS_MQTT_API bool aws_mqtt_byte_cursor_hash_equality(const void *a, const void *
 
 AWS_MQTT_API struct aws_event_loop *aws_mqtt_client_connection_get_event_loop(
     const struct aws_mqtt_client_connection *connection);
+
+/**
+ * Appends SDK metrics to the username field
+ *
+ * @param original_username The original username (may be NULL)
+ * @param metrics The metrics configuration
+ * @param output_username Buffer to store the modified username
+ *
+ * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
+ */
+AWS_MQTT_API
+int aws_mqtt_append_sdk_metrics_to_username(
+    struct aws_allocator *allocator,
+    const struct aws_byte_cursor *original_username,
+    const struct aws_mqtt_iot_sdk_metrics *metrics,
+    struct aws_byte_buf *output_username)
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */
