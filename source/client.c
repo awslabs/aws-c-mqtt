@@ -636,7 +636,8 @@ static void s_mqtt_client_init(
 
         /* Apply metrics to username if configured */
         if (connection->metrics) {
-            if (aws_mqtt_append_sdk_metrics_to_username(&username_cur, connection->metrics, &metrics_username_buf) ==
+            if (aws_mqtt_append_sdk_metrics_to_username(
+                    connection->allocator, &username_cur, &connection->metrics->storage_view, &metrics_username_buf) ==
                 AWS_OP_SUCCESS) {
                 username_cur = aws_byte_cursor_from_buf(&metrics_username_buf);
             } else {
@@ -872,10 +873,7 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     /* Clean up metrics */
     if (connection->metrics) {
-        if (connection->metrics->metadata_entries) {
-            aws_mem_release(connection->allocator, connection->metrics->metadata_entries);
-        }
-        aws_mem_release(connection->allocator, connection->metrics);
+        aws_mqtt_iot_sdk_metrics_storage_clean_up(connection->metrics);
     }
 
     aws_mqtt_client_release(connection->client);

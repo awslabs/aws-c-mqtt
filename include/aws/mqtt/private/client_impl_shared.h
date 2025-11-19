@@ -134,10 +134,7 @@ struct aws_mqtt_client_connection {
     void *impl;
 };
 
-struct aws_mqtt_metadata_entry_storage {
-    struct aws_string *key;
-    struct aws_string *value;
-} struct aws_mqtt_iot_sdk_metrics_storage {
+struct aws_mqtt_iot_sdk_metrics_storage {
     struct aws_allocator *allocator;
 
     struct aws_mqtt_iot_sdk_metrics storage_view;
@@ -187,6 +184,6 @@ int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
     const struct aws_mqtt_iot_sdk_metrics *metrics,
-    struct aws_byte_buf *output_username)
+    struct aws_byte_buf *output_username);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */

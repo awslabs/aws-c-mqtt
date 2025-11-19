@@ -116,7 +116,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
     return AWS_OP_SUCCESS;
 
-error:
-    aws_byte_buf_clean_up(output_username);
-    return AWS_OP_ERR;
+    // error:
+    //     aws_byte_buf_clean_up(output_username);
+    //     return AWS_OP_ERR;
 }

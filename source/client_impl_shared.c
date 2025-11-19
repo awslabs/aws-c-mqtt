@@ -318,7 +318,8 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
     }
 
     return AWS_OP_SUCCESS;
-storage_error:
+
+metrics_storage_error:
     aws_mqtt_iot_sdk_metrics_storage_clean_up(metrics_storage);
     return AWS_OP_ERR;
 }
