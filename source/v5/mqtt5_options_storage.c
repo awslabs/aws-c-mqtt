@@ -704,13 +704,13 @@ int aws_mqtt5_packet_connect_storage_init(
                 return AWS_OP_ERR;
             }
             storage->username = aws_byte_cursor_from_buf(&metrics_username_buf);
-
-            if (aws_byte_buf_append_and_update(&storage->storage, &storage->username)) {
-                aws_byte_buf_clean_up(&metrics_username_buf);
-                return AWS_OP_ERR;
-            }
-            aws_byte_buf_clean_up(&metrics_username_buf);
         }
+
+        if (aws_byte_buf_append_and_update(&storage->storage, &storage->username)) {
+            aws_byte_buf_clean_up(&metrics_username_buf);
+            return AWS_OP_ERR;
+        }
+        aws_byte_buf_clean_up(&metrics_username_buf);
 
         storage_view->username = &storage->username;
     }
