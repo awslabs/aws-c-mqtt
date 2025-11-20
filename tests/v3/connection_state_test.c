@@ -4010,3 +4010,126 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_websocket_failed_transform_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/**
+ * helper function to test client with different metrics by checking the received username field
+ */
+static int s_create_mqtt_connection_and_set_metrics(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_iot_sdk_metrics *metrics,
+    void *ctx) {
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("testuser");
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &username, NULL));
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_metrics(state_test_data->mqtt_connection, metrics));
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
+    aws_test311_wait_for_disconnect_to_complete(state_test_data);
+
+    /* Decode all received packets by mock server */
+    ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->mock_server));
+
+    ASSERT_UINT_EQUALS(2, mqtt_mock_server_decoded_packets_count(state_test_data->mock_server));
+    struct mqtt_decoded_packet *received_packet =
+        mqtt_mock_server_get_decoded_packet_by_index(state_test_data->mock_server, 0);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet->type);
+
+    struct aws_byte_buf expected_buf;
+    AWS_ZERO_STRUCT(expected_buf);
+    if (metrics) {
+        aws_test_mqtt_build_expected_metrics(allocator, &username, metrics->library_name, NULL, &expected_buf);
+    } else {
+        aws_byte_buf_init_copy_from_cursor(&expected_buf, allocator, username);
+    }
+
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&received_packet->username, &expected_buf));
+
+    aws_byte_buf_clean_up(&expected_buf);
+
+    return AWS_OP_SUCCESS;
+}
+
+/**
+ * Test that aws_mqtt_client_connection_set_metrics works correctly with valid metrics
+ */
+static int s_test_mqtt_connection_set_metrics_valid_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+
+    struct aws_mqtt_iot_sdk_metrics metrics = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_entries = NULL,
+        .metadata_count = 0,
+    };
+
+    ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, &metrics, ctx));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_set_metrics_valid,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_set_metrics_valid_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/**
+ * Test that aws_mqtt_client_connection_set_metrics works correctly with NULL metrics (disables metrics)
+ */
+static int s_test_mqtt_connection_set_metrics_null_fn(struct aws_allocator *allocator, void *ctx) {
+
+    ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, NULL, ctx));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_set_metrics_null,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_set_metrics_null_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/**
+ * Test that aws_mqtt_client_connection_set_metrics rejects invalid UTF-8 in library name
+ */
+static int s_test_mqtt_connection_set_metrics_invalid_utf8_library_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    /* Invalid UTF-8 sequence */
+    struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
+
+    struct aws_mqtt_iot_sdk_metrics metrics = {
+        .library_name = invalid_utf8_library,
+        .metadata_entries = NULL,
+        .metadata_count = 0,
+    };
+
+    ASSERT_FAILS(aws_mqtt_client_connection_set_metrics(state_test_data->mqtt_connection, &metrics));
+    ASSERT_INT_EQUALS(aws_last_error(), AWS_ERROR_INVALID_UTF8);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_set_metrics_invalid_utf8_library,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_set_metrics_invalid_utf8_library_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)

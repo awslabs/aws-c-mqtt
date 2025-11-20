@@ -106,11 +106,17 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
     /* Add metrics with separator */
     if (metrics_string.len > 0) {
+
+        struct aws_byte_cursor metrics_cursor = aws_byte_cursor_from_buf(&metrics_string);
+        if (aws_mqtt_validate_utf8_text(metrics_cursor) == AWS_OP_ERR) {
+            goto error_output;
+        }
+
         struct aws_byte_cursor separator = has_query ? amp : question_mark_str;
         if (aws_byte_buf_append(output_username, &separator)) {
             goto error_output;
         }
-        struct aws_byte_cursor metrics_cursor = aws_byte_cursor_from_buf(&metrics_string);
+
         if (aws_byte_buf_append(output_username, &metrics_cursor)) {
             goto error_output;
         }

@@ -697,6 +697,8 @@ int aws_mqtt_client_connection_get_stats(
  * Sets IoT SDK metrics configuration for the connection.
  * These metrics will be appended to the username field during connection.
  *
+ * NOTE: DO NOT USE METADATA. Metadata will not be set.
+ *
  * \param connection The connection object
  * \param metrics The IoT SDK metrics configuration (pass NULL to disable metrics)
  * \returns AWS_OP_SUCCESS if successful, AWS_OP_ERR otherwise

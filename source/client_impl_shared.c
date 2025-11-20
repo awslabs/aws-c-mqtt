@@ -323,5 +323,6 @@ void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_s
     aws_array_list_clean_up(&metrics_storage->metadata_entries);
     aws_byte_buf_clean_up(&metrics_storage->storage);
 
-    AWS_ZERO_STRUCT(*metrics_storage);
+    aws_mem_release(metrics_storage->allocator, &metrics_storage);
+    metrics_storage = NULL;
 }
