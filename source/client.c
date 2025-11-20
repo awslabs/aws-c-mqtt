@@ -871,6 +871,7 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
     /* Clean up metrics */
     if (connection->metrics) {
         aws_mqtt_iot_sdk_metrics_storage_clean_up(connection->metrics);
+        connection->metrics = NULL;
     }
 
     aws_byte_buf_clean_up(&connection->username_with_metrics_buf);

@@ -232,7 +232,7 @@ struct aws_event_loop *aws_mqtt_client_connection_get_event_loop(const struct aw
  * IoT SDK Metrics
  ********************************************************************************************************************/
 
-static size_t s_aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics) {
+size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics) {
     if (metrics == NULL) {
         return 0;
     }
@@ -264,7 +264,7 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
         return AWS_OP_SUCCESS;
     }
 
-    size_t storage_capacity = s_aws_mqtt_iot_sdk_metrics_compute_storage_size(metrics_options);
+    size_t storage_capacity = aws_mqtt_iot_sdk_metrics_compute_storage_size(metrics_options);
     if (aws_byte_buf_init(&metrics_storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
     }
@@ -329,6 +329,5 @@ void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_s
     }
     aws_byte_buf_clean_up(&metrics_storage->storage);
 
-    aws_mem_release(metrics_storage->allocator, &metrics_storage);
-    metrics_storage = NULL;
+    aws_mem_release(metrics_storage->allocator, metrics_storage);
 }

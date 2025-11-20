@@ -154,6 +154,8 @@ AWS_MQTT_API int aws_mqtt_iot_sdk_metrics_storage_init(
     struct aws_allocator *allocator,
     const struct aws_mqtt_iot_sdk_metrics *metrics_options);
 
+AWS_MQTT_API size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics);
+
 AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
 
 AWS_MQTT_API enum aws_mqtt311_impl_type aws_mqtt_client_connection_get_impl_type(
@@ -173,7 +175,8 @@ AWS_MQTT_API struct aws_event_loop *aws_mqtt_client_connection_get_event_loop(
  *
  * @param original_username The original username
  * @param metrics The metrics configuration
- * @param output_username Buffer to store the modified username
+ * @param output_username Buffer to store the modified username. If the function succeed, caller is responsible to release
+ * the memory for output_username.
  *
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */
@@ -183,5 +186,13 @@ int aws_mqtt_append_sdk_metrics_to_username(
     const struct aws_byte_cursor *original_username,
     const struct aws_mqtt_iot_sdk_metrics metrics,
     struct aws_byte_buf *output_username);
+
+/**
+ * Get final username length
+ */
+AWS_MQTT_API
+size_t aws_mqtt_append_sdk_metrics_to_username_size(
+    const struct aws_byte_cursor *original_username,
+    const struct aws_mqtt_iot_sdk_metrics metrics);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */

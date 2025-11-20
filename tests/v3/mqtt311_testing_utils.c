@@ -586,9 +586,9 @@ static const struct aws_byte_cursor PLATFORM_ATT_STR = AWS_BYTE_CUR_INIT_FROM_ST
 
 void aws_test_mqtt_build_expected_metrics(
     struct aws_allocator *allocator,
-    struct aws_byte_cursor *original_username,
-    struct aws_byte_cursor sdk,
-    struct aws_byte_cursor *platform,
+    const struct aws_byte_cursor *original_username,
+    const struct aws_byte_cursor sdk,
+    const struct aws_byte_cursor *platform,
     struct aws_byte_buf *expected_buf) {
     struct aws_byte_cursor platform_to_use = platform ? *platform : aws_get_platform_build_os_string();
     if (original_username) {

@@ -11,6 +11,7 @@
 #include <aws/common/uuid.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
@@ -643,7 +644,11 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(const struct aws_m
 
     storage_size += view->client_id.len;
     if (view->username != NULL) {
-        storage_size += view->username->len;
+        if (view->metrics) {
+            storage_size += aws_mqtt_append_sdk_metrics_to_username_size(view->username, *view->metrics);
+        } else {
+            storage_size += view->username->len;
+        }
     }
     if (view->password != NULL) {
         storage_size += view->password->len;
@@ -651,6 +656,8 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(const struct aws_m
 
     storage_size +=
         s_aws_mqtt5_user_property_set_compute_storage_size(view->user_properties, view->user_property_count);
+
+    storage_size += aws_mqtt_iot_sdk_metrics_compute_storage_size(view->metrics);
 
     if (view->authentication_method != NULL) {
         storage_size += view->authentication_method->len;
@@ -686,8 +693,23 @@ int aws_mqtt5_packet_connect_storage_init(
 
     if (view->username != NULL) {
         storage->username = *view->username;
-        if (aws_byte_buf_append_and_update(&storage->storage, &storage->username)) {
-            return AWS_OP_ERR;
+        struct aws_byte_buf metrics_username_buf;
+        AWS_ZERO_STRUCT(metrics_username_buf);
+
+        /* Apply metrics to username if configured */
+        if (view->metrics) {
+            struct aws_byte_cursor username_cur = storage->username;
+            if (aws_mqtt_append_sdk_metrics_to_username(
+                    allocator, &username_cur, *view->metrics, &metrics_username_buf)) {
+                return AWS_OP_ERR;
+            }
+            storage->username = aws_byte_cursor_from_buf(&metrics_username_buf);
+
+            if (aws_byte_buf_append_and_update(&storage->storage, &storage->username)) {
+                aws_byte_buf_clean_up(&metrics_username_buf);
+                return AWS_OP_ERR;
+            }
+            aws_byte_buf_clean_up(&metrics_username_buf);
         }
 
         storage_view->username = &storage->username;
