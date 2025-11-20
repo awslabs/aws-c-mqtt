@@ -175,8 +175,8 @@ AWS_MQTT_API struct aws_event_loop *aws_mqtt_client_connection_get_event_loop(
  *
  * @param original_username The original username
  * @param metrics The metrics configuration
- * @param output_username Buffer to store the modified username. If the function succeed, caller is responsible to release
- * the memory for output_username.
+ * @param output_username Buffer to store the modified username. If the function succeed, caller is responsible to
+ * release the memory for output_username.
  *
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */

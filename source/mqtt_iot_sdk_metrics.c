@@ -8,6 +8,7 @@
 #include <aws/common/string.h>
 #include <aws/common/system_info.h>
 #include <aws/mqtt/mqtt.h>
+#include <aws/mqtt/private/client_impl_shared.h>
 
 #include <stdio.h>
 

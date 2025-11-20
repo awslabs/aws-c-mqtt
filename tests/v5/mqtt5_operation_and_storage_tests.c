@@ -698,8 +698,7 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
         .user_properties = s_user_properties,
         .authentication_method = &s_authentication_method_cursor,
         .authentication_data = &s_authentication_data_cursor,
-        .metrics = &metrics
-    };
+        .metrics = &metrics};
 
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
@@ -709,12 +708,14 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
     struct aws_mqtt5_packet_connect_view *stored_view = &connect_storage.storage_view;
-    
+
     /* Build expected username with metrics */
     struct aws_byte_buf expected_username;
     AWS_ZERO_STRUCT(expected_username);
-    aws_test_mqtt_build_expected_metrics(allocator, connect_options.username, metrics.library_name, NULL, &expected_username);
-    ASSERT_BIN_ARRAYS_EQUALS(expected_username.buffer, expected_username.len, connect_storage.username.ptr, connect_storage.username.len);
+    aws_test_mqtt_build_expected_metrics(
+        allocator, connect_options.username, metrics.library_name, NULL, &expected_username);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_username.buffer, expected_username.len, connect_storage.username.ptr, connect_storage.username.len);
     aws_byte_buf_clean_up(&expected_username);
 
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&connect_storage, &connect_options, password);
