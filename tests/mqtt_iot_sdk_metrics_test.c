@@ -2,11 +2,11 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
+#include "aws/mqtt/private/client_impl_shared.h"
 
 #include <aws/common/byte_buf.h>
 #include <aws/common/string.h>
 #include <aws/mqtt/mqtt.h>
-#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/testing/aws_test_harness.h>
 #include <v3/mqtt311_testing_utils.h>
 
