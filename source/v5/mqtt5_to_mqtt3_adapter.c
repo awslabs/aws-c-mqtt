@@ -2779,6 +2779,15 @@ static int s_aws_mqtt_client_connection_5_get_stats(
     return AWS_OP_SUCCESS;
 }
 
+static int s_aws_mqtt_client_connection_5_set_metrics(void *impl, const struct aws_mqtt_iot_sdk_metrics *metrics) {
+    (void)impl;
+    (void)metrics;
+
+    /* MQTT5 adapter does not support metrics configuration */
+    AWS_LOGF_WARN(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "MQTT5 adapter does not support metrics configuration");
+    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+}
+
 static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
     void *impl,
     aws_mqtt_suback_multi_fn *on_suback,
@@ -2885,6 +2894,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .unsubscribe_fn = s_aws_mqtt_client_connection_5_unsubscribe,
     .publish_fn = s_aws_mqtt_client_connection_5_publish,
     .get_stats_fn = s_aws_mqtt_client_connection_5_get_stats,
+    .set_metrics_fn = s_aws_mqtt_client_connection_5_set_metrics,
     .get_impl_type = s_aws_mqtt_client_connection_5_get_impl,
     .get_event_loop = s_aws_mqtt_client_connection_5_get_event_loop,
 };
