@@ -311,7 +311,11 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
     return AWS_OP_SUCCESS;
 
 metrics_storage_error:
-    aws_mqtt_iot_sdk_metrics_storage_clean_up(metrics_storage);
+    if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
+        aws_array_list_clean_up(&metrics_storage->metadata_entries);
+    }
+    aws_byte_buf_clean_up(&metrics_storage->storage);
+
     return AWS_OP_ERR;
 }
 
@@ -320,7 +324,9 @@ void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_s
         return;
     }
 
-    aws_array_list_clean_up(&metrics_storage->metadata_entries);
+    if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
+        aws_array_list_clean_up(&metrics_storage->metadata_entries);
+    }
     aws_byte_buf_clean_up(&metrics_storage->storage);
 
     aws_mem_release(metrics_storage->allocator, &metrics_storage);
