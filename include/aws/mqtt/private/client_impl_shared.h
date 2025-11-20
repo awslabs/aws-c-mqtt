@@ -141,8 +141,6 @@ struct aws_mqtt_iot_sdk_metrics_storage {
 
     struct aws_array_list metadata_entries;
 
-    struct aws_byte_cursor library_version;
-
     struct aws_byte_cursor library_name;
 
     struct aws_byte_buf storage;
@@ -173,7 +171,7 @@ AWS_MQTT_API struct aws_event_loop *aws_mqtt_client_connection_get_event_loop(
 /**
  * Appends SDK metrics to the username field
  *
- * @param original_username The original username (may be NULL)
+ * @param original_username The original username
  * @param metrics The metrics configuration
  * @param output_username Buffer to store the modified username
  *
@@ -183,7 +181,7 @@ AWS_MQTT_API
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
-    const struct aws_mqtt_iot_sdk_metrics *metrics,
+    const struct aws_mqtt_iot_sdk_metrics metrics,
     struct aws_byte_buf *output_username);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */

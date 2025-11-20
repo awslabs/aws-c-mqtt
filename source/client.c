@@ -637,7 +637,7 @@ static void s_mqtt_client_init(
         /* Apply metrics to username if configured */
         if (connection->metrics) {
             if (aws_mqtt_append_sdk_metrics_to_username(
-                    connection->allocator, &username_cur, &connection->metrics->storage_view, &metrics_username_buf) ==
+                    connection->allocator, &username_cur, connection->metrics->storage_view, &metrics_username_buf) ==
                 AWS_OP_SUCCESS) {
                 username_cur = aws_byte_cursor_from_buf(&metrics_username_buf);
             } else {

@@ -134,11 +134,6 @@ struct aws_mqtt_iot_sdk_metrics {
     size_t metadata_count;
 
     /**
-     * Library version string
-     */
-    struct aws_byte_cursor library_version;
-
-    /**
      * Library name string (SDK attribute)
      */
     struct aws_byte_cursor library_name;

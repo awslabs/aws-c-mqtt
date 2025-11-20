@@ -240,7 +240,6 @@ static size_t s_aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_m
     size_t storage_size = 0;
 
     storage_size += metrics->library_name.len;
-    storage_size += metrics->library_version.len;
 
     for (size_t i = 0; i < metrics->metadata_count; ++i) {
         storage_size += metrics->metadata_entries[i].key.len;
@@ -307,14 +306,6 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
             goto metrics_storage_error;
         }
         storage_view->library_name = metrics_storage->library_name;
-    }
-
-    if (metrics_options->library_version.len > 0) {
-        metrics_storage->library_version = metrics_options->library_version;
-        if (aws_byte_buf_append_and_update(&metrics_storage->storage, &metrics_storage->library_version)) {
-            goto metrics_storage_error;
-        }
-        storage_view->library_version = metrics_storage->library_version;
     }
 
     return AWS_OP_SUCCESS;

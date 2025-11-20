@@ -123,6 +123,13 @@ add_test_case(mqtt_operation_statistics_simple_callback)
 # Connection termination tests
 add_test_case(mqtt_connection_termination_callback_simple)
 
+# IoT SDK metrics tests
+add_test_case(mqtt_append_sdk_metrics_basic)
+add_test_case(mqtt_append_sdk_metrics_empty)
+add_test_case(mqtt_append_sdk_metrics_existing_attributes)
+add_test_case(mqtt_append_sdk_metrics_special_chars)
+add_test_case(mqtt_append_sdk_metrics_long_strings)
+
 # MQTT5 tests
 
 # topic utilities
@@ -619,3 +626,4 @@ aws_set_common_properties(${TEST_IOT_CLIENT_BINARY_NAME})
 aws_add_sanitizers(${TEST_IOT_CLIENT_BINARY_NAME} ${${PROJECT_NAME}_SANITIZERS})
 target_compile_definitions(${TEST_IOT_CLIENT_BINARY_NAME} PRIVATE AWS_UNSTABLE_TESTING_API=1)
 target_include_directories(${TEST_IOT_CLIENT_BINARY_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+
