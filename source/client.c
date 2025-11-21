@@ -3382,11 +3382,9 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
-    if (metrics != NULL && aws_mqtt_validate_utf8_text(metrics->library_name) == AWS_OP_ERR) {
+    if (metrics != NULL && aws_mqtt_validate_iot_sdk_metrics_utf8(metrics) == AWS_OP_ERR) {
         AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Invalid utf8 or forbidden codepoints in metrics library name.",
-            (void *)connection);
+            AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in metrics.", (void *)connection);
         return aws_raise_error(AWS_ERROR_INVALID_UTF8);
     }
 

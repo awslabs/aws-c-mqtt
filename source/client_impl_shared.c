@@ -331,3 +331,22 @@ void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_s
 
     aws_mem_release(metrics_storage->allocator, metrics_storage);
 }
+
+int aws_mqtt_validate_iot_sdk_metrics_utf8(const struct aws_mqtt_iot_sdk_metrics *metrics) {
+    if (metrics == NULL) {
+        return AWS_OP_SUCCESS;
+    }
+
+    if (aws_mqtt_validate_utf8_text(metrics->library_name)) {
+        return AWS_OP_ERR;
+    }
+
+    for (size_t i = 0; i < metrics->metadata_count; ++i) {
+        if (aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].key) ||
+            aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].value)) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}

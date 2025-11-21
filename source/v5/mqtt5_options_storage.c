@@ -378,6 +378,16 @@ int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect
         }
     }
 
+    if (connect_options->metrics != NULL) {
+        if (aws_mqtt_validate_iot_sdk_metrics_utf8(connect_options->metrics)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_GENERAL,
+                "id=%p: aws_mqtt5_packet_connect_view - metrics not valid UTF-8",
+                (void *)connect_options);
+            return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
+        }
+    }
+
     if (connect_options->receive_maximum != NULL) {
         if (*connect_options->receive_maximum == 0) {
             AWS_LOGF_ERROR(

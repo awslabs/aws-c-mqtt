@@ -195,4 +195,13 @@ size_t aws_mqtt_append_sdk_metrics_to_username_size(
     const struct aws_byte_cursor *original_username,
     const struct aws_mqtt_iot_sdk_metrics metrics);
 
+/**
+ * Validates that all string fields in aws_mqtt_iot_sdk_metrics are valid UTF-8
+ *
+ * @param metrics The metrics structure to validate
+ * @return AWS_OP_SUCCESS if all strings are valid UTF-8, AWS_OP_ERR otherwise
+ */
+AWS_MQTT_API
+int aws_mqtt_validate_iot_sdk_metrics_utf8(const struct aws_mqtt_iot_sdk_metrics *metrics);
+
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */
