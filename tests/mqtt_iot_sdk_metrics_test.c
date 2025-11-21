@@ -13,7 +13,7 @@
 static int s_test_mqtt_append_sdk_metrics_empty(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {0};
+    struct aws_mqtt_iot_sdk_metrics metrics = {{0}};
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
