@@ -131,7 +131,7 @@ struct aws_mqtt_iot_sdk_metrics {
      *
      * Array of metadata entries
      */
-    struct aws_mqtt_metadata_entry *metadata_entries;
+    // struct aws_mqtt_metadata_entry *metadata_entries;
 
     /**
      * TODO: This is a place holder for metadata entries.
@@ -141,7 +141,7 @@ struct aws_mqtt_iot_sdk_metrics {
      *
      * Number of metadata entries
      */
-    size_t metadata_count;
+    // size_t metadata_count;
 
     /**
      * Library name string (SDK attribute)

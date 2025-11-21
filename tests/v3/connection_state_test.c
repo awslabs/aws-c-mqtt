@@ -4072,8 +4072,9 @@ static int s_test_mqtt_connection_set_metrics_valid_fn(struct aws_allocator *all
 
     struct aws_mqtt_iot_sdk_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        // TODO: enable metadata testing when metadata support is added
+        // .metadata_entries = NULL,
+        // .metadata_count = 0,
     };
 
     ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, &metrics, ctx));
@@ -4116,9 +4117,7 @@ static int s_test_mqtt_connection_set_metrics_invalid_utf8_library_fn(struct aws
     struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
 
     struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = invalid_utf8_library,
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        .library_name = invalid_utf8_library
     };
 
     ASSERT_FAILS(aws_mqtt_client_connection_set_metrics(state_test_data->mqtt_connection, &metrics));

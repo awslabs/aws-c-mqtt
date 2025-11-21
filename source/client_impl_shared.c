@@ -241,10 +241,11 @@ size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_s
 
     storage_size += metrics->library_name.len;
 
-    for (size_t i = 0; i < metrics->metadata_count; ++i) {
-        storage_size += metrics->metadata_entries[i].key.len;
-        storage_size += metrics->metadata_entries[i].value.len;
-    }
+    // TODO: add metadata entries when enabled
+    // for (size_t i = 0; i < metrics->metadata_count; ++i) {
+    //     storage_size += metrics->metadata_entries[i].key.len;
+    //     storage_size += metrics->metadata_entries[i].value.len;
+    // }
 
     return storage_size;
 }
@@ -271,32 +272,34 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
 
     struct aws_mqtt_iot_sdk_metrics *storage_view = &metrics_storage->storage_view;
 
-    if (aws_array_list_init_dynamic(
-            &metrics_storage->metadata_entries,
-            allocator,
-            metrics_options->metadata_count,
-            sizeof(struct aws_mqtt_metadata_entry))) {
-        goto metrics_storage_error;
-    }
+    // TODO: add metadata entries when enabled
+    // 
+    // if (aws_array_list_init_dynamic(
+    //         &metrics_storage->metadata_entries,
+    //         allocator,
+    //         metrics_options->metadata_count,
+    //         sizeof(struct aws_mqtt_metadata_entry))) {
+    //     goto metrics_storage_error;
+    // }
 
-    for (size_t i = 0; i < metrics_options->metadata_count; ++i) {
-        struct aws_mqtt_metadata_entry entry = metrics_options->metadata_entries[i];
+    // for (size_t i = 0; i < metrics_options->metadata_count; ++i) {
+    //     struct aws_mqtt_metadata_entry entry = metrics_options->metadata_entries[i];
 
-        if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.key)) {
-            goto metrics_storage_error;
-        }
+    //     if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.key)) {
+    //         goto metrics_storage_error;
+    //     }
 
-        if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.value)) {
-            goto metrics_storage_error;
-        }
+    //     if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.value)) {
+    //         goto metrics_storage_error;
+    //     }
 
-        if (aws_array_list_push_back(&metrics_storage->metadata_entries, &entry)) {
-            goto metrics_storage_error;
-        }
-    }
+    //     if (aws_array_list_push_back(&metrics_storage->metadata_entries, &entry)) {
+    //         goto metrics_storage_error;
+    //     }
+    // }
 
-    storage_view->metadata_entries = metrics_storage->metadata_entries.data;
-    storage_view->metadata_count = aws_array_list_length(&metrics_storage->metadata_entries);
+    // storage_view->metadata_entries = metrics_storage->metadata_entries.data;
+    // storage_view->metadata_count = aws_array_list_length(&metrics_storage->metadata_entries);
 
     if (metrics_options->library_name.len > 0) {
         metrics_storage->library_name = metrics_options->library_name;
@@ -339,12 +342,13 @@ int aws_mqtt_validate_iot_sdk_metrics_utf8(const struct aws_mqtt_iot_sdk_metrics
         return AWS_OP_ERR;
     }
 
-    for (size_t i = 0; i < metrics->metadata_count; ++i) {
-        if (aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].key) ||
-            aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].value)) {
-            return AWS_OP_ERR;
-        }
-    }
+    // TODO: add metadata entries when enabled
+    // for (size_t i = 0; i < metrics->metadata_count; ++i) {
+    //     if (aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].key) ||
+    //         aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].value)) {
+    //         return AWS_OP_ERR;
+    //     }
+    // }
 
     return AWS_OP_SUCCESS;
 }

@@ -676,8 +676,9 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
 
     struct aws_mqtt_iot_sdk_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        // TODO: add more metrics fields as needed
+        // .metadata_entries = NULL,
+        // .metadata_count = 0,
     };
 
     struct aws_mqtt5_packet_connect_view connect_options = {

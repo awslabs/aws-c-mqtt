@@ -43,8 +43,9 @@ static int s_test_mqtt_append_sdk_metrics_basic(struct aws_allocator *allocator,
 
     struct aws_mqtt_iot_sdk_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TEST_SDK_STRING"),
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        // TODO: add metadata entries when enabled
+        // .metadata_entries = NULL,
+        // .metadata_count = 0,
     };
 
     struct aws_byte_buf output_username;
@@ -75,8 +76,9 @@ static int s_test_mqtt_append_sdk_metrics_existing_attributes(struct aws_allocat
 
     struct aws_mqtt_iot_sdk_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("NewSDK"),
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        // TODO: add metadata entries when enabled
+        // .metadata_entries = NULL,
+        // .metadata_count = 0,
     };
 
     struct aws_byte_buf output_username;
@@ -100,9 +102,7 @@ static int s_test_mqtt_append_sdk_metrics_special_chars(struct aws_allocator *al
     (void)ctx;
 
     struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = aws_byte_cursor_from_c_str("SDK/Test-1.0"),
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        .library_name = aws_byte_cursor_from_c_str("SDK/Test-1.0")
     };
 
     struct aws_byte_buf output_username;
@@ -141,15 +141,11 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
     long_sdk_name[sizeof(long_sdk_name) - 1] = '\0';
 
     struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = aws_byte_cursor_from_c_str(long_sdk_name),
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        .library_name = aws_byte_cursor_from_c_str(long_sdk_name)
     };
 
     struct aws_mqtt_iot_sdk_metrics short_metrics = {
-        .library_name = aws_byte_cursor_from_c_str("SHORT_SDK_NAME"),
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        .library_name = aws_byte_cursor_from_c_str("SHORT_SDK_NAME")
     };
 
     struct aws_byte_buf output_username;
@@ -176,9 +172,7 @@ static int s_test_mqtt_append_sdk_metrics_invalid_utf8(struct aws_allocator *all
     struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
 
     struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = invalid_utf8_library,
-        .metadata_entries = NULL,
-        .metadata_count = 0,
+        .library_name = invalid_utf8_library
     };
 
     struct aws_byte_buf output_username;
