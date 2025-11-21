@@ -2779,13 +2779,123 @@ static int s_aws_mqtt_client_connection_5_get_stats(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_mqtt_client_connection_5_set_metrics(void *impl, const struct aws_mqtt_iot_sdk_metrics *metrics) {
-    (void)impl;
-    (void)metrics;
+struct aws_mqtt_set_metrics_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection_5_impl *adapter;
 
-    /* MQTT5 adapter does not support metrics configuration */
-    AWS_LOGF_WARN(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "MQTT5 adapter does not support metrics configuration");
-    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage;
+};
+
+static void s_aws_mqtt_set_metrics_task_destroy(struct aws_mqtt_set_metrics_task *task) {
+    if (task == NULL) {
+        return;
+    }
+
+    aws_mqtt_iot_sdk_metrics_storage_clean_up(task->metrics_storage);
+
+    aws_mem_release(task->allocator, task);
+}
+
+static void s_set_metrics_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_set_metrics_task *set_task = arg;
+    struct aws_mqtt_client_connection_5_impl *adapter = set_task->adapter;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    /* we're in the mqtt5 client's event loop; it's safe to access internal state */
+    struct aws_mqtt5_packet_connect_storage *old_connect = adapter->client->config->connect;
+
+    /*
+     * Packet storage stores binary data in a single buffer.  The safest way to replace some binary data is
+     * to make a new storage from the old storage, deleting the old storage after construction is complete.
+     */
+    struct aws_mqtt5_packet_connect_view new_connect_view = old_connect->storage_view;
+
+    if (set_task->metrics_storage) {
+        new_connect_view.metrics = &set_task->metrics_storage->storage_view;
+    } else {
+        new_connect_view.metrics = NULL;
+    }
+
+    if (aws_mqtt5_packet_connect_view_validate(&new_connect_view)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter - invalid CONNECT metrics", (void *)adapter);
+        goto done;
+    }
+
+    struct aws_mqtt5_packet_connect_storage *new_connect =
+        aws_mem_calloc(adapter->allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
+
+    if (aws_mqtt5_packet_connect_storage_init(new_connect, adapter->allocator, &new_connect_view)) {
+        aws_mem_release(adapter->allocator, new_connect);
+        goto done;
+    }
+
+    adapter->client->config->connect = new_connect;
+    aws_mqtt5_packet_connect_storage_clean_up(old_connect);
+    aws_mem_release(old_connect->allocator, old_connect);
+
+done:
+
+    aws_ref_count_release(&adapter->internal_refs);
+
+    s_aws_mqtt_set_metrics_task_destroy(set_task);
+}
+
+static struct aws_mqtt_set_metrics_task *s_aws_mqtt_set_metrics_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    const struct aws_mqtt_iot_sdk_metrics *metrics) {
+
+    struct aws_mqtt_set_metrics_task *set_task = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_metrics_task));
+    if (set_task == NULL) {
+        return NULL;
+    }
+
+    aws_task_init(&set_task->task, s_set_metrics_task_fn, (void *)set_task, "SetMetricsTask");
+    set_task->allocator = allocator;
+    set_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
+
+    if (metrics != NULL) {
+        set_task->metrics_storage = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
+        if (aws_mqtt_iot_sdk_metrics_storage_init(set_task->metrics_storage, allocator, metrics)) {
+            aws_ref_count_release(&adapter->internal_refs);
+            aws_mem_release(allocator, set_task);
+            return NULL;
+        }
+    }
+
+    return set_task;
+}
+
+static int s_aws_mqtt_client_connection_5_set_metrics(void *impl, const struct aws_mqtt_iot_sdk_metrics *metrics) {
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    if (aws_mqtt_validate_iot_sdk_metrics_utf8(metrics)) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: Invalid utf8 or forbidden codepoints in metrics.", (void *)adapter);
+        return aws_raise_error(AWS_ERROR_INVALID_UTF8);
+    }
+
+    struct aws_mqtt_set_metrics_task *task = s_aws_mqtt_set_metrics_task_new(adapter->allocator, adapter, metrics);
+    if (task == NULL) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+            "id=%p: failed to create set metrics task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
 }
 
 static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(

@@ -258,8 +258,6 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
-    AWS_ZERO_STRUCT(*metrics_storage);
-
     if (metrics_options == NULL) {
         return AWS_OP_SUCCESS;
     }

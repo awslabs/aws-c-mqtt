@@ -147,8 +147,6 @@ struct aws_mqtt_iot_sdk_metrics_storage {
 };
 
 /* IoT SDK Metrics */
-
-// TODO: the function will zero out metrics_storage, properly deallocate the storage before pass in
 AWS_MQTT_API int aws_mqtt_iot_sdk_metrics_storage_init(
     struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage,
     struct aws_allocator *allocator,

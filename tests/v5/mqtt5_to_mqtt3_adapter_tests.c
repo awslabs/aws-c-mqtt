@@ -4406,3 +4406,116 @@ static int s_mqtt5to3_adapter_operation_callbacks_after_shutdown_fn(struct aws_a
 AWS_TEST_CASE(
     mqtt5to3_adapter_operation_callbacks_after_shutdown,
     s_mqtt5to3_adapter_operation_callbacks_after_shutdown_fn)
+
+/**
+ * Test that aws_mqtt_client_connection_set_metrics works correctly with valid metrics
+ */
+static int s_mqtt5to3_adapter_connection_set_metrics_valid_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_to_mqtt3_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt5_to_mqtt3_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    struct aws_mqtt_iot_sdk_metrics metrics = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_entries = NULL,
+        .metadata_count = 0,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_metrics(connection, &metrics));
+
+    aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5to3_adapter_set_metrics_valid, s_mqtt5to3_adapter_connection_set_metrics_valid_fn)
+
+/**
+ * Test that aws_mqtt_client_connection_set_metrics works correctly with NULL metrics (disables metrics)
+ */
+static int s_mqtt5to3_adapter_connection_set_metrics_null_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_to_mqtt3_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt5_to_mqtt3_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_metrics(connection, NULL));
+
+    aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt5to3_adapter_set_metrics_null, s_mqtt5to3_adapter_connection_set_metrics_null_fn)
+
+/**
+ * Test that aws_mqtt_client_connection_set_metrics rejects invalid UTF-8 in library name
+ */
+static int s_mqtt5to3_adapter_connection_set_metrics_invalid_utf8_library_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_to_mqtt3_adapter_test_fixture fixture;
+    ASSERT_SUCCESS(aws_mqtt5_to_mqtt3_adapter_test_fixture_init(&fixture, allocator, &test_fixture_options));
+
+    struct aws_mqtt_client_connection *connection = fixture.connection;
+
+    /* Invalid UTF-8 sequence */
+    struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
+
+    struct aws_mqtt_iot_sdk_metrics metrics = {
+        .library_name = invalid_utf8_library,
+        .metadata_entries = NULL,
+        .metadata_count = 0,
+    };
+
+    ASSERT_FAILS(aws_mqtt_client_connection_set_metrics(connection, &metrics));
+    ASSERT_INT_EQUALS(aws_last_error(), AWS_ERROR_INVALID_UTF8);
+
+    aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5to3_adapter_set_metrics_invalid_utf8_library,
+    s_mqtt5to3_adapter_connection_set_metrics_invalid_utf8_library_fn)
