@@ -623,8 +623,32 @@ static void s_mqtt_client_init(
             &connect, topic_cur, connection->will.qos, connection->will.retain, payload_cur);
     }
 
-    if (connection->username) {
-        struct aws_byte_cursor username_cur = aws_byte_cursor_from_string(connection->username);
+    if (connection->username || connection->metrics) {
+        struct aws_byte_cursor username_cur;
+        if (connection->username) {
+            username_cur = aws_byte_cursor_from_string(connection->username);
+        } else {
+            /* Create empty username cursor when username is null but metrics is set */
+            username_cur = aws_byte_cursor_from_c_str("");
+        }
+
+        aws_byte_buf_clean_up(&connection->username_with_metrics_buf);
+
+        /* Apply metrics to username if configured */
+        if (connection->metrics) {
+            if (aws_mqtt_append_sdk_metrics_to_username(
+                    connection->allocator,
+                    &username_cur,
+                    connection->metrics->storage_view,
+                    &connection->username_with_metrics_buf) == AWS_OP_SUCCESS) {
+                username_cur = aws_byte_cursor_from_buf(&connection->username_with_metrics_buf);
+            } else {
+                AWS_LOGF_WARN(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Failed to apply metrics to username, using original",
+                    (void *)connection);
+            }
+        }
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT,
@@ -843,6 +867,14 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
         aws_http_proxy_config_destroy(connection->http_proxy_config);
         connection->http_proxy_config = NULL;
     }
+
+    /* Clean up metrics */
+    if (connection->metrics) {
+        aws_mqtt_iot_sdk_metrics_storage_clean_up(connection->metrics);
+        connection->metrics = NULL;
+    }
+
+    aws_byte_buf_clean_up(&connection->username_with_metrics_buf);
 
     aws_mqtt_client_release(connection->client);
 
@@ -3341,6 +3373,46 @@ int aws_mqtt_client_connection_set_on_operation_statistics_handler(
     return AWS_OP_SUCCESS;
 }
 
+static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct aws_mqtt_iot_sdk_metrics *metrics) {
+
+    struct aws_mqtt_client_connection_311_impl *connection = impl;
+
+    AWS_PRECONDITION(connection);
+    if (s_check_connection_state_for_configuration(connection)) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+
+    if (metrics != NULL && aws_mqtt_validate_iot_sdk_metrics_utf8(metrics) == AWS_OP_ERR) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in metrics.", (void *)connection);
+        return aws_raise_error(AWS_ERROR_INVALID_UTF8);
+    }
+
+    // TODO: Validate metadata value, when we had metadata in place.
+
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting IoT SDK metrics", (void *)connection);
+
+    /* Clean up existing metrics if any */
+    if (connection->metrics) {
+        aws_mqtt_iot_sdk_metrics_storage_clean_up(connection->metrics);
+        connection->metrics = NULL;
+    }
+
+    if (metrics) {
+        /* Allocate metrics storage */
+        connection->metrics = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
+
+        /* Initialize metrics storage */
+        if (aws_mqtt_iot_sdk_metrics_storage_init(connection->metrics, connection->allocator, metrics)) {
+            aws_mem_release(connection->allocator, connection->metrics);
+            connection->metrics = NULL;
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static struct aws_mqtt_client_connection *s_aws_mqtt_client_connection_311_acquire(void *impl) {
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
@@ -3390,6 +3462,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .unsubscribe_fn = s_aws_mqtt_client_connection_311_unsubscribe,
     .publish_fn = s_aws_mqtt_client_connection_311_publish,
     .get_stats_fn = s_aws_mqtt_client_connection_311_get_stats,
+    .set_metrics_fn = s_aws_mqtt_client_connection_311_set_metrics,
     .get_impl_type = s_aws_mqtt_client_connection_311_get_impl,
     .get_event_loop = s_aws_mqtt_client_connection_311_get_event_loop,
 };
@@ -3493,6 +3566,8 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->handler.vtable = aws_mqtt_get_client_channel_vtable();
     connection->handler.impl = connection;
 
+    aws_byte_buf_init(&connection->username_with_metrics_buf, connection->allocator, 0);
+
     aws_mqtt311_callback_set_manager_init(&connection->callback_manager, connection->allocator, &connection->base);
 
     return &connection->base;
@@ -3510,4 +3585,12 @@ failed_init_mutex:
     aws_mem_release(client->allocator, connection);
 
     return NULL;
+}
+
+int aws_mqtt_client_connection_set_metrics(
+    struct aws_mqtt_client_connection *connection,
+    const struct aws_mqtt_iot_sdk_metrics *metrics) {
+
+    AWS_PRECONDITION(connection);
+    return connection->vtable->set_metrics_fn(connection->impl, metrics);
 }

@@ -110,6 +110,11 @@ add_test_case(mqtt_validation_failure_invalid_username_utf8)
 
 add_test_case(mqtt_websocket_failed_transform)
 
+# Connection state tests
+add_test_case(mqtt_connection_set_metrics_valid)
+add_test_case(mqtt_connection_set_metrics_null)
+add_test_case(mqtt_connection_set_metrics_invalid_utf8_library)
+
 # Operation statistics tests
 add_test_case(mqtt_operation_statistics_simple_publish)
 add_test_case(mqtt_operation_statistics_offline_publish)
@@ -132,6 +137,14 @@ add_test_case(mqtt5_shared_subscription_validation)
 
 # utf8 utility
 add_test_case(mqtt_utf8_encoded_string_test)
+
+# metrics utility
+add_test_case(mqtt_append_sdk_metrics_basic)
+add_test_case(mqtt_append_sdk_metrics_empty)
+add_test_case(mqtt_append_sdk_metrics_existing_attributes)
+add_test_case(mqtt_append_sdk_metrics_special_chars)
+add_test_case(mqtt_append_sdk_metrics_long_strings)
+add_test_case(mqtt_append_sdk_metrics_invalid_utf8)
 
 # topic aliasing
 add_test_case(mqtt5_inbound_topic_alias_register_failure)

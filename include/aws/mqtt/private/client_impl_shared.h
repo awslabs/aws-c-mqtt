@@ -122,6 +122,8 @@ struct aws_mqtt_client_connection_vtable {
 
     int (*get_stats_fn)(void *impl, struct aws_mqtt_connection_operation_statistics *stats);
 
+    int (*set_metrics_fn)(void *impl, const struct aws_mqtt_iot_sdk_metrics *metrics);
+
     enum aws_mqtt311_impl_type (*get_impl_type)(const void *impl);
 
     struct aws_event_loop *(*get_event_loop)(const void *impl);
@@ -131,6 +133,28 @@ struct aws_mqtt_client_connection {
     struct aws_mqtt_client_connection_vtable *vtable;
     void *impl;
 };
+
+struct aws_mqtt_iot_sdk_metrics_storage {
+    struct aws_allocator *allocator;
+
+    struct aws_mqtt_iot_sdk_metrics storage_view;
+
+    struct aws_array_list metadata_entries;
+
+    struct aws_byte_cursor library_name;
+
+    struct aws_byte_buf storage;
+};
+
+/* IoT SDK Metrics */
+AWS_MQTT_API int aws_mqtt_iot_sdk_metrics_storage_init(
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage,
+    struct aws_allocator *allocator,
+    const struct aws_mqtt_iot_sdk_metrics *metrics_options);
+
+AWS_MQTT_API size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics);
+
+AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
 
 AWS_MQTT_API enum aws_mqtt311_impl_type aws_mqtt_client_connection_get_impl_type(
     const struct aws_mqtt_client_connection *connection);
@@ -143,5 +167,39 @@ AWS_MQTT_API bool aws_mqtt_byte_cursor_hash_equality(const void *a, const void *
 
 AWS_MQTT_API struct aws_event_loop *aws_mqtt_client_connection_get_event_loop(
     const struct aws_mqtt_client_connection *connection);
+
+/**
+ * Appends SDK metrics to the username field
+ *
+ * @param original_username The original username
+ * @param metrics The metrics configuration
+ * @param output_username Buffer to store the modified username. If the function succeed, caller is responsible to
+ * release the memory for output_username.
+ *
+ * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
+ */
+AWS_MQTT_API
+int aws_mqtt_append_sdk_metrics_to_username(
+    struct aws_allocator *allocator,
+    const struct aws_byte_cursor *original_username,
+    const struct aws_mqtt_iot_sdk_metrics metrics,
+    struct aws_byte_buf *output_username);
+
+/**
+ * Get final username length
+ */
+AWS_MQTT_API
+size_t aws_mqtt_append_sdk_metrics_to_username_size(
+    const struct aws_byte_cursor *original_username,
+    const struct aws_mqtt_iot_sdk_metrics metrics);
+
+/**
+ * Validates that all string fields in aws_mqtt_iot_sdk_metrics are valid UTF-8
+ *
+ * @param metrics The metrics structure to validate
+ * @return AWS_OP_SUCCESS if all strings are valid UTF-8, AWS_OP_ERR otherwise
+ */
+AWS_MQTT_API
+int aws_mqtt_validate_iot_sdk_metrics_utf8(const struct aws_mqtt_iot_sdk_metrics *metrics);
 
 #endif /* AWS_MQTT_PRIVATE_CLIENT_IMPL_SHARED_H */

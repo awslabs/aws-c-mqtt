@@ -365,6 +365,12 @@ struct aws_mqtt_client_connection_311_impl {
      * Statistics tracking operational state
      */
     struct aws_mqtt_connection_operation_statistics_impl operation_statistics_impl;
+
+    /**
+     * IoT SDK metrics configuration
+     */
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics;
+    struct aws_byte_buf username_with_metrics_buf;
 };
 
 struct aws_channel_handler_vtable *aws_mqtt_get_client_channel_vtable(void);
