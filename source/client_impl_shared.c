@@ -273,7 +273,7 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
     struct aws_mqtt_iot_sdk_metrics *storage_view = &metrics_storage->storage_view;
 
     // TODO: add metadata entries when enabled
-    // 
+    //
     // if (aws_array_list_init_dynamic(
     //         &metrics_storage->metadata_entries,
     //         allocator,

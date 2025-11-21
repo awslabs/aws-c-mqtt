@@ -4116,9 +4116,7 @@ static int s_test_mqtt_connection_set_metrics_invalid_utf8_library_fn(struct aws
     /* Invalid UTF-8 sequence */
     struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = invalid_utf8_library
-    };
+    struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = invalid_utf8_library};
 
     ASSERT_FAILS(aws_mqtt_client_connection_set_metrics(state_test_data->mqtt_connection, &metrics));
     ASSERT_INT_EQUALS(aws_last_error(), AWS_ERROR_INVALID_UTF8);

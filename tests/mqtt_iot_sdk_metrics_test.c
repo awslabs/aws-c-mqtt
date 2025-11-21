@@ -101,9 +101,7 @@ static int s_test_mqtt_append_sdk_metrics_existing_attributes(struct aws_allocat
 static int s_test_mqtt_append_sdk_metrics_special_chars(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = aws_byte_cursor_from_c_str("SDK/Test-1.0")
-    };
+    struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = aws_byte_cursor_from_c_str("SDK/Test-1.0")};
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
@@ -140,13 +138,9 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
     memset(long_sdk_name, 'B', sizeof(long_sdk_name) - 1);
     long_sdk_name[sizeof(long_sdk_name) - 1] = '\0';
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = aws_byte_cursor_from_c_str(long_sdk_name)
-    };
+    struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = aws_byte_cursor_from_c_str(long_sdk_name)};
 
-    struct aws_mqtt_iot_sdk_metrics short_metrics = {
-        .library_name = aws_byte_cursor_from_c_str("SHORT_SDK_NAME")
-    };
+    struct aws_mqtt_iot_sdk_metrics short_metrics = {.library_name = aws_byte_cursor_from_c_str("SHORT_SDK_NAME")};
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
@@ -171,9 +165,7 @@ static int s_test_mqtt_append_sdk_metrics_invalid_utf8(struct aws_allocator *all
     /* Invalid UTF-8 sequence in library name */
     struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = invalid_utf8_library
-    };
+    struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = invalid_utf8_library};
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);

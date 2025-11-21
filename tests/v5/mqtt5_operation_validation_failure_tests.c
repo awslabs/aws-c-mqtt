@@ -1171,8 +1171,7 @@ static void s_make_invalid_connect_client_options(struct aws_mqtt5_client_option
 AWS_CLIENT_CREATION_VALIDATION_FAILURE(invalid_connect, s_good_client_options, s_make_invalid_connect_client_options)
 
 static struct aws_mqtt_iot_sdk_metrics invalid_utf8_metrics = {
-    .library_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE")
-};
+    .library_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE")};
 
 static struct aws_mqtt5_packet_connect_view s_invalid_utf8_metrics_connect_view = {.metrics = &invalid_utf8_metrics};
 static void s_make_invalid_utf8_metrics(struct aws_mqtt5_client_options *options) {
