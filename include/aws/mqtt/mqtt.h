@@ -125,7 +125,7 @@ struct aws_mqtt_metadata_entry {
 struct aws_mqtt_iot_sdk_metrics {
     /**
      * TODO: This is a place holder for metadata entries.
-     * The metadata_entries is not added to username.
+     * The metadata_entries is not added to username yet.
      *
      * DO NOT USE.
      *
@@ -135,7 +135,7 @@ struct aws_mqtt_iot_sdk_metrics {
 
     /**
      * TODO: This is a place holder for metadata entries.
-     * The metadata_entries is not added to username.
+     * The metadata_entries is not added to username yet.
      *
      * DO NOT USE.
      *
