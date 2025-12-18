@@ -640,7 +640,8 @@ static void s_mqtt_client_init(
                     connection->allocator,
                     &username_cur,
                     connection->metrics->storage_view,
-                    &connection->username_with_metrics_buf) == AWS_OP_SUCCESS) {
+                    &connection->username_with_metrics_buf,
+                    NULL) == AWS_OP_SUCCESS) {
                 username_cur = aws_byte_cursor_from_buf(&connection->username_with_metrics_buf);
             } else {
                 AWS_LOGF_WARN(
