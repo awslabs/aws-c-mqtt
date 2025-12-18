@@ -272,7 +272,7 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
 
     struct aws_mqtt_iot_sdk_metrics *storage_view = &metrics_storage->storage_view;
 
-    // TODO: add metadata entries when enabled
+    // TODO Future Work: add metadata entries once we implemented the metadata feature
     //
     // if (aws_array_list_init_dynamic(
     //         &metrics_storage->metadata_entries,
@@ -312,9 +312,11 @@ int aws_mqtt_iot_sdk_metrics_storage_init(
     return AWS_OP_SUCCESS;
 
 metrics_storage_error:
-    if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
-        aws_array_list_clean_up(&metrics_storage->metadata_entries);
-    }
+    // TODO Future Work: add metadata entries once we implemented the metadata feature
+    // if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
+    //     aws_array_list_clean_up(&metrics_storage->metadata_entries);
+    // }
+    
     aws_byte_buf_clean_up(&metrics_storage->storage);
 
     return AWS_OP_ERR;
