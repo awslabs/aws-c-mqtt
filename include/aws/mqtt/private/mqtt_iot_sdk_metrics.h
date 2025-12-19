@@ -8,7 +8,7 @@
 
 /* IoT SDK Metrics */
 struct aws_mqtt_iot_sdk_metrics_storage {
-    1Code has comments.Press enter to view.struct aws_allocator *allocator;
+    struct aws_allocator *allocator;
 
     struct aws_mqtt_iot_sdk_metrics storage_view;
 
