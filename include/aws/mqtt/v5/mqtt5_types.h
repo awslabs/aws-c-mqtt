@@ -11,8 +11,6 @@
 #include <aws/common/array_list.h>
 #include <aws/common/byte_buf.h>
 
-struct aws_mqtt_iot_sdk_metrics;
-
 AWS_PUSH_SANE_WARNING_LEVEL
 
 /**
