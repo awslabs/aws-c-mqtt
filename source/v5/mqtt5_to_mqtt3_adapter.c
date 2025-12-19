@@ -8,7 +8,7 @@
 #include <aws/common/clock.h>
 #include <aws/common/rw_lock.h>
 
-#include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/private/mqtt_iot_sdk_metrics.h>
 #include <aws/mqtt/private/mqtt_subscription_set.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_to_mqtt3_adapter_impl.h>
