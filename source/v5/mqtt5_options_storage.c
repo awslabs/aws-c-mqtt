@@ -378,16 +378,6 @@ int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect
         }
     }
 
-    if (connect_options->metrics != NULL) {
-        if (aws_mqtt_validate_iot_sdk_metrics_utf8(connect_options->metrics)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT5_GENERAL,
-                "id=%p: aws_mqtt5_packet_connect_view - metrics not valid UTF-8",
-                (void *)connect_options);
-            return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
-        }
-    }
-
     if (connect_options->receive_maximum != NULL) {
         if (*connect_options->receive_maximum == 0) {
             AWS_LOGF_ERROR(
@@ -645,7 +635,9 @@ void aws_mqtt5_packet_connect_storage_clean_up(struct aws_mqtt5_packet_connect_s
     aws_byte_buf_clean_up_secure(&storage->storage);
 }
 
-static size_t s_aws_mqtt5_packet_connect_compute_storage_size(const struct aws_mqtt5_packet_connect_view *view) {
+static size_t s_aws_mqtt5_packet_connect_compute_storage_size(
+    const struct aws_mqtt5_packet_connect_view *view,
+    const struct aws_mqtt5_client_options *options) {
     if (view == NULL) {
         return 0;
     }
@@ -654,8 +646,11 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(const struct aws_m
 
     storage_size += view->client_id.len;
     if (view->username != NULL) {
-        if (view->metrics) {
-            storage_size += aws_mqtt_append_sdk_metrics_to_username_size(view->username, *view->metrics);
+        if (options && options->metrics) {
+            size_t username_size = 0;
+            aws_mqtt_append_sdk_metrics_to_username(
+                aws_default_allocator(), view->username, *options->metrics, NULL, &username_size);
+            storage_size += username_size;
         } else {
             storage_size += view->username->len;
         }
@@ -666,8 +661,6 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(const struct aws_m
 
     storage_size +=
         s_aws_mqtt5_user_property_set_compute_storage_size(view->user_properties, view->user_property_count);
-
-    storage_size += aws_mqtt_iot_sdk_metrics_compute_storage_size(view->metrics);
 
     if (view->authentication_method != NULL) {
         storage_size += view->authentication_method->len;
@@ -683,12 +676,13 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(const struct aws_m
 int aws_mqtt5_packet_connect_storage_init(
     struct aws_mqtt5_packet_connect_storage *storage,
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_connect_view *view) {
+    const struct aws_mqtt5_packet_connect_view *view,
+    const struct aws_mqtt5_client_options *client_config) {
     AWS_ZERO_STRUCT(*storage);
 
     struct aws_mqtt5_packet_connect_view *storage_view = &storage->storage_view;
 
-    size_t storage_capacity = s_aws_mqtt5_packet_connect_compute_storage_size(view);
+    size_t storage_capacity = s_aws_mqtt5_packet_connect_compute_storage_size(view, client_config);
     if (aws_byte_buf_init(&storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
     }
@@ -707,10 +701,10 @@ int aws_mqtt5_packet_connect_storage_init(
         AWS_ZERO_STRUCT(metrics_username_buf);
 
         /* Apply metrics to username if configured */
-        if (view->metrics) {
+        if (client_config->metrics != NULL) {
             struct aws_byte_cursor username_cur = storage->username;
             if (aws_mqtt_append_sdk_metrics_to_username(
-                    allocator, &username_cur, *view->metrics, &metrics_username_buf)) {
+                    allocator, &username_cur, *client_config->metrics, &metrics_username_buf, NULL)) {
                 return AWS_OP_ERR;
             }
             storage->username = aws_byte_cursor_from_buf(&metrics_username_buf);
@@ -843,7 +837,8 @@ static void s_destroy_operation_connect(void *object) {
 
 struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_connect_view *connect_options) {
+    const struct aws_mqtt5_packet_connect_view *connect_options,
+    const struct aws_mqtt5_client_options *client_config) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(connect_options != NULL);
 
@@ -864,7 +859,8 @@ struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     aws_priority_queue_node_init(&connect_op->base.priority_queue_node);
     connect_op->base.impl = connect_op;
 
-    if (aws_mqtt5_packet_connect_storage_init(&connect_op->options_storage, allocator, connect_options)) {
+    if (aws_mqtt5_packet_connect_storage_init(
+            &connect_op->options_storage, allocator, connect_options, client_config)) {
         goto error;
     }
 
@@ -3417,6 +3413,13 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
         }
     }
 
+    if (options->metrics != NULL) {
+        if (aws_mqtt_validate_iot_sdk_metrics_utf8(options->metrics)) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid metrics in mqtt5 client configuration");
+            return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
+        }
+    }
+
     return AWS_OP_SUCCESS;
 }
 
@@ -3775,6 +3778,10 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
         aws_mem_release(options_storage->connect->allocator, options_storage->connect);
     }
 
+    if (options_storage->metrics_storage != NULL) {
+        aws_mqtt_iot_sdk_metrics_storage_destroy(options_storage->metrics_storage);
+    }
+
     aws_mem_release(options_storage->allocator, options_storage);
 }
 
@@ -3832,14 +3839,20 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         return NULL;
     }
 
+    struct aws_mqtt5_client_options *options_view = &options_storage->options;
+
     options_storage->allocator = allocator;
     options_storage->host_name = aws_string_new_from_cursor(allocator, &options->host_name);
+    options_view->host_name = aws_byte_cursor_from_string(options_storage->host_name);
     if (options_storage->host_name == NULL) {
         goto error;
     }
 
     options_storage->port = options->port;
+    options_view->port = options_storage->port;
+
     options_storage->bootstrap = aws_client_bootstrap_acquire(options->bootstrap);
+    options_view->bootstrap = options_storage->bootstrap;
 
     if (options->socket_options != NULL) {
         options_storage->socket_options = *options->socket_options;
@@ -3847,6 +3860,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         options_storage->socket_options.type = AWS_SOCKET_STREAM;
         options_storage->socket_options.connect_timeout_ms = AWS_MQTT5_DEFAULT_SOCKET_CONNECT_TIMEOUT_MS;
     }
+    options_view->socket_options = &options_storage->socket_options;
 
     if (options->tls_options != NULL) {
         if (aws_tls_connection_options_copy(&options_storage->tls_options, options->tls_options)) {
@@ -3863,6 +3877,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
             }
         }
     }
+    options_view->tls_options = options_storage->tls_options_ptr;
 
     if (options->http_proxy_options != NULL) {
         /* Ignore a specified proxy connection type and use TUNNEL unconditionally as only this proxy type works. */
@@ -3875,32 +3890,50 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         aws_http_proxy_options_init_from_config(
             &options_storage->http_proxy_options, options_storage->http_proxy_config);
     }
+    options_view->http_proxy_options = options->http_proxy_options;
 
     options_storage->websocket_handshake_transform = options->websocket_handshake_transform;
+    options_view->websocket_handshake_transform = options_storage->websocket_handshake_transform;
     options_storage->websocket_handshake_transform_user_data = options->websocket_handshake_transform_user_data;
+    options_view->websocket_handshake_transform_user_data = options_storage->websocket_handshake_transform_user_data;
 
     options_storage->publish_received_handler = options->publish_received_handler;
+    options_view->publish_received_handler = options_storage->publish_received_handler;
     options_storage->publish_received_handler_user_data = options->publish_received_handler_user_data;
+    options_view->publish_received_handler_user_data = options_storage->publish_received_handler_user_data;
 
     options_storage->session_behavior = options->session_behavior;
+    options_view->session_behavior = options_storage->session_behavior;
     options_storage->extended_validation_and_flow_control_options =
         options->extended_validation_and_flow_control_options;
+    options_view->extended_validation_and_flow_control_options =
+        options_storage->extended_validation_and_flow_control_options;
     options_storage->offline_queue_behavior = options->offline_queue_behavior;
+    options_view->offline_queue_behavior = options_storage->offline_queue_behavior;
 
     options_storage->retry_jitter_mode = options->retry_jitter_mode;
+    options_view->retry_jitter_mode = options_storage->retry_jitter_mode;
     options_storage->min_reconnect_delay_ms = options->min_reconnect_delay_ms;
+    options_view->min_reconnect_delay_ms = options_storage->min_reconnect_delay_ms;
     options_storage->max_reconnect_delay_ms = options->max_reconnect_delay_ms;
+    options_view->max_reconnect_delay_ms = options_storage->max_reconnect_delay_ms;
     options_storage->min_connected_time_to_reset_reconnect_delay_ms =
         options->min_connected_time_to_reset_reconnect_delay_ms;
+    options_view->min_connected_time_to_reset_reconnect_delay_ms =
+        options_storage->min_connected_time_to_reset_reconnect_delay_ms;
 
     options_storage->ping_timeout_ms = options->ping_timeout_ms;
+    options_view->ping_timeout_ms = options_storage->ping_timeout_ms;
     options_storage->connack_timeout_ms = options->connack_timeout_ms;
+    options_view->connack_timeout_ms = options_storage->connack_timeout_ms;
 
     options_storage->ack_timeout_seconds = options->ack_timeout_seconds;
+    options_view->ack_timeout_seconds = options_storage->ack_timeout_seconds;
 
     if (options->topic_aliasing_options != NULL) {
         options_storage->topic_aliasing_options = *options->topic_aliasing_options;
     }
+    options_view->topic_aliasing_options = &options_storage->topic_aliasing_options;
 
     struct aws_byte_buf auto_assign_id_buf;
     AWS_ZERO_STRUCT(auto_assign_id_buf);
@@ -3962,18 +3995,23 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
 
     options_storage->connect = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
     int connect_storage_result =
-        aws_mqtt5_packet_connect_storage_init(options_storage->connect, allocator, &connect_options);
+        aws_mqtt5_packet_connect_storage_init(options_storage->connect, allocator, &connect_options, options);
 
     aws_byte_buf_clean_up(&auto_assign_id_buf);
     if (connect_storage_result != AWS_OP_SUCCESS) {
         goto error;
     }
+    options_view->connect_options = &options_storage->connect->storage_view;
 
     options_storage->lifecycle_event_handler = options->lifecycle_event_handler;
+    options_view->lifecycle_event_handler = options_storage->lifecycle_event_handler;
     options_storage->lifecycle_event_handler_user_data = options->lifecycle_event_handler_user_data;
+    options_view->lifecycle_event_handler_user_data = options_storage->lifecycle_event_handler_user_data;
 
     options_storage->client_termination_handler = options->client_termination_handler;
+    options_view->client_termination_handler = options_storage->client_termination_handler;
     options_storage->client_termination_handler_user_data = options->client_termination_handler_user_data;
+    options_view->client_termination_handler_user_data = options_storage->client_termination_handler_user_data;
 
     s_apply_zero_valued_defaults_to_client_options_storage(options_storage);
 
@@ -3985,6 +4023,11 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         options_storage->host_resolution_override.resolve_frequency_ns = aws_timestamp_convert(
             options_storage->max_reconnect_delay_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
+    options_view->host_resolution_override = &options_storage->host_resolution_override;
+
+    // TODO: Placehold for metrics storage implemnetation.
+    options_storage->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(allocator, options->metrics);
+    options_view->metrics = &options_storage->metrics_storage->storage_view;
 
     return options_storage;
 

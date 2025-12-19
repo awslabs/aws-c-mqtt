@@ -4,24 +4,80 @@
  */
 
 #include <aws/common/byte_buf.h>
-#include <aws/common/encoding.h>
-#include <aws/common/string.h>
 #include <aws/common/system_info.h>
+#include <aws/common/uri.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 
 #include <stdio.h>
 
-// Maximum MQTT5 Content Type size https://docs.aws.amazon.com/general/latest/gr/iot-core.html#thing-limits
-const int AWS_IOT_MAX_CONTENT_SIZE = 256;
+// MQTT payload size https://docs.aws.amazon.com/general/latest/gr/iot-core.html#thing-limits
+const size_t AWS_IOT_MAX_USERNAME_SIZE = 128 * 1024;
+const size_t DEFAULT_QUERY_PARAM_COUNT = 10;
 
+// Build username query string from params_list, the caller is responsible to init and clean up output_username
+// If output_username is NULL, the function will just calculate the full username size and return it in
+// out_full_username_size
+int s_build_username_query(
+    const struct aws_byte_cursor *base_username,
+    size_t base_username_length,
+    const struct aws_array_list *params_list,
+    struct aws_byte_buf *output_username,
+    size_t *out_full_username_size) {
+
+    if (output_username) {
+        aws_byte_buf_write(output_username, base_username->ptr, base_username_length);
+    }
+
+    if (out_full_username_size) {
+        *out_full_username_size = base_username_length;
+    }
+
+    struct aws_byte_cursor query_delim = aws_byte_cursor_from_c_str("?");
+    struct aws_byte_cursor query_param_amp = aws_byte_cursor_from_c_str("&");
+    struct aws_byte_cursor key_value_delim = aws_byte_cursor_from_c_str("=");
+
+    size_t params_count = aws_array_list_length(params_list);
+    for (size_t i = 0; i < params_count; ++i) {
+        struct aws_uri_param param;
+        AWS_ZERO_STRUCT(param);
+        aws_array_list_get_at(params_list, &param, i);
+
+        if (i == 0 && output_username) {
+            aws_byte_buf_append(output_username, &query_delim);
+        } else if (i > 0 && output_username) {
+            aws_byte_buf_append(output_username, &query_param_amp);
+        }
+
+        if (out_full_username_size) {
+            *out_full_username_size += 1;
+        }
+
+        if (output_username) {
+            if (aws_byte_buf_append(output_username, &param.key) ||
+                aws_byte_buf_append(output_username, &key_value_delim) ||
+                aws_byte_buf_append(output_username, &param.value)) {
+                return AWS_OP_ERR;
+            }
+        }
+
+        if (out_full_username_size) {
+            *out_full_username_size += param.key.len + 1 + param.value.len;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+// TODO Future Work: we ignored the metadata field for now, will add them in future support
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
     const struct aws_mqtt_iot_sdk_metrics metrics,
-    struct aws_byte_buf *output_username) {
+    struct aws_byte_buf *output_username,
+    size_t *out_full_username_size) {
 
-    if (!allocator || !output_username) {
+    if (!allocator) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
@@ -31,157 +87,95 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
     /* Build metrics string */
     struct aws_byte_buf metrics_string;
-    if (aws_byte_buf_init(&metrics_string, allocator, AWS_IOT_MAX_CONTENT_SIZE)) {
+    if (aws_byte_buf_init(&metrics_string, allocator, AWS_IOT_MAX_USERNAME_SIZE)) {
         return AWS_OP_ERR;
     }
 
-    /* Check if the attributes already exists in username */
-    bool has_sdk = false;
-    bool has_platform = false;
-    bool has_query = false;
-
-    struct aws_byte_cursor sdk_str = aws_byte_cursor_from_c_str("SDK=");
-    struct aws_byte_cursor platform_str = aws_byte_cursor_from_c_str("Platform=");
+    int result = AWS_OP_ERR;
+    // The length of the base username part not including query parameters
+    size_t base_username_length = 0;
     struct aws_byte_cursor question_mark_str = aws_byte_cursor_from_c_str("?");
-    struct aws_byte_cursor amp = aws_byte_cursor_from_c_str("&");
+    struct aws_byte_cursor sdk_str = aws_byte_cursor_from_c_str("SDK");
+    struct aws_byte_cursor platform_str = aws_byte_cursor_from_c_str("Platform");
 
-    // TODO: we ignored the metadata field for now, need to add them later
+    struct aws_array_list params_list;
+    aws_array_list_init_dynamic(&params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
 
     if (original_username && original_username->len > 0) {
         struct aws_byte_cursor question_mark_find;
-        has_query =
-            AWS_OP_SUCCESS == aws_byte_cursor_find_exact(original_username, &question_mark_str, &question_mark_find);
-        if (has_query) {
-            struct aws_byte_cursor temp_cursor;
-            has_sdk = AWS_OP_SUCCESS == aws_byte_cursor_find_exact(&question_mark_find, &sdk_str, &temp_cursor);
-            has_platform =
-                AWS_OP_SUCCESS == aws_byte_cursor_find_exact(&question_mark_find, &platform_str, &temp_cursor);
+
+        if (AWS_OP_SUCCESS == aws_byte_cursor_find_exact(original_username, &question_mark_str, &question_mark_find)) {
+            base_username_length = question_mark_find.ptr - original_username->ptr;
+            // Advance cursor to skip the "?" character
+            aws_byte_cursor_advance(&question_mark_find, 1);
+            aws_byte_buf_append(&metrics_string, &question_mark_find);
+            aws_query_string_params(question_mark_find, &params_list);
+        } else {
+            base_username_length = original_username->len;
         }
     }
 
-    /* Add SDK if not present */
-    if (!has_sdk) {
-        if (aws_byte_buf_append(&metrics_string, &sdk_str)) {
-            goto error;
-        }
+    bool found_sdk = false;
+    bool found_platform = false;
 
-        struct aws_byte_cursor sdk_attr_value =
-            metrics.library_name.len > 0 ? metrics.library_name : aws_byte_cursor_from_c_str("IoTDeviceSDK/C");
-        if (aws_byte_buf_append(&metrics_string, &sdk_attr_value)) {
-            goto error;
-        }
-    }
-
-    /* Add Platform if not present */
-    if (!has_platform) {
-        struct aws_byte_cursor platform_cursor = aws_get_platform_build_os_string();
-        if (platform_cursor.len > 0) {
-            if (metrics_string.len > 0) {
-                if (aws_byte_buf_append(&metrics_string, &amp)) {
-                    goto error;
-                }
-            }
-
-            if (aws_byte_buf_append(&metrics_string, &platform_str) ||
-                aws_byte_buf_append(&metrics_string, &platform_cursor)) {
-                goto error;
-            }
+    size_t params_count = aws_array_list_length(&params_list);
+    for (size_t i = 0; i < params_count; ++i) {
+        struct aws_uri_param param;
+        AWS_ZERO_STRUCT(param);
+        aws_array_list_get_at(&params_list, &param, i);
+        if (aws_byte_cursor_eq(&param.key, &sdk_str)) {
+            found_sdk = true;
+        } else if (aws_byte_cursor_eq(&param.key, &platform_str)) {
+            found_platform = true;
         }
     }
 
-    /* Build final output */
-    // TODO: we should consider the case where total size extceeds MQTT username limit
-    size_t total_size = (original_username ? original_username->len : 0) + metrics_string.len + 1;
-
-    if (aws_byte_buf_init(output_username, allocator, total_size)) {
-        goto error;
+    if (!found_sdk) {
+        struct aws_uri_param sdk_params = {
+            .key = sdk_str,
+            .value = metrics.library_name.len > 0 ? metrics.library_name : aws_byte_cursor_from_c_str("IoTDeviceSDK/C"),
+        };
+        aws_array_list_push_back(&params_list, &sdk_params);
     }
 
-    /* Add original username */
-    if (original_username && original_username->len > 0) {
-        if (aws_byte_buf_append(output_username, original_username)) {
-            goto error_output;
-        }
+    if (!found_platform) {
+        struct aws_uri_param platform_params = {
+            .key = platform_str,
+            .value = aws_get_platform_build_os_string(),
+        };
+        aws_array_list_push_back(&params_list, &platform_params);
     }
 
-    /* Add metrics with separator */
-    if (metrics_string.len > 0) {
+    // Rebuild metrics string from params_list
+    // First path to calculate total size
+    size_t total_size = 0;
+    s_build_username_query(original_username, base_username_length, &params_list, NULL, &total_size);
 
-        struct aws_byte_cursor metrics_cursor = aws_byte_cursor_from_buf(&metrics_string);
+    if (total_size > AWS_IOT_MAX_USERNAME_SIZE) {
+        goto cleanup;
+    }
 
-        struct aws_byte_cursor separator = has_query ? amp : question_mark_str;
-        if (aws_byte_buf_append(output_username, &separator)) {
-            goto error_output;
-        }
+    if (output_username && aws_byte_buf_init(output_username, allocator, total_size)) {
+        goto cleanup;
+    }
 
-        if (aws_byte_buf_append(output_username, &metrics_cursor)) {
-            goto error_output;
-        }
+    // build final output username
+    if (s_build_username_query(
+            original_username, base_username_length, &params_list, output_username, out_full_username_size)) {
+        goto cleanup;
     }
 
     aws_byte_buf_clean_up(&metrics_string);
-    return AWS_OP_SUCCESS;
+    result = AWS_OP_SUCCESS;
 
-error_output:
-    aws_byte_buf_clean_up(output_username);
-error:
+cleanup:
+    if (aws_array_list_is_valid(&params_list)) {
+        aws_array_list_clean_up(&params_list);
+    }
+
+    if (result == AWS_OP_ERR && aws_byte_buf_is_valid(output_username)) {
+        aws_byte_buf_clean_up(output_username);
+    }
     aws_byte_buf_clean_up(&metrics_string);
-    return AWS_OP_ERR;
-}
-
-size_t aws_mqtt_append_sdk_metrics_to_username_size(
-    const struct aws_byte_cursor *original_username,
-    const struct aws_mqtt_iot_sdk_metrics metrics) {
-
-    /* Build metrics string */
-    size_t metrics_string_size = 0;
-
-    /* Check if the attributes already exists in username */
-    bool has_sdk = false;
-    bool has_platform = false;
-    bool has_query = false;
-
-    struct aws_byte_cursor sdk_str = aws_byte_cursor_from_c_str("SDK=");
-    struct aws_byte_cursor platform_str = aws_byte_cursor_from_c_str("Platform=");
-    struct aws_byte_cursor question_mark_str = aws_byte_cursor_from_c_str("?");
-
-    // TODO: we ignored the metadata field for now, need to add them in the future
-
-    if (original_username && original_username->len > 0) {
-        struct aws_byte_cursor question_mark_find;
-        has_query =
-            AWS_OP_SUCCESS == aws_byte_cursor_find_exact(original_username, &question_mark_str, &question_mark_find);
-        if (has_query) {
-            struct aws_byte_cursor temp_cursor;
-            has_sdk = AWS_OP_SUCCESS == aws_byte_cursor_find_exact(&question_mark_find, &sdk_str, &temp_cursor);
-            has_platform =
-                AWS_OP_SUCCESS == aws_byte_cursor_find_exact(&question_mark_find, &platform_str, &temp_cursor);
-        }
-    }
-
-    /* Add SDK if not present */
-    if (!has_sdk) {
-        metrics_string_size += sdk_str.len;
-
-        struct aws_byte_cursor sdk_attr_value =
-            metrics.library_name.len > 0 ? metrics.library_name : aws_byte_cursor_from_c_str("IoTDeviceSDK/C");
-
-        metrics_string_size += sdk_attr_value.len;
-    }
-
-    /* Add Platform if not present */
-    if (!has_platform) {
-        struct aws_byte_cursor platform_cursor = aws_get_platform_build_os_string();
-        if (platform_cursor.len > 0) {
-            // Add amp sign if metrics is not empty
-            metrics_string_size += metrics_string_size + metrics_string_size > 0 ? 1 : 0;
-
-            metrics_string_size += platform_str.len + platform_cursor.len;
-        }
-    }
-
-    /* Build final output */
-    /* original_username + 1 character of "?" or "&" + metrics string*/
-    size_t total_size = (original_username ? original_username->len : 0) + 1 + metrics_string_size;
-    return total_size;
+    return result;
 }

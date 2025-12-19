@@ -396,9 +396,6 @@ struct aws_mqtt5_packet_connect_view {
     /* Do not bind these.  We don't support AUTH packets yet.  For decode/encade testing purposes only. */
     const struct aws_byte_cursor *authentication_method;
     const struct aws_byte_cursor *authentication_data;
-
-    /* IoT SDK metrics configuration */
-    const struct aws_mqtt_iot_sdk_metrics *metrics;
 };
 
 /**

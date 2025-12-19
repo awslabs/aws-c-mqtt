@@ -131,9 +131,9 @@ static struct aws_mqtt5_user_property s_bad_user_properties_too_many[AWS_MQTT5_C
     ASSERT_NULL(aws_mqtt5_operation_##packet_type##_new(allocator, NULL, &bad_view, NULL));                            \
     AWS_VALIDATION_FAILURE_SUFFIX(packet_type, failure_reason)
 
-#define AWS_VALIDATION_FAILURE_TEST2(packet_type, failure_reason, view_name, mutate_function)                          \
+#define AWS_VALIDATION_FAILURE_TEST_CONNECT(packet_type, failure_reason, view_name, mutate_function)                   \
     AWS_VALIDATION_FAILURE_PREFIX(packet_type, failure_reason, view_name, mutate_function)                             \
-    ASSERT_NULL(aws_mqtt5_operation_##packet_type##_new(allocator, &bad_view));                                        \
+    ASSERT_NULL(aws_mqtt5_operation_##packet_type##_new(allocator, &bad_view, NULL));                                  \
     AWS_VALIDATION_FAILURE_SUFFIX(packet_type, failure_reason)
 
 #define AWS_IOT_CORE_VALIDATION_FAILURE(packet_type, failure_reason, view_name, mutate_function)                       \
@@ -266,13 +266,17 @@ static void s_make_client_id_too_long_connect_view(struct aws_mqtt5_packet_conne
     view->client_id.len = AWS_ARRAY_SIZE(s_too_long_for_uint16);
 }
 
-AWS_VALIDATION_FAILURE_TEST2(connect, client_id_too_long, s_good_connect_view, s_make_client_id_too_long_connect_view)
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
+    connect,
+    client_id_too_long,
+    s_good_connect_view,
+    s_make_client_id_too_long_connect_view)
 
 static void s_make_client_id_invalid_utf8_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->client_id = s_invalid_utf8_string;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     client_id_invalid_utf8,
     s_good_connect_view,
@@ -282,13 +286,17 @@ static void s_make_username_too_long_connect_view(struct aws_mqtt5_packet_connec
     view->username = &s_too_long_for_uint16_cursor;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(connect, username_too_long, s_good_connect_view, s_make_username_too_long_connect_view)
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
+    connect,
+    username_too_long,
+    s_good_connect_view,
+    s_make_username_too_long_connect_view)
 
 static void s_make_username_invalid_utf8_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->username = &s_invalid_utf8_string;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     username_invalid_utf8,
     s_good_connect_view,
@@ -298,14 +306,18 @@ static void s_make_password_too_long_connect_view(struct aws_mqtt5_packet_connec
     view->password = &s_too_long_for_uint16_cursor;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(connect, password_too_long, s_good_connect_view, s_make_password_too_long_connect_view)
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
+    connect,
+    password_too_long,
+    s_good_connect_view,
+    s_make_password_too_long_connect_view)
 
 static const uint16_t s_zero_receive_maximum = 0;
 static void s_make_receive_maximum_zero_connect_view(struct aws_mqtt5_packet_connect_view *view) {
     view->receive_maximum = &s_zero_receive_maximum;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     receive_maximum_zero,
     s_good_connect_view,
@@ -316,7 +328,7 @@ static void s_make_maximum_packet_size_zero_connect_view(struct aws_mqtt5_packet
     view->maximum_packet_size_bytes = &s_maximum_packet_size_zero;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     maximum_packet_size_zero,
     s_good_connect_view,
@@ -326,7 +338,7 @@ static void s_make_auth_method_unsupported_connect_view(struct aws_mqtt5_packet_
     view->authentication_method = &s_binary_data_cursor;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     auth_method_unsupported,
     s_good_connect_view,
@@ -336,7 +348,7 @@ static void s_make_auth_data_unsupported_connect_view(struct aws_mqtt5_packet_co
     view->authentication_data = &s_binary_data_cursor;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     auth_data_unsupported,
     s_good_connect_view,
@@ -347,7 +359,7 @@ static void s_make_request_problem_information_invalid_connect_view(struct aws_m
     view->request_problem_information = &s_bad_boolean;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     request_problem_information_invalid,
     s_good_connect_view,
@@ -357,7 +369,7 @@ static void s_make_request_response_information_invalid_connect_view(struct aws_
     view->request_response_information = &s_bad_boolean;
 };
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     request_response_information_invalid,
     s_good_connect_view,
@@ -368,7 +380,7 @@ static void s_make_user_properties_name_too_long_connect_view(struct aws_mqtt5_p
     view->user_properties = s_bad_user_properties_name;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     user_properties_name_too_long,
     s_good_connect_view,
@@ -379,7 +391,7 @@ static void s_make_user_properties_name_invalid_utf8_connect_view(struct aws_mqt
     view->user_properties = s_user_properties_with_invalid_name;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     user_properties_name_invalid_utf8,
     s_good_connect_view,
@@ -390,7 +402,7 @@ static void s_make_user_properties_value_too_long_connect_view(struct aws_mqtt5_
     view->user_properties = s_bad_user_properties_value;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     user_properties_value_too_long,
     s_good_connect_view,
@@ -401,7 +413,7 @@ static void s_make_user_properties_value_invalid_utf8_connect_view(struct aws_mq
     view->user_properties = s_user_properties_with_invalid_value;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     user_properties_value_invalid_utf8,
     s_good_connect_view,
@@ -412,7 +424,7 @@ static void s_make_user_properties_too_many_connect_view(struct aws_mqtt5_packet
     view->user_properties = s_bad_user_properties_too_many;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     user_properties_too_many,
     s_good_connect_view,
@@ -439,7 +451,7 @@ static void s_make_will_invalid_connect_view(struct aws_mqtt5_packet_connect_vie
     view->will = &s_will_invalid_publish_view;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(connect, will_invalid, s_good_will_connect_view, s_make_will_invalid_connect_view)
+AWS_VALIDATION_FAILURE_TEST_CONNECT(connect, will_invalid, s_good_will_connect_view, s_make_will_invalid_connect_view)
 
 static struct aws_mqtt5_packet_publish_view s_will_payload_too_long_publish_view = {
     .topic =
@@ -456,7 +468,7 @@ static void s_make_will_payload_too_long_connect_view(struct aws_mqtt5_packet_co
     view->will = &s_will_payload_too_long_publish_view;
 }
 
-AWS_VALIDATION_FAILURE_TEST2(
+AWS_VALIDATION_FAILURE_TEST_CONNECT(
     connect,
     will_payload_too_long,
     s_good_will_connect_view,
@@ -1173,9 +1185,8 @@ AWS_CLIENT_CREATION_VALIDATION_FAILURE(invalid_connect, s_good_client_options, s
 static struct aws_mqtt_iot_sdk_metrics invalid_utf8_metrics = {
     .library_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE")};
 
-static struct aws_mqtt5_packet_connect_view s_invalid_utf8_metrics_connect_view = {.metrics = &invalid_utf8_metrics};
 static void s_make_invalid_utf8_metrics(struct aws_mqtt5_client_options *options) {
-    options->connect_options = &s_invalid_utf8_metrics_connect_view;
+    options->metrics = &invalid_utf8_metrics;
 }
 
 AWS_CLIENT_CREATION_VALIDATION_FAILURE(invalid_metrics_string, s_good_client_options, s_make_invalid_utf8_metrics)
