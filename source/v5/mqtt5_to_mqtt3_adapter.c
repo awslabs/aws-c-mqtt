@@ -2793,7 +2793,7 @@ static void s_aws_mqtt_set_metrics_task_destroy(struct aws_mqtt_set_metrics_task
         return;
     }
 
-    aws_mqtt_iot_sdk_metrics_storage_clean_up(task->metrics_storage);
+    aws_mqtt_iot_sdk_metrics_storage_destroy(task->metrics_storage);
 
     aws_mem_release(task->allocator, task);
 }
@@ -2807,43 +2807,22 @@ static void s_set_metrics_task_fn(struct aws_task *task, void *arg, enum aws_tas
         goto done;
     }
 
+    if (aws_mqtt_validate_iot_sdk_metrics_utf8(&set_task->metrics_storage->storage_view)) {
+        AWS_LOGF_ERROR(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "invalid metrics in client configuration");
+        goto done;
+    }
+
     /* we're in the mqtt5 client's event loop; it's safe to access internal state */
-    struct aws_mqtt5_packet_connect_storage *old_connect = adapter->client->config->connect;
-
-    /*
-     * Packet storage stores binary data in a single buffer.  The safest way to replace some binary data is
-     * to make a new storage from the old storage, deleting the old storage after construction is complete.
-     */
-    struct aws_mqtt5_packet_connect_view new_connect_view = old_connect->storage_view;
-
-    if (set_task->metrics_storage) {
-        new_connect_view.metrics = &set_task->metrics_storage->storage_view;
-    } else {
-        new_connect_view.metrics = NULL;
+    struct aws_mqtt5_client_options_storage *client_options = adapter->client->config;
+    if (client_options->metrics_storage) {
+        aws_mqtt_iot_sdk_metrics_storage_destroy(client_options->metrics_storage);
     }
-
-    if (aws_mqtt5_packet_connect_view_validate(&new_connect_view)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: mqtt3-to-5-adapter - invalid CONNECT metrics", (void *)adapter);
-        goto done;
-    }
-
-    struct aws_mqtt5_packet_connect_storage *new_connect =
-        aws_mem_calloc(adapter->allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
-
-    if (aws_mqtt5_packet_connect_storage_init(new_connect, adapter->allocator, &new_connect_view)) {
-        aws_mem_release(adapter->allocator, new_connect);
-        goto done;
-    }
-
-    adapter->client->config->connect = new_connect;
-    aws_mqtt5_packet_connect_storage_clean_up(old_connect);
-    aws_mem_release(old_connect->allocator, old_connect);
+    client_options->metrics_storage =
+        aws_mqtt_iot_sdk_metrics_storage_new(set_task->allocator, &set_task->metrics_storage->storage_view);
+    client_options->options.metrics = &client_options->metrics_storage->storage_view;
 
 done:
-
     aws_ref_count_release(&adapter->internal_refs);
-
     s_aws_mqtt_set_metrics_task_destroy(set_task);
 }
 
@@ -2862,12 +2841,7 @@ static struct aws_mqtt_set_metrics_task *s_aws_mqtt_set_metrics_task_new(
     set_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
 
     if (metrics != NULL) {
-        set_task->metrics_storage = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
-        if (aws_mqtt_iot_sdk_metrics_storage_init(set_task->metrics_storage, allocator, metrics)) {
-            aws_ref_count_release(&adapter->internal_refs);
-            aws_mem_release(allocator, set_task);
-            return NULL;
-        }
+        set_task->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(allocator, metrics);
     }
 
     return set_task;
@@ -2925,7 +2899,8 @@ static uint16_t s_aws_mqtt_5_resubscribe_existing_topics(
         int error_code = aws_last_error();
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
-            "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics failed on operation creation, error code %d(%s)",
+            "id=%p: mqtt3-to-5-adapter, resubscribe_existing_topics failed on operation creation, error code "
+            "%d(%s)",
             (void *)adapter,
             error_code,
             aws_error_debug_str(error_code));

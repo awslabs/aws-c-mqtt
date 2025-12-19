@@ -3416,7 +3416,7 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
     if (options->metrics != NULL) {
         if (aws_mqtt_validate_iot_sdk_metrics_utf8(options->metrics)) {
             AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid metrics in mqtt5 client configuration");
-            return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
+            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
         }
     }
 
