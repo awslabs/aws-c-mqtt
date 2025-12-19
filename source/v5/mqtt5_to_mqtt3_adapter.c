@@ -1639,7 +1639,8 @@ static void s_set_login_task_fn(struct aws_task *task, void *arg, enum aws_task_
 
     struct aws_mqtt5_packet_connect_storage *new_connect =
         aws_mem_calloc(adapter->allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
-    aws_mqtt5_packet_connect_storage_init(new_connect, adapter->allocator, &new_connect_view);
+    aws_mqtt5_packet_connect_storage_init(
+        new_connect, adapter->allocator, &new_connect_view, &adapter->client->config->options);
 
     adapter->client->config->connect = new_connect;
     aws_mqtt5_packet_connect_storage_clean_up(old_connect);

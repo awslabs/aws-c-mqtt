@@ -209,7 +209,8 @@ AWS_MQTT_API size_t aws_mqtt5_user_property_set_size(const struct aws_mqtt5_user
 AWS_MQTT_API int aws_mqtt5_packet_connect_storage_init(
     struct aws_mqtt5_packet_connect_storage *connect_storage,
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_connect_view *connect_options);
+    const struct aws_mqtt5_packet_connect_view *connect_options,
+    const struct aws_mqtt5_client_options *client_options);
 
 AWS_MQTT_API int aws_mqtt5_packet_connect_storage_init_from_external_storage(
     struct aws_mqtt5_packet_connect_storage *connect_storage,

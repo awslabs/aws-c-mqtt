@@ -597,7 +597,7 @@ static int s_mqtt5_connect_storage_new_set_no_optional_fn(struct aws_allocator *
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
 
-    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options));
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options, NULL));
 
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
@@ -681,6 +681,10 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
         // .metadata_count = 0,
     };
 
+    struct aws_mqtt5_client_options client_options = {
+        .metrics = &metrics,
+    };
+
     struct aws_mqtt5_packet_connect_view connect_options = {
         .keep_alive_interval_seconds = 50,
         .client_id = aws_byte_cursor_from_string(s_client_id),
@@ -698,13 +702,13 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = s_user_properties,
         .authentication_method = &s_authentication_method_cursor,
-        .authentication_data = &s_authentication_data_cursor,
-        .metrics = &metrics};
+        .authentication_data = &s_authentication_data_cursor};
 
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
 
-    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options));
+    ASSERT_SUCCESS(
+        aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options, &client_options));
 
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
@@ -2219,7 +2223,7 @@ static struct aws_mqtt5_operation_connect *s_make_simple_connect_operation(struc
         .keep_alive_interval_seconds = 0,
     };
 
-    return aws_mqtt5_operation_connect_new(allocator, &connect_view);
+    return aws_mqtt5_operation_connect_new(allocator, &connect_view, NULL);
 }
 
 /*

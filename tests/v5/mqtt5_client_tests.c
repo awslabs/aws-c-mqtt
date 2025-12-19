@@ -154,7 +154,7 @@ static int s_aws_mqtt5_client_test_init_default_connect_storage(
         .clean_start = true,
     };
 
-    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
+    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view, NULL);
 }
 
 static int s_aws_mqtt5_client_test_init_default_disconnect_storage(
@@ -1052,7 +1052,7 @@ static int s_aws_mqtt5_client_test_init_ping_test_connect_storage(
         .clean_start = true,
     };
 
-    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
+    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view, NULL);
 }
 
 /*
@@ -2970,7 +2970,7 @@ static int s_aws_mqtt5_client_test_init_resume_session_connect_storage(
         .clean_start = false,
     };
 
-    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
+    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view, NULL);
 }
 
 #define SESSION_RESUMPTION_CONNECT_COUNT 5
@@ -6667,6 +6667,7 @@ static int s_mqtt5_client_metrics_in_username_fn(
 
     struct mqtt5_client_test_options test_options;
     aws_mqtt5_client_test_init_default_options(&test_options);
+    test_options.client_options.metrics = metrics;
 
     /* Set up username and metrics */
     struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("test_user");
@@ -6675,7 +6676,6 @@ static int s_mqtt5_client_metrics_in_username_fn(
         .keep_alive_interval_seconds = 30,
         .client_id = aws_byte_cursor_from_string(g_default_client_id),
         .clean_start = true,
-        .metrics = metrics,
         .username = &original_username};
 
     test_options.connect_options = connect_view;
@@ -6739,7 +6739,8 @@ static int s_mqtt5_client_metrics_in_username_fn(
 
     struct aws_mqtt5_packet_connect_storage expected_connect_storage;
 
-    aws_mqtt5_packet_connect_storage_init(&expected_connect_storage, allocator, &connect_view);
+    aws_mqtt5_packet_connect_storage_init(
+        &expected_connect_storage, allocator, &connect_view, &test_options.client_options);
 
     struct aws_mqtt5_packet_disconnect_storage expected_disconnect_storage;
     ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_disconnect_storage(&expected_disconnect_storage, allocator));
