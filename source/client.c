@@ -636,20 +636,16 @@ static void s_mqtt_client_init(
         }
 
         /* Apply metrics to username if configured */
-        if (connection->metrics_storage) {
-            if (aws_mqtt_append_sdk_metrics_to_username(
-                    connection->allocator,
-                    &username_cur,
-                    connection->metrics_storage->storage_view,
-                    &username_with_metrics_buf,
-                    NULL) == AWS_OP_SUCCESS) {
-                username_cur = aws_byte_cursor_from_buf(&username_with_metrics_buf);
-            } else {
-                AWS_LOGF_WARN(
-                    AWS_LS_MQTT_CLIENT,
-                    "id=%p: Failed to apply metrics to username, using original",
-                    (void *)connection);
-            }
+        if (aws_mqtt_append_sdk_metrics_to_username(
+                connection->allocator,
+                &username_cur,
+                connection->metrics_storage ? &connection->metrics_storage->storage_view : NULL,
+                &username_with_metrics_buf,
+                NULL) == AWS_OP_SUCCESS) {
+            username_cur = aws_byte_cursor_from_buf(&username_with_metrics_buf);
+        } else {
+            AWS_LOGF_WARN(
+                AWS_LS_MQTT_CLIENT, "id=%p: Failed to apply metrics to username, using original", (void *)connection);
         }
 
         AWS_LOGF_DEBUG(

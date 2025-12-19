@@ -42,7 +42,7 @@ AWS_MQTT_API
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
-    const struct aws_mqtt_iot_sdk_metrics metrics,
+    const struct aws_mqtt_iot_sdk_metrics *metrics,
     struct aws_byte_buf *output_username,
     size_t *out_full_username_size);
 
