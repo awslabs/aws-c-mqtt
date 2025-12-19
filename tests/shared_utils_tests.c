@@ -170,7 +170,7 @@ static int s_test_mqtt_append_sdk_metrics_empty(struct aws_allocator *allocator,
     struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("");
 
     ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, metrics, &output_username, NULL));
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
@@ -206,7 +206,7 @@ static int s_test_mqtt_append_sdk_metrics_basic(struct aws_allocator *allocator,
     struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("TEST_USERNAME");
 
     ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, metrics, &output_username, NULL));
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
@@ -243,7 +243,7 @@ static int s_test_mqtt_append_sdk_metrics_existing_attributes(struct aws_allocat
         aws_byte_cursor_from_c_str("user?SDK=ExistingSDK&Platform=ExistingPlatform");
 
     ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, metrics, &output_username, NULL));
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
@@ -267,7 +267,7 @@ static int s_test_mqtt_append_sdk_metrics_special_chars(struct aws_allocator *al
     struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("user@domain.com");
 
     ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, metrics, &output_username, NULL));
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
@@ -310,10 +310,10 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
 
     // aws_mqtt_append_sdk_metrics_to_username does not valid original username length
     ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, short_metrics, &output_username, NULL));
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &short_metrics, &output_username, NULL));
     // aws_mqtt_append_sdk_metrics_to_username fails when the extra metrics string exceeds buffer limit
     ASSERT_FAILS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, metrics, &output_username, NULL));
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
 
     aws_byte_buf_clean_up(&output_username);
 
@@ -337,7 +337,7 @@ static int s_test_mqtt_append_sdk_metrics_invalid_utf8(struct aws_allocator *all
 
     /* Should fail due to invalid UTF-8 */
     ASSERT_FAILS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, metrics, &output_username, NULL));
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
     ASSERT_INT_EQUALS(aws_last_error(), AWS_ERROR_INVALID_UTF8);
 
     aws_byte_buf_clean_up(&output_username);
