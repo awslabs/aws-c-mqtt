@@ -3778,6 +3778,10 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
         aws_mem_release(options_storage->connect->allocator, options_storage->connect);
     }
 
+    if (options_storage->metrics_storage != NULL) {
+        aws_mqtt_iot_sdk_metrics_storage_destroy(options_storage->metrics_storage);
+    }
+
     aws_mem_release(options_storage->allocator, options_storage);
 }
 
@@ -4022,8 +4026,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     options_view->host_resolution_override = &options_storage->host_resolution_override;
 
     // TODO: Placehold for metrics storage implemnetation.
-    // options_storage->metrics = options->metrics;
-    // options_view->metrics = options_storage->metrics;
+    options_storage->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(allocator, options->metrics);
+    options_view->metrics = &options_storage->metrics_storage->storage_view;
 
     return options_storage;
 
