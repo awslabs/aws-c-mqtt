@@ -3994,8 +3994,9 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     }
 
     options_storage->connect = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
+    // We pass in a NULL client option as we don't want to store extra metrics info in the connect storage here
     int connect_storage_result =
-        aws_mqtt5_packet_connect_storage_init(options_storage->connect, allocator, &connect_options, options);
+        aws_mqtt5_packet_connect_storage_init(options_storage->connect, allocator, &connect_options, NULL);
 
     aws_byte_buf_clean_up(&auto_assign_id_buf);
     if (connect_storage_result != AWS_OP_SUCCESS) {

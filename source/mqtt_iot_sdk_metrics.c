@@ -82,15 +82,16 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     if (!metrics) {
+        if (out_full_username_size) {
+            *out_full_username_size = original_username->len;
+        }
+
         if (output_username &&
             aws_byte_buf_init(output_username, allocator, original_username->len) == AWS_OP_SUCCESS) {
             aws_byte_buf_write(output_username, original_username->ptr, original_username->len);
-            if (out_full_username_size) {
-                *out_full_username_size = original_username->len;
-            }
-            return AWS_OP_SUCCESS;
         }
-        return AWS_OP_ERR;
+
+        return AWS_OP_SUCCESS;
     }
 
     if (aws_mqtt_validate_iot_sdk_metrics_utf8(metrics)) {
