@@ -12,6 +12,8 @@
 
 AWS_PUSH_SANE_WARNING_LEVEL
 
+struct aws_mqtt5_client_options;
+
 struct aws_mqtt5_user_property_set {
     struct aws_array_list properties;
 };
