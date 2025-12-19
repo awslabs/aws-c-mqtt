@@ -7,7 +7,7 @@
 #include <aws/common/system_info.h>
 #include <aws/common/uri.h>
 #include <aws/mqtt/mqtt.h>
-#include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/private/mqtt_iot_sdk_metrics.h>
 
 #include <stdio.h>
 
@@ -178,4 +178,135 @@ cleanup:
     }
     aws_byte_buf_clean_up(&metrics_string);
     return result;
+}
+
+/*********************************************************************************************************************
+ * IoT SDK Metrics
+ ********************************************************************************************************************/
+
+size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics) {
+    if (metrics == NULL) {
+        return 0;
+    }
+
+    size_t storage_size = 0;
+
+    storage_size += metrics->library_name.len;
+
+    // TODO: add metadata entries when enabled
+    // for (size_t i = 0; i < metrics->metadata_count; ++i) {
+    //     storage_size += metrics->metadata_entries[i].key.len;
+    //     storage_size += metrics->metadata_entries[i].value.len;
+    // }
+
+    return storage_size;
+}
+
+struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
+    struct aws_allocator *allocator,
+    const struct aws_mqtt_iot_sdk_metrics *metrics_options) {
+
+    if (allocator == NULL || metrics_options == NULL) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return NULL;
+    }
+
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
+
+    size_t storage_capacity = aws_mqtt_iot_sdk_metrics_compute_storage_size(metrics_options);
+    if (aws_byte_buf_init(&metrics_storage->storage, allocator, storage_capacity)) {
+        goto cleanup_storage;
+    }
+
+    metrics_storage->allocator = allocator;
+
+    struct aws_mqtt_iot_sdk_metrics *storage_view = &metrics_storage->storage_view;
+
+    // TODO Future Work: add metadata entries once we implemented the metadata feature
+    //
+    // if (aws_array_list_init_dynamic(
+    //         &metrics_storage->metadata_entries,
+    //         allocator,
+    //         metrics_options->metadata_count,
+    //         sizeof(struct aws_mqtt_metadata_entry))) {
+    //     goto metrics_storage_error;
+    // }
+
+    // for (size_t i = 0; i < metrics_options->metadata_count; ++i) {
+    //     struct aws_mqtt_metadata_entry entry = metrics_options->metadata_entries[i];
+
+    //     if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.key)) {
+    //         goto metrics_storage_error;
+    //     }
+
+    //     if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.value)) {
+    //         goto metrics_storage_error;
+    //     }
+
+    //     if (aws_array_list_push_back(&metrics_storage->metadata_entries, &entry)) {
+    //         goto metrics_storage_error;
+    //     }
+    // }
+
+    // storage_view->metadata_entries = metrics_storage->metadata_entries.data;
+    // storage_view->metadata_count = aws_array_list_length(&metrics_storage->metadata_entries);
+
+    if (metrics_options->library_name.len > 0) {
+        metrics_storage->library_name = metrics_options->library_name;
+        if (aws_byte_buf_append_and_update(&metrics_storage->storage, &metrics_storage->library_name)) {
+            goto cleanup_storage;
+        }
+        storage_view->library_name = metrics_storage->library_name;
+    }
+
+    return metrics_storage;
+
+cleanup_storage:
+    // TODO Future Work: add metadata entries once we implemented the metadata feature
+    // if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
+    //     aws_array_list_clean_up(&metrics_storage->metadata_entries);
+    // }
+
+    if (aws_byte_buf_is_valid(&metrics_storage->storage)) {
+        aws_byte_buf_clean_up(&metrics_storage->storage);
+    }
+    if (metrics_options != NULL) {
+        aws_mem_release(allocator, metrics_storage);
+    }
+
+    return NULL;
+}
+
+void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage) {
+    if (metrics_storage == NULL) {
+        return;
+    }
+
+    if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
+        aws_array_list_clean_up(&metrics_storage->metadata_entries);
+    }
+    aws_byte_buf_clean_up(&metrics_storage->storage);
+
+    aws_mem_release(metrics_storage->allocator, metrics_storage);
+}
+
+int aws_mqtt_validate_iot_sdk_metrics_utf8(const struct aws_mqtt_iot_sdk_metrics *metrics) {
+    if (metrics == NULL) {
+        return AWS_OP_SUCCESS;
+    }
+
+    if (aws_mqtt_validate_utf8_text(metrics->library_name)) {
+        return AWS_OP_ERR;
+    }
+
+    // TODO: add metadata entries when enabled
+    // for (size_t i = 0; i < metrics->metadata_count; ++i) {
+    //     if (aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].key) ||
+    //         aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].value)) {
+    //         return AWS_OP_ERR;
+    //     }
+    // }
+
+    return AWS_OP_SUCCESS;
 }

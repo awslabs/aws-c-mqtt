@@ -5,7 +5,7 @@
 
 #include <aws/common/encoding.h>
 #include <aws/mqtt/mqtt.h>
-#include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/private/mqtt_iot_sdk_metrics.h>
 #include <v3/mqtt311_testing_utils.h>
 
 #include <aws/testing/aws_test_harness.h>
