@@ -12,7 +12,7 @@
 #include <stdio.h>
 
 // MQTT payload size https://docs.aws.amazon.com/general/latest/gr/iot-core.html#thing-limits
-const int AWS_IOT_MAX_USERNAME_SIZE = 128 * 1024;
+const size_t AWS_IOT_MAX_USERNAME_SIZE = 128 * 1024;
 const size_t DEFAULT_QUERY_PARAM_COUNT = 10;
 
 // Build username query string from params_list, the caller is responsible to init and clean up output_username
@@ -160,8 +160,8 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     // build final output username
-    if(s_build_username_query(
-        original_username, base_username_length, &params_list, output_username, out_full_username_size)){
+    if (s_build_username_query(
+            original_username, base_username_length, &params_list, output_username, out_full_username_size)) {
         goto cleanup;
     }
 

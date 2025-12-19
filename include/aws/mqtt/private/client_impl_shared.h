@@ -147,14 +147,13 @@ struct aws_mqtt_iot_sdk_metrics_storage {
 };
 
 /* IoT SDK Metrics */
-AWS_MQTT_API int aws_mqtt_iot_sdk_metrics_storage_init(
-    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage,
+AWS_MQTT_API struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt_iot_sdk_metrics *metrics_options);
 
 AWS_MQTT_API size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics);
 
-AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_clean_up(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
+AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
 
 AWS_MQTT_API enum aws_mqtt311_impl_type aws_mqtt_client_connection_get_impl_type(
     const struct aws_mqtt_client_connection *connection);

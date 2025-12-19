@@ -5,6 +5,7 @@
 #include <aws/mqtt/client.h>
 
 #include <aws/mqtt/private/client_impl.h>
+#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/mqtt_client_test_helper.h>
 #include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/shared.h>
@@ -871,7 +872,7 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     /* Clean up metrics */
     if (connection->metrics) {
-        aws_mqtt_iot_sdk_metrics_storage_clean_up(connection->metrics);
+        aws_mqtt_iot_sdk_metrics_storage_destroy(connection->metrics);
         connection->metrics = NULL;
     }
 
@@ -3395,20 +3396,13 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
 
     /* Clean up existing metrics if any */
     if (connection->metrics) {
-        aws_mqtt_iot_sdk_metrics_storage_clean_up(connection->metrics);
+        aws_mqtt_iot_sdk_metrics_storage_destroy(connection->metrics);
         connection->metrics = NULL;
     }
 
     if (metrics) {
-        /* Allocate metrics storage */
-        connection->metrics = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
-
         /* Initialize metrics storage */
-        if (aws_mqtt_iot_sdk_metrics_storage_init(connection->metrics, connection->allocator, metrics)) {
-            aws_mem_release(connection->allocator, connection->metrics);
-            connection->metrics = NULL;
-            return AWS_OP_ERR;
-        }
+        connection->metrics = aws_mqtt_iot_sdk_metrics_storage_new(connection->allocator, metrics);
     }
 
     return AWS_OP_SUCCESS;
