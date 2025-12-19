@@ -12,7 +12,7 @@
 #include <stdio.h>
 
 // MQTT payload size https://docs.aws.amazon.com/general/latest/gr/iot-core.html#thing-limits
-const int AWS_IOT_MAX_USERNAME_SIZE = 128 * 1024;
+const size_t AWS_IOT_MAX_USERNAME_SIZE = 128 * 1024;
 const size_t DEFAULT_QUERY_PARAM_COUNT = 10;
 
 // Build username query string from params_list, the caller is responsible to init and clean up output_username

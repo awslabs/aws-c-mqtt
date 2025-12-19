@@ -5,6 +5,7 @@
 #include <aws/mqtt/client.h>
 
 #include <aws/mqtt/private/client_impl.h>
+#include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/mqtt_client_test_helper.h>
 #include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/shared.h>
@@ -871,7 +872,7 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     /* Clean up metrics */
     if (connection->metrics) {
-        aws_mqtt_iot_sdk_metrics_storage_clean_up(connection->metrics);
+        aws_mqtt_iot_sdk_metrics_storage_destroy(connection->metrics);
         connection->metrics = NULL;
     }
 
@@ -1878,7 +1879,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
         return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
-    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics * aws_mqtt_topic_tree_action_size);
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics *aws_mqtt_topic_tree_action_size);
     struct aws_array_list transaction;
     aws_array_list_init_static(&transaction, transaction_buf, num_topics, aws_mqtt_topic_tree_action_size);
 
@@ -2671,7 +2672,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
     static const size_t num_topics = 1;
 
-    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics * aws_mqtt_topic_tree_action_size);
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics *aws_mqtt_topic_tree_action_size);
     struct aws_array_list transaction;
     aws_array_list_init_static(&transaction, transaction_buf, num_topics, aws_mqtt_topic_tree_action_size);
 
@@ -3395,20 +3396,13 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
 
     /* Clean up existing metrics if any */
     if (connection->metrics) {
-        aws_mqtt_iot_sdk_metrics_storage_clean_up(connection->metrics);
+        aws_mqtt_iot_sdk_metrics_storage_destroy(connection->metrics);
         connection->metrics = NULL;
     }
 
     if (metrics) {
-        /* Allocate metrics storage */
-        connection->metrics = aws_mem_calloc(connection->allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
-
         /* Initialize metrics storage */
-        if (aws_mqtt_iot_sdk_metrics_storage_init(connection->metrics, connection->allocator, metrics)) {
-            aws_mem_release(connection->allocator, connection->metrics);
-            connection->metrics = NULL;
-            return AWS_OP_ERR;
-        }
+        connection->metrics = aws_mqtt_iot_sdk_metrics_storage_new(connection->allocator, metrics);
     }
 
     return AWS_OP_SUCCESS;
