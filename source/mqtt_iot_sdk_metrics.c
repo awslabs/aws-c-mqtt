@@ -12,7 +12,7 @@
 #include <stdio.h>
 
 // MQTT payload size https://docs.aws.amazon.com/general/latest/gr/iot-core.html#thing-limits
-const int AWS_IOT_MAX_CONTENT_SIZE = 128 * 1024;
+const int AWS_IOT_MAX_USERNAME_SIZE = 128 * 1024;
 const size_t DEFAULT_QUERY_PARAM_COUNT = 10;
 
 // Build username query string from params_list, the caller is responsible to init and clean up output_username
@@ -54,9 +54,11 @@ int s_build_username_query(
         }
 
         if (output_username) {
-            aws_byte_buf_append(output_username, &param.key);
-            aws_byte_buf_append(output_username, &key_value_delim);
-            aws_byte_buf_append(output_username, &param.value);
+            if (aws_byte_buf_append(output_username, &param.key) ||
+                aws_byte_buf_append(output_username, &key_value_delim) ||
+                aws_byte_buf_append(output_username, &param.value)) {
+                return AWS_OP_ERR;
+            }
         }
 
         if (out_full_username_size) {
@@ -85,7 +87,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
     /* Build metrics string */
     struct aws_byte_buf metrics_string;
-    if (aws_byte_buf_init(&metrics_string, allocator, AWS_IOT_MAX_CONTENT_SIZE)) {
+    if (aws_byte_buf_init(&metrics_string, allocator, AWS_IOT_MAX_USERNAME_SIZE)) {
         return AWS_OP_ERR;
     }
 
@@ -149,13 +151,19 @@ int aws_mqtt_append_sdk_metrics_to_username(
     size_t total_size = 0;
     s_build_username_query(original_username, base_username_length, &params_list, NULL, &total_size);
 
+    if (total_size > AWS_IOT_MAX_USERNAME_SIZE) {
+        goto cleanup;
+    }
+
     if (output_username && aws_byte_buf_init(output_username, allocator, total_size)) {
         goto cleanup;
     }
 
     // build final output username
-    s_build_username_query(
-        original_username, base_username_length, &params_list, output_username, out_full_username_size);
+    if(s_build_username_query(
+        original_username, base_username_length, &params_list, output_username, out_full_username_size)){
+        goto cleanup;
+    }
 
     aws_byte_buf_clean_up(&metrics_string);
     result = AWS_OP_SUCCESS;
