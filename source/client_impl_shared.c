@@ -250,7 +250,7 @@ size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_s
     return storage_size;
 }
 
-struct aws_mqtt_iot_sdk_metrics_storage* aws_mqtt_iot_sdk_metrics_storage_new(
+struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt_iot_sdk_metrics *metrics_options) {
 
@@ -259,7 +259,8 @@ struct aws_mqtt_iot_sdk_metrics_storage* aws_mqtt_iot_sdk_metrics_storage_new(
         return NULL;
     }
 
-    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
 
     size_t storage_capacity = aws_mqtt_iot_sdk_metrics_compute_storage_size(metrics_options);
     if (aws_byte_buf_init(&metrics_storage->storage, allocator, storage_capacity)) {
@@ -315,10 +316,10 @@ cleanup_storage:
     //     aws_array_list_clean_up(&metrics_storage->metadata_entries);
     // }
 
-    if(aws_byte_buf_is_valid(&metrics_storage->storage)){
+    if (aws_byte_buf_is_valid(&metrics_storage->storage)) {
         aws_byte_buf_clean_up(&metrics_storage->storage);
     }
-    if(metrics_options != NULL){
+    if (metrics_options != NULL) {
         aws_mem_release(allocator, metrics_storage);
     }
 

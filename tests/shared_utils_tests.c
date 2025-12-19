@@ -291,7 +291,7 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
     (void)ctx;
 
     char long_username[1024];
-    char long_sdk_name[2*1024*128];
+    char long_sdk_name[2 * 1024 * 128];
 
     memset(long_username, 'A', sizeof(long_username) - 1);
     long_username[sizeof(long_username) - 1] = '\0';

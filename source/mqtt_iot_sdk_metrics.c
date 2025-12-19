@@ -160,8 +160,8 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     // build final output username
-    if(s_build_username_query(
-        original_username, base_username_length, &params_list, output_username, out_full_username_size)){
+    if (s_build_username_query(
+            original_username, base_username_length, &params_list, output_username, out_full_username_size)) {
         goto cleanup;
     }
 

@@ -147,7 +147,7 @@ struct aws_mqtt_iot_sdk_metrics_storage {
 };
 
 /* IoT SDK Metrics */
-AWS_MQTT_API struct aws_mqtt_iot_sdk_metrics_storage* aws_mqtt_iot_sdk_metrics_storage_new(
+AWS_MQTT_API struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt_iot_sdk_metrics *metrics_options);
 
