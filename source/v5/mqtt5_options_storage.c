@@ -11,7 +11,7 @@
 #include <aws/common/uuid.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
-#include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/private/mqtt_iot_sdk_metrics.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
@@ -646,10 +646,10 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(
 
     storage_size += view->client_id.len;
     if (view->username != NULL) {
-        if (options && options->metrics) {
+        if (options) {
             size_t username_size = 0;
             aws_mqtt_append_sdk_metrics_to_username(
-                aws_default_allocator(), view->username, *options->metrics, NULL, &username_size);
+                aws_default_allocator(), view->username, options->metrics, NULL, &username_size);
             storage_size += username_size;
         } else {
             storage_size += view->username->len;
@@ -701,10 +701,10 @@ int aws_mqtt5_packet_connect_storage_init(
         AWS_ZERO_STRUCT(metrics_username_buf);
 
         /* Apply metrics to username if configured */
-        if (client_config && client_config->metrics != NULL) {
+        if (client_config) {
             struct aws_byte_cursor username_cur = storage->username;
             if (aws_mqtt_append_sdk_metrics_to_username(
-                    allocator, &username_cur, *client_config->metrics, &metrics_username_buf, NULL)) {
+                    allocator, &username_cur, client_config->metrics, &metrics_username_buf, NULL)) {
                 return AWS_OP_ERR;
             }
             storage->username = aws_byte_cursor_from_buf(&metrics_username_buf);
