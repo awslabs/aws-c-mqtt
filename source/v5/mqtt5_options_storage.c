@@ -701,7 +701,7 @@ int aws_mqtt5_packet_connect_storage_init(
         AWS_ZERO_STRUCT(metrics_username_buf);
 
         /* Apply metrics to username if configured */
-        if (client_config->metrics != NULL) {
+        if (client_config && client_config->metrics != NULL) {
             struct aws_byte_cursor username_cur = storage->username;
             if (aws_mqtt_append_sdk_metrics_to_username(
                     allocator, &username_cur, *client_config->metrics, &metrics_username_buf, NULL)) {
@@ -4025,9 +4025,12 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
     }
     options_view->host_resolution_override = &options_storage->host_resolution_override;
 
-    // TODO: Placehold for metrics storage implemnetation.
     options_storage->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(allocator, options->metrics);
-    options_view->metrics = &options_storage->metrics_storage->storage_view;
+    if (options_storage->metrics_storage) {
+        options_view->metrics = &options_storage->metrics_storage->storage_view;
+    } else {
+        options_view->metrics = NULL;
+    }
 
     return options_storage;
 
