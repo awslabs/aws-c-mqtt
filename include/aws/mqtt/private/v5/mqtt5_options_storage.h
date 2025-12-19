@@ -22,7 +22,6 @@
 
 struct aws_client_bootstrap;
 struct aws_mqtt5_client;
-struct aws_mqtt5_client_options;
 struct aws_mqtt5_operation;
 struct aws_string;
 
