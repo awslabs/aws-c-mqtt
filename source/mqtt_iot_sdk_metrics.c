@@ -11,8 +11,8 @@
 
 #include <stdio.h>
 
-// MQTT payload size https://docs.aws.amazon.com/general/latest/gr/iot-core.html#thing-limits
-const size_t AWS_IOT_MAX_USERNAME_SIZE = 128 * 1024;
+// Use packet encoding limit for now: https://github.com/awslabs/aws-c-mqtt/blob/v0.13.3/source/packets.c#L26
+const size_t AWS_IOT_MAX_USERNAME_SIZE = UINT16_MAX;
 const size_t DEFAULT_QUERY_PARAM_COUNT = 10;
 
 // Build username query string from params_list, the caller is responsible to init and clean up output_username
@@ -80,15 +80,20 @@ int aws_mqtt_append_sdk_metrics_to_username(
     if (!allocator) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
+    struct aws_byte_cursor *local_original_username = NULL;
+    if (original_username == NULL) {
+        local_original_username = aws_byte_cursor_from_c_str("");
+    } else {
+        local_original_username = original_username;
+    }
 
     if (!metrics) {
         if (out_full_username_size) {
-            *out_full_username_size = original_username->len;
+            *out_full_username_size = local_original_username->len;
         }
 
-        if (output_username &&
-            aws_byte_buf_init(output_username, allocator, original_username->len) == AWS_OP_SUCCESS) {
-            aws_byte_buf_write(output_username, original_username->ptr, original_username->len);
+        if (output_username) {
+            return aws_byte_buf_init_copy_from_cursor(output_username, allocator, local_original_username->len);
         }
 
         return AWS_OP_SUCCESS;
@@ -114,17 +119,18 @@ int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_array_list params_list;
     aws_array_list_init_dynamic(&params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
 
-    if (original_username && original_username->len > 0) {
+    if (local_original_username && local_original_username->len > 0) {
         struct aws_byte_cursor question_mark_find;
 
-        if (AWS_OP_SUCCESS == aws_byte_cursor_find_exact(original_username, &question_mark_str, &question_mark_find)) {
-            base_username_length = question_mark_find.ptr - original_username->ptr;
+        if (AWS_OP_SUCCESS ==
+            aws_byte_cursor_find_exact(local_original_username, &question_mark_str, &question_mark_find)) {
+            base_username_length = question_mark_find.ptr - local_original_username->ptr;
             // Advance cursor to skip the "?" character
             aws_byte_cursor_advance(&question_mark_find, 1);
             aws_byte_buf_append(&metrics_string, &question_mark_find);
             aws_query_string_params(question_mark_find, &params_list);
         } else {
-            base_username_length = original_username->len;
+            base_username_length = local_original_username->len;
         }
     }
 
@@ -163,7 +169,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     // Rebuild metrics string from params_list
     // First path to calculate total size
     size_t total_size = 0;
-    s_build_username_query(original_username, base_username_length, &params_list, NULL, &total_size);
+    s_build_username_query(local_original_username, base_username_length, &params_list, NULL, &total_size);
 
     if (total_size > AWS_IOT_MAX_USERNAME_SIZE) {
         goto cleanup;
@@ -175,11 +181,10 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
     // build final output username
     if (s_build_username_query(
-            original_username, base_username_length, &params_list, output_username, out_full_username_size)) {
+            local_original_username, base_username_length, &params_list, output_username, out_full_username_size)) {
         goto cleanup;
     }
 
-    aws_byte_buf_clean_up(&metrics_string);
     result = AWS_OP_SUCCESS;
 
 cleanup:
@@ -237,35 +242,6 @@ struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
 
     struct aws_mqtt_iot_sdk_metrics *storage_view = &metrics_storage->storage_view;
 
-    // TODO Future Work: add metadata entries once we implemented the metadata feature
-    //
-    // if (aws_array_list_init_dynamic(
-    //         &metrics_storage->metadata_entries,
-    //         allocator,
-    //         metrics_options->metadata_count,
-    //         sizeof(struct aws_mqtt_metadata_entry))) {
-    //     goto metrics_storage_error;
-    // }
-
-    // for (size_t i = 0; i < metrics_options->metadata_count; ++i) {
-    //     struct aws_mqtt_metadata_entry entry = metrics_options->metadata_entries[i];
-
-    //     if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.key)) {
-    //         goto metrics_storage_error;
-    //     }
-
-    //     if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.value)) {
-    //         goto metrics_storage_error;
-    //     }
-
-    //     if (aws_array_list_push_back(&metrics_storage->metadata_entries, &entry)) {
-    //         goto metrics_storage_error;
-    //     }
-    // }
-
-    // storage_view->metadata_entries = metrics_storage->metadata_entries.data;
-    // storage_view->metadata_count = aws_array_list_length(&metrics_storage->metadata_entries);
-
     if (metrics_options->library_name.len > 0) {
         metrics_storage->library_name = metrics_options->library_name;
         if (aws_byte_buf_append_and_update(&metrics_storage->storage, &metrics_storage->library_name)) {
@@ -285,9 +261,8 @@ cleanup_storage:
     if (aws_byte_buf_is_valid(&metrics_storage->storage)) {
         aws_byte_buf_clean_up(&metrics_storage->storage);
     }
-    if (metrics_options != NULL) {
-        aws_mem_release(allocator, metrics_storage);
-    }
+
+    aws_mem_release(allocator, metrics_storage);
 
     return NULL;
 }
@@ -313,14 +288,6 @@ int aws_mqtt_validate_iot_sdk_metrics_utf8(const struct aws_mqtt_iot_sdk_metrics
     if (aws_mqtt_validate_utf8_text(metrics->library_name)) {
         return AWS_OP_ERR;
     }
-
-    // TODO: add metadata entries when enabled
-    // for (size_t i = 0; i < metrics->metadata_count; ++i) {
-    //     if (aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].key) ||
-    //         aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].value)) {
-    //         return AWS_OP_ERR;
-    //     }
-    // }
 
     return AWS_OP_SUCCESS;
 }

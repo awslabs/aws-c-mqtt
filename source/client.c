@@ -630,9 +630,6 @@ static void s_mqtt_client_init(
         struct aws_byte_cursor username_cur;
         if (connection->username) {
             username_cur = aws_byte_cursor_from_string(connection->username);
-        } else {
-            /* Create empty username cursor when username is null but metrics is set */
-            username_cur = aws_byte_cursor_from_c_str("");
         }
 
         /* Apply metrics to username if configured */
@@ -3387,7 +3384,7 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
     }
 
     if (metrics != NULL && aws_mqtt_validate_iot_sdk_metrics_utf8(metrics) == AWS_OP_ERR) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in metrics.", (void *)connection);
         return aws_raise_error(AWS_ERROR_INVALID_UTF8);
     }
@@ -3405,6 +3402,17 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
     if (metrics) {
         /* Initialize metrics storage */
         connection->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(connection->allocator, metrics);
+
+        if (!connection->metrics_storage) {
+            int error = aws_last_error();
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Failed to create IoT SDK metrics storage, error %d (%s)",
+                (void *)connection,
+                error,
+                aws_error_name(error));
+            return aws_raise_error(error);
+        }
     }
 
     return AWS_OP_SUCCESS;
