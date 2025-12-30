@@ -80,20 +80,16 @@ int aws_mqtt_append_sdk_metrics_to_username(
     if (!allocator) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
-    struct aws_byte_cursor *local_original_username = NULL;
-    if (original_username == NULL) {
-        local_original_username = aws_byte_cursor_from_c_str("");
-    } else {
-        local_original_username = original_username;
-    }
+    const struct aws_byte_cursor local_original_username =
+        original_username == NULL ? aws_byte_cursor_from_c_str("") : *original_username;
 
     if (!metrics) {
         if (out_full_username_size) {
-            *out_full_username_size = local_original_username->len;
+            *out_full_username_size = local_original_username.len;
         }
 
         if (output_username) {
-            return aws_byte_buf_init_copy_from_cursor(output_username, allocator, local_original_username->len);
+            return aws_byte_buf_init_copy_from_cursor(output_username, allocator, local_original_username);
         }
 
         return AWS_OP_SUCCESS;
@@ -119,18 +115,18 @@ int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_array_list params_list;
     aws_array_list_init_dynamic(&params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
 
-    if (local_original_username && local_original_username->len > 0) {
+    if (local_original_username.len > 0) {
         struct aws_byte_cursor question_mark_find;
 
         if (AWS_OP_SUCCESS ==
-            aws_byte_cursor_find_exact(local_original_username, &question_mark_str, &question_mark_find)) {
-            base_username_length = question_mark_find.ptr - local_original_username->ptr;
+            aws_byte_cursor_find_exact(&local_original_username, &question_mark_str, &question_mark_find)) {
+            base_username_length = question_mark_find.ptr - local_original_username.ptr;
             // Advance cursor to skip the "?" character
             aws_byte_cursor_advance(&question_mark_find, 1);
             aws_byte_buf_append(&metrics_string, &question_mark_find);
             aws_query_string_params(question_mark_find, &params_list);
         } else {
-            base_username_length = local_original_username->len;
+            base_username_length = local_original_username.len;
         }
     }
 
@@ -169,7 +165,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     // Rebuild metrics string from params_list
     // First path to calculate total size
     size_t total_size = 0;
-    s_build_username_query(local_original_username, base_username_length, &params_list, NULL, &total_size);
+    s_build_username_query(&local_original_username, base_username_length, &params_list, NULL, &total_size);
 
     if (total_size > AWS_IOT_MAX_USERNAME_SIZE) {
         goto cleanup;
@@ -181,7 +177,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
     // build final output username
     if (s_build_username_query(
-            local_original_username, base_username_length, &params_list, output_username, out_full_username_size)) {
+            &local_original_username, base_username_length, &params_list, output_username, out_full_username_size)) {
         goto cleanup;
     }
 
