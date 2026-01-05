@@ -67,7 +67,7 @@ int s_build_username_query(
             }
         }
         if (out_full_username_size) {
-            *out_full_username_size += param.key.len + param.value.len > 0 ? 1 : 0 + param.value.len;
+            *out_full_username_size += param.key.len + (param.value.len > 0 ? 1 : 0) + param.value.len;
         }
     }
 
