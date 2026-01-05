@@ -104,12 +104,6 @@ int aws_mqtt_append_sdk_metrics_to_username(
         return AWS_OP_ERR;
     }
 
-    /* Build metrics string */
-    struct aws_byte_buf metrics_string;
-    if (aws_byte_buf_init(&metrics_string, allocator, AWS_IOT_MAX_USERNAME_SIZE)) {
-        return AWS_OP_ERR;
-    }
-
     int result = AWS_OP_ERR;
     // The length of the base username part not including query parameters
     size_t base_username_length = 0;
@@ -121,14 +115,19 @@ int aws_mqtt_append_sdk_metrics_to_username(
     aws_array_list_init_dynamic(&params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
 
     if (local_original_username.len > 0) {
-        struct aws_byte_cursor question_mark_find;
+        struct aws_byte_cursor question_mark_find = local_original_username;
 
-        if (AWS_OP_SUCCESS ==
-            aws_byte_cursor_find_exact(&local_original_username, &question_mark_str, &question_mark_find)) {
-            base_username_length = question_mark_find.ptr - local_original_username.ptr;
+        bool found_query = false;
+        // Find last question mark
+        while (AWS_OP_SUCCESS == aws_byte_cursor_find_exact(
+                   question_mark_find, &question_mark_str, &question_mark_find)) {
             // Advance cursor to skip the "?" character
             aws_byte_cursor_advance(&question_mark_find, 1);
-            aws_byte_buf_append(&metrics_string, &question_mark_find);
+            found_query = true;
+        }
+
+        if (found_query) {
+            base_username_length = question_mark_find.ptr - local_original_username.ptr;
             aws_query_string_params(question_mark_find, &params_list);
         } else {
             base_username_length = local_original_username.len;
@@ -168,7 +167,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     // Rebuild metrics string from params_list
-    // First path to calculate total size
+    // First parse to calculate total size
     size_t total_size = 0;
     s_build_username_query(&local_original_username, base_username_length, &params_list, NULL, &total_size);
 
@@ -196,7 +195,6 @@ cleanup:
     if (result == AWS_OP_ERR && aws_byte_buf_is_valid(output_username)) {
         aws_byte_buf_clean_up(output_username);
     }
-    aws_byte_buf_clean_up(&metrics_string);
     return result;
 }
 
