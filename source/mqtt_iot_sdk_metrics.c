@@ -119,8 +119,8 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
         bool found_query = false;
         // Find last question mark
-        while (AWS_OP_SUCCESS == aws_byte_cursor_find_exact(
-                   question_mark_find, &question_mark_str, &question_mark_find)) {
+        while (AWS_OP_SUCCESS ==
+               aws_byte_cursor_find_exact(&question_mark_find, &question_mark_str, &question_mark_find)) {
             // Advance cursor to skip the "?" character
             aws_byte_cursor_advance(&question_mark_find, 1);
             found_query = true;
