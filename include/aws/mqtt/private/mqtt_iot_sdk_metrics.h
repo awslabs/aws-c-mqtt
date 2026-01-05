@@ -28,7 +28,7 @@ AWS_MQTT_API size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct a
 AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
 
 /**
- * Appends SDK metrics to the username field 1Code has comments. Press enter to view.
+ * Appends SDK metrics to the username
  *
  * @param original_username The original username
  * @param metrics The metrics configuration
