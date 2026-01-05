@@ -167,10 +167,7 @@ static int s_test_mqtt_append_sdk_metrics_empty(struct aws_allocator *allocator,
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
 
-    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("");
-
-    ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
+    ASSERT_SUCCESS(aws_mqtt_append_sdk_metrics_to_username(allocator, NULL, &metrics, &output_username, NULL));
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
