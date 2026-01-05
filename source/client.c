@@ -628,6 +628,7 @@ static void s_mqtt_client_init(
 
     if (connection->username || connection->metrics_storage) {
         struct aws_byte_cursor username_cur;
+        AWS_ZERO_STRUCT(username_cur);
         if (connection->username) {
             username_cur = aws_byte_cursor_from_string(connection->username);
         }

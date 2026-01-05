@@ -25,6 +25,9 @@ int s_build_username_query(
     struct aws_byte_buf *output_username,
     size_t *out_full_username_size) {
 
+    AWS_ASSERT(base_username);
+    AWS_ASSERT(params_list);
+
     if (output_username) {
         aws_byte_buf_write(output_username, base_username->ptr, base_username_length);
     }
@@ -54,15 +57,17 @@ int s_build_username_query(
         }
 
         if (output_username) {
-            if (aws_byte_buf_append(output_username, &param.key) ||
-                aws_byte_buf_append(output_username, &key_value_delim) ||
-                aws_byte_buf_append(output_username, &param.value)) {
+            if (param.key.len > 0 && (aws_byte_buf_append(output_username, &param.key))) {
+                return AWS_OP_ERR;
+            }
+
+            if (param.value.len > 0 && ((aws_byte_buf_append(output_username, &key_value_delim)) ||
+                                        aws_byte_buf_append(output_username, &param.value))) {
                 return AWS_OP_ERR;
             }
         }
-
         if (out_full_username_size) {
-            *out_full_username_size += param.key.len + 1 + param.value.len;
+            *out_full_username_size += param.key.len + param.value.len > 0 ? 1 : 0 + param.value.len;
         }
     }
 
