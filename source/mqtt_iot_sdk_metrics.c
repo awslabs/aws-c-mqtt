@@ -127,7 +127,8 @@ int aws_mqtt_append_sdk_metrics_to_username(
         }
 
         if (found_query) {
-            base_username_length = question_mark_find.ptr - local_original_username.ptr;
+            // We dont want to keep the ? marker in the base username
+            base_username_length = question_mark_find.ptr - 1 - local_original_username.ptr;
             aws_query_string_params(question_mark_find, &params_list);
         } else {
             base_username_length = local_original_username.len;
