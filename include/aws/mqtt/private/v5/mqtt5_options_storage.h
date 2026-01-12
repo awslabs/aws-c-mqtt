@@ -138,7 +138,6 @@ struct aws_mqtt5_operation_pingreq {
 
 struct aws_mqtt5_client_options_storage {
     struct aws_allocator *allocator;
-    struct aws_mqtt5_client_options options;
 
     struct aws_string *host_name;
     uint32_t port;
@@ -220,7 +219,7 @@ AWS_MQTT_API uint32_t aws_mqtt5_operation_get_ack_timeout_override(const struct 
 AWS_MQTT_API struct aws_mqtt5_operation_connect *aws_mqtt5_operation_connect_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_connect_view *connect_options,
-    const struct aws_mqtt5_client_options *client_config);
+    const struct aws_mqtt5_client_options_storage *option_storage);
 
 AWS_MQTT_API int aws_mqtt5_packet_connect_view_validate(const struct aws_mqtt5_packet_connect_view *connect_view);
 
