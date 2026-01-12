@@ -629,9 +629,6 @@ static void s_mqtt_client_init(
     if (connection->username || connection->metrics_storage) {
         struct aws_byte_cursor username_cur;
         AWS_ZERO_STRUCT(username_cur);
-        if (connection->username) {
-            username_cur = aws_byte_cursor_from_string(connection->username);
-        }
 
         /* Apply metrics to username if configured */
         if (aws_mqtt_append_sdk_metrics_to_username(
@@ -646,22 +643,24 @@ static void s_mqtt_client_init(
                 AWS_LS_MQTT_CLIENT, "id=%p: Failed to apply metrics to username, using original", (void *)connection);
         }
 
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Adding username " PRInSTR " to connection",
-            (void *)connection,
-            AWS_BYTE_CURSOR_PRI(username_cur));
+        if (aws_byte_cursor_is_valid(&username_cur)) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Adding username " PRInSTR " to connection",
+                (void *)connection,
+                AWS_BYTE_CURSOR_PRI(username_cur));
 
-        struct aws_byte_cursor password_cur = {
-            .ptr = NULL,
-            .len = 0,
-        };
+            struct aws_byte_cursor password_cur = {
+                .ptr = NULL,
+                .len = 0,
+            };
 
-        if (connection->password) {
-            password_cur = aws_byte_cursor_from_string(connection->password);
+            if (connection->password) {
+                password_cur = aws_byte_cursor_from_string(connection->password);
+            }
+
+            aws_mqtt_packet_connect_add_credentials(&connect, username_cur, password_cur);
         }
-
-        aws_mqtt_packet_connect_add_credentials(&connect, username_cur, password_cur);
     }
 
     message = mqtt_get_message_for_packet(connection, &connect.fixed_header);

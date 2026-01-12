@@ -6,7 +6,7 @@
 #ifndef AWS_MQTT_IOT_SDK_METRICS_H
 #define AWS_MQTT_IOT_SDK_METRICS_H
 
-/* IoT SDK Metrics */
+/* Storage for `aws_mqtt_iot_sdk_metrics`. */
 struct aws_mqtt_iot_sdk_metrics_storage {
     struct aws_allocator *allocator;
 
@@ -22,8 +22,6 @@ struct aws_mqtt_iot_sdk_metrics_storage {
 AWS_MQTT_API struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
     struct aws_allocator *allocator,
     const struct aws_mqtt_iot_sdk_metrics *metrics_options);
-
-AWS_MQTT_API size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics);
 
 AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
 
