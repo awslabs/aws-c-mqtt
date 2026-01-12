@@ -339,6 +339,7 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
 AWS_TEST_CASE(mqtt_append_sdk_metrics_long_strings, s_test_mqtt_append_sdk_metrics_long_strings)
 
 static int s_test_mqtt_append_sdk_metrics_invalid_utf8(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     (void)ctx;
 
     /* Invalid UTF-8 sequence in library name */
