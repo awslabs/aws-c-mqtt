@@ -6738,8 +6738,10 @@ static int s_mqtt5_client_metrics_in_username_fn(
 
     struct aws_mqtt5_packet_connect_storage expected_connect_storage;
 
-    aws_mqtt5_packet_connect_storage_init(
-        &expected_connect_storage, allocator, &connect_view, &test_options.client_options);
+    struct aws_mqtt5_client_options_storage *options_storage =
+        aws_mqtt5_client_options_storage_new(allocator, &test_options.client_options);
+    aws_mqtt5_packet_connect_storage_init(&expected_connect_storage, allocator, &connect_view, options_storage);
+    aws_mqtt5_client_options_storage_destroy(options_storage);
 
     struct aws_mqtt5_packet_disconnect_storage expected_disconnect_storage;
     ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_disconnect_storage(&expected_disconnect_storage, allocator));

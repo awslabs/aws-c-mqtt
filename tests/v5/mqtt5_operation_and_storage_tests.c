@@ -708,8 +708,13 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
 
+    struct aws_mqtt5_client_options_storage *options_storage =
+        aws_mqtt5_client_options_storage_new(allocator, &client_options);
+
     ASSERT_SUCCESS(
-        aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options, &client_options));
+        aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options, options_storage));
+
+    aws_mqtt5_client_options_storage_destroy(options_storage);
 
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
