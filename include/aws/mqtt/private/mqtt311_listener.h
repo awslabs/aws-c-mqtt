@@ -158,9 +158,16 @@ void aws_mqtt311_callback_set_manager_remove(
  * Walks the incoming publish handler chain for an MQTT311 connection, invoking each in sequence.
  *
  * May only be called on the client's event loop thread.
+ *
+ * @param manager connection's callback manager
+ * @param topic topic of Publish packet
+ * @param payload payload of Publish packet
+ * @param dup dup flag of Publish packet
+ * @param qos QoS of Publish packet
+ * @return bool indicating whether the publish has been handled.
  */
 AWS_MQTT_API
-void aws_mqtt311_callback_set_manager_on_publish_received(
+bool aws_mqtt311_callback_set_manager_on_publish_received(
     struct aws_mqtt311_callback_set_manager *manager,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,

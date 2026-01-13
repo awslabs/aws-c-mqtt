@@ -292,10 +292,12 @@ static int s_packet_handler_publish(struct aws_byte_cursor message_cursor, void 
     enum aws_mqtt_qos qos = aws_mqtt_packet_publish_get_qos(&publish);
     bool retain = aws_mqtt_packet_publish_get_retain(&publish);
 
-    MQTT_CLIENT_CALL_CALLBACK_ARGS(connection, on_any_publish, &publish.topic_name, &publish.payload, dup, qos, retain);
-
-    aws_mqtt311_callback_set_manager_on_publish_received(
-        &connection->callback_manager, &publish.topic_name, &publish.payload, dup, qos, retain);
+    /* We only invoke the on_any_publish callback if the Publish has not been handled */
+    if (!aws_mqtt311_callback_set_manager_on_publish_received(
+            &connection->callback_manager, &publish.topic_name, &publish.payload, dup, qos, retain)) {
+        MQTT_CLIENT_CALL_CALLBACK_ARGS(
+            connection, on_any_publish, &publish.topic_name, &publish.payload, dup, qos, retain);
+    }
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,

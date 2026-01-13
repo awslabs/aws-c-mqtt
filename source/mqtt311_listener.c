@@ -243,7 +243,7 @@ void aws_mqtt311_callback_set_manager_remove(
         callback_set_id);
 }
 
-void aws_mqtt311_callback_set_manager_on_publish_received(
+bool aws_mqtt311_callback_set_manager_on_publish_received(
     struct aws_mqtt311_callback_set_manager *manager,
     const struct aws_byte_cursor *topic,
     const struct aws_byte_cursor *payload,
@@ -262,10 +262,15 @@ void aws_mqtt311_callback_set_manager_on_publish_received(
 
         struct aws_mqtt311_callback_set *callback_set = &entry->callbacks;
         if (callback_set->publish_received_handler != NULL) {
-            (*callback_set->publish_received_handler)(
+            bool handled = (*callback_set->publish_received_handler)(
                 manager->connection, topic, payload, dup, qos, retain, callback_set->user_data);
+            if (handled) {
+                return true;
+            }
         }
     }
+
+    return false;
 }
 
 void aws_mqtt311_callback_set_manager_on_connection_success(
