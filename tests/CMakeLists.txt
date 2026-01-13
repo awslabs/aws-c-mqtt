@@ -114,6 +114,7 @@ add_test_case(mqtt_websocket_failed_transform)
 add_test_case(mqtt_connection_set_metrics_valid)
 add_test_case(mqtt_connection_set_metrics_null)
 add_test_case(mqtt_connection_set_metrics_invalid_utf8_library)
+add_test_case(mqtt_connection_set_metrics_modify_on_reconnect)
 
 # Operation statistics tests
 add_test_case(mqtt_operation_statistics_simple_publish)

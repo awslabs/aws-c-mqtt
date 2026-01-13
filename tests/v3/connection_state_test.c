@@ -4130,3 +4130,86 @@ AWS_TEST_CASE_FIXTURE(
     s_test_mqtt_connection_set_metrics_invalid_utf8_library_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/**
+ * Test that metrics and username get updated properly on reconnect
+ */
+static int s_test_mqtt_connection_set_metrics_modify_on_reconnect_fn(struct aws_allocator *allocator, void *ctx) {
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+
+    aws_mqtt_client_connection_set_reconnect_timeout(
+        state_test_data->mqtt_connection, MIN_RECONNECT_DELAY_SECONDS, MAX_RECONNECT_DELAY_SECONDS);
+
+    struct aws_mqtt_iot_sdk_metrics metrics1 = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+    };
+    struct aws_mqtt_iot_sdk_metrics metrics2 = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/2.0"),
+    };
+
+    struct aws_byte_cursor username1 = aws_byte_cursor_from_c_str("testuser1");
+    struct aws_byte_cursor username2 = aws_byte_cursor_from_c_str("testuser2");
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &username1, NULL));
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_metrics(state_test_data->mqtt_connection, &metrics1));
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
+
+    /* Decode received packets by mock server */
+    ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->mock_server));
+    struct mqtt_decoded_packet *received_packet1 =
+        mqtt_mock_server_get_decoded_packet_by_index(state_test_data->mock_server, 0);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet1->type);
+
+    /* verify the username and metrics is setup properly */
+    struct aws_byte_buf expected_buf;
+    AWS_ZERO_STRUCT(expected_buf);
+    aws_test_mqtt_build_expected_metrics(allocator, &username1, metrics1.library_name, NULL, &expected_buf);
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&received_packet1->username, &expected_buf));
+    aws_byte_buf_clean_up(&expected_buf);
+
+    // set the second username and metrics
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &username2, NULL));
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_metrics(state_test_data->mqtt_connection, &metrics2));
+
+    /* shutdown the channel to reconnect */
+    aws_channel_shutdown(state_test_data->server_channel, AWS_OP_SUCCESS);
+    aws_test311_wait_for_reconnect_to_complete(state_test_data);
+
+    /* Decode second connect packets by mock server */
+    ASSERT_SUCCESS(mqtt_mock_server_decode_packets(state_test_data->mock_server));
+    struct mqtt_decoded_packet *received_packet2 =
+        mqtt_mock_server_get_decoded_packet_by_index(state_test_data->mock_server, 1);
+    ASSERT_UINT_EQUALS(AWS_MQTT_PACKET_CONNECT, received_packet2->type);
+
+    /* verify the username and metrics is setup properly */
+    AWS_ZERO_STRUCT(expected_buf);
+    aws_test_mqtt_build_expected_metrics(allocator, &username2, metrics2.library_name, NULL, &expected_buf);
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&received_packet2->username, &expected_buf));
+    aws_byte_buf_clean_up(&expected_buf);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
+    aws_test311_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_set_metrics_modify_on_reconnect,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_set_metrics_modify_on_reconnect_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)

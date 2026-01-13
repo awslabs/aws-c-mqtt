@@ -637,7 +637,7 @@ static void s_mqtt_client_init(
         if (aws_mqtt_append_sdk_metrics_to_username(
                 connection->allocator,
                 &username_cur,
-                connection->metrics_storage ? &connection->metrics_storage->storage_view : NULL,
+                connection->metrics_storage ? connection->metrics_storage : NULL,
                 &username_with_metrics_buf,
                 NULL) == AWS_OP_SUCCESS) {
             username_cur = aws_byte_cursor_from_buf(&username_with_metrics_buf);
@@ -646,22 +646,24 @@ static void s_mqtt_client_init(
                 AWS_LS_MQTT_CLIENT, "id=%p: Failed to apply metrics to username, using original", (void *)connection);
         }
 
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_CLIENT,
-            "id=%p: Adding username " PRInSTR " to connection",
-            (void *)connection,
-            AWS_BYTE_CURSOR_PRI(username_cur));
+        if (aws_byte_cursor_is_valid(&username_cur)) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Adding username " PRInSTR " to connection",
+                (void *)connection,
+                AWS_BYTE_CURSOR_PRI(username_cur));
 
-        struct aws_byte_cursor password_cur = {
-            .ptr = NULL,
-            .len = 0,
-        };
+            struct aws_byte_cursor password_cur = {
+                .ptr = NULL,
+                .len = 0,
+            };
 
-        if (connection->password) {
-            password_cur = aws_byte_cursor_from_string(connection->password);
+            if (connection->password) {
+                password_cur = aws_byte_cursor_from_string(connection->password);
+            }
+
+            aws_mqtt_packet_connect_add_credentials(&connect, username_cur, password_cur);
         }
-
-        aws_mqtt_packet_connect_add_credentials(&connect, username_cur, password_cur);
     }
 
     message = mqtt_get_message_for_packet(connection, &connect.fixed_header);
@@ -3384,7 +3386,7 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
-    if (metrics != NULL && aws_mqtt_validate_iot_sdk_metrics_utf8(metrics) == AWS_OP_ERR) {
+    if (metrics != NULL && aws_mqtt_validate_iot_sdk_metrics(metrics) == AWS_OP_ERR) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT, "id=%p: Invalid utf8 or forbidden codepoints in metrics.", (void *)connection);
         return aws_raise_error(AWS_ERROR_INVALID_UTF8);

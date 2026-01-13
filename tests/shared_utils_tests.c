@@ -163,11 +163,14 @@ static int s_test_mqtt_append_sdk_metrics_empty(struct aws_allocator *allocator,
     (void)ctx;
 
     struct aws_mqtt_iot_sdk_metrics metrics = {{0}};
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage =
+        aws_mqtt_iot_sdk_metrics_storage_new(allocator, &metrics);
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
 
-    ASSERT_SUCCESS(aws_mqtt_append_sdk_metrics_to_username(allocator, NULL, &metrics, &output_username, NULL));
+    ASSERT_SUCCESS(aws_mqtt_append_sdk_metrics_to_username(allocator, NULL, metrics_storage, &output_username, NULL));
+    aws_mqtt_iot_sdk_metrics_storage_destroy(metrics_storage);
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
@@ -196,14 +199,17 @@ static int s_test_mqtt_append_sdk_metrics_basic(struct aws_allocator *allocator,
         // .metadata_entries = NULL,
         // .metadata_count = 0,
     };
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage =
+        aws_mqtt_iot_sdk_metrics_storage_new(allocator, &metrics);
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
 
     struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("TEST_USERNAME");
 
-    ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
+    ASSERT_SUCCESS(aws_mqtt_append_sdk_metrics_to_username(
+        allocator, &original_username, metrics_storage, &output_username, NULL));
+    aws_mqtt_iot_sdk_metrics_storage_destroy(metrics_storage);
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
@@ -232,6 +238,8 @@ static int s_test_mqtt_append_sdk_metrics_existing_attributes(struct aws_allocat
         // .metadata_entries = NULL,
         // .metadata_count = 0,
     };
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage =
+        aws_mqtt_iot_sdk_metrics_storage_new(allocator, &metrics);
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
@@ -239,8 +247,9 @@ static int s_test_mqtt_append_sdk_metrics_existing_attributes(struct aws_allocat
     struct aws_byte_cursor original_username =
         aws_byte_cursor_from_c_str("user?SDK=ExistingSDK&Platform=ExistingPlatform");
 
-    ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
+    ASSERT_SUCCESS(aws_mqtt_append_sdk_metrics_to_username(
+        allocator, &original_username, metrics_storage, &output_username, NULL));
+    aws_mqtt_iot_sdk_metrics_storage_destroy(metrics_storage);
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
@@ -257,14 +266,17 @@ static int s_test_mqtt_append_sdk_metrics_special_chars(struct aws_allocator *al
     (void)ctx;
 
     struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = aws_byte_cursor_from_c_str("SDK/Test-1.0")};
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage =
+        aws_mqtt_iot_sdk_metrics_storage_new(allocator, &metrics);
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
 
     struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("user@domain.com");
 
-    ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
+    ASSERT_SUCCESS(aws_mqtt_append_sdk_metrics_to_username(
+        allocator, &original_username, metrics_storage, &output_username, NULL));
+    aws_mqtt_iot_sdk_metrics_storage_destroy(metrics_storage);
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
@@ -297,8 +309,12 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
     long_sdk_name[sizeof(long_sdk_name) - 1] = '\0';
 
     struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = aws_byte_cursor_from_c_str(long_sdk_name)};
+    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage =
+        aws_mqtt_iot_sdk_metrics_storage_new(allocator, &metrics);
 
     struct aws_mqtt_iot_sdk_metrics short_metrics = {.library_name = aws_byte_cursor_from_c_str("SHORT_SDK_NAME")};
+    struct aws_mqtt_iot_sdk_metrics_storage *short_metrics_storage =
+        aws_mqtt_iot_sdk_metrics_storage_new(allocator, &short_metrics);
 
     struct aws_byte_buf output_username;
     AWS_ZERO_STRUCT(output_username);
@@ -306,11 +322,14 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
     struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str(long_username);
 
     // aws_mqtt_append_sdk_metrics_to_username does not valid original username length
-    ASSERT_SUCCESS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &short_metrics, &output_username, NULL));
+    ASSERT_SUCCESS(aws_mqtt_append_sdk_metrics_to_username(
+        allocator, &original_username, short_metrics_storage, &output_username, NULL));
+    aws_mqtt_iot_sdk_metrics_storage_destroy(short_metrics_storage);
+
     // aws_mqtt_append_sdk_metrics_to_username fails when the extra metrics string exceeds buffer limit
-    ASSERT_FAILS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
+    ASSERT_FAILS(aws_mqtt_append_sdk_metrics_to_username(
+        allocator, &original_username, metrics_storage, &output_username, NULL));
+    aws_mqtt_iot_sdk_metrics_storage_destroy(metrics_storage);
 
     aws_byte_buf_clean_up(&output_username);
 
@@ -320,6 +339,7 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
 AWS_TEST_CASE(mqtt_append_sdk_metrics_long_strings, s_test_mqtt_append_sdk_metrics_long_strings)
 
 static int s_test_mqtt_append_sdk_metrics_invalid_utf8(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     (void)ctx;
 
     /* Invalid UTF-8 sequence in library name */
@@ -327,17 +347,8 @@ static int s_test_mqtt_append_sdk_metrics_invalid_utf8(struct aws_allocator *all
 
     struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = invalid_utf8_library};
 
-    struct aws_byte_buf output_username;
-    AWS_ZERO_STRUCT(output_username);
-
-    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("testuser");
-
     /* Should fail due to invalid UTF-8 */
-    ASSERT_FAILS(
-        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
-    ASSERT_INT_EQUALS(aws_last_error(), AWS_ERROR_INVALID_UTF8);
-
-    aws_byte_buf_clean_up(&output_username);
+    ASSERT_FAILS(aws_mqtt_validate_iot_sdk_metrics(&metrics));
 
     return AWS_OP_SUCCESS;
 }
