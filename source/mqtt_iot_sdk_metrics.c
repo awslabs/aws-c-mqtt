@@ -78,7 +78,7 @@ int s_build_username_query(
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
-    const struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage,
+    const struct aws_mqtt_iot_sdk_metrics *metrics,
     struct aws_byte_buf *output_username,
     size_t *out_full_username_size) {
 
@@ -88,7 +88,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     const struct aws_byte_cursor local_original_username =
         original_username == NULL ? aws_byte_cursor_from_c_str("") : *original_username;
 
-    if (!metrics_storage) {
+    if (!metrics) {
         if (out_full_username_size) {
             *out_full_username_size = local_original_username.len;
         }
@@ -98,6 +98,10 @@ int aws_mqtt_append_sdk_metrics_to_username(
         }
 
         return AWS_OP_SUCCESS;
+    }
+
+    if (aws_mqtt_validate_iot_sdk_metrics(metrics)) {
+        return AWS_OP_ERR;
     }
 
     int result = AWS_OP_ERR;
@@ -149,8 +153,8 @@ int aws_mqtt_append_sdk_metrics_to_username(
     if (!found_sdk) {
         struct aws_uri_param sdk_params = {
             .key = sdk_str,
-            .value = metrics_storage->library_name.len > 0 ? metrics_storage->library_name
-                                                           : aws_byte_cursor_from_c_str("IoTDeviceSDK/C"),
+            .value =
+                metrics->library_name.len > 0 ? metrics->library_name : aws_byte_cursor_from_c_str("IoTDeviceSDK/C"),
         };
         aws_array_list_push_back(&params_list, &sdk_params);
     }
@@ -236,11 +240,14 @@ struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
 
     metrics_storage->allocator = allocator;
 
+    struct aws_mqtt_iot_sdk_metrics *storage_view = &metrics_storage->storage_view;
+
     if (metrics_options->library_name.len > 0) {
         metrics_storage->library_name = metrics_options->library_name;
         if (aws_byte_buf_append_and_update(&metrics_storage->storage, &metrics_storage->library_name)) {
             goto cleanup_storage;
         }
+        storage_view->library_name = metrics_storage->library_name;
     }
 
     return metrics_storage;
