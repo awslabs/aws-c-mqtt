@@ -729,6 +729,7 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
         expected_username.buffer, expected_username.len, connect_storage.username.ptr, connect_storage.username.len);
     aws_byte_buf_clean_up(&expected_username);
 
+    AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&connect_storage, &connect_options, username);
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&connect_storage, &connect_options, password);
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_UINT(
         &connect_storage, &connect_options, session_expiry_interval_seconds);
