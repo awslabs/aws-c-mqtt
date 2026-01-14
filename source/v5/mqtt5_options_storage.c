@@ -649,7 +649,7 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(
         if (options) {
             size_t username_size = 0;
             aws_mqtt_append_sdk_metrics_to_username(
-                aws_default_allocator(), view->username, options->metrics_storage, NULL, &username_size);
+                aws_default_allocator(), view->username, &options->metrics_storage->storage_view, NULL, &username_size);
             storage_size += username_size;
         } else {
             storage_size += view->username->len;
@@ -704,7 +704,11 @@ int aws_mqtt5_packet_connect_storage_init(
         if (client_storage) {
             struct aws_byte_cursor username_cur = storage->username;
             if (aws_mqtt_append_sdk_metrics_to_username(
-                    allocator, &username_cur, client_storage->metrics_storage, &metrics_username_buf, NULL)) {
+                    allocator,
+                    &username_cur,
+                    &client_storage->metrics_storage->storage_view,
+                    &metrics_username_buf,
+                    NULL)) {
                 return AWS_OP_ERR;
             }
             storage->username = aws_byte_cursor_from_buf(&metrics_username_buf);
