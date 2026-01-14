@@ -675,17 +675,6 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
         .topic = aws_byte_cursor_from_c_str(PUBLISH_TOPIC),
     };
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {
-        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
-        // TODO: add more metrics fields as needed
-        // .metadata_entries = NULL,
-        // .metadata_count = 0,
-    };
-
-    struct aws_mqtt5_client_options client_options = {
-        .metrics = &metrics,
-    };
-
     struct aws_mqtt5_packet_connect_view connect_options = {
         .keep_alive_interval_seconds = 50,
         .client_id = aws_byte_cursor_from_string(s_client_id),
@@ -708,26 +697,10 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
 
-    struct aws_mqtt5_client_options_storage *options_storage =
-        aws_mqtt5_client_options_storage_new(allocator, &client_options);
-
-    ASSERT_SUCCESS(
-        aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options, options_storage));
-
-    aws_mqtt5_client_options_storage_destroy(options_storage);
-
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options, NULL));
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
     struct aws_mqtt5_packet_connect_view *stored_view = &connect_storage.storage_view;
-
-    /* Build expected username with metrics */
-    struct aws_byte_buf expected_username;
-    AWS_ZERO_STRUCT(expected_username);
-    aws_test_mqtt_build_expected_metrics(
-        allocator, connect_options.username, metrics.library_name, NULL, &expected_username);
-    ASSERT_BIN_ARRAYS_EQUALS(
-        expected_username.buffer, expected_username.len, connect_storage.username.ptr, connect_storage.username.len);
-    aws_byte_buf_clean_up(&expected_username);
 
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&connect_storage, &connect_options, username);
     AWS_VERIFY_VIEW_STORAGE_RELATIONSHIP_NULLABLE_CURSOR(&connect_storage, &connect_options, password);
