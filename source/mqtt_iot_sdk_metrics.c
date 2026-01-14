@@ -100,7 +100,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
         return AWS_OP_SUCCESS;
     }
 
-    if (aws_mqtt_validate_iot_sdk_metrics_utf8(metrics)) {
+    if (aws_mqtt_validate_iot_sdk_metrics(metrics)) {
         return AWS_OP_ERR;
     }
 
@@ -280,7 +280,7 @@ void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_st
     aws_mem_release(metrics_storage->allocator, metrics_storage);
 }
 
-int aws_mqtt_validate_iot_sdk_metrics_utf8(const struct aws_mqtt_iot_sdk_metrics *metrics) {
+int aws_mqtt_validate_iot_sdk_metrics(const struct aws_mqtt_iot_sdk_metrics *metrics) {
     if (metrics == NULL) {
         return AWS_OP_SUCCESS;
     }
