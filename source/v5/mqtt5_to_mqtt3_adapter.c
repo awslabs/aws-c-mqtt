@@ -2806,7 +2806,7 @@ static void s_set_metrics_task_fn(struct aws_task *task, void *arg, enum aws_tas
         goto done;
     }
 
-    if (aws_mqtt_validate_iot_sdk_metrics_utf8(&set_task->metrics_storage->storage_view)) {
+    if (aws_mqtt_validate_iot_sdk_metrics(&set_task->metrics_storage->storage_view)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "invalid metrics in client configuration");
         goto done;
     }
@@ -2818,7 +2818,6 @@ static void s_set_metrics_task_fn(struct aws_task *task, void *arg, enum aws_tas
     }
     client_options->metrics_storage =
         aws_mqtt_iot_sdk_metrics_storage_new(set_task->allocator, &set_task->metrics_storage->storage_view);
-    client_options->options.metrics = &client_options->metrics_storage->storage_view;
 
 done:
     aws_ref_count_release(&adapter->internal_refs);
@@ -2849,7 +2848,7 @@ static struct aws_mqtt_set_metrics_task *s_aws_mqtt_set_metrics_task_new(
 static int s_aws_mqtt_client_connection_5_set_metrics(void *impl, const struct aws_mqtt_iot_sdk_metrics *metrics) {
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
-    if (aws_mqtt_validate_iot_sdk_metrics_utf8(metrics)) {
+    if (aws_mqtt_validate_iot_sdk_metrics(metrics)) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: Invalid utf8 or forbidden codepoints in metrics.", (void *)adapter);
         return aws_raise_error(AWS_ERROR_INVALID_UTF8);
