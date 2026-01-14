@@ -710,7 +710,7 @@ int aws_mqtt5_packet_connect_storage_init(
             if (aws_mqtt_append_sdk_metrics_to_username(
                     allocator,
                     &username_cur,
-                    client_storage->metrics_storage? &client_storage->metrics_storage->storage_view : NULL,
+                    client_storage->metrics_storage ? &client_storage->metrics_storage->storage_view : NULL,
                     &metrics_username_buf,
                     NULL)) {
                 return AWS_OP_ERR;
