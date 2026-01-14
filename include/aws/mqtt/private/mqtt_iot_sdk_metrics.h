@@ -10,6 +10,8 @@
 struct aws_mqtt_iot_sdk_metrics_storage {
     struct aws_allocator *allocator;
 
+    struct aws_mqtt_iot_sdk_metrics storage_view;
+
     struct aws_array_list metadata_entries;
 
     struct aws_byte_cursor library_name;
@@ -27,7 +29,7 @@ AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_s
  * Appends SDK metrics to the username
  *
  * @param original_username The original username
- * @param metrics_storage The metrics configuration
+ * @param metrics The metrics configuration
  * @param output_username Buffer to store the modified username. If the function succeed, caller is responsible to
  * release the memory for output_username.
  * @param out_full_username_size If not NULL, will be set to the full size of the username with metrics appended
@@ -38,7 +40,7 @@ AWS_MQTT_API
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
-    const struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage,
+    const struct aws_mqtt_iot_sdk_metrics *metrics,
     struct aws_byte_buf *output_username,
     size_t *out_full_username_size);
 
