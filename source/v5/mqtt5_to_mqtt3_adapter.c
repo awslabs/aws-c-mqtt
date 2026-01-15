@@ -2806,7 +2806,7 @@ static void s_set_metrics_task_fn(struct aws_task *task, void *arg, enum aws_tas
         goto done;
     }
 
-    if (aws_mqtt_validate_iot_sdk_metrics(&set_task->metrics_storage->storage_view)) {
+    if (set_task->metrics_storage && aws_mqtt_validate_iot_sdk_metrics(&set_task->metrics_storage->storage_view)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "invalid metrics in client configuration");
         goto done;
     }
@@ -2816,8 +2816,9 @@ static void s_set_metrics_task_fn(struct aws_task *task, void *arg, enum aws_tas
     if (client_options->metrics_storage) {
         aws_mqtt_iot_sdk_metrics_storage_destroy(client_options->metrics_storage);
     }
-    client_options->metrics_storage =
-        aws_mqtt_iot_sdk_metrics_storage_new(set_task->allocator, &set_task->metrics_storage->storage_view);
+
+    client_options->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(
+        set_task->allocator, set_task->metrics_storage ? &set_task->metrics_storage->storage_view : NULL);
 
 done:
     aws_ref_count_release(&adapter->internal_refs);
