@@ -734,6 +734,16 @@ int aws_mqtt5_client_publish(
     const struct aws_mqtt5_publish_completion_options *completion_options);
 
 /**
+ * Trigger a PUBACK for provided packet id
+ *
+ * @param client mqtt5 client to queue a puback for
+ * @param packet_id Packet ID to send to broker/server
+ * @return success/failure in the synchronous logic that kicks off the puback operation
+ */
+AWS_MQTT_API
+int aws_mqtt_client_puback(struct aws_mqtt5_client *client, uint16_t packet_id);
+
+/**
  * Queues a Subscribe operation in an mqtt5 client
  *
  * @param client mqtt5 client to queue a Subscribe for

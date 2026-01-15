@@ -1882,9 +1882,9 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
 
             aws_mqtt5_callback_set_manager_on_publish_received(&client->callback_manager, publish_view);
 
+            // TODO WIP handle how ownership of the PUBACK is controlled
             /* Send a puback if QoS 1+ */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
-
                 int result = s_aws_mqtt5_client_queue_puback(client, publish_view->packet_id);
                 if (result != AWS_OP_SUCCESS) {
                     int error_code = aws_last_error();
@@ -2365,6 +2365,25 @@ error:
     return AWS_OP_ERR;
 }
 
+int aws_mqtt_client_puback(struct aws_mqtt5_client *client, uint16_t packet_id) {
+    AWS_PRECONDITION(client != NULL);
+    // WIP TODO logic to check that the provided packet_id should be handled
+
+    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: scheduling PUBACK for publish id: %d", (void *)client, packet_id);
+    int result = s_aws_mqtt5_client_queue_puback(client, packet_id);
+    if (result != AWS_OP_SUCCESS) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: decode failure with error %d(%s)",
+            (void *)client,
+            error_code,
+            aws_error_debug_str(error_code));
+
+        s_aws_mqtt5_client_shutdown_channel(client, error_code);
+    }
+}
+
 int aws_mqtt5_client_subscribe(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_subscribe_view *subscribe_options,
@@ -2840,8 +2859,8 @@ static uint64_t s_aws_mqtt5_client_compute_next_operation_flow_control_service_t
  * Estimate the # of ethernet frames (max 1444 bytes) and add in potential TLS framing and padding values per.
  *
  * TODO: query IoT Core to determine if this calculation is needed after all
- * TODO: may eventually want to expose the ethernet frame size here as a configurable option for networks that have a
- * lower MTU
+ * TODO: may eventually want to expose the ethernet frame size here as a configurable option for networks that have
+ * a lower MTU
  *
  * References:
  *  https://tools.ietf.org/id/draft-mattsson-uta-tls-overhead-01.xml#rfc.section.3
@@ -3128,9 +3147,9 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                  *  sporadically fail because the PINGRESP is processed before the write completion callback is
                  *  invoked.
                  *
-                 *  (2) Enqueue the ping - if the current operation is a large payload over a poor connection, it may
-                 *  be an arbitrarily long time before the current operation completes and the ping even has a chance
-                 *  to go out, meaning we will trigger a ping time out before it's even sent.
+                 *  (2) Enqueue the ping - if the current operation is a large payload over a poor connection, it
+                 * may be an arbitrarily long time before the current operation completes and the ping even has a
+                 * chance to go out, meaning we will trigger a ping time out before it's even sent.
                  *
                  *  Given a reasonable io message size, this is the best place to set the timeout.
                  */
