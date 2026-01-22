@@ -692,7 +692,8 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
         .user_property_count = AWS_ARRAY_SIZE(s_user_properties),
         .user_properties = s_user_properties,
         .authentication_method = &s_authentication_method_cursor,
-        .authentication_data = &s_authentication_data_cursor};
+        .authentication_data = &s_authentication_data_cursor,
+    };
 
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
