@@ -113,7 +113,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     if (aws_mqtt_validate_iot_sdk_metrics(metrics)) {
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return AWS_OP_ERR;
     }
 
     int result = AWS_OP_ERR;
