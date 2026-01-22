@@ -29,7 +29,9 @@ int s_build_username_query(
     AWS_ASSERT(params_list);
 
     if (output_username) {
-        aws_byte_buf_write(output_username, base_username->ptr, base_username_length);
+        if (!aws_byte_buf_write(output_username, base_username->ptr, base_username_length)) {
+            return AWS_OP_ERR;
+        }
     }
 
     if (out_full_username_size) {
@@ -46,10 +48,12 @@ int s_build_username_query(
         AWS_ZERO_STRUCT(param);
         aws_array_list_get_at(params_list, &param, i);
 
-        if (i == 0 && output_username) {
-            aws_byte_buf_append(output_username, &query_delim);
-        } else if (i > 0 && output_username) {
-            aws_byte_buf_append(output_username, &query_param_amp);
+        if (output_username) {
+            if (i == 0) {
+                aws_byte_buf_append(output_username, &query_delim);
+            } else {
+                aws_byte_buf_append(output_username, &query_param_amp);
+            }
         }
 
         if (out_full_username_size) {
@@ -57,15 +61,23 @@ int s_build_username_query(
         }
 
         if (output_username) {
-            if (param.key.len > 0 && (aws_byte_buf_append(output_username, &param.key))) {
-                return AWS_OP_ERR;
+            if (param.key.len > 0) {
+                // append key if key exists
+                if (aws_byte_buf_append(output_username, &param.key)) {
+                    return AWS_OP_ERR;
+                }
             }
 
-            if (param.value.len > 0 && ((aws_byte_buf_append(output_username, &key_value_delim)) ||
-                                        aws_byte_buf_append(output_username, &param.value))) {
-                return AWS_OP_ERR;
-            }
+            // append value if value exists
+            if (param.value.len > 0)
+                // Note: If value exists without a key, append "=" and value (e.g., "?=abc").
+                // Please note server treats "a=", "a", and "=a" equivalently.
+                if ((aws_byte_buf_append(output_username, &key_value_delim)) ||
+                    aws_byte_buf_append(output_username, &param.value)) {
+                    return AWS_OP_ERR;
+                }
         }
+
         if (out_full_username_size) {
             *out_full_username_size += param.key.len + (param.value.len > 0 ? 1 : 0) + param.value.len;
         }
@@ -173,6 +185,9 @@ int aws_mqtt_append_sdk_metrics_to_username(
     s_build_username_query(&local_original_username, base_username_length, &params_list, NULL, &total_size);
 
     if (total_size > AWS_IOT_MAX_USERNAME_SIZE) {
+        AWS_LOGF_ERROR(
+            AWS_LL_DEBUG, "Failed to append SDK metrics to username: resulting username exceeds max username size.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto cleanup;
     }
 
@@ -189,11 +204,9 @@ int aws_mqtt_append_sdk_metrics_to_username(
     result = AWS_OP_SUCCESS;
 
 cleanup:
-    if (aws_array_list_is_valid(&params_list)) {
-        aws_array_list_clean_up(&params_list);
-    }
+    aws_array_list_clean_up(&params_list);
 
-    if (result == AWS_OP_ERR && aws_byte_buf_is_valid(output_username)) {
+    if (result == AWS_OP_ERR) {
         aws_byte_buf_clean_up(output_username);
     }
     return result;
@@ -209,14 +222,7 @@ size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_s
     }
 
     size_t storage_size = 0;
-
     storage_size += metrics->library_name.len;
-
-    // TODO: add metadata entries when enabled
-    // for (size_t i = 0; i < metrics->metadata_count; ++i) {
-    //     storage_size += metrics->metadata_entries[i].key.len;
-    //     storage_size += metrics->metadata_entries[i].value.len;
-    // }
 
     return storage_size;
 }
