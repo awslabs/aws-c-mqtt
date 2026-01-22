@@ -3786,10 +3786,7 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
         aws_mem_release(options_storage->connect->allocator, options_storage->connect);
     }
 
-    if (options_storage->metrics_storage != NULL) {
-        aws_mqtt_iot_sdk_metrics_storage_destroy(options_storage->metrics_storage);
-    }
-
+    aws_mqtt_iot_sdk_metrics_storage_destroy(options_storage->metrics_storage);
     aws_mem_release(options_storage->allocator, options_storage);
 }
 
