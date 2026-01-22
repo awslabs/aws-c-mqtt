@@ -6,6 +6,8 @@
 #ifndef AWS_MQTT_IOT_SDK_METRICS_H
 #define AWS_MQTT_IOT_SDK_METRICS_H
 
+#include <aws/mqtt/mqtt.h>
+
 /* Storage for `aws_mqtt_iot_sdk_metrics`. */
 struct aws_mqtt_iot_sdk_metrics_storage {
     struct aws_allocator *allocator;
@@ -26,13 +28,14 @@ AWS_MQTT_API struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_s
 AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
 
 /**
- * Appends SDK metrics to the username
+ * Builds a new username by appending SDK metrics to the original username.
  *
+ * @param allocator The allocator to use for memory allocation
  * @param original_username The original username
  * @param metrics The metrics configuration
- * @param output_username Buffer to store the modified username. If the function succeed, caller is responsible to
- * release the memory for output_username.
- * @param out_full_username_size If not NULL, will be set to the full size of the username with metrics appended
+ * @param output_username Buffer that will be initialized and populated with the new final username. The function
+ * expects this buffer to be uninitialized. On success, the caller is responsible for cleaning up the buffer.
+ * @param out_full_username_size If not NULL, will be set to the full size of the final username
  *
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */
