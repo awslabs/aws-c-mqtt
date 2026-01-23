@@ -681,12 +681,12 @@ int aws_mqtt5_packet_connect_storage_init(
     struct aws_mqtt5_packet_connect_storage *storage,
     struct aws_allocator *allocator,
     const struct aws_mqtt5_packet_connect_view *view,
-    const struct aws_mqtt5_client_options_storage *client_storage) {
+    const struct aws_mqtt5_client_options_storage *client_options_storage) {
     AWS_ZERO_STRUCT(*storage);
 
     struct aws_mqtt5_packet_connect_view *storage_view = &storage->storage_view;
 
-    size_t storage_capacity = s_aws_mqtt5_packet_connect_compute_storage_size(view, client_storage);
+    size_t storage_capacity = s_aws_mqtt5_packet_connect_compute_storage_size(view, client_options_storage);
     if (aws_byte_buf_init(&storage->storage, allocator, storage_capacity)) {
         return AWS_OP_ERR;
     }
@@ -705,12 +705,13 @@ int aws_mqtt5_packet_connect_storage_init(
         AWS_ZERO_STRUCT(metrics_username_buf);
 
         /* Apply metrics to username if configured */
-        if (client_storage) {
+        if (client_options_storage) {
             struct aws_byte_cursor username_cur = storage->username;
             if (aws_mqtt_append_sdk_metrics_to_username(
                     allocator,
                     &username_cur,
-                    client_storage->metrics_storage ? &client_storage->metrics_storage->storage_view : NULL,
+                    client_options_storage->metrics_storage ? &client_options_storage->metrics_storage->storage_view
+                                                            : NULL,
                     &metrics_username_buf,
                     NULL)) {
                 return AWS_OP_ERR;
@@ -718,12 +719,11 @@ int aws_mqtt5_packet_connect_storage_init(
             storage->username = aws_byte_cursor_from_buf(&metrics_username_buf);
         }
 
-        if (aws_byte_buf_append_and_update(&storage->storage, &storage->username)) {
-            aws_byte_buf_clean_up(&metrics_username_buf);
+        int result = aws_byte_buf_append_and_update(&storage->storage, &storage->username);
+        aws_byte_buf_clean_up(&metrics_username_buf);
+        if (result == AWS_OP_ERR) {
             return AWS_OP_ERR;
         }
-        aws_byte_buf_clean_up(&metrics_username_buf);
-
         storage_view->username = &storage->username;
     }
 
@@ -3786,10 +3786,7 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
         aws_mem_release(options_storage->connect->allocator, options_storage->connect);
     }
 
-    if (options_storage->metrics_storage != NULL) {
-        aws_mqtt_iot_sdk_metrics_storage_destroy(options_storage->metrics_storage);
-    }
-
+    aws_mqtt_iot_sdk_metrics_storage_destroy(options_storage->metrics_storage);
     aws_mem_release(options_storage->allocator, options_storage);
 }
 
