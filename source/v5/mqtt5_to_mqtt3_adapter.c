@@ -2793,7 +2793,6 @@ static void s_aws_mqtt_set_metrics_task_destroy(struct aws_mqtt_set_metrics_task
     }
 
     aws_mqtt_iot_sdk_metrics_storage_destroy(task->metrics_storage);
-
     aws_mem_release(task->allocator, task);
 }
 
@@ -2806,19 +2805,15 @@ static void s_set_metrics_task_fn(struct aws_task *task, void *arg, enum aws_tas
         goto done;
     }
 
-    if (set_task->metrics_storage && aws_mqtt_validate_iot_sdk_metrics(&set_task->metrics_storage->storage_view)) {
-        AWS_LOGF_ERROR(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "invalid metrics in client configuration");
-        goto done;
-    }
-
     /* we're in the mqtt5 client's event loop; it's safe to access internal state */
     struct aws_mqtt5_client_options_storage *client_options = adapter->client->config;
     if (client_options->metrics_storage) {
         aws_mqtt_iot_sdk_metrics_storage_destroy(client_options->metrics_storage);
+        client_options->metrics_storage = NULL;
     }
 
-    client_options->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(
-        set_task->allocator, set_task->metrics_storage ? &set_task->metrics_storage->storage_view : NULL);
+    client_options->metrics_storage = set_task->metrics_storage;
+    set_task->metrics_storage = NULL;
 
 done:
     aws_ref_count_release(&adapter->internal_refs);
@@ -2841,6 +2836,10 @@ static struct aws_mqtt_set_metrics_task *s_aws_mqtt_set_metrics_task_new(
 
     if (metrics != NULL) {
         set_task->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(allocator, metrics);
+        if (!set_task->metrics_storage) {
+            s_aws_mqtt_set_metrics_task_destroy(set_task);
+            return NULL;
+        }
     }
 
     return set_task;
@@ -2850,9 +2849,8 @@ static int s_aws_mqtt_client_connection_5_set_metrics(void *impl, const struct a
     struct aws_mqtt_client_connection_5_impl *adapter = impl;
 
     if (aws_mqtt_validate_iot_sdk_metrics(metrics)) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: Invalid utf8 or forbidden codepoints in metrics.", (void *)adapter);
-        return aws_raise_error(AWS_ERROR_INVALID_UTF8);
+        AWS_LOGF_DEBUG(AWS_LS_MQTT5_TO_MQTT3_ADAPTER, "id=%p: Invalid metrics.", (void *)adapter);
+        return AWS_OP_ERR;
     }
 
     struct aws_mqtt_set_metrics_task *task = s_aws_mqtt_set_metrics_task_new(adapter->allocator, adapter, metrics);
