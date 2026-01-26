@@ -900,26 +900,6 @@ static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connec
  * Connection Configuration
  ******************************************************************************/
 
-/* To configure the connection, ensure the state is DISCONNECTED or CONNECTED */
-static int s_check_connection_state_for_configuration(struct aws_mqtt_client_connection_311_impl *connection) {
-    int result = AWS_OP_SUCCESS;
-    { /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
-
-        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
-            connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
-                "pending operation completes.",
-                (void *)connection);
-            result = AWS_OP_ERR;
-        }
-        mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
-    return result;
-}
-
 static int s_aws_mqtt_client_connection_311_set_will(
     void *impl,
     const struct aws_byte_cursor *topic,
@@ -931,9 +911,6 @@ static int s_aws_mqtt_client_connection_311_set_will(
 
     AWS_PRECONDITION(connection);
     AWS_PRECONDITION(topic);
-    if (s_check_connection_state_for_configuration(connection)) {
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
 
     if (!aws_mqtt_is_valid_topic(topic)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Will topic is invalid", (void *)connection);
@@ -962,28 +939,47 @@ static int s_aws_mqtt_client_connection_311_set_will(
         goto cleanup;
     }
 
-    connection->will.qos = qos;
-    connection->will.retain = retain;
-
     struct aws_byte_buf payload_buf = aws_byte_buf_from_array(payload->ptr, payload->len);
     if (aws_byte_buf_init_copy(&local_payload_buf, connection->allocator, &payload_buf)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to copy will body", (void *)connection);
         goto cleanup;
     }
 
-    if (connection->will.topic.len) {
-        AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Will has been set before, resetting it.", (void *)connection);
-    }
-    /* Succeed. */
-    result = AWS_OP_SUCCESS;
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
 
-    /* swap the local buffer with connection */
-    struct aws_byte_buf temp = local_topic_buf;
-    local_topic_buf = connection->will.topic;
-    connection->will.topic = temp;
-    temp = local_payload_buf;
-    local_payload_buf = connection->will.payload;
-    connection->will.payload = temp;
+        /* Check state and modify connection under lock to ensure thread safety */
+        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
+            connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+                "pending operation completes.",
+                (void *)connection);
+            result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        } else {
+            connection->will.qos = qos;
+            connection->will.retain = retain;
+
+            if (connection->will.topic.len) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT, "id=%p: Will has been set before, resetting it.", (void *)connection);
+            }
+
+            /* swap the local buffer with connection */
+            struct aws_byte_buf temp = local_topic_buf;
+            local_topic_buf = connection->will.topic;
+            connection->will.topic = temp;
+            temp = local_payload_buf;
+            local_payload_buf = connection->will.payload;
+            connection->will.payload = temp;
+
+            /* Succeed. */
+            result = AWS_OP_SUCCESS;
+        }
+
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
 
 cleanup:
     aws_byte_buf_clean_up(&local_topic_buf);
@@ -1001,9 +997,6 @@ static int s_aws_mqtt_client_connection_311_set_login(
 
     AWS_PRECONDITION(connection);
     AWS_PRECONDITION(username);
-    if (s_check_connection_state_for_configuration(connection)) {
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
 
     if (username != NULL && aws_mqtt_validate_utf8_text(*username) == AWS_OP_ERR) {
         AWS_LOGF_DEBUG(
@@ -1031,20 +1024,40 @@ static int s_aws_mqtt_client_connection_311_set_login(
         }
     }
 
-    if (connection->username) {
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT_CLIENT, "id=%p: Login information has been set before, resetting it.", (void *)connection);
-    }
-    /* Succeed. */
-    result = AWS_OP_SUCCESS;
+    { /* BEGIN CRITICAL SECTION */
+        mqtt_connection_lock_synced_data(connection);
+        /* Check state and modify connection under lock to ensure thread safety */
+        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
+            connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+                "pending operation completes.",
+                (void *)connection);
+            result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        } else {
 
-    /* swap the local string with connection */
-    struct aws_string *temp = username_string;
-    username_string = connection->username;
-    connection->username = temp;
-    temp = password_string;
-    password_string = connection->password;
-    connection->password = temp;
+            if (connection->username) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_MQTT_CLIENT,
+                    "id=%p: Login information has been set before, resetting it.",
+                    (void *)connection);
+            }
+
+            /* swap the local string with connection */
+            struct aws_string *temp = username_string;
+            username_string = connection->username;
+            connection->username = temp;
+            temp = password_string;
+            password_string = connection->password;
+            connection->password = temp;
+
+            /* Succeed. */
+            result = AWS_OP_SUCCESS;
+        }
+
+        mqtt_connection_unlock_synced_data(connection);
+    } /* END CRITICAL SECTION */
 
 cleanup:
     aws_string_destroy_secure(username_string);
@@ -1061,20 +1074,40 @@ static int s_aws_mqtt_client_connection_311_set_reconnect_timeout(
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
     AWS_PRECONDITION(connection);
-    if (s_check_connection_state_for_configuration(connection)) {
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
+
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
         "id=%p: Setting reconnect timeouts min: %" PRIu64 " max: %" PRIu64,
         (void *)connection,
         min_timeout,
         max_timeout);
+
+    int result = AWS_OP_ERR;
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
+
+    /* Check state and modify connection under lock to ensure thread safety */
+    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
+        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+            "pending operation completes.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
+
     connection->reconnect_timeouts.min_sec = min_timeout;
     connection->reconnect_timeouts.max_sec = max_timeout;
     connection->reconnect_timeouts.current_sec = min_timeout;
+    result = AWS_OP_SUCCESS;
 
-    return AWS_OP_SUCCESS;
+done:
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
+
+    return result;
 }
 
 static int s_aws_mqtt_client_connection_311_set_connection_result_handlers(
@@ -1087,17 +1120,36 @@ static int s_aws_mqtt_client_connection_311_set_connection_result_handlers(
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
     AWS_PRECONDITION(connection);
-    if (s_check_connection_state_for_configuration(connection)) {
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
+    int result = AWS_OP_ERR;
+
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection success and failure handlers", (void *)connection);
+
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
+
+    /* Check state and modify connection under lock to ensure thread safety */
+    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
+        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+            "pending operation completes.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
 
     connection->on_connection_success = on_connection_success;
     connection->on_connection_success_ud = on_connection_success_ud;
     connection->on_connection_failure = on_connection_failure;
     connection->on_connection_failure_ud = on_connection_failure_ud;
+    result = AWS_OP_SUCCESS;
 
-    return AWS_OP_SUCCESS;
+done:
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
+
+    return result;
 }
 
 static int s_aws_mqtt_client_connection_311_set_connection_interruption_handlers(
@@ -1110,18 +1162,38 @@ static int s_aws_mqtt_client_connection_311_set_connection_interruption_handlers
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
     AWS_PRECONDITION(connection);
-    if (s_check_connection_state_for_configuration(connection)) {
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
+
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: Setting connection interrupted and resumed handlers", (void *)connection);
+
+    int result = AWS_OP_ERR;
+
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
+
+    /* Check state and modify connection under lock to ensure thread safety */
+    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
+        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+            "pending operation completes.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
 
     connection->on_interrupted = on_interrupted;
     connection->on_interrupted_ud = on_interrupted_ud;
     connection->on_resumed = on_resumed;
     connection->on_resumed_ud = on_resumed_ud;
+    result = AWS_OP_SUCCESS;
 
-    return AWS_OP_SUCCESS;
+done:
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
+
+    return result;
 }
 
 static int s_aws_mqtt_client_connection_311_set_connection_closed_handler(
@@ -1132,15 +1204,33 @@ static int s_aws_mqtt_client_connection_311_set_connection_closed_handler(
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
     AWS_PRECONDITION(connection);
-    if (s_check_connection_state_for_configuration(connection)) {
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
+
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection closed handler", (void *)connection);
+
+    int result = AWS_OP_ERR;
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
+
+    /* Check state and modify connection under lock to ensure thread safety */
+    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
+        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+            "pending operation completes.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
 
     connection->on_closed = on_closed;
     connection->on_closed_ud = on_closed_ud;
+    result = AWS_OP_SUCCESS;
 
-    return AWS_OP_SUCCESS;
+done:
+    /* END CRITICAL SECTION */
+    mqtt_connection_unlock_synced_data(connection);
+    return result;
 }
 
 static int s_aws_mqtt_client_connection_311_set_on_any_publish_handler(
@@ -1182,15 +1272,34 @@ static int s_aws_mqtt_client_connection_311_set_connection_termination_handler(
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
     AWS_PRECONDITION(connection);
-    if (s_check_connection_state_for_configuration(connection)) {
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
+
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection termination handler", (void *)connection);
+
+    int result = AWS_OP_ERR;
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
+
+    /* Check state and modify connection under lock to ensure thread safety */
+    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
+        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+            "pending operation completes.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
 
     connection->on_termination = on_termination;
     connection->on_termination_ud = on_termination_ud;
+    result = AWS_OP_SUCCESS;
 
-    return AWS_OP_SUCCESS;
+done:
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
+
+    return result;
 }
 
 /*******************************************************************************
