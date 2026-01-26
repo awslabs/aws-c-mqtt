@@ -60,6 +60,15 @@ void mqtt_connection_unlock_synced_data(struct aws_mqtt_client_connection_311_im
     (void)err;
 }
 
+/* To configure the connection, ensure the state is DISCONNECTED or CONNECTED. The function should be wrapped by
+ * connection synced_data lock.
+ */
+static bool s_is_valid_connection_state_for_configuration(struct aws_mqtt_client_connection_311_impl *connection) {
+
+    return connection->synced_data.state == AWS_MQTT_CLIENT_STATE_DISCONNECTED ||
+           connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTED;
+}
+
 static void s_aws_mqtt_schedule_reconnect_task(struct aws_mqtt_client_connection_311_impl *connection) {
     uint64_t next_attempt_ns = 0;
     aws_high_res_clock_get_ticks(&next_attempt_ns);
@@ -949,8 +958,7 @@ static int s_aws_mqtt_client_connection_311_set_will(
         mqtt_connection_lock_synced_data(connection);
 
         /* Check state and modify connection under lock to ensure thread safety */
-        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
-            connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        if (!s_is_valid_connection_state_for_configuration(connection)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
@@ -1027,8 +1035,7 @@ static int s_aws_mqtt_client_connection_311_set_login(
     { /* BEGIN CRITICAL SECTION */
         mqtt_connection_lock_synced_data(connection);
         /* Check state and modify connection under lock to ensure thread safety */
-        if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
-            connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        if (!s_is_valid_connection_state_for_configuration(connection)) {
             AWS_LOGF_ERROR(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
@@ -1087,8 +1094,7 @@ static int s_aws_mqtt_client_connection_311_set_reconnect_timeout(
     mqtt_connection_lock_synced_data(connection);
 
     /* Check state and modify connection under lock to ensure thread safety */
-    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
-        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+    if (!s_is_valid_connection_state_for_configuration(connection)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
@@ -1128,8 +1134,7 @@ static int s_aws_mqtt_client_connection_311_set_connection_result_handlers(
     mqtt_connection_lock_synced_data(connection);
 
     /* Check state and modify connection under lock to ensure thread safety */
-    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
-        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+    if (!s_is_valid_connection_state_for_configuration(connection)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
@@ -1172,8 +1177,7 @@ static int s_aws_mqtt_client_connection_311_set_connection_interruption_handlers
     mqtt_connection_lock_synced_data(connection);
 
     /* Check state and modify connection under lock to ensure thread safety */
-    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
-        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+    if (!s_is_valid_connection_state_for_configuration(connection)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
@@ -1212,8 +1216,7 @@ static int s_aws_mqtt_client_connection_311_set_connection_closed_handler(
     mqtt_connection_lock_synced_data(connection);
 
     /* Check state and modify connection under lock to ensure thread safety */
-    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
-        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+    if (!s_is_valid_connection_state_for_configuration(connection)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
@@ -1280,8 +1283,7 @@ static int s_aws_mqtt_client_connection_311_set_connection_termination_handler(
     mqtt_connection_lock_synced_data(connection);
 
     /* Check state and modify connection under lock to ensure thread safety */
-    if (connection->synced_data.state != AWS_MQTT_CLIENT_STATE_DISCONNECTED &&
-        connection->synced_data.state != AWS_MQTT_CLIENT_STATE_CONNECTED) {
+    if (!s_is_valid_connection_state_for_configuration(connection)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT,
             "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
