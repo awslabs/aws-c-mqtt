@@ -1882,9 +1882,9 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
 
             aws_mqtt5_callback_set_manager_on_publish_received(&client->callback_manager, publish_view);
 
-            // TODO WIP handle how ownership of the PUBACK is controlled
             /* Send a puback if QoS 1+ */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
+
                 int result = s_aws_mqtt5_client_queue_puback(client, publish_view->packet_id);
                 if (result != AWS_OP_SUCCESS) {
                     int error_code = aws_last_error();
@@ -2363,25 +2363,6 @@ error:
     aws_mqtt5_operation_release(&publish_op->base);
 
     return AWS_OP_ERR;
-}
-
-int aws_mqtt_client_puback(struct aws_mqtt5_client *client, uint16_t packet_id) {
-    AWS_PRECONDITION(client != NULL);
-    // WIP TODO logic to check that the provided packet_id should be handled
-
-    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: scheduling PUBACK for publish id: %d", (void *)client, packet_id);
-    int result = s_aws_mqtt5_client_queue_puback(client, packet_id);
-    if (result != AWS_OP_SUCCESS) {
-        int error_code = aws_last_error();
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_CLIENT,
-            "id=%p: decode failure with error %d(%s)",
-            (void *)client,
-            error_code,
-            aws_error_debug_str(error_code));
-
-        s_aws_mqtt5_client_shutdown_channel(client, error_code);
-    }
 }
 
 int aws_mqtt5_client_subscribe(
