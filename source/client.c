@@ -3390,7 +3390,7 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
     if (metrics) {
         if (aws_mqtt_validate_iot_sdk_metrics(metrics) == AWS_OP_ERR) {
             AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Invalid metrics.", (void *)connection);
-            return aws_last_error();
+            return AWS_OP_ERR;
         }
 
         metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(connection->allocator, metrics);

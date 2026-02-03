@@ -340,11 +340,11 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
     // aws_mqtt_append_sdk_metrics_to_username does not valid original username length
     ASSERT_SUCCESS(
         aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &short_metrics, &output_username, NULL));
+    aws_byte_buf_clean_up(&output_username);
+
     // aws_mqtt_append_sdk_metrics_to_username fails when the extra metrics string exceeds buffer limit
     ASSERT_FAILS(
         aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
-
-    aws_byte_buf_clean_up(&output_username);
 
     return AWS_OP_SUCCESS;
 }
