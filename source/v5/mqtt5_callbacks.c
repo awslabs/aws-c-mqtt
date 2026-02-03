@@ -107,7 +107,6 @@ void aws_mqtt5_callback_set_manager_on_publish_received(
     const struct aws_mqtt5_packet_publish_view *publish_view) {
 
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(manager->client->loop));
-    AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "received PUBLISH with packet_id: %d", publish_view->packet_id);
 
     struct aws_linked_list_node *node = aws_linked_list_begin(&manager->callback_set_entries);
     while (node != aws_linked_list_end(&manager->callback_set_entries)) {
