@@ -284,6 +284,38 @@ static int s_test_mqtt_append_sdk_metrics_special_chars(struct aws_allocator *al
 
 AWS_TEST_CASE(mqtt_append_sdk_metrics_special_chars, s_test_mqtt_append_sdk_metrics_special_chars)
 
+static int s_test_mqtt_append_sdk_metrics_multiple_question_mark(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = aws_byte_cursor_from_c_str("SDK/Test-1.0")};
+
+    struct aws_byte_buf output_username;
+    AWS_ZERO_STRUCT(output_username);
+
+    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("user?name?test?");
+
+    ASSERT_SUCCESS(
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
+
+    struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
+
+    /* Expected string: user?name?test?SDK=SDK/Test-1.0&Platform=<OS> */
+    struct aws_byte_cursor base_username = aws_byte_cursor_from_c_str("user?name?test");
+    struct aws_byte_buf expected_buf;
+    AWS_ZERO_STRUCT(expected_buf);
+    aws_test_mqtt_build_expected_metrics(
+        allocator, &base_username, aws_byte_cursor_from_c_str("SDK/Test-1.0"), NULL, &expected_buf);
+
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&output_cursor, &expected_buf));
+
+    aws_byte_buf_clean_up(&output_username);
+    aws_byte_buf_clean_up(&expected_buf);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_append_sdk_metrics_multiple_question_mark, s_test_mqtt_append_sdk_metrics_multiple_question_mark)
+
 static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -308,11 +340,11 @@ static int s_test_mqtt_append_sdk_metrics_long_strings(struct aws_allocator *all
     // aws_mqtt_append_sdk_metrics_to_username does not valid original username length
     ASSERT_SUCCESS(
         aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &short_metrics, &output_username, NULL));
+    aws_byte_buf_clean_up(&output_username);
+
     // aws_mqtt_append_sdk_metrics_to_username fails when the extra metrics string exceeds buffer limit
     ASSERT_FAILS(
         aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
-
-    aws_byte_buf_clean_up(&output_username);
 
     return AWS_OP_SUCCESS;
 }

@@ -48,10 +48,10 @@ int aws_mqtt_append_sdk_metrics_to_username(
     size_t *out_full_username_size);
 
 /**
- * Validates that all string fields in aws_mqtt_iot_sdk_metrics
+ * Validates all string fields in aws_mqtt_iot_sdk_metrics
  *
  * @param metrics The metrics structure to validate
- * @return AWS_OP_SUCCESS if all strings are valid, AWS_OP_ERR otherwise
+ * @return AWS_OP_SUCCESS if metrics is not null and all metrics value are valid, AWS_OP_ERR otherwise
  */
 AWS_MQTT_API
 int aws_mqtt_validate_iot_sdk_metrics(const struct aws_mqtt_iot_sdk_metrics *metrics);
