@@ -2840,8 +2840,8 @@ static uint64_t s_aws_mqtt5_client_compute_next_operation_flow_control_service_t
  * Estimate the # of ethernet frames (max 1444 bytes) and add in potential TLS framing and padding values per.
  *
  * TODO: query IoT Core to determine if this calculation is needed after all
- * TODO: may eventually want to expose the ethernet frame size here as a configurable option for networks that have
- * a lower MTU
+ * TODO: may eventually want to expose the ethernet frame size here as a configurable option for networks that have a
+ * lower MTU
  *
  * References:
  *  https://tools.ietf.org/id/draft-mattsson-uta-tls-overhead-01.xml#rfc.section.3
@@ -3128,9 +3128,9 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                  *  sporadically fail because the PINGRESP is processed before the write completion callback is
                  *  invoked.
                  *
-                 *  (2) Enqueue the ping - if the current operation is a large payload over a poor connection, it
-                 * may be an arbitrarily long time before the current operation completes and the ping even has a
-                 * chance to go out, meaning we will trigger a ping time out before it's even sent.
+                 *  (2) Enqueue the ping - if the current operation is a large payload over a poor connection, it may
+                 *  be an arbitrarily long time before the current operation completes and the ping even has a chance
+                 *  to go out, meaning we will trigger a ping time out before it's even sent.
                  *
                  *  Given a reasonable io message size, this is the best place to set the timeout.
                  */
