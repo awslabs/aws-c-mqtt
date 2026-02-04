@@ -101,7 +101,9 @@ int aws_mqtt_append_sdk_metrics_to_username(
     const struct aws_mqtt_iot_sdk_metrics *metrics,
     struct aws_byte_buf *output_username,
     size_t *out_full_username_size) {
-    AWS_PRECONDITION(aws_byte_buf_is_valid(output_username) && output_username->buffer == NULL);
+    AWS_PRECONDITION(
+        output_username == NULL ||
+        (aws_byte_buf_is_valid(output_username) && (output_username && output_username->buffer == NULL)));
 
     if (!allocator) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
