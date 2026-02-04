@@ -2826,9 +2826,6 @@ static struct aws_mqtt_set_metrics_task *s_aws_mqtt_set_metrics_task_new(
     const struct aws_mqtt_iot_sdk_metrics *metrics) {
 
     struct aws_mqtt_set_metrics_task *set_task = aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_metrics_task));
-    if (set_task == NULL) {
-        return NULL;
-    }
 
     aws_task_init(&set_task->task, s_set_metrics_task_fn, (void *)set_task, "SetMetricsTask");
     set_task->allocator = allocator;
