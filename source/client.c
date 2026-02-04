@@ -650,12 +650,7 @@ static void s_mqtt_client_init(
             }
         }
 
-        if (aws_byte_cursor_is_valid(&username_cur)) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Adding username " PRInSTR " to connection",
-                (void *)connection,
-                AWS_BYTE_CURSOR_PRI(username_cur));
+        if (aws_byte_cursor_is_valid(&username_cur) && username_cur.len > 0) {
 
             struct aws_byte_cursor password_cur;
             AWS_ZERO_STRUCT(password_cur);
@@ -664,9 +659,15 @@ static void s_mqtt_client_init(
                 password_cur = aws_byte_cursor_from_string(connection->password);
             }
 
+            AWS_LOGF_DEBUG(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: Adding username " PRInSTR " to connection",
+                (void *)connection,
+                AWS_BYTE_CURSOR_PRI(username_cur));
+
             aws_mqtt_packet_connect_add_credentials(&connect, username_cur, password_cur);
         } else {
-            AWS_LOGF_WARN(
+            AWS_LOGF_INFO(
                 AWS_LS_MQTT_CLIENT,
                 "id=%p: Failed to set username and password. Most likely there is an issue in metrics. (e.x.: username "
                 "is empty and metrics string exceed the size limit). ",
@@ -3389,7 +3390,7 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
     if (metrics) {
         if (aws_mqtt_validate_iot_sdk_metrics(metrics) == AWS_OP_ERR) {
             AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Invalid metrics.", (void *)connection);
-            return aws_raise_error(AWS_ERROR_INVALID_UTF8);
+            return AWS_OP_ERR;
         }
 
         metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(connection->allocator, metrics);
@@ -3421,12 +3422,10 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
         goto done;
     }
 
-    /* Clean up existing metrics if any */
-    if (connection->metrics_storage) {
-        aws_mqtt_iot_sdk_metrics_storage_destroy(connection->metrics_storage);
-    }
-    connection->metrics_storage = metrics_storage;
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting IoT SDK metrics", (void *)connection);
+    aws_mqtt_iot_sdk_metrics_storage_destroy(connection->metrics_storage);
+    connection->metrics_storage = metrics_storage;
+
     metrics_storage = NULL;
     result = AWS_OP_SUCCESS;
 

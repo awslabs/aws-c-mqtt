@@ -15,15 +15,23 @@
 const size_t AWS_IOT_MAX_USERNAME_SIZE = UINT16_MAX;
 const size_t DEFAULT_QUERY_PARAM_COUNT = 10;
 
-// Build username query string from params_list, the caller is responsible to init and clean up output_username
-// If output_username is NULL, the function will just calculate the full username size and return it in
-// out_full_username_size
+/**
+ * Builds final username with query parameters appended.
+ *
+ * @param base_username The original username cursor
+ * @param base_username_length Length of base username to use (may differ from cursor length)
+ * @param params_list List of query parameters to append
+ * @param output_username [Optional] Buffer to write result. Caller must init/cleanup the buffer.
+ * @param out_final_username_size [Optional] Outputs the final username size
+ *
+ * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
+ */
 int s_build_username_query(
     const struct aws_byte_cursor *base_username,
     size_t base_username_length,
     const struct aws_array_list *params_list,
     struct aws_byte_buf *output_username,
-    size_t *out_full_username_size) {
+    size_t *out_final_username_size) {
 
     AWS_ASSERT(base_username);
     AWS_ASSERT(params_list);
@@ -34,8 +42,8 @@ int s_build_username_query(
         }
     }
 
-    if (out_full_username_size) {
-        *out_full_username_size = base_username_length;
+    if (out_final_username_size) {
+        *out_final_username_size = base_username_length;
     }
 
     struct aws_byte_cursor query_delim = aws_byte_cursor_from_c_str("?");
@@ -56,8 +64,8 @@ int s_build_username_query(
             }
         }
 
-        if (out_full_username_size) {
-            *out_full_username_size += 1;
+        if (out_final_username_size) {
+            *out_final_username_size += 1;
         }
 
         if (output_username) {
@@ -78,8 +86,8 @@ int s_build_username_query(
                 }
         }
 
-        if (out_full_username_size) {
-            *out_full_username_size += param.key.len + (param.value.len > 0 ? 1 : 0) + param.value.len;
+        if (out_final_username_size) {
+            *out_final_username_size += param.key.len + (param.value.len > 0 ? 1 : 0) + param.value.len;
         }
     }
 
@@ -93,6 +101,9 @@ int aws_mqtt_append_sdk_metrics_to_username(
     const struct aws_mqtt_iot_sdk_metrics *metrics,
     struct aws_byte_buf *output_username,
     size_t *out_full_username_size) {
+    AWS_PRECONDITION(
+        output_username == NULL ||
+        (aws_byte_buf_is_valid(output_username) && (output_username && output_username->buffer == NULL)));
 
     if (!allocator) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
@@ -126,11 +137,13 @@ int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_array_list params_list;
     aws_array_list_init_dynamic(&params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
 
+    // Looking for any existing query in the original username
     if (local_original_username.len > 0) {
         struct aws_byte_cursor question_mark_find = local_original_username;
 
         bool found_query = false;
-        // Find last question mark
+        // Find last question mark. The IoT service will trim string after last question mark and handle it as metrics
+        // metadata
         while (AWS_OP_SUCCESS ==
                aws_byte_cursor_find_exact(&question_mark_find, &question_mark_str, &question_mark_find)) {
             // Advance cursor to skip the "?" character
@@ -147,6 +160,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
         }
     }
 
+    // Verify if the username already contains "SDK" and "Platform" fields.
     bool found_sdk = false;
     bool found_platform = false;
 
@@ -180,7 +194,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     // Rebuild metrics string from params_list
-    // First parse to calculate total size
+    // First parse to get final username size
     size_t total_size = 0;
     s_build_username_query(&local_original_username, base_username_length, &params_list, NULL, &total_size);
 
@@ -284,7 +298,7 @@ void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_st
 
 int aws_mqtt_validate_iot_sdk_metrics(const struct aws_mqtt_iot_sdk_metrics *metrics) {
     if (metrics == NULL) {
-        return AWS_OP_SUCCESS;
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
     if (aws_mqtt_validate_utf8_text(metrics->library_name)) {

@@ -146,6 +146,7 @@ add_test_case(mqtt_append_sdk_metrics_existing_attributes)
 add_test_case(mqtt_append_sdk_metrics_special_chars)
 add_test_case(mqtt_append_sdk_metrics_long_strings)
 add_test_case(mqtt_append_sdk_metrics_invalid_utf8)
+add_test_case(mqtt_append_sdk_metrics_multiple_question_mark)
 
 # topic aliasing
 add_test_case(mqtt5_inbound_topic_alias_register_failure)
