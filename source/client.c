@@ -844,6 +844,7 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
     aws_memory_pool_clean_up(&connection->synced_data.requests_pool);
 
     aws_mutex_clean_up(&connection->synced_data.lock);
+    aws_rw_lock_clean_up(&connection->callback_lock);
 
     aws_tls_connection_options_clean_up(&connection->tls_options);
 
@@ -1144,11 +1145,20 @@ static int s_aws_mqtt_client_connection_311_set_connection_result_handlers(
         goto done;
     }
 
+    if (aws_rw_lock_try_wlock(&connection->callback_lock)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: Failed to set callback handlers, callbacks are in use.", (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
+
     connection->on_connection_success = on_connection_success;
     connection->on_connection_success_ud = on_connection_success_ud;
     connection->on_connection_failure = on_connection_failure;
     connection->on_connection_failure_ud = on_connection_failure_ud;
     result = AWS_OP_SUCCESS;
+
+    aws_rw_lock_wunlock(&connection->callback_lock);
 
 done:
     mqtt_connection_unlock_synced_data(connection);
@@ -1187,11 +1197,20 @@ static int s_aws_mqtt_client_connection_311_set_connection_interruption_handlers
         goto done;
     }
 
+    if (aws_rw_lock_try_wlock(&connection->callback_lock)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: Failed to set callback handlers, callbacks are in use.", (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
+
     connection->on_interrupted = on_interrupted;
     connection->on_interrupted_ud = on_interrupted_ud;
     connection->on_resumed = on_resumed;
     connection->on_resumed_ud = on_resumed_ud;
     result = AWS_OP_SUCCESS;
+
+    aws_rw_lock_wunlock(&connection->callback_lock);
 
 done:
     mqtt_connection_unlock_synced_data(connection);
@@ -1212,6 +1231,7 @@ static int s_aws_mqtt_client_connection_311_set_connection_closed_handler(
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting connection closed handler", (void *)connection);
 
     int result = AWS_OP_ERR;
+
     /* BEGIN CRITICAL SECTION */
     mqtt_connection_lock_synced_data(connection);
 
@@ -1226,9 +1246,18 @@ static int s_aws_mqtt_client_connection_311_set_connection_closed_handler(
         goto done;
     }
 
+    if (aws_rw_lock_try_wlock(&connection->callback_lock)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: Failed to set callback handlers, callbacks are in use.", (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
+
     connection->on_closed = on_closed;
     connection->on_closed_ud = on_closed_ud;
     result = AWS_OP_SUCCESS;
+
+    aws_rw_lock_wunlock(&connection->callback_lock);
 
 done:
     /* END CRITICAL SECTION */
@@ -1261,9 +1290,16 @@ static int s_aws_mqtt_client_connection_311_set_on_any_publish_handler(
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting on_any_publish handler", (void *)connection);
 
+    if (aws_rw_lock_try_wlock(&connection->callback_lock)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: Failed to set callback handlers, callbacks are in use.", (void *)connection);
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+
     connection->on_any_publish = on_any_publish;
     connection->on_any_publish_ud = on_any_publish_ud;
 
+    aws_rw_lock_wunlock(&connection->callback_lock);
     return AWS_OP_SUCCESS;
 }
 
@@ -1293,9 +1329,18 @@ static int s_aws_mqtt_client_connection_311_set_connection_termination_handler(
         goto done;
     }
 
+    if (aws_rw_lock_try_wlock(&connection->callback_lock)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT, "id=%p: Failed to set callback handlers, callbacks are in use.", (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
+
     connection->on_termination = on_termination;
     connection->on_termination_ud = on_termination_ud;
     result = AWS_OP_SUCCESS;
+
+    aws_rw_lock_wunlock(&connection->callback_lock);
 
 done:
     mqtt_connection_unlock_synced_data(connection);
@@ -3546,6 +3591,16 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
         goto failed_init_mutex;
     }
 
+    if (aws_rw_lock_init(&connection->callback_lock)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Failed to initialize callback lock, error %d (%s)",
+            (void *)connection,
+            aws_last_error(),
+            aws_error_name(aws_last_error()));
+        goto failed_init_callback_lock;
+    }
+
     struct aws_mqtt311_decoder_options config = {
         .packet_handlers = aws_mqtt311_get_default_packet_handlers(),
         .handler_user_data = connection,
@@ -3615,6 +3670,9 @@ failed_init_requests_pool:
     aws_mqtt_topic_tree_clean_up(&connection->thread_data.subscriptions);
 
 failed_init_subscriptions:
+    aws_rw_lock_clean_up(&connection->callback_lock);
+
+failed_init_callback_lock:
     aws_mutex_clean_up(&connection->synced_data.lock);
 
 failed_init_mutex:
