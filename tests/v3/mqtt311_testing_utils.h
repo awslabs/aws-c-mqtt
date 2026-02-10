@@ -79,6 +79,7 @@ struct mqtt_connection_state_test {
     size_t ops_completed;
     size_t expected_ops_completed;
     size_t connection_close_calls; /* All of the times on_connection_closed has been called */
+    int operation_set_result;
 
     size_t connection_termination_calls; /* How many times on_connection_termination has been called, should be 1 */
 };
