@@ -3120,7 +3120,7 @@ static void s_test311_on_close_set_handler_fn(
 }
 
 /**
- * Test that set close handler in on close callback should failure.
+ * Test that set close handler in on close callback should fail.
  */
 static int s_test_mqtt_connection_close_callback_set_failure_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
@@ -3142,6 +3142,9 @@ static int s_test_mqtt_connection_close_callback_set_failure_fn(struct aws_alloc
 
     /* sleep for 2 sec, just to make sure the connection is stable */
     aws_thread_current_sleep((uint64_t)ONE_SEC * 2);
+
+    /* reset the operation result */
+    state_test_data->operation_set_result = AWS_OP_SUCCESS;
 
     /* Disconnect */
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
