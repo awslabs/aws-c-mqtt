@@ -3106,6 +3106,7 @@ static void s_test311_on_close_set_handler_fn(
     struct on_connection_closed_data *data,
     void *userdata) {
     (void)connection;
+    (void)data;
     struct mqtt_connection_state_test *state_test_data = userdata;
     AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "close completed");
     aws_mutex_lock(&state_test_data->lock);
