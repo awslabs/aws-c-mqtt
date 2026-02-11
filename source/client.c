@@ -1255,9 +1255,9 @@ static int s_aws_mqtt_client_connection_311_set_connection_closed_handler(
 
     connection->on_closed = on_closed;
     connection->on_closed_ud = on_closed_ud;
-    result = AWS_OP_SUCCESS;
 
     aws_rw_lock_wunlock(&connection->callback_lock);
+    result = AWS_OP_SUCCESS;
 
 done:
     /* END CRITICAL SECTION */
@@ -1271,36 +1271,41 @@ static int s_aws_mqtt_client_connection_311_set_on_any_publish_handler(
     void *on_any_publish_ud) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
+    int result = AWS_OP_ERR;
 
     AWS_PRECONDITION(connection);
-    { /* BEGIN CRITICAL SECTION */
-        mqtt_connection_lock_synced_data(connection);
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
 
-        if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
-            mqtt_connection_unlock_synced_data(connection);
-            AWS_LOGF_ERROR(
-                AWS_LS_MQTT_CLIENT,
-                "id=%p: Connection is connected, publishes may arrive anytime. Unable to set publish handler until "
-                "offline.",
-                (void *)connection);
-            return aws_raise_error(AWS_ERROR_INVALID_STATE);
-        }
-        mqtt_connection_unlock_synced_data(connection);
-    } /* END CRITICAL SECTION */
-
-    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting on_any_publish handler", (void *)connection);
+    if (connection->synced_data.state == AWS_MQTT_CLIENT_STATE_CONNECTED) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is connected, publishes may arrive anytime. Unable to set publish handler until "
+            "offline.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
+    }
 
     if (aws_rw_lock_try_wlock(&connection->callback_lock)) {
         AWS_LOGF_ERROR(
             AWS_LS_MQTT_CLIENT, "id=%p: Failed to set callback handlers, callbacks are in use.", (void *)connection);
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
     }
 
+    AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting on_any_publish handler", (void *)connection);
     connection->on_any_publish = on_any_publish;
     connection->on_any_publish_ud = on_any_publish_ud;
 
     aws_rw_lock_wunlock(&connection->callback_lock);
-    return AWS_OP_SUCCESS;
+    result = AWS_OP_SUCCESS;
+
+done:
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
+
+    return result;
 }
 
 static int s_aws_mqtt_client_connection_311_set_connection_termination_handler(
@@ -1338,9 +1343,9 @@ static int s_aws_mqtt_client_connection_311_set_connection_termination_handler(
 
     connection->on_termination = on_termination;
     connection->on_termination_ud = on_termination_ud;
-    result = AWS_OP_SUCCESS;
 
     aws_rw_lock_wunlock(&connection->callback_lock);
+    result = AWS_OP_SUCCESS;
 
 done:
     mqtt_connection_unlock_synced_data(connection);
@@ -1378,17 +1383,36 @@ static int s_aws_mqtt_client_connection_311_set_http_proxy_options(
     struct aws_http_proxy_options *proxy_options) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
+    int result = AWS_OP_ERR;
 
-    /* If there is existing proxy options, nuke em */
-    if (connection->http_proxy_config) {
-        aws_http_proxy_config_destroy(connection->http_proxy_config);
-        connection->http_proxy_config = NULL;
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
+
+    /* Check state and modify connection under lock to ensure thread safety */
+    if (!s_is_valid_connection_state_for_configuration(connection)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+            "pending operation completes.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+    } else {
+        /* If there is existing proxy options, nuke em */
+        if (connection->http_proxy_config) {
+            aws_http_proxy_config_destroy(connection->http_proxy_config);
+            connection->http_proxy_config = NULL;
+        }
+
+        connection->http_proxy_config =
+            aws_http_proxy_config_new_tunneling_from_proxy_options(connection->allocator, proxy_options);
+
+        result = connection->http_proxy_config != NULL ? AWS_OP_SUCCESS : AWS_OP_ERR;
     }
 
-    connection->http_proxy_config =
-        aws_http_proxy_config_new_tunneling_from_proxy_options(connection->allocator, proxy_options);
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
 
-    return connection->http_proxy_config != NULL ? AWS_OP_SUCCESS : AWS_OP_ERR;
+    return result;
 }
 
 static int s_aws_mqtt_client_connection_311_set_host_resolution_options(
@@ -1397,9 +1421,27 @@ static int s_aws_mqtt_client_connection_311_set_host_resolution_options(
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
 
-    connection->host_resolution_config = *host_resolution_config;
+    int result = AWS_OP_ERR;
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
 
-    return AWS_OP_SUCCESS;
+    /* Check state and modify connection under lock to ensure thread safety */
+    if (!s_is_valid_connection_state_for_configuration(connection)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+            "pending operation completes.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+    } else {
+
+        connection->host_resolution_config = *host_resolution_config;
+        result = AWS_OP_SUCCESS;
+    }
+
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
+    return result;
 }
 
 static void s_on_websocket_shutdown(struct aws_websocket *websocket, int error_code, void *user_data) {
