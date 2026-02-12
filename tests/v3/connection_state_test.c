@@ -3182,25 +3182,16 @@ static int s_test_mqtt_connection_close_callback_set_during_connecting_fn(struct
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
 
-    aws_mqtt_client_connection_set_connection_closed_handler(
-        state_test_data->mqtt_connection, s_on_connection_closed_fn, state_test_data);
+    /* Disable server CONNACK packet, so the client would be kept in CONNECTING status. */
+    mqtt_mock_server_set_max_connack(state_test_data->mock_server, 0);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+
     /* set handler should fail while connecting */
     ASSERT_FAILS(aws_mqtt_client_connection_set_connection_closed_handler(
         state_test_data->mqtt_connection, s_test311_on_close_set_handler_fn, state_test_data));
-    aws_test311_wait_for_connection_to_complete(state_test_data);
 
-    /* sleep for 2 sec, just to make sure the connection is stable */
-    aws_thread_current_sleep((uint64_t)ONE_SEC * 2);
-
-    /* Disconnect */
-    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
-        state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
-    aws_test311_wait_for_disconnect_to_complete(state_test_data);
-
-    /* Make sure the callback was called and the value is what we expect */
-    ASSERT_UINT_EQUALS(1, state_test_data->connection_close_calls);
+    aws_test311_wait_for_connection_to_fail(state_test_data);
 
     return AWS_OP_SUCCESS;
 }
