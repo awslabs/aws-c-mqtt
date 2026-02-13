@@ -31,6 +31,10 @@ file(GLOB AWS_MQTT_RR_HEADERS
         "include/aws/mqtt/request-response/*.h"
 )
 
+file(GLOB AWS_MQTT_MANUAL_PUBACK_HEADERS
+        "include/aws/mqtt/manual-puback/*.h"        
+)
+
 file(GLOB AWS_MQTT_PRIV_HEADERS
         "include/aws/mqtt/private/*.h"
         "include/aws/mqtt/private/request-response/*.h"
@@ -45,6 +49,7 @@ file(GLOB AWS_MQTT_SRC
         "source/*.c"
         "source/v5/*.c"
         "source/request-response/*.c"
+        "source/manual-puback/*.c"
 )
 
 file(GLOB MQTT_HEADERS
@@ -82,6 +87,7 @@ aws_prepare_shared_lib_exports(${PROJECT_NAME})
 install(FILES ${AWS_MQTT_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt" COMPONENT Development)
 install(FILES ${AWS_MQTT5_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/v5" COMPONENT Development)
 install(FILES ${AWS_MQTT_RR_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/request-response" COMPONENT Development)
+install(FILES ${AWS_MQTT_MANUAL_PUBACK_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/manual-puback" COMPONENT Development)
 install(FILES ${AWS_MQTT_TESTING_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/testing/mqtt" COMPONENT Development)
 install(FILES ${AWS_MQTT_PRIV_EXPOSED_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/mqtt/private" COMPONENT Development)
 

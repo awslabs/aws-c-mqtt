@@ -252,6 +252,15 @@ struct aws_mqtt5_client_operational_state {
      */
     aws_mqtt5_packet_id_t next_mqtt_packet_id;
 
+    /*
+     * One more than the most recently used control packet id.
+     */
+    uint64_t next_mqtt5_puback_control_id;
+    struct aws_hash_table manual_puback_packet_id_table;
+    struct aws_hash_table manual_puback_control_id_table;
+    /* This table contains control ids known to be cancelled due to client disconnect for better failure messaging */
+    struct aws_hash_table manual_puback_cancelled_control_id_table;
+
     struct aws_linked_list queued_operations;
     struct aws_mqtt5_operation *current_operation;
     struct aws_hash_table unacked_operations_table;
@@ -705,6 +714,28 @@ AWS_MQTT_API void aws_mqtt5_client_submit_operation_internal(
     struct aws_mqtt5_client *client,
     struct aws_mqtt5_operation *operation,
     bool is_terminated);
+
+/**
+ * Internal API to queue a PUBACK operation for the given packet ID.
+ * Used by manual PUBACK control functionality.
+ *
+ * @param client MQTT5 client to queue PUBACK operation to
+ * @param packet_id packet ID to send PUBACK for
+ * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
+ */
+AWS_MQTT_API int aws_mqtt5_client_queue_puback_internal(
+    struct aws_mqtt5_client *client,
+    uint16_t packet_id,
+    const struct aws_mqtt5_manual_puback_completion_options *completion_options);
+
+/**
+ * Internal API to shutdown the client's channel with an error code.
+ * Used by manual PUBACK control functionality.
+ *
+ * @param client MQTT5 client to shutdown channel to
+ * @param error_code error code to shutdown with
+ */
+AWS_MQTT_API void aws_mqtt5_client_shutdown_channel_internal(struct aws_mqtt5_client *client, int error_code);
 
 AWS_EXTERN_C_END
 
