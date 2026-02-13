@@ -2251,6 +2251,40 @@ void aws_mqtt5_packet_puback_view_log(
         "aws_mqtt5_packet_puback_view");
 }
 
+static void s_aws_mqtt5_operation_puback_manual_complete(
+    struct aws_mqtt5_operation *operation,
+    int error_code,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *completion_view) {
+    (void)packet_type;
+    (void)completion_view;
+    struct aws_mqtt5_operation_puback *puback_op = operation->impl;
+
+    // Convert error_code to manual puback result
+    enum aws_mqtt5_manual_puback_result puback_result = AWS_MQTT5_MPR_SUCCESS;
+    if (error_code != AWS_OP_SUCCESS) {
+        /* There is a significant list of possible errors that could have occurred during the processing of a PUBACK.
+         * Instead of mapping each one, we report a CRT failure which should indicate the important part. That the
+         * PUBACK was not sent and it's likely they will receive a duplicate PUBLISH. If they want more details the logs
+         * will need to be investigated. */
+        puback_result = AWS_MQTT5_MPR_CRT_FAILURE;
+    }
+
+    // Completion callback on manual PUBACK.
+    if (puback_op->completion_options.completion_callback != NULL) {
+        puback_op->completion_options.completion_callback(
+            puback_result, puback_op->completion_options.completion_user_data);
+    }
+}
+
+static struct aws_mqtt5_operation_vtable s_puback_operation_vtable = {
+    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_puback_manual_complete,
+    .aws_mqtt5_operation_set_packet_id_fn = NULL,
+    .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
+    .aws_mqtt5_operation_validate_vs_connection_settings_fn = NULL,
+    .aws_mqtt5_operation_get_ack_timeout_override_fn = NULL,
+};
+
 static void s_destroy_operation_puback(void *object) {
     if (object == NULL) {
         return;
@@ -2265,7 +2299,8 @@ static void s_destroy_operation_puback(void *object) {
 
 struct aws_mqtt5_operation_puback *aws_mqtt5_operation_puback_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt5_packet_puback_view *puback_options) {
+    const struct aws_mqtt5_packet_puback_view *puback_options,
+    const struct aws_mqtt5_manual_puback_completion_options *completion_options) {
     AWS_PRECONDITION(allocator != NULL);
     AWS_PRECONDITION(puback_options != NULL);
 
@@ -2276,8 +2311,11 @@ struct aws_mqtt5_operation_puback *aws_mqtt5_operation_puback_new(
     }
 
     puback_op->allocator = allocator;
-    puback_op->base.vtable = &s_empty_operation_vtable;
+    puback_op->base.vtable = &s_puback_operation_vtable;
     puback_op->base.packet_type = AWS_MQTT5_PT_PUBACK;
+    if (completion_options != NULL) {
+        puback_op->completion_options = *completion_options;
+    }
     aws_ref_count_init(&puback_op->base.ref_count, puback_op, s_destroy_operation_puback);
     aws_priority_queue_node_init(&puback_op->base.priority_queue_node);
     puback_op->base.impl = puback_op;

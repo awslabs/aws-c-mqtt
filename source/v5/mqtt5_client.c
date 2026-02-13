@@ -12,7 +12,9 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/mqtt/manual-puback/manual_puback.h>
 #include <aws/mqtt/private/client_impl_shared.h>
+#include <aws/mqtt/private/manual-puback/manual_puback_impl.h>
 #include <aws/mqtt/private/shared.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
@@ -590,6 +592,40 @@ static void s_enqueue_operation_front(struct aws_mqtt5_client *client, struct aw
     s_reevaluate_service_task(client);
 }
 
+/* This is used to move the aws_mqtt5_manual_puback_entry stored in the active table to cancelled table. We don't simply
+ * clear out the active table because we need to keep the entries in memory until we are fully done with them. */
+static int s_manual_puback_transfer(void *context, struct aws_hash_element *element) {
+    struct aws_hash_table *manual_puback_cancelled_control_id_table = context;
+
+    // Add the control id to the destination table
+    if (aws_hash_table_put(manual_puback_cancelled_control_id_table, element->key, element->value, NULL)) {
+        return AWS_COMMON_HASH_TABLE_ITER_ERROR;
+    }
+
+    // Remove from source table (continue iteration AND delete (without destroying) current element value)
+    return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
+}
+
+/* When a disconnect or stop occurs all Manual Pubacks become invalid. We clear packet ids which may be reused
+ * by the server and remove all manual puback entries from the active table and move them to the cancelled table
+ * to provide better communication if the user attempts to invoke a PUBACK they think they have control over. */
+static void s_aws_mqtt5_reset_manual_puback_tables(
+    struct aws_mqtt5_client_operational_state *client_operational_state) {
+    size_t count = aws_hash_table_get_entry_count(&client_operational_state->manual_puback_control_id_table);
+    if (count > 0) {
+        AWS_LOGF_INFO(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: Clearing %zu manual PUBACK control ids.",
+            (void *)client_operational_state->client,
+            count);
+        aws_hash_table_clear(&client_operational_state->manual_puback_packet_id_table);
+        aws_hash_table_foreach(
+            &client_operational_state->manual_puback_control_id_table,
+            s_manual_puback_transfer,
+            &client_operational_state->manual_puback_cancelled_control_id_table);
+    }
+}
+
 static void s_aws_mqtt5_client_operational_state_reset(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     int completion_error_code,
@@ -604,9 +640,13 @@ static void s_aws_mqtt5_client_operational_state_reset(
     if (is_final) {
         aws_priority_queue_clean_up(&client_operational_state->operations_by_ack_timeout);
         aws_hash_table_clean_up(&client_operational_state->unacked_operations_table);
+        aws_hash_table_clean_up(&client_operational_state->manual_puback_control_id_table);
+        aws_hash_table_clean_up(&client_operational_state->manual_puback_packet_id_table);
+        aws_hash_table_clean_up(&client_operational_state->manual_puback_cancelled_control_id_table);
     } else {
         aws_priority_queue_clear(&client->operational_state.operations_by_ack_timeout);
         aws_hash_table_clear(&client_operational_state->unacked_operations_table);
+        s_aws_mqtt5_reset_manual_puback_tables(client_operational_state);
     }
 }
 
@@ -617,7 +657,8 @@ static void s_change_current_state_to_stopped(struct aws_mqtt5_client *client) {
 
     s_aws_mqtt5_client_operational_state_reset(&client->operational_state, AWS_ERROR_MQTT5_USER_REQUESTED_STOP, false);
 
-    /* Stop works as a complete session wipe, and so the next time we connect, we want it to be clean */
+    /* Stop works as a complete session wipe, and so the next time we connect, we want it to be clean unless
+     * client session behavior type is set to AWS_MQTT5_CSBT_REJOIN_ALWAYS. */
     client->has_connected_successfully = false;
 
     s_aws_mqtt5_client_emit_stopped_lifecycle_event(client);
@@ -1810,7 +1851,10 @@ static void s_insert_node_before_predicate_failure(
     aws_linked_list_insert_before(current_node, node);
 }
 
-static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint16_t packet_id) {
+static int s_aws_mqtt5_client_queue_puback(
+    struct aws_mqtt5_client *client,
+    uint16_t packet_id,
+    const struct aws_mqtt5_manual_puback_completion_options *completion_options) {
     AWS_PRECONDITION(client != NULL);
 
     const struct aws_mqtt5_packet_puback_view puback_view = {
@@ -1818,7 +1862,8 @@ static int s_aws_mqtt5_client_queue_puback(struct aws_mqtt5_client *client, uint
         .reason_code = AWS_MQTT5_PARC_SUCCESS,
     };
 
-    struct aws_mqtt5_operation_puback *puback_op = aws_mqtt5_operation_puback_new(client->allocator, &puback_view);
+    struct aws_mqtt5_operation_puback *puback_op =
+        aws_mqtt5_operation_puback_new(client->allocator, &puback_view, completion_options);
 
     if (puback_op == NULL) {
         return AWS_OP_ERR;
@@ -1882,21 +1927,8 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
 
             aws_mqtt5_callback_set_manager_on_publish_received(&client->callback_manager, publish_view);
 
-            /* Send a puback if QoS 1+ */
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
-
-                int result = s_aws_mqtt5_client_queue_puback(client, publish_view->packet_id);
-                if (result != AWS_OP_SUCCESS) {
-                    int error_code = aws_last_error();
-                    AWS_LOGF_ERROR(
-                        AWS_LS_MQTT5_CLIENT,
-                        "id=%p: decode failure with error %d(%s)",
-                        (void *)client,
-                        error_code,
-                        aws_error_debug_str(error_code));
-
-                    s_aws_mqtt5_client_shutdown_channel(client, error_code);
-                }
+                aws_mqtt5_handle_puback(client, publish_view);
             }
             break;
         }
@@ -2522,6 +2554,39 @@ int aws_mqtt5_client_operational_state_init(
         return AWS_OP_ERR;
     }
 
+    if (aws_hash_table_init(
+            &client_operational_state->manual_puback_packet_id_table,
+            allocator,
+            DEFAULT_MQTT5_OPERATION_TABLE_SIZE,
+            aws_mqtt_hash_uint16_t,
+            aws_mqtt_compare_uint16_t_eq,
+            NULL,
+            NULL)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_hash_table_init(
+            &client_operational_state->manual_puback_control_id_table,
+            allocator,
+            DEFAULT_MQTT5_OPERATION_TABLE_SIZE,
+            aws_mqtt_hash_uint64_t,
+            aws_mqtt_compare_uint64_t_eq,
+            NULL,
+            aws_mqtt5_manual_puback_entry_destroy)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_hash_table_init(
+            &client_operational_state->manual_puback_cancelled_control_id_table,
+            allocator,
+            DEFAULT_MQTT5_OPERATION_TABLE_SIZE,
+            aws_mqtt_hash_uint64_t,
+            aws_mqtt_compare_uint64_t_eq,
+            NULL,
+            aws_mqtt5_manual_puback_entry_destroy)) {
+        return AWS_OP_ERR;
+    }
+
     if (aws_priority_queue_init_dynamic(
             &client_operational_state->operations_by_ack_timeout,
             allocator,
@@ -2532,6 +2597,7 @@ int aws_mqtt5_client_operational_state_init(
     }
 
     client_operational_state->next_mqtt_packet_id = 1;
+    client_operational_state->next_mqtt5_puback_control_id = 1;
     client_operational_state->current_operation = NULL;
     client_operational_state->client = client;
 
@@ -2646,6 +2712,8 @@ void aws_mqtt5_client_on_disconnection_update_operational_state(struct aws_mqtt5
 
     aws_hash_table_clear(&client->operational_state.unacked_operations_table);
     aws_priority_queue_clear(&client->operational_state.operations_by_ack_timeout);
+
+    s_aws_mqtt5_reset_manual_puback_tables(client_operational_state);
 
     /*
      * Prevents inbound resolution on the highly unlikely, illegal server behavior of sending a PUBLISH before
@@ -2840,8 +2908,8 @@ static uint64_t s_aws_mqtt5_client_compute_next_operation_flow_control_service_t
  * Estimate the # of ethernet frames (max 1444 bytes) and add in potential TLS framing and padding values per.
  *
  * TODO: query IoT Core to determine if this calculation is needed after all
- * TODO: may eventually want to expose the ethernet frame size here as a configurable option for networks that have a
- * lower MTU
+ * TODO: may eventually want to expose the ethernet frame size here as a configurable option for networks that have
+ * a lower MTU
  *
  * References:
  *  https://tools.ietf.org/id/draft-mattsson-uta-tls-overhead-01.xml#rfc.section.3
@@ -3128,9 +3196,9 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
                  *  sporadically fail because the PINGRESP is processed before the write completion callback is
                  *  invoked.
                  *
-                 *  (2) Enqueue the ping - if the current operation is a large payload over a poor connection, it may
-                 *  be an arbitrarily long time before the current operation completes and the ping even has a chance
-                 *  to go out, meaning we will trigger a ping time out before it's even sent.
+                 *  (2) Enqueue the ping - if the current operation is a large payload over a poor connection, it
+                 * may be an arbitrarily long time before the current operation completes and the ping even has a
+                 * chance to go out, meaning we will trigger a ping time out before it's even sent.
                  *
                  *  Given a reasonable io message size, this is the best place to set the timeout.
                  */
@@ -3391,4 +3459,17 @@ bool aws_mqtt5_client_reset_connection(struct aws_mqtt5_client *client) {
     }
 
     return false;
+}
+
+/* Wrapper functions to expose s_aws_mqtt5_client_queue_puback for manual PUBACK functionality */
+int aws_mqtt5_client_queue_puback_internal(
+    struct aws_mqtt5_client *client,
+    uint16_t packet_id,
+    const struct aws_mqtt5_manual_puback_completion_options *completion_options) {
+    return s_aws_mqtt5_client_queue_puback(client, packet_id, completion_options);
+}
+
+/* Wrapper functions to expose s_aws_mqtt5_client_shutdown_channel for manual PUBACK functionality */
+void aws_mqtt5_client_shutdown_channel_internal(struct aws_mqtt5_client *client, int error_code) {
+    s_aws_mqtt5_client_shutdown_channel(client, error_code);
 }
