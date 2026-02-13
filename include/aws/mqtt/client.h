@@ -706,7 +706,7 @@ int aws_mqtt_client_connection_get_stats(
 AWS_MQTT_API
 int aws_mqtt_client_connection_set_metrics(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_mqtt_iot_sdk_metrics *metrics);
+    const struct aws_mqtt_iot_metrics *metrics);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL

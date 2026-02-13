@@ -4016,7 +4016,7 @@ AWS_TEST_CASE_FIXTURE(
  */
 static int s_create_mqtt_connection_and_set_metrics(
     struct aws_allocator *allocator,
-    struct aws_mqtt_iot_sdk_metrics *metrics,
+    struct aws_mqtt_iot_metrics *metrics,
     void *ctx) {
     struct mqtt_connection_state_test *state_test_data = ctx;
 
@@ -4070,7 +4070,7 @@ static int s_create_mqtt_connection_and_set_metrics(
 static int s_test_mqtt_connection_set_metrics_valid_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {
+    struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
         // TODO: enable metadata testing when metadata support is added
         // .metadata_entries = NULL,
@@ -4116,7 +4116,7 @@ static int s_test_mqtt_connection_set_metrics_invalid_utf8_library_fn(struct aws
     /* Invalid UTF-8 sequence */
     struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {.library_name = invalid_utf8_library};
+    struct aws_mqtt_iot_metrics metrics = {.library_name = invalid_utf8_library};
 
     ASSERT_FAILS(aws_mqtt_client_connection_set_metrics(state_test_data->mqtt_connection, &metrics));
     ASSERT_INT_EQUALS(aws_last_error(), AWS_ERROR_INVALID_UTF8);
@@ -4149,10 +4149,10 @@ static int s_test_mqtt_connection_set_metrics_modify_on_reconnect_fn(struct aws_
     aws_mqtt_client_connection_set_reconnect_timeout(
         state_test_data->mqtt_connection, MIN_RECONNECT_DELAY_SECONDS, MAX_RECONNECT_DELAY_SECONDS);
 
-    struct aws_mqtt_iot_sdk_metrics metrics1 = {
+    struct aws_mqtt_iot_metrics metrics1 = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
     };
-    struct aws_mqtt_iot_sdk_metrics metrics2 = {
+    struct aws_mqtt_iot_metrics metrics2 = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/2.0"),
     };
 

@@ -6,7 +6,7 @@
 
 #include <aws/mqtt/private/client_impl.h>
 #include <aws/mqtt/private/mqtt_client_test_helper.h>
-#include <aws/mqtt/private/mqtt_iot_sdk_metrics.h>
+#include <aws/mqtt/private/mqtt_iot_metrics.h>
 #include <aws/mqtt/private/packets.h>
 #include <aws/mqtt/private/shared.h>
 #include <aws/mqtt/private/topic_tree.h>
@@ -880,7 +880,7 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
 
     /* Clean up metrics */
     if (connection->metrics_storage) {
-        aws_mqtt_iot_sdk_metrics_storage_destroy(connection->metrics_storage);
+        aws_mqtt_iot_metrics_storage_destroy(connection->metrics_storage);
         connection->metrics_storage = NULL;
     }
 
@@ -3381,19 +3381,19 @@ int aws_mqtt_client_connection_set_on_operation_statistics_handler(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct aws_mqtt_iot_sdk_metrics *metrics) {
+static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct aws_mqtt_iot_metrics *metrics) {
 
     struct aws_mqtt_client_connection_311_impl *connection = impl;
     AWS_PRECONDITION(connection);
 
-    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage = NULL;
+    struct aws_mqtt_iot_metrics_storage *metrics_storage = NULL;
     if (metrics) {
-        if (aws_mqtt_validate_iot_sdk_metrics(metrics) == AWS_OP_ERR) {
+        if (aws_mqtt_validate_iot_metrics(metrics) == AWS_OP_ERR) {
             AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Invalid metrics.", (void *)connection);
             return AWS_OP_ERR;
         }
 
-        metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(connection->allocator, metrics);
+        metrics_storage = aws_mqtt_iot_metrics_storage_new(connection->allocator, metrics);
         if (!metrics_storage) {
             int error = aws_last_error();
             AWS_LOGF_ERROR(
@@ -3423,7 +3423,7 @@ static int s_aws_mqtt_client_connection_311_set_metrics(void *impl, const struct
     }
 
     AWS_LOGF_TRACE(AWS_LS_MQTT_CLIENT, "id=%p: Setting IoT SDK metrics", (void *)connection);
-    aws_mqtt_iot_sdk_metrics_storage_destroy(connection->metrics_storage);
+    aws_mqtt_iot_metrics_storage_destroy(connection->metrics_storage);
     connection->metrics_storage = metrics_storage;
 
     metrics_storage = NULL;
@@ -3434,7 +3434,7 @@ done:
     /* END CRITICAL SECTION */
 
     if (metrics_storage) {
-        aws_mqtt_iot_sdk_metrics_storage_destroy(metrics_storage);
+        aws_mqtt_iot_metrics_storage_destroy(metrics_storage);
     }
 
     return result;
@@ -3614,7 +3614,7 @@ failed_init_mutex:
 
 int aws_mqtt_client_connection_set_metrics(
     struct aws_mqtt_client_connection *connection,
-    const struct aws_mqtt_iot_sdk_metrics *metrics) {
+    const struct aws_mqtt_iot_metrics *metrics) {
 
     AWS_PRECONDITION(connection);
     return connection->vtable->set_metrics_fn(connection->impl, metrics);
