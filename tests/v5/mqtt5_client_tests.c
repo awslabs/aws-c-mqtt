@@ -6658,7 +6658,7 @@ AWS_TEST_CASE(mqtt5_client_auto_assigned_client_id_iot_core, s_mqtt5_client_auto
  */
 static int s_mqtt5_client_metrics_in_username_fn(
     struct aws_allocator *allocator,
-    struct aws_mqtt_iot_sdk_metrics *metrics,
+    struct aws_mqtt_iot_metrics *metrics,
     void *ctx) {
     (void)ctx;
 
@@ -6769,7 +6769,7 @@ static int s_mqtt5_client_metrics_in_username_fn(
 }
 
 static int s_test_mqtt5_client_set_metrics_valid(struct aws_allocator *allocator, void *ctx) {
-    struct aws_mqtt_iot_sdk_metrics metrics = {
+    struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0")
         // TODO: enable when metadata is supported
         // .metadata_entries = NULL,

@@ -11,7 +11,7 @@
 #include <aws/common/uuid.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
-#include <aws/mqtt/private/mqtt_iot_sdk_metrics.h>
+#include <aws/mqtt/private/mqtt_iot_metrics.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
@@ -3422,7 +3422,7 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
     }
 
     if (options->metrics != NULL) {
-        if (aws_mqtt_validate_iot_sdk_metrics(options->metrics)) {
+        if (aws_mqtt_validate_iot_metrics(options->metrics)) {
             AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid metrics in mqtt5 client configuration");
             return aws_raise_error(AWS_ERROR_MQTT5_CONNECT_OPTIONS_VALIDATION);
         }
@@ -3786,7 +3786,7 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
         aws_mem_release(options_storage->connect->allocator, options_storage->connect);
     }
 
-    aws_mqtt_iot_sdk_metrics_storage_destroy(options_storage->metrics_storage);
+    aws_mqtt_iot_metrics_storage_destroy(options_storage->metrics_storage);
     aws_mem_release(options_storage->allocator, options_storage);
 }
 
@@ -4000,7 +4000,7 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
             options_storage->max_reconnect_delay_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
-    options_storage->metrics_storage = aws_mqtt_iot_sdk_metrics_storage_new(allocator, options->metrics);
+    options_storage->metrics_storage = aws_mqtt_iot_metrics_storage_new(allocator, options->metrics);
 
     return options_storage;
 
