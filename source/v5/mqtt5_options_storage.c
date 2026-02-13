@@ -2257,6 +2257,7 @@ static void s_aws_mqtt5_operation_puback_manual_complete(
     enum aws_mqtt5_packet_type packet_type,
     const void *completion_view) {
     (void)packet_type;
+    (void)completion_view;
     struct aws_mqtt5_operation_puback *puback_op = operation->impl;
 
     // Convert error_code to manual puback result
