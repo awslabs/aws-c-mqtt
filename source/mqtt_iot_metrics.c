@@ -7,7 +7,7 @@
 #include <aws/common/system_info.h>
 #include <aws/common/uri.h>
 #include <aws/mqtt/mqtt.h>
-#include <aws/mqtt/private/mqtt_iot_sdk_metrics.h>
+#include <aws/mqtt/private/mqtt_iot_metrics.h>
 
 #include <stdio.h>
 
@@ -98,7 +98,7 @@ int s_build_username_query(
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
-    const struct aws_mqtt_iot_sdk_metrics *metrics,
+    const struct aws_mqtt_iot_metrics *metrics,
     struct aws_byte_buf *output_username,
     size_t *out_full_username_size) {
     AWS_PRECONDITION(
@@ -123,7 +123,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
         return AWS_OP_SUCCESS;
     }
 
-    if (aws_mqtt_validate_iot_sdk_metrics(metrics)) {
+    if (aws_mqtt_validate_iot_metrics(metrics)) {
         return AWS_OP_ERR;
     }
 
@@ -142,8 +142,8 @@ int aws_mqtt_append_sdk_metrics_to_username(
         struct aws_byte_cursor question_mark_find = local_original_username;
 
         bool found_query = false;
-        // Find last question mark. The IoT service will trim string after last question mark and handle it as metrics
-        // metadata
+        // Find the last question mark. The IoT service will trim string after last question mark and handle it as
+        // metrics metadata
         while (AWS_OP_SUCCESS ==
                aws_byte_cursor_find_exact(&question_mark_find, &question_mark_str, &question_mark_find)) {
             // Advance cursor to skip the "?" character
@@ -152,7 +152,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
         }
 
         if (found_query) {
-            // We dont want to keep the ? marker in the base username
+            // Trim out the query delimiter from the base username
             base_username_length = question_mark_find.ptr - 1 - local_original_username.ptr;
             aws_query_string_params(question_mark_find, &params_list);
         } else {
@@ -230,7 +230,7 @@ cleanup:
  * IoT SDK Metrics
  ********************************************************************************************************************/
 
-size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_sdk_metrics *metrics) {
+size_t aws_mqtt_iot_metrics_compute_storage_size(const struct aws_mqtt_iot_metrics *metrics) {
     if (metrics == NULL) {
         return 0;
     }
@@ -241,26 +241,26 @@ size_t aws_mqtt_iot_sdk_metrics_compute_storage_size(const struct aws_mqtt_iot_s
     return storage_size;
 }
 
-struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
+struct aws_mqtt_iot_metrics_storage *aws_mqtt_iot_metrics_storage_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt_iot_sdk_metrics *metrics_options) {
+    const struct aws_mqtt_iot_metrics *metrics_options) {
 
     if (allocator == NULL || metrics_options == NULL) {
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
     }
 
-    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_iot_sdk_metrics_storage));
+    struct aws_mqtt_iot_metrics_storage *metrics_storage =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_iot_metrics_storage));
 
-    size_t storage_capacity = aws_mqtt_iot_sdk_metrics_compute_storage_size(metrics_options);
+    size_t storage_capacity = aws_mqtt_iot_metrics_compute_storage_size(metrics_options);
     if (aws_byte_buf_init(&metrics_storage->storage, allocator, storage_capacity)) {
         goto cleanup_storage;
     }
 
     metrics_storage->allocator = allocator;
 
-    struct aws_mqtt_iot_sdk_metrics *storage_view = &metrics_storage->storage_view;
+    struct aws_mqtt_iot_metrics *storage_view = &metrics_storage->storage_view;
 
     if (metrics_options->library_name.len > 0) {
         metrics_storage->library_name = metrics_options->library_name;
@@ -283,20 +283,17 @@ cleanup_storage:
     return NULL;
 }
 
-void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage) {
+void aws_mqtt_iot_metrics_storage_destroy(struct aws_mqtt_iot_metrics_storage *metrics_storage) {
     if (metrics_storage == NULL) {
         return;
     }
 
-    if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
-        aws_array_list_clean_up(&metrics_storage->metadata_entries);
-    }
     aws_byte_buf_clean_up(&metrics_storage->storage);
 
     aws_mem_release(metrics_storage->allocator, metrics_storage);
 }
 
-int aws_mqtt_validate_iot_sdk_metrics(const struct aws_mqtt_iot_sdk_metrics *metrics) {
+int aws_mqtt_validate_iot_metrics(const struct aws_mqtt_iot_metrics *metrics) {
     if (metrics == NULL) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }

@@ -182,7 +182,7 @@ struct aws_mqtt5_client_options_storage {
 
     struct aws_host_resolution_config host_resolution_override;
 
-    struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage;
+    struct aws_mqtt_iot_metrics_storage *metrics_storage;
 };
 
 AWS_EXTERN_C_BEGIN

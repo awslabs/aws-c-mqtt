@@ -122,7 +122,7 @@ struct aws_mqtt_metadata_entry {
 /**
  * IoT SDK metrics configuration structure
  */
-struct aws_mqtt_iot_sdk_metrics {
+struct aws_mqtt_iot_metrics {
     /**
      * Library name string (SDK attribute)
      */

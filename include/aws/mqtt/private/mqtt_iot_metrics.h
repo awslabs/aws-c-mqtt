@@ -3,29 +3,27 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#ifndef AWS_MQTT_IOT_SDK_METRICS_H
-#define AWS_MQTT_IOT_SDK_METRICS_H
+#ifndef AWS_MQTT_IOT_METRICS_H
+#define AWS_MQTT_IOT_METRICS_H
 
 #include <aws/mqtt/mqtt.h>
 
-/* Storage for `aws_mqtt_iot_sdk_metrics`. */
-struct aws_mqtt_iot_sdk_metrics_storage {
+/* Storage for `aws_mqtt_iot_metrics`. */
+struct aws_mqtt_iot_metrics_storage {
     struct aws_allocator *allocator;
 
-    struct aws_mqtt_iot_sdk_metrics storage_view;
-
-    struct aws_array_list metadata_entries;
+    struct aws_mqtt_iot_metrics storage_view;
 
     struct aws_byte_cursor library_name;
 
     struct aws_byte_buf storage;
 };
 
-AWS_MQTT_API struct aws_mqtt_iot_sdk_metrics_storage *aws_mqtt_iot_sdk_metrics_storage_new(
+AWS_MQTT_API struct aws_mqtt_iot_metrics_storage *aws_mqtt_iot_metrics_storage_new(
     struct aws_allocator *allocator,
-    const struct aws_mqtt_iot_sdk_metrics *metrics_options);
+    const struct aws_mqtt_iot_metrics *metrics_options);
 
-AWS_MQTT_API void aws_mqtt_iot_sdk_metrics_storage_destroy(struct aws_mqtt_iot_sdk_metrics_storage *metrics_storage);
+AWS_MQTT_API void aws_mqtt_iot_metrics_storage_destroy(struct aws_mqtt_iot_metrics_storage *metrics_storage);
 
 /**
  * Builds a new username by appending SDK metrics to the original username.
@@ -43,17 +41,17 @@ AWS_MQTT_API
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
-    const struct aws_mqtt_iot_sdk_metrics *metrics,
+    const struct aws_mqtt_iot_metrics *metrics,
     struct aws_byte_buf *output_username,
     size_t *out_full_username_size);
 
 /**
- * Validates all string fields in aws_mqtt_iot_sdk_metrics
+ * Validates all string fields in aws_mqtt_iot_metrics
  *
  * @param metrics The metrics structure to validate
  * @return AWS_OP_SUCCESS if metrics is not null and all metrics value are valid, AWS_OP_ERR otherwise
  */
 AWS_MQTT_API
-int aws_mqtt_validate_iot_sdk_metrics(const struct aws_mqtt_iot_sdk_metrics *metrics);
+int aws_mqtt_validate_iot_metrics(const struct aws_mqtt_iot_metrics *metrics);
 
-#endif /* AWS_MQTT_IOT_SDK_METRICS_H */
+#endif /* AWS_MQTT_IOT_METRICS_H */

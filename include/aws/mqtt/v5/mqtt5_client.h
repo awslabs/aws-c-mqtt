@@ -661,7 +661,7 @@ struct aws_mqtt5_client_options {
     /**
      * IoT SDK metrics configuration
      */
-    const struct aws_mqtt_iot_sdk_metrics *metrics;
+    const struct aws_mqtt_iot_metrics *metrics;
 };
 
 AWS_EXTERN_C_BEGIN
