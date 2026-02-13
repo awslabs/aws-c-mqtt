@@ -3101,6 +3101,108 @@ AWS_TEST_CASE_FIXTURE(
     s_clean_up_mqtt_server_fn,
     &test_data)
 
+static void s_test311_on_close_set_handler_fn(
+    struct aws_mqtt_client_connection *connection,
+    struct on_connection_closed_data *data,
+    void *userdata) {
+    (void)connection;
+    (void)data;
+    struct mqtt_connection_state_test *state_test_data = userdata;
+    AWS_LOGF_DEBUG(TEST_LOG_SUBJECT, "close completed");
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->connection_close_calls += 1;
+    // set connection handler should failed in a close_set failure connect
+    state_test_data->operation_set_result = aws_mqtt_client_connection_set_connection_closed_handler(
+        connection, s_on_connection_closed_fn, state_test_data);
+    aws_mutex_unlock(&state_test_data->lock);
+
+    aws_condition_variable_notify_one(&state_test_data->cvar);
+}
+
+/**
+ * Test that set close handler in on close callback should fail.
+ */
+static int s_test_mqtt_connection_close_callback_set_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+    aws_mqtt_client_connection_set_connection_closed_handler(
+        state_test_data->mqtt_connection, s_test311_on_close_set_handler_fn, state_test_data);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
+
+    /* sleep for 2 sec, just to make sure the connection is stable */
+    aws_thread_current_sleep((uint64_t)ONE_SEC * 2);
+
+    /* reset the operation result */
+    state_test_data->operation_set_result = AWS_OP_SUCCESS;
+
+    /* Disconnect */
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
+    aws_test311_wait_for_disconnect_to_complete(state_test_data);
+
+    /* Make sure the callback was called and the value is what we expect */
+    ASSERT_UINT_EQUALS(1, state_test_data->connection_close_calls);
+    /* Set callbacks in callback function should fail */
+    ASSERT_FAILS(state_test_data->operation_set_result);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_close_callback_set_failure,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_close_callback_set_failure_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/**
+ * Test that set close handler while connecting should fail
+ */
+static int s_test_mqtt_connection_close_callback_set_during_connecting_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+
+    /* Disable server CONNACK packet, so the client would be kept in CONNECTING status. */
+    mqtt_mock_server_set_max_connack(state_test_data->mock_server, 0);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+
+    /* set handler should fail while connecting */
+    ASSERT_FAILS(aws_mqtt_client_connection_set_connection_closed_handler(
+        state_test_data->mqtt_connection, s_test311_on_close_set_handler_fn, state_test_data));
+
+    aws_test311_wait_for_connection_to_fail(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_close_callback_set_during_connecting,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_close_callback_set_during_connecting_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
 static int s_test_mqtt_connection_reconnection_backoff_stable(struct aws_allocator *allocator, void *ctx) {
 
     (void)allocator;
