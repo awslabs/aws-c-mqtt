@@ -27,8 +27,6 @@ static struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entry_new(
 void aws_mqtt5_manual_puback_entry_destroy(void *value) {
     struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
     if (manual_puback_entry != NULL) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_CLIENT, "======== destroying puback entry: %llu", manual_puback_entry->puback_control_id);
         aws_mem_release(manual_puback_entry->allocator, manual_puback_entry);
     }
     return;
@@ -53,13 +51,6 @@ uint64_t aws_mqtt5_take_manual_puback_control(
     aws_hash_table_find(&client->operational_state.manual_puback_packet_id_table, &publish_view->packet_id, &elem);
     if (elem != NULL) {
         struct aws_mqtt5_manual_puback_entry *entry = elem->value;
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_CLIENT,
-            "id=%p: Attempting to take PUBACK control for packet id: %d but this packet id is already being "
-            "controlled with control id: %llu.\n",
-            (void *)client,
-            publish_view->packet_id,
-            entry->puback_control_id);
         return entry->puback_control_id;
     }
 
@@ -177,7 +168,7 @@ static void s_mqtt5_manual_puback_task_fn(struct aws_task *task, void *arg, enum
             AWS_LS_MQTT5_CLIENT,
             "id=%p: Scheuduling puback for control id: %llu for packet id: %d \n",
             (void *)client,
-            manual_puback_entry->puback_control_id,
+            (unsigned long long)manual_puback_entry->puback_control_id,
             manual_puback_entry->packet_id);
 
         uint16_t packet_id = manual_puback_entry->packet_id;
@@ -205,7 +196,7 @@ static void s_mqtt5_manual_puback_task_fn(struct aws_task *task, void *arg, enum
             AWS_LS_MQTT5_CLIENT,
             "id=%p: puback_control_id: %llu has been cancelled due to a disconnection.",
             (void *)client,
-            puback_control_id);
+            (unsigned long long)puback_control_id);
         struct aws_mqtt5_manual_puback_entry *manual_puback_entry =
             (struct aws_mqtt5_manual_puback_entry *)(elem->value);
         uint64_t puback_control_id = manual_puback_entry->puback_control_id;
@@ -222,7 +213,7 @@ static void s_mqtt5_manual_puback_task_fn(struct aws_task *task, void *arg, enum
         AWS_LS_MQTT5_CLIENT,
         "id=%p: puback_control_id: %llu is not tracked in any way.",
         (void *)client,
-        puback_control_id);
+        (unsigned long long)puback_control_id);
     puback_result = AWS_MQTT5_MPR_PUBACK_INVALID;
 
 completion:
