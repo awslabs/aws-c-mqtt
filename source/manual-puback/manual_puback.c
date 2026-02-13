@@ -172,7 +172,6 @@ static void s_mqtt5_manual_puback_task_fn(struct aws_task *task, void *arg, enum
             manual_puback_entry->packet_id);
 
         uint16_t packet_id = manual_puback_entry->packet_id;
-        uint64_t puback_control_id = manual_puback_entry->puback_control_id;
 
         aws_hash_table_remove(&client->operational_state.manual_puback_packet_id_table, &packet_id, NULL, NULL);
         // This removal from the control id table will also deallocate the manual puback entry.
