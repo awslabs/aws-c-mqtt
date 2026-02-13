@@ -153,7 +153,7 @@ static int s_aws_mqtt5_client_test_init_default_connect_storage(
         .clean_start = true,
     };
 
-    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
+    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view, NULL);
 }
 
 static int s_aws_mqtt5_client_test_init_default_disconnect_storage(
@@ -1051,7 +1051,7 @@ static int s_aws_mqtt5_client_test_init_ping_test_connect_storage(
         .clean_start = true,
     };
 
-    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
+    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view, NULL);
 }
 
 /*
@@ -2969,7 +2969,7 @@ static int s_aws_mqtt5_client_test_init_resume_session_connect_storage(
         .clean_start = false,
     };
 
-    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view);
+    return aws_mqtt5_packet_connect_storage_init(storage, allocator, &connect_view, NULL);
 }
 
 #define SESSION_RESUMPTION_CONNECT_COUNT 5
@@ -6652,3 +6652,138 @@ static int s_mqtt5_client_auto_assigned_client_id_iot_core_fn(struct aws_allocat
 }
 
 AWS_TEST_CASE(mqtt5_client_auto_assigned_client_id_iot_core, s_mqtt5_client_auto_assigned_client_id_iot_core_fn)
+/*
+ * Test that verifies metrics are properly appended to username in CONNECT packet
+ * Based on s_mqtt5_client_direct_connect_success_fn
+ */
+static int s_mqtt5_client_metrics_in_username_fn(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_iot_metrics *metrics,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+    test_options.client_options.metrics = metrics;
+
+    /* Set up username and metrics */
+    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("test_user");
+
+    struct aws_mqtt5_packet_connect_view connect_view = {
+        .keep_alive_interval_seconds = 30,
+        .client_id = aws_byte_cursor_from_string(g_default_client_id),
+        .clean_start = true,
+        .username = &original_username};
+
+    test_options.connect_options = connect_view;
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+    };
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    aws_wait_for_connected_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_packet_disconnect_view disconnect_options = {
+        .reason_code = AWS_MQTT5_DRC_NORMAL_DISCONNECTION,
+    };
+
+    struct aws_mqtt5_disconnect_completion_options completion_options = {
+        .completion_callback = s_on_disconnect_completion,
+        .completion_user_data = &test_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, &disconnect_options, &completion_options));
+
+    aws_wait_for_stopped_lifecycle_event(&test_context);
+    s_wait_for_disconnect_completion(&test_context);
+    s_wait_for_mock_server_to_receive_disconnect_packet(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_SUCCESS,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_DISCONNECTION,
+            .error_code = AWS_ERROR_MQTT5_USER_REQUESTED_STOP,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_STOPPED,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CONNECTED,
+        AWS_MCS_CLEAN_DISCONNECT,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+        AWS_MCS_STOPPED,
+    };
+
+    ASSERT_SUCCESS(aws_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    struct aws_mqtt5_packet_connect_storage expected_connect_storage;
+
+    struct aws_mqtt5_client_options_storage *options_storage =
+        aws_mqtt5_client_options_storage_new(allocator, &test_options.client_options);
+    aws_mqtt5_packet_connect_storage_init(&expected_connect_storage, allocator, &connect_view, options_storage);
+    aws_mqtt5_client_options_storage_destroy(options_storage);
+
+    struct aws_mqtt5_packet_disconnect_storage expected_disconnect_storage;
+    ASSERT_SUCCESS(s_aws_mqtt5_client_test_init_default_disconnect_storage(&expected_disconnect_storage, allocator));
+    expected_disconnect_storage.storage_view.reason_code = AWS_MQTT5_DRC_NORMAL_DISCONNECTION;
+
+    struct aws_mqtt5_mock_server_packet_record expected_packets[] = {
+        {
+            .packet_type = AWS_MQTT5_PT_CONNECT,
+            .packet_storage = &expected_connect_storage,
+        },
+        {
+            .packet_type = AWS_MQTT5_PT_DISCONNECT,
+            .packet_storage = &expected_disconnect_storage,
+        },
+    };
+    ASSERT_SUCCESS(
+        aws_verify_received_packet_sequence(&test_context, expected_packets, AWS_ARRAY_SIZE(expected_packets)));
+
+    aws_mqtt5_packet_connect_storage_clean_up(&expected_connect_storage);
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_mqtt5_client_set_metrics_valid(struct aws_allocator *allocator, void *ctx) {
+    struct aws_mqtt_iot_metrics metrics = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0")
+        // TODO: enable when metadata is supported
+        // .metadata_entries = NULL,
+        // .metadata_count = 0,
+    };
+
+    return s_mqtt5_client_metrics_in_username_fn(allocator, &metrics, ctx);
+}
+
+AWS_TEST_CASE(mqtt5_client_set_metrics_valid, s_test_mqtt5_client_set_metrics_valid)
+
+static int s_test_mqtt5_client_set_metrics_null(struct aws_allocator *allocator, void *ctx) {
+
+    return s_mqtt5_client_metrics_in_username_fn(allocator, NULL, ctx);
+}
+
+AWS_TEST_CASE(mqtt5_client_set_metrics_null, s_test_mqtt5_client_set_metrics_null)

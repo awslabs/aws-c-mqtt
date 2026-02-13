@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include "../v3/mqtt311_testing_utils.h"
+
 #include <aws/common/string.h>
 
 #include "mqtt5_testing_utils.h"
@@ -12,6 +14,7 @@
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_options_storage.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
+#include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
 
 #include <aws/testing/aws_test_harness.h>
@@ -595,7 +598,7 @@ static int s_mqtt5_connect_storage_new_set_no_optional_fn(struct aws_allocator *
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
 
-    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options));
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options, NULL));
 
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
@@ -695,8 +698,7 @@ static int s_mqtt5_connect_storage_new_set_all_fn(struct aws_allocator *allocato
     struct aws_mqtt5_packet_connect_storage connect_storage;
     AWS_ZERO_STRUCT(connect_storage);
 
-    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options));
-
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(&connect_storage, allocator, &connect_options, NULL));
     ASSERT_SUCCESS(s_aws_mqtt5_connect_storage_verify_required_properties(&connect_storage, &connect_options));
 
     struct aws_mqtt5_packet_connect_view *stored_view = &connect_storage.storage_view;
@@ -2202,7 +2204,7 @@ static struct aws_mqtt5_operation_connect *s_make_simple_connect_operation(struc
         .keep_alive_interval_seconds = 0,
     };
 
-    return aws_mqtt5_operation_connect_new(allocator, &connect_view);
+    return aws_mqtt5_operation_connect_new(allocator, &connect_view, NULL);
 }
 
 /*

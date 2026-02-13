@@ -817,7 +817,7 @@ static int s_mqtt5to3_adapter_set_will_setup(
         .will = &expected_will,
     };
 
-    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(expected_connect, allocator, &expected_connect_view));
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(expected_connect, allocator, &expected_connect_view, NULL));
 
     return AWS_OP_SUCCESS;
 }
@@ -853,7 +853,7 @@ static int s_mqtt5to3_adapter_set_login_setup(
         .password = &password_cursor,
     };
 
-    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(expected_connect, allocator, &expected_connect_view));
+    ASSERT_SUCCESS(aws_mqtt5_packet_connect_storage_init(expected_connect, allocator, &expected_connect_view, NULL));
 
     return AWS_OP_SUCCESS;
 }
