@@ -4428,7 +4428,7 @@ static int s_mqtt5to3_adapter_connection_set_metrics_valid_fn(struct aws_allocat
 
     struct aws_mqtt_client_connection *connection = fixture.connection;
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {
+    struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
     };
 
@@ -4499,7 +4499,7 @@ static int s_mqtt5to3_adapter_connection_set_metrics_invalid_utf8_library_fn(
     /* Invalid UTF-8 sequence */
     struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
 
-    struct aws_mqtt_iot_sdk_metrics metrics = {
+    struct aws_mqtt_iot_metrics metrics = {
         .library_name = invalid_utf8_library,
     };
 
