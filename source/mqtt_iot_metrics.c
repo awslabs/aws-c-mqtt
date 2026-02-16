@@ -278,12 +278,8 @@ cleanup_storage:
     //     aws_array_list_clean_up(&metrics_storage->metadata_entries);
     // }
 
-    if (aws_byte_buf_is_valid(&metrics_storage->storage)) {
-        aws_byte_buf_clean_up(&metrics_storage->storage);
-    }
-
+    aws_byte_buf_clean_up(&metrics_storage->storage);
     aws_mem_release(allocator, metrics_storage);
-
     return NULL;
 }
 
