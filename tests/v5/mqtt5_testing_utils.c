@@ -958,7 +958,8 @@ static int s_aws_mqtt5_mock_test_fixture_on_packet_received_fn(
         case AWS_MQTT5_PT_CONNECT:
             packet_record.packet_storage =
                 aws_mem_calloc(test_fixture->allocator, 1, sizeof(struct aws_mqtt5_packet_connect_storage));
-            aws_mqtt5_packet_connect_storage_init(packet_record.packet_storage, test_fixture->allocator, packet_view);
+            aws_mqtt5_packet_connect_storage_init(
+                packet_record.packet_storage, test_fixture->allocator, packet_view, NULL);
             break;
 
         case AWS_MQTT5_PT_DISCONNECT:
