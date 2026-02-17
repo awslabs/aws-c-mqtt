@@ -2335,6 +2335,29 @@ error:
     return NULL;
 }
 
+struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entry_new(
+    struct aws_allocator *allocator,
+    uint16_t packet_id,
+    uint64_t puback_control_id) {
+
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_manual_puback_entry));
+
+    manual_puback_entry->allocator = allocator;
+    manual_puback_entry->packet_id = packet_id;
+    manual_puback_entry->puback_control_id = puback_control_id;
+
+    return manual_puback_entry;
+}
+
+void aws_mqtt5_manual_puback_entry_destroy(void *value) {
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
+    if (manual_puback_entry != NULL) {
+        aws_mem_release(manual_puback_entry->allocator, manual_puback_entry);
+    }
+    return;
+}
+
 /*********************************************************************************************************************
  * Unsubscribe
  ********************************************************************************************************************/

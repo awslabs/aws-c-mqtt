@@ -16,7 +16,6 @@
 #include <aws/io/retry_strategy.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
-#include <aws/mqtt/manual-puback/manual_puback.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_packet_storage.h>
 #include <aws/mqtt/v5/mqtt5_types.h>
@@ -279,6 +278,13 @@ AWS_MQTT_API struct aws_mqtt5_operation_puback *aws_mqtt5_operation_puback_new(
 AWS_MQTT_API void aws_mqtt5_packet_puback_view_log(
     const struct aws_mqtt5_packet_puback_view *puback_view,
     enum aws_log_level level);
+
+AWS_MQTT_API struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entry_new(
+    struct aws_allocator *allocator,
+    uint16_t packet_id,
+    uint64_t puback_control_id);
+
+AWS_MQTT_API void aws_mqtt5_manual_puback_entry_destroy(void *value);
 
 /* Subscribe */
 

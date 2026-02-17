@@ -256,6 +256,8 @@ struct aws_mqtt5_client_operational_state {
      * One more than the most recently used control packet id.
      */
     uint64_t next_mqtt5_puback_control_id;
+    /* These tables are used for fast search of a packet_id and control_id pair. They both set an
+     * aws_mqtt5_manual_puback_entry as its value */
     struct aws_hash_table manual_puback_packet_id_table;
     struct aws_hash_table manual_puback_control_id_table;
     /* This table contains control ids known to be cancelled due to client disconnect for better failure messaging */
