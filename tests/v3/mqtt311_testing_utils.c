@@ -580,3 +580,24 @@ void aws_test311_wait_for_ops_completed(struct mqtt_connection_state_test *state
         &state_test_data->cvar, &state_test_data->lock, 10000000000, s_is_ops_completed, state_test_data);
     aws_mutex_unlock(&state_test_data->lock);
 }
+
+static const struct aws_byte_cursor SDK_ATT_STR = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("?SDK=");
+static const struct aws_byte_cursor PLATFORM_ATT_STR = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("&Platform=");
+
+void aws_test_mqtt_build_expected_metrics(
+    struct aws_allocator *allocator,
+    const struct aws_byte_cursor *original_username,
+    const struct aws_byte_cursor sdk,
+    const struct aws_byte_cursor *platform,
+    struct aws_byte_buf *expected_buf) {
+    struct aws_byte_cursor platform_to_use = platform ? *platform : aws_get_platform_build_os_string();
+    if (original_username) {
+        aws_byte_buf_init_copy_from_cursor(expected_buf, allocator, *original_username);
+    } else {
+        aws_byte_buf_init(expected_buf, allocator, 0);
+    }
+    aws_byte_buf_append_dynamic(expected_buf, &SDK_ATT_STR);
+    aws_byte_buf_append_dynamic(expected_buf, &sdk);
+    aws_byte_buf_append_dynamic(expected_buf, &PLATFORM_ATT_STR);
+    aws_byte_buf_append_dynamic(expected_buf, &platform_to_use);
+}
