@@ -10,6 +10,7 @@
 
 #include <aws/common/array_list.h>
 #include <aws/common/byte_buf.h>
+#include <aws/common/ref_count.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
 
@@ -459,6 +460,7 @@ struct aws_mqtt5_packet_puback_view {
  */
 struct aws_mqtt5_manual_puback_entry {
     struct aws_allocator *allocator;
+    struct aws_ref_count ref_count;
 
     /* control id for internal tracking */
     uint64_t puback_control_id;

@@ -594,7 +594,11 @@ static void s_enqueue_operation_front(struct aws_mqtt5_client *client, struct aw
  * clear out the active table because we need to keep the entries in memory until we are fully done with them. */
 static int s_manual_puback_transfer(void *context, struct aws_hash_element *element) {
     struct aws_hash_table *manual_puback_cancelled_control_id_table = context;
+    // struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
 
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry = element->value;
+    // incref the ref_count because when this entry is removed from the original set it will decref.
+    aws_ref_count_acquire(&manual_puback_entry->ref_count);
     // Add the control id to the destination table
     if (aws_hash_table_put(manual_puback_cancelled_control_id_table, element->key, element->value, NULL)) {
         return AWS_COMMON_HASH_TABLE_ITER_ERROR;
@@ -604,8 +608,16 @@ static int s_manual_puback_transfer(void *context, struct aws_hash_element *elem
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
 }
 
+/* This is called when the manual puback entry is removed from a hashset */
+static void aws_mqtt5_manual_puback_entry_decref(void *value) {
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
+    if (manual_puback_entry != NULL) {
+        aws_ref_count_release(&manual_puback_entry->ref_count);
+    }
+}
+
 /* When a disconnect or stop occurs all Manual Pubacks become invalid. We clear packet ids which may be reused
- * by the server and remove all manual puback entries from the active table and move them to the cancelled table
+ * by the server and transfer manual puback entries from the active table to the cancelled table
  * to provide better communication if the user attempts to invoke a PUBACK they think they have control over. */
 static void s_aws_mqtt5_reset_manual_puback_tables(
     struct aws_mqtt5_client_operational_state *client_operational_state) {
@@ -621,6 +633,7 @@ static void s_aws_mqtt5_reset_manual_puback_tables(
             &client_operational_state->manual_puback_control_id_table,
             s_manual_puback_transfer,
             &client_operational_state->manual_puback_cancelled_control_id_table);
+        aws_hash_table_clear(&client_operational_state->manual_puback_cancelled_control_id_table);
     }
 }
 
@@ -2780,7 +2793,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint64_t,
             aws_mqtt_compare_uint64_t_eq,
             NULL,
-            aws_mqtt5_manual_puback_entry_destroy)) {
+            aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 
@@ -2791,7 +2804,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint64_t,
             aws_mqtt_compare_uint64_t_eq,
             NULL,
-            aws_mqtt5_manual_puback_entry_destroy)) {
+            aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 

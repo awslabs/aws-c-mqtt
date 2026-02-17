@@ -2251,7 +2251,7 @@ void aws_mqtt5_packet_puback_view_log(
         "aws_mqtt5_packet_puback_view");
 }
 
-static void s_aws_mqtt5_operation_puback_manual_complete(
+static void s_aws_mqtt5_operation_puback_manual_completion(
     struct aws_mqtt5_operation *operation,
     int error_code,
     enum aws_mqtt5_packet_type packet_type,
@@ -2260,25 +2260,24 @@ static void s_aws_mqtt5_operation_puback_manual_complete(
     (void)completion_view;
     struct aws_mqtt5_operation_puback *puback_op = operation->impl;
 
-    // Convert error_code to manual puback result
-    enum aws_mqtt5_manual_puback_result puback_result = AWS_MQTT5_MPR_SUCCESS;
-    if (error_code != AWS_OP_SUCCESS) {
-        /* There is a significant list of possible errors that could have occurred during the processing of a PUBACK.
-         * Instead of mapping each one, we report a CRT failure which should indicate the important part. That the
-         * PUBACK was not sent and it's likely they will receive a duplicate PUBLISH. If they want more details the logs
-         * will need to be investigated. */
-        puback_result = AWS_MQTT5_MPR_CRT_FAILURE;
-    }
-
     // Completion callback on manual PUBACK.
     if (puback_op->completion_options.completion_callback != NULL) {
+        // Convert error_code to manual puback result
+        enum aws_mqtt5_manual_puback_result puback_result = AWS_MQTT5_MPR_SUCCESS;
+        if (error_code != AWS_OP_SUCCESS) {
+            /* There is a significant list of possible errors that could have occurred during the processing of a
+             * PUBACK. Instead of mapping each one, we report a CRT failure which should indicate the important part.
+             * That the PUBACK was not sent and it's likely they will receive a duplicate PUBLISH. If they want more
+             * details the logs will need to be investigated. */
+            puback_result = AWS_MQTT5_MPR_CRT_FAILURE;
+        }
         puback_op->completion_options.completion_callback(
             puback_result, puback_op->completion_options.completion_user_data);
     }
 }
 
 static struct aws_mqtt5_operation_vtable s_puback_operation_vtable = {
-    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_puback_manual_complete,
+    .aws_mqtt5_operation_completion_fn = s_aws_mqtt5_operation_puback_manual_completion,
     .aws_mqtt5_operation_set_packet_id_fn = NULL,
     .aws_mqtt5_operation_get_packet_id_address_fn = NULL,
     .aws_mqtt5_operation_validate_vs_connection_settings_fn = NULL,
@@ -2335,6 +2334,15 @@ error:
     return NULL;
 }
 
+static void s_aws_mqtt5_manual_puback_entry_destroy(void *object) {
+    if (object == NULL) {
+        return;
+    }
+
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry = object;
+    aws_mem_release(manual_puback_entry->allocator, manual_puback_entry);
+}
+
 struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entry_new(
     struct aws_allocator *allocator,
     uint16_t packet_id,
@@ -2344,18 +2352,11 @@ struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entry_new(
         aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_manual_puback_entry));
 
     manual_puback_entry->allocator = allocator;
+    aws_ref_count_init(&manual_puback_entry->ref_count, manual_puback_entry, s_aws_mqtt5_manual_puback_entry_destroy);
     manual_puback_entry->packet_id = packet_id;
     manual_puback_entry->puback_control_id = puback_control_id;
 
     return manual_puback_entry;
-}
-
-void aws_mqtt5_manual_puback_entry_destroy(void *value) {
-    struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
-    if (manual_puback_entry != NULL) {
-        aws_mem_release(manual_puback_entry->allocator, manual_puback_entry);
-    }
-    return;
 }
 
 /*********************************************************************************************************************

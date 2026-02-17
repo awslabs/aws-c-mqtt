@@ -284,8 +284,6 @@ AWS_MQTT_API struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entr
     uint16_t packet_id,
     uint64_t puback_control_id);
 
-AWS_MQTT_API void aws_mqtt5_manual_puback_entry_destroy(void *value);
-
 /* Subscribe */
 
 AWS_MQTT_API struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(
