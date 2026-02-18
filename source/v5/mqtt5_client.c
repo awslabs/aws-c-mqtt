@@ -607,7 +607,7 @@ static int s_manual_puback_transfer(void *context, struct aws_hash_element *elem
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
 
-/* This is called when the manual puback entry is removed from a hashset */
+/* This is called when the manual puback entry is removed from a hashset to properly decref on removal */
 static void aws_mqtt5_manual_puback_entry_decref(void *value) {
     struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
     if (manual_puback_entry != NULL) {
@@ -2640,7 +2640,9 @@ uint64_t aws_mqtt5_client_acquire_puback(
     struct aws_mqtt5_manual_puback_entry *manual_puback =
         s_aws_mqtt_manual_puback_entry_new(client->allocator, publish_view->packet_id, current_control_packet_id);
 
-    /* Allows lookup of manual puback entries by packet id */
+    /* Allows lookup of manual puback entries by packet id. We incref here because the packet_id table also has a ref to
+     * the manual_puback */
+    aws_ref_count_acquire(&manual_puback->ref_count);
     if (aws_hash_table_put(
             &client->operational_state.manual_puback_packet_id_table, &manual_puback->packet_id, manual_puback, NULL)) {
         int error_code = aws_last_error();
@@ -2781,7 +2783,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint16_t,
             aws_mqtt_compare_uint16_t_eq,
             NULL,
-            NULL)) {
+            aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 
