@@ -2554,8 +2554,6 @@ static void s_mqtt5_manual_puback_task_fn(struct aws_task *task, void *arg, enum
             "id=%p: puback_control_id: %llu has been cancelled due to a disconnection.",
             (void *)client,
             (unsigned long long)puback_control_id);
-        struct aws_mqtt5_manual_puback_entry *manual_puback_entry =
-            (struct aws_mqtt5_manual_puback_entry *)(elem->value);
 
         // A cancelled control id has been used so it can be cleared from the table and deallocated. We only report
         // a cancellation once. Past that we will simply treat it as invalid.
