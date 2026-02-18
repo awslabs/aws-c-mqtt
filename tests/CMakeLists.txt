@@ -402,6 +402,15 @@ add_test_case(mqtt5_client_outbound_alias_manual_failure_empty_topic)
 add_test_case(mqtt5_client_outbound_alias_manual_success_a_b_ar_br)
 add_test_case(mqtt5_client_outbound_alias_lru_success_a_b_c_br_cr_a)
 
+# MQTT5 manual puback tests
+
+add_test_case(mqtt5_client_manual_puback_basic_success)
+add_test_case(mqtt5_client_manual_puback_no_auto_puback)
+add_test_case(mqtt5_client_manual_puback_invalid_control_id)
+add_test_case(mqtt5_client_manual_puback_multiple_publishes)
+add_test_case(mqtt5_client_manual_puback_disconnect_cancellation)
+
+
 # Mqtt5 Metrics tests
 add_test_case(mqtt5_client_set_metrics_valid)
 add_test_case(mqtt5_client_set_metrics_null)

@@ -58,16 +58,54 @@ struct aws_mqtt5_server_mock_connection_context {
     struct aws_task service_task;
 };
 
+/**
+ * Callback invoked when the mock server receives a packet from the client.
+ *
+ * @param packet_view The decoded packet view (type-specific, e.g., aws_mqtt5_packet_connect_view)
+ * @param connection The mock server connection context
+ * @param packet_received_user_data User data from the vtable (mock_server_user_data)
+ * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
+ */
 typedef int(aws_mqtt5_on_mock_server_packet_received_fn)(
     void *packet_view,
     struct aws_mqtt5_server_mock_connection_context *connection,
     void *packet_received_user_data);
 
+/**
+ * Periodic service callback for the mock MQTT5 server.
+ *
+ * This function is called on a periodic timer (every 1 second) and allows the mock server
+ * to perform proactive operations such as:
+ * - Sending server-initiated packets (PUBLISH, DISCONNECT, etc.) to the client
+ * - Simulating network delays or timeouts
+ * - Checking elapsed time and triggering time-based behaviors
+ * - Managing connection state transitions
+ *
+ * The callback runs on the server's event loop and is automatically scheduled:
+ * 1. Initially when the connection is established (runs immediately)
+ * 2. After each execution (reschedules itself to run 1 second later)
+ *
+ * The task is automatically cancelled when the connection is destroyed.
+ *
+ * @param mock_server The mock server connection context (provides channel, encoder, etc.)
+ * @param user_data User data from the vtable (mock_server_user_data from test fixture)
+ *
+ * @note This callback is optional. Set to NULL if periodic server behavior is not needed.
+ * @note Use aws_mqtt5_mock_server_send_packet() to send packets to the client.
+ */
 typedef void(
     aws_mqtt5_mock_server_service_fn)(struct aws_mqtt5_server_mock_connection_context *mock_server, void *user_data);
 
+/**
+ * Virtual function table for the mock MQTT5 server.
+ *
+ * Defines callbacks for handling client packets and performing periodic server operations.
+ */
 struct aws_mqtt5_mock_server_vtable {
+    /** Handlers for packets received from the client (indexed by aws_mqtt5_packet_type) */
     aws_mqtt5_on_mock_server_packet_received_fn *packet_handlers[16];
+
+    /** Optional periodic service callback (runs every 1 second). Can be NULL. */
     aws_mqtt5_mock_server_service_fn *service_task_fn;
 };
 
