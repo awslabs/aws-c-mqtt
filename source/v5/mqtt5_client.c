@@ -2805,7 +2805,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint16_t,
             aws_mqtt_compare_uint16_t_eq,
             NULL,
-            aws_mqtt5_manual_puback_entry_decref)) {
+            s_aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 
@@ -2816,7 +2816,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint64_t,
             aws_mqtt_compare_uint64_t_eq,
             NULL,
-            aws_mqtt5_manual_puback_entry_decref)) {
+            s_aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 
@@ -2827,7 +2827,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint64_t,
             aws_mqtt_compare_uint64_t_eq,
             NULL,
-            aws_mqtt5_manual_puback_entry_decref)) {
+            s_aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 
