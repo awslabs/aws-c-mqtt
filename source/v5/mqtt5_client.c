@@ -594,7 +594,6 @@ static void s_enqueue_operation_front(struct aws_mqtt5_client *client, struct aw
  * clear out the active table because we need to keep the entries in memory until we are fully done with them. */
 static int s_manual_puback_transfer(void *context, struct aws_hash_element *element) {
     struct aws_hash_table *manual_puback_cancelled_control_id_table = context;
-    // struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
 
     struct aws_mqtt5_manual_puback_entry *manual_puback_entry = element->value;
     // incref the ref_count because when this entry is removed from the original set it will decref.
@@ -604,8 +603,8 @@ static int s_manual_puback_transfer(void *context, struct aws_hash_element *elem
         return AWS_COMMON_HASH_TABLE_ITER_ERROR;
     }
 
-    // Remove from source table (continue iteration AND delete (without destroying) current element value)
-    return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
+    // We simply continue here and will clear (and thus decref) after we finish iterating.
+    return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
 
 /* This is called when the manual puback entry is removed from a hashset */
@@ -633,7 +632,7 @@ static void s_aws_mqtt5_reset_manual_puback_tables(
             &client_operational_state->manual_puback_control_id_table,
             s_manual_puback_transfer,
             &client_operational_state->manual_puback_cancelled_control_id_table);
-        aws_hash_table_clear(&client_operational_state->manual_puback_cancelled_control_id_table);
+        aws_hash_table_clear(&client_operational_state->manual_puback_control_id_table);
     }
 }
 

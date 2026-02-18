@@ -2338,7 +2338,6 @@ static void s_aws_mqtt5_manual_puback_entry_destroy(void *object) {
     if (object == NULL) {
         return;
     }
-
     struct aws_mqtt5_manual_puback_entry *manual_puback_entry = object;
     aws_mem_release(manual_puback_entry->allocator, manual_puback_entry);
 }
