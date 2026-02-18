@@ -281,11 +281,6 @@ AWS_MQTT_API void aws_mqtt5_packet_puback_view_log(
     const struct aws_mqtt5_packet_puback_view *puback_view,
     enum aws_log_level level);
 
-AWS_MQTT_API struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entry_new(
-    struct aws_allocator *allocator,
-    uint16_t packet_id,
-    uint64_t puback_control_id);
-
 /* Subscribe */
 
 AWS_MQTT_API struct aws_mqtt5_operation_subscribe *aws_mqtt5_operation_subscribe_new(

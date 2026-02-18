@@ -608,7 +608,7 @@ static int s_manual_puback_transfer(void *context, struct aws_hash_element *elem
 }
 
 /* This is called when the manual puback entry is removed from a hashset to properly decref on removal */
-static void aws_mqtt5_manual_puback_entry_decref(void *value) {
+static void s_aws_mqtt5_manual_puback_entry_decref(void *value) {
     struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
     if (manual_puback_entry != NULL) {
         aws_ref_count_release(&manual_puback_entry->ref_count);
@@ -2604,6 +2604,30 @@ int aws_mqtt5_client_invoke_puback(
     aws_event_loop_schedule_task_now(client->loop, &manual_puback_task->task);
 
     return AWS_OP_SUCCESS;
+}
+
+static void s_aws_mqtt5_manual_puback_entry_destroy(void *object) {
+    if (object == NULL) {
+        return;
+    }
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry = object;
+    aws_mem_release(manual_puback_entry->allocator, manual_puback_entry);
+}
+
+static struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entry_new(
+    struct aws_allocator *allocator,
+    uint16_t packet_id,
+    uint64_t puback_control_id) {
+
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_manual_puback_entry));
+
+    manual_puback_entry->allocator = allocator;
+    aws_ref_count_init(&manual_puback_entry->ref_count, manual_puback_entry, s_aws_mqtt5_manual_puback_entry_destroy);
+    manual_puback_entry->packet_id = packet_id;
+    manual_puback_entry->puback_control_id = puback_control_id;
+
+    return manual_puback_entry;
 }
 
 uint64_t aws_mqtt5_client_acquire_puback(
