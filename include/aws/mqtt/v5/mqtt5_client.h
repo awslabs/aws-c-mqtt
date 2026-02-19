@@ -300,8 +300,9 @@ typedef void(aws_mqtt5_publish_completion_fn)(
  * @param puback_result result of the PUBACK operation
  * @param complete_ctx user data passed in with the completion options
  */
-typedef void(
-    aws_mqtt5_manual_puback_completion_fn)(enum aws_mqtt5_manual_puback_result puback_result, void *complete_ctx);
+typedef void(aws_mqtt5_manual_puback_completion_fn)(
+    enum aws_mqtt5_manual_puback_result puback_result,
+    void *completion_user_data);
 
 /**
  * Signature of callback to invoke on Subscribe success/failure.
@@ -773,7 +774,7 @@ AWS_MQTT_API uint64_t aws_mqtt5_client_acquire_puback(
  *
  * @param client mqtt5 client to queue a puback for
  * @param puback_control_id Control ID of aws_mqtt5_manual_puback_entry to send to broker/server
- * @return success/failure of the manual PUBACK operation.
+ * @return success/failure of starting the manual PUBACK operation.
  */
 AWS_MQTT_API
 int aws_mqtt5_client_invoke_puback(

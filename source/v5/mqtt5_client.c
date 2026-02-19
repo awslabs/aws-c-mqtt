@@ -608,7 +608,7 @@ static int s_manual_puback_transfer(void *context, struct aws_hash_element *elem
 }
 
 /* This is called when the manual puback entry is removed from a hashset to properly decref on removal */
-static void aws_mqtt5_manual_puback_entry_decref(void *value) {
+static void s_aws_mqtt5_manual_puback_entry_decref(void *value) {
     struct aws_mqtt5_manual_puback_entry *manual_puback_entry = value;
     if (manual_puback_entry != NULL) {
         aws_ref_count_release(&manual_puback_entry->ref_count);
@@ -622,9 +622,10 @@ static void s_aws_mqtt5_reset_manual_puback_tables(
     struct aws_mqtt5_client_operational_state *client_operational_state) {
     size_t count = aws_hash_table_get_entry_count(&client_operational_state->manual_puback_control_id_table);
     if (count > 0) {
-        AWS_LOGF_INFO(
+        AWS_LOGF_DEBUG(
             AWS_LS_MQTT5_CLIENT,
-            "id=%p: Clearing %zu manual PUBACK control ids.",
+            "id=%p: Clearing %zu PUBACKs under user control. Previously controlled PUBACKs are no longer valid and "
+            "have been cancelled.",
             (void *)client_operational_state->client,
             count);
         aws_hash_table_clear(&client_operational_state->manual_puback_packet_id_table);
@@ -2606,6 +2607,30 @@ int aws_mqtt5_client_invoke_puback(
     return AWS_OP_SUCCESS;
 }
 
+static void s_aws_mqtt5_manual_puback_entry_destroy(void *object) {
+    if (object == NULL) {
+        return;
+    }
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry = object;
+    aws_mem_release(manual_puback_entry->allocator, manual_puback_entry);
+}
+
+static struct aws_mqtt5_manual_puback_entry *s_aws_mqtt_manual_puback_entry_new(
+    struct aws_allocator *allocator,
+    uint16_t packet_id,
+    uint64_t puback_control_id) {
+
+    struct aws_mqtt5_manual_puback_entry *manual_puback_entry =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt5_manual_puback_entry));
+
+    manual_puback_entry->allocator = allocator;
+    aws_ref_count_init(&manual_puback_entry->ref_count, manual_puback_entry, s_aws_mqtt5_manual_puback_entry_destroy);
+    manual_puback_entry->packet_id = packet_id;
+    manual_puback_entry->puback_control_id = puback_control_id;
+
+    return manual_puback_entry;
+}
+
 uint64_t aws_mqtt5_client_acquire_puback(
     struct aws_mqtt5_client *client,
     const struct aws_mqtt5_packet_publish_view *publish_view) {
@@ -2629,6 +2654,10 @@ uint64_t aws_mqtt5_client_acquire_puback(
         /* In this case we simply provide the same control_id that was already sent before. We do not want to create a
          * second control_id with the same packet_id. It is the user's responsibility to know that they have two PUBACKs
          * for the same PUBLISH. */
+        AWS_LOGF_WARN(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: PUBACK acquire called on a PUBLISH that is already under user control.",
+            (void *)client);
         struct aws_mqtt5_manual_puback_entry *entry = elem->value;
         return entry->puback_control_id;
     }
@@ -2674,6 +2703,25 @@ uint64_t aws_mqtt5_client_acquire_puback(
 
     /* Increment next_mqtt5_puback_control_id for next use */
     client->operational_state.next_mqtt5_puback_control_id = current_control_packet_id + 1;
+
+    size_t in_flight_unacked_publishes =
+        aws_hash_table_get_entry_count(&client->operational_state.manual_puback_control_id_table);
+    if (in_flight_unacked_publishes >= 100) {
+        AWS_LOGF_WARN(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: 100 or more PUBACKs under user control: %zu. AWS IoT Core limits of 100 in-flight has been met or "
+            "exceeded.",
+            (void *)client,
+            in_flight_unacked_publishes);
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: Manual PUBACK control taken for a PUBLISH packet. Current in-flight PUBACKs under user control: "
+            "%zu",
+            (void *)client,
+            in_flight_unacked_publishes);
+    }
+
     return manual_puback->puback_control_id;
 
 cleanup:
@@ -2781,7 +2829,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint16_t,
             aws_mqtt_compare_uint16_t_eq,
             NULL,
-            aws_mqtt5_manual_puback_entry_decref)) {
+            s_aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 
@@ -2792,7 +2840,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint64_t,
             aws_mqtt_compare_uint64_t_eq,
             NULL,
-            aws_mqtt5_manual_puback_entry_decref)) {
+            s_aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 
@@ -2803,7 +2851,7 @@ int aws_mqtt5_client_operational_state_init(
             aws_mqtt_hash_uint64_t,
             aws_mqtt_compare_uint64_t_eq,
             NULL,
-            aws_mqtt5_manual_puback_entry_decref)) {
+            s_aws_mqtt5_manual_puback_entry_decref)) {
         return AWS_OP_ERR;
     }
 
