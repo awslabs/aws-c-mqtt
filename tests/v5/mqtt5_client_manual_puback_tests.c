@@ -201,7 +201,7 @@ static int s_aws_mqtt5_server_send_qos1_publish_on_connect(
 }
 
 /**
- * Test 1: Basic manual PUBACK success
+ *   Basic manual PUBACK success
  * - Server sends QoS1 PUBLISH
  * - Client acquires manual puback control
  * - Client invokes puback
@@ -296,7 +296,7 @@ static int s_mqtt5_client_manual_puback_basic_success_fn(struct aws_allocator *a
 AWS_TEST_CASE(mqtt5_client_manual_puback_basic_success, s_mqtt5_client_manual_puback_basic_success_fn)
 
 /**
- * Test 2: Verify no automatic PUBACK when manual control taken
+ *   Verify no automatic PUBACK when manual control taken
  * - Server sends QoS1 PUBLISH
  * - Client acquires manual puback control
  * - Wait to verify no automatic PUBACK sent
@@ -412,7 +412,7 @@ static int s_mqtt5_client_manual_puback_no_auto_puback_fn(struct aws_allocator *
 AWS_TEST_CASE(mqtt5_client_manual_puback_no_auto_puback, s_mqtt5_client_manual_puback_no_auto_puback_fn)
 
 /**
- * Test 3: Invalid control ID
+ *   Invalid control ID
  * - Invoke puback with invalid control ID
  * - Verify AWS_MQTT5_MPR_PUBACK_INVALID result
  */
@@ -469,7 +469,7 @@ static int s_mqtt5_client_manual_puback_invalid_control_id_fn(struct aws_allocat
 AWS_TEST_CASE(mqtt5_client_manual_puback_invalid_control_id, s_mqtt5_client_manual_puback_invalid_control_id_fn)
 
 /**
- * Test 4: Multiple PUBLISHes with manual PUBACK
+ *   Multiple PUBLISHes with manual PUBACK
  * - Server sends 3 QoS1 PUBLISHes
  * - Client acquires control for all 3
  * - Client invokes puback for them (in reverse order)
@@ -563,7 +563,7 @@ static int s_mqtt5_client_manual_puback_multiple_publishes_fn(struct aws_allocat
 AWS_TEST_CASE(mqtt5_client_manual_puback_multiple_publishes, s_mqtt5_client_manual_puback_multiple_publishes_fn)
 
 /**
- * Test 5: Disconnect cancels pending manual PUBACKs
+ *   Disconnect cancels pending manual PUBACKs
  * - Server sends QoS1 PUBLISH
  * - Client acquires manual puback control
  * - Disconnect before invoking puback
