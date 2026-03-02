@@ -596,12 +596,12 @@ static int s_manual_puback_transfer(void *context, struct aws_hash_element *elem
     struct aws_hash_table *manual_puback_cancelled_control_id_table = context;
 
     struct aws_mqtt5_manual_puback_entry *manual_puback_entry = element->value;
-    // incref the ref_count because when this entry is removed from the original set it will decref.
-    aws_ref_count_acquire(&manual_puback_entry->ref_count);
     // Add the control id to the destination table
     if (aws_hash_table_put(manual_puback_cancelled_control_id_table, element->key, element->value, NULL)) {
         return AWS_COMMON_HASH_TABLE_ITER_ERROR;
     }
+    // incref the ref_count because when this entry is removed from the original set it will decref.
+    aws_ref_count_acquire(&manual_puback_entry->ref_count);
 
     // We simply continue here and will clear (and thus decref) after we finish iterating.
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
