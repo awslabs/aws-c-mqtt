@@ -759,6 +759,9 @@ int aws_mqtt5_client_publish(
 /**
  * Takes manual control of PUBACK for the given PUBLISH packet.
  *
+ * This MUST only be called from within the publish received callback. A return value of 0 indicates an
+ * invalid control id.
+ *
  * @param client mqtt5 client that received the PUBLISH packet to take manual PUBACK control from.
  * @param publish_view the view of the PUBLISH packet that PUBACK control is taken from.
  * @return puback_control_id of the PUBLISH packet. This can be used to schedule a PUBACK for the PUBLISH packet

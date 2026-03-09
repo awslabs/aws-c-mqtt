@@ -1958,7 +1958,6 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
 
                         s_aws_mqtt5_client_shutdown_channel(client, error_code);
                     }
-                    return;
                 }
             }
             break;
@@ -2667,9 +2666,7 @@ uint64_t aws_mqtt5_client_acquire_puback(
     struct aws_mqtt5_manual_puback_entry *manual_puback =
         s_aws_mqtt_manual_puback_entry_new(client->allocator, publish_view->packet_id, current_control_packet_id);
 
-    /* Allows lookup of manual puback entries by packet id. We incref here because the packet_id table also has a ref to
-     * the manual_puback */
-    aws_ref_count_acquire(&manual_puback->ref_count);
+    /* Allows lookup of manual puback entries by packet id. */
     if (aws_hash_table_put(
             &client->operational_state.manual_puback_packet_id_table, &manual_puback->packet_id, manual_puback, NULL)) {
         int error_code = aws_last_error();
@@ -2681,6 +2678,8 @@ uint64_t aws_mqtt5_client_acquire_puback(
             aws_error_debug_str(error_code));
         goto cleanup;
     }
+    /* We incref here because the packet_id table also has a ref to the manual_puback */
+    aws_ref_count_acquire(&manual_puback->ref_count);
 
     /* Allows lookup of manual puback entries by control id */
     if (aws_hash_table_put(
