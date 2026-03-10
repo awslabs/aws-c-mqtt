@@ -298,7 +298,7 @@ typedef void(aws_mqtt5_publish_completion_fn)(
  * Signature of callback invoked when a manual PUBACK operation completes.
  *
  * @param puback_result result of the PUBACK operation
- * @param complete_ctx user data passed in with the completion options
+ * @param completion_user_data user data passed in with the completion options
  */
 typedef void(aws_mqtt5_manual_puback_completion_fn)(
     enum aws_mqtt5_manual_puback_result puback_result,
