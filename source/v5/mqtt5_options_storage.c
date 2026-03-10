@@ -2296,7 +2296,15 @@ static void s_aws_mqtt5_operation_puback_manual_completion(
     (void)completion_view;
     struct aws_mqtt5_operation_puback *puback_op = operation->impl;
 
-    // Completion callback on manual PUBACK.
+    /* Completion callback on manual PUBACK.
+     * Completion callback options are not currently bound out as there is an edge case where
+     * we would return a successful completion of the manual puback as a redriven PUBLISH packet
+     * is simultaneously received. This could cause confusion to the user and cause them to
+     * assume the redriven PUBLISH is a new PUBLISH and not a duplicate of the one they have just
+     * gotten a PUBACK invoke success from. We may re-instate this in the future upon customer
+     * request. We retain the logic to help us provide better logs of what is going on in the
+     * event we need to track down bugs for a user or ourselves.
+     */
     if (puback_op->completion_options.completion_callback != NULL) {
         // Convert error_code to manual puback result
         enum aws_mqtt5_manual_puback_result puback_result = AWS_MQTT5_MPR_SUCCESS;
