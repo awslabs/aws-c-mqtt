@@ -79,6 +79,7 @@ struct mqtt_connection_state_test {
     size_t ops_completed;
     size_t expected_ops_completed;
     size_t connection_close_calls; /* All of the times on_connection_closed has been called */
+    int operation_set_result;
 
     size_t connection_termination_calls; /* How many times on_connection_termination has been called, should be 1 */
 };
@@ -149,6 +150,13 @@ void aws_test311_on_op_complete(
 void aws_test311_wait_for_ops_completed(struct mqtt_connection_state_test *state_test_data);
 
 void aws_test311_on_connection_termination_fn(void *userdata);
+
+void aws_test_mqtt_build_expected_metrics(
+    struct aws_allocator *allocator,
+    const struct aws_byte_cursor *original_username,
+    const struct aws_byte_cursor sdk,
+    const struct aws_byte_cursor *platform,
+    struct aws_byte_buf *expected_buf);
 
 AWS_EXTERN_C_END
 
