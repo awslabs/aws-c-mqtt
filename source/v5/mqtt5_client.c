@@ -2639,8 +2639,6 @@ uint64_t aws_mqtt5_client_acquire_puback(
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     if (publish_view->qos == AWS_MQTT5_QOS_AT_MOST_ONCE) {
-        AWS_LOGF_ERROR(
-            AWS_LS_MQTT5_CLIENT, "id=%p: PUBACK control cannot be taken for a QoS 0 PUBLISH packet.", (void *)client);
         return 0;
     }
 
