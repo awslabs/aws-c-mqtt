@@ -273,7 +273,8 @@ static int s_mqtt5_client_manual_pub_ack_basic_success_fn(struct aws_allocator *
         .completion_user_data = &puback_context,
     };
 
-    ASSERT_SUCCESS(aws_mqtt5_client_invoke_puback(test_context.client, control_id, &completion_options));
+    ASSERT_SUCCESS(
+        aws_mqtt5_client_invoke_publish_acknowledgement(test_context.client, control_id, &completion_options));
 
     /* Wait for completion callback */
     s_wait_for_manual_pub_ack_callback(&puback_context);
@@ -381,7 +382,8 @@ static int s_mqtt5_client_manual_pub_ack_no_auto_puback_fn(struct aws_allocator 
         .completion_user_data = &puback_context,
     };
 
-    ASSERT_SUCCESS(aws_mqtt5_client_invoke_puback(test_context.client, control_id, &completion_options));
+    ASSERT_SUCCESS(
+        aws_mqtt5_client_invoke_publish_acknowledgement(test_context.client, control_id, &completion_options));
     s_wait_for_manual_pub_ack_callback(&puback_context);
 
     /* Verify PUBACK now received by server */
@@ -449,7 +451,8 @@ static int s_mqtt5_client_manual_pub_ack_invalid_control_id_fn(struct aws_alloca
     };
 
     uint64_t invalid_control_id = 999999;
-    ASSERT_SUCCESS(aws_mqtt5_client_invoke_puback(test_context.client, invalid_control_id, &completion_options));
+    ASSERT_SUCCESS(
+        aws_mqtt5_client_invoke_publish_acknowledgement(test_context.client, invalid_control_id, &completion_options));
 
     s_wait_for_manual_pub_ack_callback(&puback_context);
 
@@ -537,7 +540,7 @@ static int s_mqtt5_client_manual_pub_ack_multiple_publishes_fn(struct aws_alloca
     };
 
     for (int i = 2; i >= 0; i--) {
-        ASSERT_SUCCESS(aws_mqtt5_client_invoke_puback(
+        ASSERT_SUCCESS(aws_mqtt5_client_invoke_publish_acknowledgement(
             test_context.client, puback_context.pub_ack_control_ids[i], &completion_options));
     }
 
@@ -633,7 +636,8 @@ static int s_mqtt5_client_manual_pub_ack_disconnect_cancellation_fn(struct aws_a
         .completion_user_data = &puback_context,
     };
 
-    ASSERT_SUCCESS(aws_mqtt5_client_invoke_puback(test_context.client, control_id, &completion_options));
+    ASSERT_SUCCESS(
+        aws_mqtt5_client_invoke_publish_acknowledgement(test_context.client, control_id, &completion_options));
     s_wait_for_manual_pub_ack_callback(&puback_context);
 
     /* Verify cancelled result */
