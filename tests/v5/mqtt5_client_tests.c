@@ -6659,6 +6659,7 @@ AWS_TEST_CASE(mqtt5_client_auto_assigned_client_id_iot_core, s_mqtt5_client_auto
 static int s_mqtt5_client_metrics_in_username_fn(
     struct aws_allocator *allocator,
     struct aws_mqtt_iot_metrics *metrics,
+    struct aws_byte_cursor *original_username,
     void *ctx) {
     (void)ctx;
 
@@ -6668,14 +6669,11 @@ static int s_mqtt5_client_metrics_in_username_fn(
     aws_mqtt5_client_test_init_default_options(&test_options);
     test_options.client_options.metrics = metrics;
 
-    /* Set up username and metrics */
-    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str("test_user");
-
     struct aws_mqtt5_packet_connect_view connect_view = {
         .keep_alive_interval_seconds = 30,
         .client_id = aws_byte_cursor_from_string(g_default_client_id),
         .clean_start = true,
-        .username = &original_username};
+        .username = original_username};
 
     test_options.connect_options = connect_view;
 
@@ -6776,14 +6774,31 @@ static int s_test_mqtt5_client_set_metrics_valid(struct aws_allocator *allocator
         // .metadata_count = 0,
     };
 
-    return s_mqtt5_client_metrics_in_username_fn(allocator, &metrics, ctx);
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("test_user");
+
+    return s_mqtt5_client_metrics_in_username_fn(allocator, &metrics, &username, ctx);
 }
 
 AWS_TEST_CASE(mqtt5_client_set_metrics_valid, s_test_mqtt5_client_set_metrics_valid)
 
+static int s_test_mqtt5_client_set_metrics_with_null_username(struct aws_allocator *allocator, void *ctx) {
+
+    struct aws_mqtt_iot_metrics metrics = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0")
+        // TODO: enable when metadata is supported
+        // .metadata_entries = NULL,
+        // .metadata_count = 0,
+    };
+
+    return s_mqtt5_client_metrics_in_username_fn(allocator, &metrics, NULL, ctx);
+}
+
+AWS_TEST_CASE(mqtt5_client_set_metrics_with_null_username, s_test_mqtt5_client_set_metrics_with_null_username)
+
 static int s_test_mqtt5_client_set_metrics_null(struct aws_allocator *allocator, void *ctx) {
 
-    return s_mqtt5_client_metrics_in_username_fn(allocator, NULL, ctx);
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("test_user");
+    return s_mqtt5_client_metrics_in_username_fn(allocator, NULL, &username, ctx);
 }
 
 AWS_TEST_CASE(mqtt5_client_set_metrics_null, s_test_mqtt5_client_set_metrics_null)

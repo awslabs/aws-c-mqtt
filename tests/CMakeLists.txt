@@ -115,6 +115,7 @@ add_test_case(mqtt_websocket_failed_transform)
 # Connection state tests
 add_test_case(mqtt_connection_set_metrics_valid)
 add_test_case(mqtt_connection_set_metrics_null)
+add_test_case(mqtt_connection_set_metrics_with_null_username)
 add_test_case(mqtt_connection_set_metrics_invalid_utf8_library)
 add_test_case(mqtt_connection_set_metrics_modify_on_reconnect)
 
@@ -414,6 +415,7 @@ add_test_case(mqtt5_client_manual_puback_disconnect_cancellation)
 # Mqtt5 Metrics tests
 add_test_case(mqtt5_client_set_metrics_valid)
 add_test_case(mqtt5_client_set_metrics_null)
+add_test_case(mqtt5_client_set_metrics_with_null_username)
 
 add_test_case(rate_limiter_token_bucket_init_invalid)
 add_test_case(rate_limiter_token_bucket_regeneration_integral)
