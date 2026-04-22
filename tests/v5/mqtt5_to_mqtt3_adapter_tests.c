@@ -4428,8 +4428,21 @@ static int s_mqtt5to3_adapter_connection_set_metrics_valid_fn(struct aws_allocat
 
     struct aws_mqtt_client_connection *connection = fixture.connection;
 
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {
+            .key = aws_byte_cursor_from_c_str("lang"),
+            .value = aws_byte_cursor_from_c_str("C"),
+        },
+        {
+            .key = aws_byte_cursor_from_c_str("version"),
+            .value = aws_byte_cursor_from_c_str("1.0.0"),
+        },
+    };
+
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadatas = metadata_entries,
     };
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_metrics(connection, &metrics));
@@ -4499,8 +4512,13 @@ static int s_mqtt5to3_adapter_connection_set_metrics_invalid_utf8_library_fn(
     /* Invalid UTF-8 sequence */
     struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
 
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {.key = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("key1\xFF\xFE"),
+         .value = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("value1\xFF\xFE")}};
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = invalid_utf8_library,
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadatas = metadata_entries,
     };
 
     ASSERT_FAILS(aws_mqtt_client_connection_set_metrics(connection, &metrics));

@@ -94,7 +94,6 @@ int s_build_username_query(
     return AWS_OP_SUCCESS;
 }
 
-// TODO Future Work: we ignored the metadata field for now, will add them in future support
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
@@ -133,9 +132,14 @@ int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_byte_cursor question_mark_str = aws_byte_cursor_from_c_str("?");
     struct aws_byte_cursor sdk_str = aws_byte_cursor_from_c_str("SDK");
     struct aws_byte_cursor platform_str = aws_byte_cursor_from_c_str("Platform");
+    struct aws_byte_cursor metadata_str = aws_byte_cursor_from_c_str("Metadata");
 
     struct aws_array_list params_list;
     aws_array_list_init_dynamic(&params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
+
+    /* Buffer to hold the metadata value string: (key1=value1;key2=value2;...) */
+    struct aws_byte_buf metadata_value_buf;
+    AWS_ZERO_STRUCT(metadata_value_buf);
 
     // Looking for any existing query in the original username
     if (local_original_username.len > 0) {
@@ -193,6 +197,66 @@ int aws_mqtt_append_sdk_metrics_to_username(
         aws_array_list_push_back(&params_list, &platform_params);
     }
 
+    /* Build metadata value string and add to params_list if metadata entries exist */
+    if (metrics->metadatas != NULL && metrics->metadata_count > 0) {
+        struct aws_byte_cursor key_value_delim = aws_byte_cursor_from_c_str("=");
+        struct aws_byte_cursor entry_delim = aws_byte_cursor_from_c_str(";");
+        struct aws_byte_cursor open_paren = aws_byte_cursor_from_c_str("(");
+        struct aws_byte_cursor close_paren = aws_byte_cursor_from_c_str(")");
+
+        /* Calculate size needed for metadata value: (key1=value1;key2=value2;...) */
+        size_t metadata_value_size = open_paren.len + close_paren.len;
+        for (size_t i = 0; i < metrics->metadata_count; ++i) {
+            const struct aws_mqtt_metadata_entry *entry = &metrics->metadatas[i];
+            metadata_value_size += entry->key.len + key_value_delim.len + entry->value.len;
+            if (i < metrics->metadata_count - 1) {
+                metadata_value_size += entry_delim.len; /* semicolon separator between entries */
+            }
+        }
+
+        /* Initialize buffer for metadata value */
+        if (aws_byte_buf_init(&metadata_value_buf, allocator, metadata_value_size)) {
+            goto cleanup;
+        }
+
+        /* Build metadata value: (key1=value1;key2=value2;...) */
+        if (aws_byte_buf_append(&metadata_value_buf, &open_paren)) {
+            goto cleanup;
+        }
+
+        for (size_t i = 0; i < metrics->metadata_count; ++i) {
+            const struct aws_mqtt_metadata_entry *entry = &metrics->metadatas[i];
+
+            if (aws_byte_buf_append(&metadata_value_buf, &entry->key)) {
+                goto cleanup;
+            }
+            if (aws_byte_buf_append(&metadata_value_buf, &key_value_delim)) {
+                goto cleanup;
+            }
+            if (aws_byte_buf_append(&metadata_value_buf, &entry->value)) {
+                goto cleanup;
+            }
+
+            /* Add semicolon separator between entries (not after the last one) */
+            if (i < metrics->metadata_count - 1) {
+                if (aws_byte_buf_append(&metadata_value_buf, &entry_delim)) {
+                    goto cleanup;
+                }
+            }
+        }
+
+        if (aws_byte_buf_append(&metadata_value_buf, &close_paren)) {
+            goto cleanup;
+        }
+
+        /* Add Metadata parameter to params_list */
+        struct aws_uri_param metadata_params = {
+            .key = metadata_str,
+            .value = aws_byte_cursor_from_buf(&metadata_value_buf),
+        };
+        aws_array_list_push_back(&params_list, &metadata_params);
+    }
+
     // Rebuild metrics string from params_list
     // First parse to get final username size
     size_t total_size = 0;
@@ -218,6 +282,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     result = AWS_OP_SUCCESS;
 
 cleanup:
+    aws_byte_buf_clean_up(&metadata_value_buf);
     aws_array_list_clean_up(&params_list);
 
     if (result == AWS_OP_ERR) {
@@ -237,6 +302,15 @@ size_t aws_mqtt_iot_metrics_compute_storage_size(const struct aws_mqtt_iot_metri
 
     size_t storage_size = 0;
     storage_size += metrics->library_name.len;
+
+    /* Add storage for metadata entries */
+    if (metrics->metadatas != NULL && metrics->metadata_count > 0) {
+        for (size_t i = 0; i < metrics->metadata_count; ++i) {
+            const struct aws_mqtt_metadata_entry *entry = &metrics->metadatas[i];
+            storage_size += entry->key.len;
+            storage_size += entry->value.len;
+        }
+    }
 
     return storage_size;
 }
@@ -270,13 +344,49 @@ struct aws_mqtt_iot_metrics_storage *aws_mqtt_iot_metrics_storage_new(
         storage_view->library_name = metrics_storage->library_name;
     }
 
+    /* Copy metadata entries */
+    if (metrics_options->metadatas != NULL && metrics_options->metadata_count > 0) {
+        if (aws_array_list_init_dynamic(
+                &metrics_storage->metadata_entries,
+                allocator,
+                metrics_options->metadata_count,
+                sizeof(struct aws_mqtt_metadata_entry))) {
+            goto cleanup_storage;
+        }
+
+        for (size_t i = 0; i < metrics_options->metadata_count; ++i) {
+            struct aws_mqtt_metadata_entry entry;
+            entry.key = metrics_options->metadatas[i].key;
+            entry.value = metrics_options->metadatas[i].value;
+
+            /* Copy key into storage buffer and update cursor */
+            if (entry.key.len > 0) {
+                if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.key)) {
+                    goto cleanup_storage;
+                }
+            }
+
+            /* Copy value into storage buffer and update cursor */
+            if (entry.value.len > 0) {
+                if (aws_byte_buf_append_and_update(&metrics_storage->storage, &entry.value)) {
+                    goto cleanup_storage;
+                }
+            }
+
+            aws_array_list_push_back(&metrics_storage->metadata_entries, &entry);
+        }
+
+        /* Set storage_view to point to the metadata entries array */
+        storage_view->metadata_count = aws_array_list_length(&metrics_storage->metadata_entries);
+        storage_view->metadatas = metrics_storage->metadata_entries.data;
+    }
+
     return metrics_storage;
 
 cleanup_storage:
-    // TODO Future Work: add metadata entries once we implemented the metadata feature
-    // if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
-    //     aws_array_list_clean_up(&metrics_storage->metadata_entries);
-    // }
+    if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
+        aws_array_list_clean_up(&metrics_storage->metadata_entries);
+    }
 
     aws_byte_buf_clean_up(&metrics_storage->storage);
     aws_mem_release(allocator, metrics_storage);
@@ -286,6 +396,10 @@ cleanup_storage:
 void aws_mqtt_iot_metrics_storage_destroy(struct aws_mqtt_iot_metrics_storage *metrics_storage) {
     if (metrics_storage == NULL) {
         return;
+    }
+
+    if (aws_array_list_is_valid(&metrics_storage->metadata_entries)) {
+        aws_array_list_clean_up(&metrics_storage->metadata_entries);
     }
 
     aws_byte_buf_clean_up(&metrics_storage->storage);
@@ -300,6 +414,18 @@ int aws_mqtt_validate_iot_metrics(const struct aws_mqtt_iot_metrics *metrics) {
 
     if (aws_mqtt_validate_utf8_text(metrics->library_name)) {
         return AWS_OP_ERR;
+    }
+
+    /* Validate metadata entries */
+    if (metrics->metadatas != NULL && metrics->metadata_count > 0) {
+        for (size_t i = 0; i < metrics->metadata_count; ++i) {
+            if (aws_mqtt_validate_utf8_text(metrics->metadatas[i].key)) {
+                return AWS_OP_ERR;
+            }
+            if (aws_mqtt_validate_utf8_text(metrics->metadatas[i].value)) {
+                return AWS_OP_ERR;
+            }
+        }
     }
 
     return AWS_OP_SUCCESS;

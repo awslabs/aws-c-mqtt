@@ -583,13 +583,20 @@ void aws_test311_wait_for_ops_completed(struct mqtt_connection_state_test *state
 
 static const struct aws_byte_cursor SDK_ATT_STR = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("?SDK=");
 static const struct aws_byte_cursor PLATFORM_ATT_STR = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("&Platform=");
+static const struct aws_byte_cursor METADATA_ATT_STR = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("&Metadata=(");
+static const struct aws_byte_cursor METADATA_CLOSE_PAREN = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(")");
+static const struct aws_byte_cursor METADATA_KEY_VALUE_DELIM = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("=");
+static const struct aws_byte_cursor METADATA_ENTRY_DELIM = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(";");
 
 void aws_test_mqtt_build_expected_metrics(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
     const struct aws_byte_cursor sdk,
     const struct aws_byte_cursor *platform,
+    const struct aws_mqtt_metadata_entry *metadatas,
+    size_t metadata_count,
     struct aws_byte_buf *expected_buf) {
+
     struct aws_byte_cursor platform_to_use = platform ? *platform : aws_get_platform_build_os_string();
     if (original_username) {
         aws_byte_buf_init_copy_from_cursor(expected_buf, allocator, *original_username);
@@ -600,4 +607,23 @@ void aws_test_mqtt_build_expected_metrics(
     aws_byte_buf_append_dynamic(expected_buf, &sdk);
     aws_byte_buf_append_dynamic(expected_buf, &PLATFORM_ATT_STR);
     aws_byte_buf_append_dynamic(expected_buf, &platform_to_use);
+
+    /* Append metadata if present */
+    if (metadatas != NULL && metadata_count > 0) {
+        aws_byte_buf_append_dynamic(expected_buf, &METADATA_ATT_STR);
+
+        for (size_t i = 0; i < metadata_count; ++i) {
+            const struct aws_mqtt_metadata_entry *entry = &metadatas[i];
+            aws_byte_buf_append_dynamic(expected_buf, &entry->key);
+            aws_byte_buf_append_dynamic(expected_buf, &METADATA_KEY_VALUE_DELIM);
+            aws_byte_buf_append_dynamic(expected_buf, &entry->value);
+
+            /* Add semicolon separator between entries (not after the last one) */
+            if (i < metadata_count - 1) {
+                aws_byte_buf_append_dynamic(expected_buf, &METADATA_ENTRY_DELIM);
+            }
+        }
+
+        aws_byte_buf_append_dynamic(expected_buf, &METADATA_CLOSE_PAREN);
+    }
 }

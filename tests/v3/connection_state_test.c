@@ -4160,7 +4160,14 @@ static int s_create_mqtt_connection_and_set_metrics(
     struct aws_byte_buf expected_buf;
     AWS_ZERO_STRUCT(expected_buf);
     if (metrics) {
-        aws_test_mqtt_build_expected_metrics(allocator, username, metrics->library_name, NULL, &expected_buf);
+        aws_test_mqtt_build_expected_metrics(
+            allocator,
+            username,
+            metrics->library_name,
+            NULL,
+            metrics->metadatas,
+            metrics->metadata_count,
+            &expected_buf);
     } else if (username != NULL) {
         aws_byte_buf_init_copy_from_cursor(&expected_buf, allocator, *username);
     }
@@ -4178,11 +4185,22 @@ static int s_create_mqtt_connection_and_set_metrics(
 static int s_test_mqtt_connection_set_metrics_valid_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
 
+    /* Create metadata entries */
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {
+            .key = aws_byte_cursor_from_c_str("key1"),
+            .value = aws_byte_cursor_from_c_str("value1"),
+        },
+        {
+            .key = aws_byte_cursor_from_c_str("key2"),
+            .value = aws_byte_cursor_from_c_str("value2"),
+        },
+    };
+
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
-        // TODO: enable metadata testing when metadata support is added
-        // .metadata_entries = NULL,
-        // .metadata_count = 0,
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadatas = metadata_entries,
     };
 
     struct aws_byte_cursor username = aws_byte_cursor_from_c_str("testuser");
@@ -4218,11 +4236,22 @@ AWS_TEST_CASE_FIXTURE(
 
 static int s_test_mqtt_connection_set_metrics_with_null_username_fn(struct aws_allocator *allocator, void *ctx) {
 
+    /* Create metadata entries */
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {
+            .key = aws_byte_cursor_from_c_str("key1"),
+            .value = aws_byte_cursor_from_c_str("value1"),
+        },
+        {
+            .key = aws_byte_cursor_from_c_str("key2"),
+            .value = aws_byte_cursor_from_c_str("value2"),
+        },
+    };
+
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
-        // TODO: enable metadata testing when metadata support is added
-        // .metadata_entries = NULL,
-        // .metadata_count = 0,
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadatas = metadata_entries,
     };
 
     ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, &metrics, NULL, ctx));
@@ -4306,7 +4335,7 @@ static int s_test_mqtt_connection_set_metrics_modify_on_reconnect_fn(struct aws_
     /* verify the username and metrics is setup properly */
     struct aws_byte_buf expected_buf;
     AWS_ZERO_STRUCT(expected_buf);
-    aws_test_mqtt_build_expected_metrics(allocator, &username1, metrics1.library_name, NULL, &expected_buf);
+    aws_test_mqtt_build_expected_metrics(allocator, &username1, metrics1.library_name, NULL, NULL, 0, &expected_buf);
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&received_packet1->username, &expected_buf));
     aws_byte_buf_clean_up(&expected_buf);
 
@@ -4327,7 +4356,7 @@ static int s_test_mqtt_connection_set_metrics_modify_on_reconnect_fn(struct aws_
 
     /* verify the username and metrics is setup properly */
     AWS_ZERO_STRUCT(expected_buf);
-    aws_test_mqtt_build_expected_metrics(allocator, &username2, metrics2.library_name, NULL, &expected_buf);
+    aws_test_mqtt_build_expected_metrics(allocator, &username2, metrics2.library_name, NULL, NULL, 0, &expected_buf);
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&received_packet2->username, &expected_buf));
     aws_byte_buf_clean_up(&expected_buf);
 

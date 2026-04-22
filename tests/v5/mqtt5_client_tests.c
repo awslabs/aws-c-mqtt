@@ -6767,11 +6767,22 @@ static int s_mqtt5_client_metrics_in_username_fn(
 }
 
 static int s_test_mqtt5_client_set_metrics_valid(struct aws_allocator *allocator, void *ctx) {
+
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {
+            .key = aws_byte_cursor_from_c_str("lang"),
+            .value = aws_byte_cursor_from_c_str("C"),
+        },
+        {
+            .key = aws_byte_cursor_from_c_str("version"),
+            .value = aws_byte_cursor_from_c_str("1.0.0"),
+        },
+    };
+
     struct aws_mqtt_iot_metrics metrics = {
-        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0")
-        // TODO: enable when metadata is supported
-        // .metadata_entries = NULL,
-        // .metadata_count = 0,
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadatas = metadata_entries,
     };
 
     struct aws_byte_cursor username = aws_byte_cursor_from_c_str("test_user");
@@ -6783,11 +6794,21 @@ AWS_TEST_CASE(mqtt5_client_set_metrics_valid, s_test_mqtt5_client_set_metrics_va
 
 static int s_test_mqtt5_client_set_metrics_with_null_username(struct aws_allocator *allocator, void *ctx) {
 
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {
+            .key = aws_byte_cursor_from_c_str("lang"),
+            .value = aws_byte_cursor_from_c_str("C"),
+        },
+        {
+            .key = aws_byte_cursor_from_c_str("version"),
+            .value = aws_byte_cursor_from_c_str("1.0.0"),
+        },
+    };
+
     struct aws_mqtt_iot_metrics metrics = {
-        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0")
-        // TODO: enable when metadata is supported
-        // .metadata_entries = NULL,
-        // .metadata_count = 0,
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadatas = metadata_entries,
     };
 
     return s_mqtt5_client_metrics_in_username_fn(allocator, &metrics, NULL, ctx);

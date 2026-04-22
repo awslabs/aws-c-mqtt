@@ -16,6 +16,9 @@ struct aws_mqtt_iot_metrics_storage {
 
     struct aws_byte_cursor library_name;
 
+    /* Array of aws_mqtt_metadata_entry for storage_view.metadatas to point to */
+    struct aws_array_list metadata_entries;
+
     struct aws_byte_buf storage;
 };
 
