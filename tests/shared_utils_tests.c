@@ -388,7 +388,7 @@ static int s_test_mqtt_append_sdk_metrics_with_metadata(struct aws_allocator *al
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
         .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
-        .metadatas = metadata_entries,
+        .metadata_entries = metadata_entries,
     };
 
     struct aws_byte_buf output_username;
@@ -429,7 +429,7 @@ static int s_test_mqtt_append_sdk_metrics_with_metadata_invalid_utf8(struct aws_
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
         .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
-        .metadatas = metadata_entries,
+        .metadata_entries = metadata_entries,
     };
 
     struct aws_byte_buf output_username;
@@ -465,7 +465,7 @@ static int s_test_mqtt_append_sdk_metrics_with_metadata_invalid_utf8_value(struc
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
         .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
-        .metadatas = metadata_entries,
+        .metadata_entries = metadata_entries,
     };
 
     struct aws_byte_buf output_username;
@@ -504,7 +504,7 @@ static int s_test_mqtt_iot_metrics_storage_with_metadata(struct aws_allocator *a
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
         .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
-        .metadatas = metadata_entries,
+        .metadata_entries = metadata_entries,
     };
 
     struct aws_mqtt_iot_metrics_storage *storage = aws_mqtt_iot_metrics_storage_new(allocator, &metrics);
@@ -513,13 +513,13 @@ static int s_test_mqtt_iot_metrics_storage_with_metadata(struct aws_allocator *a
     /* Verify the storage view has the correct values */
     ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.library_name, "TestSDK/1.0"));
     ASSERT_INT_EQUALS(2, storage->storage_view.metadata_count);
-    ASSERT_NOT_NULL(storage->storage_view.metadatas);
+    ASSERT_NOT_NULL(storage->storage_view.metadata_entries);
 
     /* Verify metadata entries are correctly stored */
-    ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.metadatas[0].key, "Key1"));
-    ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.metadatas[0].value, "Value1"));
-    ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.metadatas[1].key, "Key2"));
-    ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.metadatas[1].value, "Value2"));
+    ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.metadata_entries[0].key, "Key1"));
+    ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.metadata_entries[0].value, "Value1"));
+    ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.metadata_entries[1].key, "Key2"));
+    ASSERT_TRUE(aws_byte_cursor_eq_c_str(&storage->storage_view.metadata_entries[1].value, "Value2"));
 
     aws_mqtt_iot_metrics_storage_destroy(storage);
 
@@ -534,7 +534,7 @@ static int s_test_mqtt_iot_metrics_storage_empty_metadata(struct aws_allocator *
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
         .metadata_count = 0,
-        .metadatas = NULL,
+        .metadata_entries = NULL,
     };
 
     struct aws_mqtt_iot_metrics_storage *storage = aws_mqtt_iot_metrics_storage_new(allocator, &metrics);

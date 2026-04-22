@@ -198,7 +198,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     /* Build metadata value string and add to params_list if metadata entries exist */
-    if (metrics->metadatas != NULL && metrics->metadata_count > 0) {
+    if (metrics->metadata_entries != NULL && metrics->metadata_count > 0) {
         struct aws_byte_cursor key_value_delim = aws_byte_cursor_from_c_str("=");
         struct aws_byte_cursor entry_delim = aws_byte_cursor_from_c_str(";");
         struct aws_byte_cursor open_paren = aws_byte_cursor_from_c_str("(");
@@ -207,7 +207,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
         /* Calculate size needed for metadata value: (key1=value1;key2=value2;...) */
         size_t metadata_value_size = open_paren.len + close_paren.len;
         for (size_t i = 0; i < metrics->metadata_count; ++i) {
-            const struct aws_mqtt_metadata_entry *entry = &metrics->metadatas[i];
+            const struct aws_mqtt_metadata_entry *entry = &metrics->metadata_entries[i];
             metadata_value_size += entry->key.len + key_value_delim.len + entry->value.len;
             if (i < metrics->metadata_count - 1) {
                 metadata_value_size += entry_delim.len; /* semicolon separator between entries */
@@ -225,7 +225,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
         }
 
         for (size_t i = 0; i < metrics->metadata_count; ++i) {
-            const struct aws_mqtt_metadata_entry *entry = &metrics->metadatas[i];
+            const struct aws_mqtt_metadata_entry *entry = &metrics->metadata_entries[i];
 
             if (aws_byte_buf_append(&metadata_value_buf, &entry->key)) {
                 goto cleanup;
@@ -304,9 +304,9 @@ size_t aws_mqtt_iot_metrics_compute_storage_size(const struct aws_mqtt_iot_metri
     storage_size += metrics->library_name.len;
 
     /* Add storage for metadata entries */
-    if (metrics->metadatas != NULL && metrics->metadata_count > 0) {
+    if (metrics->metadata_entries != NULL && metrics->metadata_count > 0) {
         for (size_t i = 0; i < metrics->metadata_count; ++i) {
-            const struct aws_mqtt_metadata_entry *entry = &metrics->metadatas[i];
+            const struct aws_mqtt_metadata_entry *entry = &metrics->metadata_entries[i];
             storage_size += entry->key.len;
             storage_size += entry->value.len;
         }
@@ -345,7 +345,7 @@ struct aws_mqtt_iot_metrics_storage *aws_mqtt_iot_metrics_storage_new(
     }
 
     /* Copy metadata entries */
-    if (metrics_options->metadatas != NULL && metrics_options->metadata_count > 0) {
+    if (metrics_options->metadata_entries != NULL && metrics_options->metadata_count > 0) {
         if (aws_array_list_init_dynamic(
                 &metrics_storage->metadata_entries,
                 allocator,
@@ -356,8 +356,8 @@ struct aws_mqtt_iot_metrics_storage *aws_mqtt_iot_metrics_storage_new(
 
         for (size_t i = 0; i < metrics_options->metadata_count; ++i) {
             struct aws_mqtt_metadata_entry entry;
-            entry.key = metrics_options->metadatas[i].key;
-            entry.value = metrics_options->metadatas[i].value;
+            entry.key = metrics_options->metadata_entries[i].key;
+            entry.value = metrics_options->metadata_entries[i].value;
 
             /* Copy key into storage buffer and update cursor */
             if (entry.key.len > 0) {
@@ -378,7 +378,7 @@ struct aws_mqtt_iot_metrics_storage *aws_mqtt_iot_metrics_storage_new(
 
         /* Set storage_view to point to the metadata entries array */
         storage_view->metadata_count = aws_array_list_length(&metrics_storage->metadata_entries);
-        storage_view->metadatas = metrics_storage->metadata_entries.data;
+        storage_view->metadata_entries = metrics_storage->metadata_entries.data;
     }
 
     return metrics_storage;
@@ -417,12 +417,12 @@ int aws_mqtt_validate_iot_metrics(const struct aws_mqtt_iot_metrics *metrics) {
     }
 
     /* Validate metadata entries */
-    if (metrics->metadatas != NULL && metrics->metadata_count > 0) {
+    if (metrics->metadata_entries != NULL && metrics->metadata_count > 0) {
         for (size_t i = 0; i < metrics->metadata_count; ++i) {
-            if (aws_mqtt_validate_utf8_text(metrics->metadatas[i].key)) {
+            if (aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].key)) {
                 return AWS_OP_ERR;
             }
-            if (aws_mqtt_validate_utf8_text(metrics->metadatas[i].value)) {
+            if (aws_mqtt_validate_utf8_text(metrics->metadata_entries[i].value)) {
                 return AWS_OP_ERR;
             }
         }

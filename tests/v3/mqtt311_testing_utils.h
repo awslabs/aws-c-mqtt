@@ -159,7 +159,7 @@ void aws_test311_on_connection_termination_fn(void *userdata);
  * @param original_username The original username (can be NULL)
  * @param sdk The SDK string
  * @param platform The platform string (can be NULL to use default)
- * @param metadatas Array of metadata entries (can be NULL if metadata_count is 0)
+ * @param metadata_entries Array of metadata entries (can be NULL if metadata_count is 0)
  * @param metadata_count Number of metadata entries (0 for no metadata)
  * @param expected_buf Output buffer for the expected metrics string
  */
@@ -168,7 +168,7 @@ void aws_test_mqtt_build_expected_metrics(
     const struct aws_byte_cursor *original_username,
     const struct aws_byte_cursor sdk,
     const struct aws_byte_cursor *platform,
-    const struct aws_mqtt_metadata_entry *metadatas,
+    const struct aws_mqtt_metadata_entry *metadata_entries,
     size_t metadata_count,
     struct aws_byte_buf *expected_buf);
 

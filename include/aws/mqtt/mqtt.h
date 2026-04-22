@@ -132,7 +132,7 @@ struct aws_mqtt_iot_metrics {
      * Metadata entries, key value pair to set in metrics
      */
     size_t metadata_count;
-    const struct aws_mqtt_metadata_entry *metadatas;
+    const struct aws_mqtt_metadata_entry *metadata_entries;
 };
 
 AWS_EXTERN_C_BEGIN

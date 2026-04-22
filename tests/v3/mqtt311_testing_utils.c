@@ -593,7 +593,7 @@ void aws_test_mqtt_build_expected_metrics(
     const struct aws_byte_cursor *original_username,
     const struct aws_byte_cursor sdk,
     const struct aws_byte_cursor *platform,
-    const struct aws_mqtt_metadata_entry *metadatas,
+    const struct aws_mqtt_metadata_entry *metadata_entries,
     size_t metadata_count,
     struct aws_byte_buf *expected_buf) {
 
@@ -609,11 +609,11 @@ void aws_test_mqtt_build_expected_metrics(
     aws_byte_buf_append_dynamic(expected_buf, &platform_to_use);
 
     /* Append metadata if present */
-    if (metadatas != NULL && metadata_count > 0) {
+    if (metadata_entries != NULL && metadata_count > 0) {
         aws_byte_buf_append_dynamic(expected_buf, &METADATA_ATT_STR);
 
         for (size_t i = 0; i < metadata_count; ++i) {
-            const struct aws_mqtt_metadata_entry *entry = &metadatas[i];
+            const struct aws_mqtt_metadata_entry *entry = &metadata_entries[i];
             aws_byte_buf_append_dynamic(expected_buf, &entry->key);
             aws_byte_buf_append_dynamic(expected_buf, &METADATA_KEY_VALUE_DELIM);
             aws_byte_buf_append_dynamic(expected_buf, &entry->value);

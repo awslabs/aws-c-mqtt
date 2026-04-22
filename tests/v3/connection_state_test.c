@@ -4165,7 +4165,7 @@ static int s_create_mqtt_connection_and_set_metrics(
             username,
             metrics->library_name,
             NULL,
-            metrics->metadatas,
+            metrics->metadata_entries,
             metrics->metadata_count,
             &expected_buf);
     } else if (username != NULL) {
@@ -4200,7 +4200,7 @@ static int s_test_mqtt_connection_set_metrics_valid_fn(struct aws_allocator *all
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
         .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
-        .metadatas = metadata_entries,
+        .metadata_entries = metadata_entries,
     };
 
     struct aws_byte_cursor username = aws_byte_cursor_from_c_str("testuser");
@@ -4251,7 +4251,7 @@ static int s_test_mqtt_connection_set_metrics_with_null_username_fn(struct aws_a
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
         .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
-        .metadatas = metadata_entries,
+        .metadata_entries = metadata_entries,
     };
 
     ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, &metrics, NULL, ctx));
