@@ -129,7 +129,7 @@ struct aws_mqtt_iot_metrics {
     struct aws_byte_cursor library_name;
 
     /**
-     * Metadata entries, key value pair to set in metrics
+     * Metadata entries, key value pair to set in metrics "Metadata" field
      */
     size_t metadata_count;
     const struct aws_mqtt_metadata_entry *metadata_entries;
