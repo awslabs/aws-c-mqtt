@@ -303,8 +303,7 @@ static int s_build_username_query(
     struct aws_byte_cursor ampersand_delim = aws_byte_cursor_from_c_str("&");
 
     size_t params_size = 0;
-    if (s_build_delimited_params(
-            params_list, &query_prefix, NULL, &ampersand_delim, output_username, &params_size)) {
+    if (s_build_delimited_params(params_list, &query_prefix, NULL, &ampersand_delim, output_username, &params_size)) {
         return AWS_OP_ERR;
     }
 

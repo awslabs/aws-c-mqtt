@@ -572,8 +572,8 @@ static int s_test_mqtt_append_sdk_metrics_existing_metadata(struct aws_allocator
     AWS_ZERO_STRUCT(output_username);
 
     /* Username already contains SDK, Platform, and Metadata fields */
-    struct aws_byte_cursor original_username =
-        aws_byte_cursor_from_c_str("testuser?SDK=ExistingSDK&Platform=ExistingPlatform&Metadata=(ExistingKey=ExistingValue)");
+    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str(
+        "testuser?SDK=ExistingSDK&Platform=ExistingPlatform&Metadata=(ExistingKey=ExistingValue)");
 
     ASSERT_SUCCESS(
         aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
@@ -615,8 +615,8 @@ static int s_test_mqtt_append_sdk_metrics_existing_metadata_no_new(struct aws_al
     AWS_ZERO_STRUCT(output_username);
 
     /* Username already contains Metadata field */
-    struct aws_byte_cursor original_username =
-        aws_byte_cursor_from_c_str("testuser?SDK=ExistingSDK&Platform=ExistingPlatform&Metadata=(ExistingKey=ExistingValue)");
+    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str(
+        "testuser?SDK=ExistingSDK&Platform=ExistingPlatform&Metadata=(ExistingKey=ExistingValue)");
 
     ASSERT_SUCCESS(
         aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
