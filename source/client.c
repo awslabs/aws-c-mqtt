@@ -635,12 +635,13 @@ static void s_mqtt_client_init(
             &connect, topic_cur, connection->will.qos, connection->will.retain, payload_cur);
     }
 
-    if (aws_mqtt_has_non_empty_username(connection->username, connection->metrics_storage)) {
-        struct aws_byte_cursor username_cur;
-        AWS_ZERO_STRUCT(username_cur);
-        if (connection->username) {
-            username_cur = aws_byte_cursor_from_string(connection->username);
-        }
+    struct aws_byte_cursor username_cur;
+    AWS_ZERO_STRUCT(username_cur);
+    if (connection->username) {
+        username_cur = aws_byte_cursor_from_string(connection->username);
+    }
+
+    if (aws_mqtt_has_non_empty_username(&username_cur, connection->metrics_storage)) {
 
         /* Apply metrics to username if configured */
         if (connection->metrics_storage) {
