@@ -4115,10 +4115,15 @@ AWS_TEST_CASE_FIXTURE(
 
 /**
  * helper function to test client with different metrics by checking the received username field
+ * @param allocator The allocator to use
+ * @param metrics The metrics to set (can be NULL to disable metrics)
+ * @param username The username to set (can be NULL to skip setting username)
+ * @param ctx The test context
  */
 static int s_create_mqtt_connection_and_set_metrics(
     struct aws_allocator *allocator,
     struct aws_mqtt_iot_metrics *metrics,
+    struct aws_byte_cursor *username,
     void *ctx) {
     struct mqtt_connection_state_test *state_test_data = ctx;
 
@@ -4131,8 +4136,9 @@ static int s_create_mqtt_connection_and_set_metrics(
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
 
-    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("testuser");
-    ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, &username, NULL));
+    if (username != NULL) {
+        ASSERT_SUCCESS(aws_mqtt_client_connection_set_login(state_test_data->mqtt_connection, username, NULL));
+    }
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_metrics(state_test_data->mqtt_connection, metrics));
 
@@ -4154,9 +4160,16 @@ static int s_create_mqtt_connection_and_set_metrics(
     struct aws_byte_buf expected_buf;
     AWS_ZERO_STRUCT(expected_buf);
     if (metrics) {
-        aws_test_mqtt_build_expected_metrics(allocator, &username, metrics->library_name, NULL, &expected_buf);
-    } else {
-        aws_byte_buf_init_copy_from_cursor(&expected_buf, allocator, username);
+        aws_test_mqtt_build_expected_metrics(
+            allocator,
+            username,
+            metrics->library_name,
+            NULL,
+            metrics->metadata_entries,
+            metrics->metadata_count,
+            &expected_buf);
+    } else if (username != NULL) {
+        aws_byte_buf_init_copy_from_cursor(&expected_buf, allocator, *username);
     }
 
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&received_packet->username, &expected_buf));
@@ -4172,14 +4185,26 @@ static int s_create_mqtt_connection_and_set_metrics(
 static int s_test_mqtt_connection_set_metrics_valid_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
 
-    struct aws_mqtt_iot_metrics metrics = {
-        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
-        // TODO: enable metadata testing when metadata support is added
-        // .metadata_entries = NULL,
-        // .metadata_count = 0,
+    /* Create metadata entries */
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {
+            .key = aws_byte_cursor_from_c_str("key1"),
+            .value = aws_byte_cursor_from_c_str("value1"),
+        },
+        {
+            .key = aws_byte_cursor_from_c_str("key2"),
+            .value = aws_byte_cursor_from_c_str("value2"),
+        },
     };
 
-    ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, &metrics, ctx));
+    struct aws_mqtt_iot_metrics metrics = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadata_entries = metadata_entries,
+    };
+
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("testuser");
+    ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, &metrics, &username, ctx));
 
     return AWS_OP_SUCCESS;
 }
@@ -4196,7 +4221,8 @@ AWS_TEST_CASE_FIXTURE(
  */
 static int s_test_mqtt_connection_set_metrics_null_fn(struct aws_allocator *allocator, void *ctx) {
 
-    ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, NULL, ctx));
+    struct aws_byte_cursor username = aws_byte_cursor_from_c_str("testuser");
+    ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, NULL, &username, ctx));
 
     return AWS_OP_SUCCESS;
 }
@@ -4205,6 +4231,38 @@ AWS_TEST_CASE_FIXTURE(
     mqtt_connection_set_metrics_null,
     s_setup_mqtt_server_fn,
     s_test_mqtt_connection_set_metrics_null_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+static int s_test_mqtt_connection_set_metrics_with_null_username_fn(struct aws_allocator *allocator, void *ctx) {
+
+    /* Create metadata entries */
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {
+            .key = aws_byte_cursor_from_c_str("key1"),
+            .value = aws_byte_cursor_from_c_str("value1"),
+        },
+        {
+            .key = aws_byte_cursor_from_c_str("key2"),
+            .value = aws_byte_cursor_from_c_str("value2"),
+        },
+    };
+
+    struct aws_mqtt_iot_metrics metrics = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadata_entries = metadata_entries,
+    };
+
+    ASSERT_SUCCESS(s_create_mqtt_connection_and_set_metrics(allocator, &metrics, NULL, ctx));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connection_set_metrics_with_null_username,
+    s_setup_mqtt_server_fn,
+    s_test_mqtt_connection_set_metrics_with_null_username_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
 
@@ -4277,7 +4335,7 @@ static int s_test_mqtt_connection_set_metrics_modify_on_reconnect_fn(struct aws_
     /* verify the username and metrics is setup properly */
     struct aws_byte_buf expected_buf;
     AWS_ZERO_STRUCT(expected_buf);
-    aws_test_mqtt_build_expected_metrics(allocator, &username1, metrics1.library_name, NULL, &expected_buf);
+    aws_test_mqtt_build_expected_metrics(allocator, &username1, metrics1.library_name, NULL, NULL, 0, &expected_buf);
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&received_packet1->username, &expected_buf));
     aws_byte_buf_clean_up(&expected_buf);
 
@@ -4298,7 +4356,7 @@ static int s_test_mqtt_connection_set_metrics_modify_on_reconnect_fn(struct aws_
 
     /* verify the username and metrics is setup properly */
     AWS_ZERO_STRUCT(expected_buf);
-    aws_test_mqtt_build_expected_metrics(allocator, &username2, metrics2.library_name, NULL, &expected_buf);
+    aws_test_mqtt_build_expected_metrics(allocator, &username2, metrics2.library_name, NULL, NULL, 0, &expected_buf);
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&received_packet2->username, &expected_buf));
     aws_byte_buf_clean_up(&expected_buf);
 

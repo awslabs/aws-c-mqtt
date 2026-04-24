@@ -151,11 +151,25 @@ void aws_test311_wait_for_ops_completed(struct mqtt_connection_state_test *state
 
 void aws_test311_on_connection_termination_fn(void *userdata);
 
+/**
+ * Build expected metrics string with optional metadata support.
+ * Format: username?SDK=<sdk>&Platform=<platform>[&Metadata=(key1=value1;key2=value2)]
+ *
+ * @param allocator The allocator to use
+ * @param original_username The original username (can be NULL)
+ * @param sdk The SDK string
+ * @param platform The platform string (can be NULL to use default)
+ * @param metadata_entries Array of metadata entries (can be NULL if metadata_count is 0)
+ * @param metadata_count Number of metadata entries (0 for no metadata)
+ * @param expected_buf Output buffer for the expected metrics string
+ */
 void aws_test_mqtt_build_expected_metrics(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
     const struct aws_byte_cursor sdk,
     const struct aws_byte_cursor *platform,
+    const struct aws_mqtt_metadata_entry *metadata_entries,
+    size_t metadata_count,
     struct aws_byte_buf *expected_buf);
 
 AWS_EXTERN_C_END

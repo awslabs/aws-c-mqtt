@@ -115,6 +115,7 @@ add_test_case(mqtt_websocket_failed_transform)
 # Connection state tests
 add_test_case(mqtt_connection_set_metrics_valid)
 add_test_case(mqtt_connection_set_metrics_null)
+add_test_case(mqtt_connection_set_metrics_with_null_username)
 add_test_case(mqtt_connection_set_metrics_invalid_utf8_library)
 add_test_case(mqtt_connection_set_metrics_modify_on_reconnect)
 
@@ -149,6 +150,11 @@ add_test_case(mqtt_append_sdk_metrics_special_chars)
 add_test_case(mqtt_append_sdk_metrics_long_strings)
 add_test_case(mqtt_append_sdk_metrics_invalid_utf8)
 add_test_case(mqtt_append_sdk_metrics_multiple_question_mark)
+add_test_case(mqtt_append_sdk_metrics_with_metadata)
+add_test_case(mqtt_append_sdk_metrics_with_metadata_invalid_utf8)
+add_test_case(mqtt_append_sdk_metrics_with_metadata_invalid_utf8_value)
+add_test_case(mqtt_iot_metrics_storage_with_metadata)
+add_test_case(mqtt_iot_metrics_storage_empty_metadata)
 
 # topic aliasing
 add_test_case(mqtt5_inbound_topic_alias_register_failure)
@@ -414,6 +420,7 @@ add_test_case(mqtt5_client_manual_pub_ack_disconnect_cancellation)
 # Mqtt5 Metrics tests
 add_test_case(mqtt5_client_set_metrics_valid)
 add_test_case(mqtt5_client_set_metrics_null)
+add_test_case(mqtt5_client_set_metrics_with_null_username)
 
 add_test_case(rate_limiter_token_bucket_init_invalid)
 add_test_case(rate_limiter_token_bucket_regeneration_integral)
