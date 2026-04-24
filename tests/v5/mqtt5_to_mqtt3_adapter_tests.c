@@ -4168,8 +4168,7 @@ static int s_mqtt5to3_adapter_resubscribe_nothing_fn(struct aws_allocator *alloc
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
     struct aws_mqtt3_operation_event resubscribe_ack[] = {{
-        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
-        .error_code = AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS,
+        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, .error_code = AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS,
         /* no granted subscriptions */
     }};
 
