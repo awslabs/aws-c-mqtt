@@ -646,7 +646,7 @@ static size_t s_aws_mqtt5_packet_connect_compute_storage_size(
 
     storage_size += view->client_id.len;
 
-    if (view->username != NULL || (options && options->metrics_storage != NULL)) {
+    if (aws_mqtt_has_non_empty_username(view->username, options ? options->metrics_storage : NULL)) {
 
         if (options) {
             size_t username_size = 0;
@@ -701,7 +701,8 @@ int aws_mqtt5_packet_connect_storage_init(
         return AWS_OP_ERR;
     }
 
-    if (view->username != NULL || (client_options_storage && client_options_storage->metrics_storage != NULL)) {
+    if (aws_mqtt_has_non_empty_username(
+            view->username, client_options_storage ? client_options_storage->metrics_storage : NULL)) {
         if (view->username) {
             storage->username = *view->username;
         }

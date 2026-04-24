@@ -635,7 +635,7 @@ static void s_mqtt_client_init(
             &connect, topic_cur, connection->will.qos, connection->will.retain, payload_cur);
     }
 
-    if (connection->username || connection->metrics_storage) {
+    if (aws_mqtt_has_non_empty_username(connection->username, connection->metrics_storage)) {
         struct aws_byte_cursor username_cur;
         AWS_ZERO_STRUCT(username_cur);
         if (connection->username) {
@@ -2083,7 +2083,7 @@ static enum aws_mqtt_client_request_state s_subscribe_send(uint16_t packet_id, b
         return AWS_MQTT_CLIENT_REQUEST_ERROR;
     }
 
-    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics * aws_mqtt_topic_tree_action_size);
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics *aws_mqtt_topic_tree_action_size);
     struct aws_array_list transaction;
     aws_array_list_init_static(&transaction, transaction_buf, num_topics, aws_mqtt_topic_tree_action_size);
 
@@ -2876,7 +2876,7 @@ static enum aws_mqtt_client_request_state s_unsubscribe_send(
 
     static const size_t num_topics = 1;
 
-    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics * aws_mqtt_topic_tree_action_size);
+    AWS_VARIABLE_LENGTH_ARRAY(uint8_t, transaction_buf, num_topics *aws_mqtt_topic_tree_action_size);
     struct aws_array_list transaction;
     aws_array_list_init_static(&transaction, transaction_buf, num_topics, aws_mqtt_topic_tree_action_size);
 

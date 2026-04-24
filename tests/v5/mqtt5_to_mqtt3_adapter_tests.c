@@ -4168,7 +4168,8 @@ static int s_mqtt5to3_adapter_resubscribe_nothing_fn(struct aws_allocator *alloc
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
     struct aws_mqtt3_operation_event resubscribe_ack[] = {{
-        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, .error_code = AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS,
+        .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+        .error_code = AWS_ERROR_MQTT_CONNECTION_RESUBSCRIBE_NO_TOPICS,
         /* no granted subscriptions */
     }};
 
@@ -4512,9 +4513,11 @@ static int s_mqtt5to3_adapter_connection_set_metrics_invalid_utf8_library_fn(
     /* Invalid UTF-8 sequence */
     struct aws_byte_cursor invalid_utf8_library = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TestSDK\xFF\xFE");
 
-    struct aws_mqtt_metadata_entry metadata_entries[] = {
-        {.key = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("key1\xFF\xFE"),
-         .value = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("value1\xFF\xFE")}};
+    struct aws_mqtt_metadata_entry metadata_entries[] = {{
+        .key = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("key1\xFF\xFE"),
+        .value = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("value1\xFF\xFE"),
+    }};
+
     struct aws_mqtt_iot_metrics metrics = {
         .library_name = invalid_utf8_library,
         .metadata_count = AWS_ARRAY_SIZE(metadata_entries),

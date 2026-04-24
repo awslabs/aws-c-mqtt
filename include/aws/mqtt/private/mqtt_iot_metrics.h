@@ -56,4 +56,17 @@ int aws_mqtt_append_sdk_metrics_to_username(
 AWS_MQTT_API
 int aws_mqtt_validate_iot_metrics(const struct aws_mqtt_iot_metrics *metrics);
 
+/**
+ * Checks if username should be included in the CONNECT packet.
+ * Returns true if either username is provided or metrics are configured.
+ *
+ * @param username The username cursor (can be NULL)
+ * @param metrics_storage The metrics storage (can be NULL)
+ * @return true if username should be included, false otherwise
+ */
+AWS_MQTT_API
+bool aws_mqtt_has_non_empty_username(
+    const struct aws_byte_cursor *username,
+    const struct aws_mqtt_iot_metrics_storage *metrics_storage);
+
 #endif /* AWS_MQTT_IOT_METRICS_H */
