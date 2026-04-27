@@ -72,35 +72,36 @@ static bool s_add_param_if_not_exists(
 }
 
 /**
- * Parse key-value entries from a cursor using a specified delimiter.
- * Each entry is expected to be in the format "key=value" or just "key".
+ * Parse key-value entries from a aws_byte_cursor using a specified delimiter.
+ * Each entry is expected to be in the format "key=value" or just "key". (e.g., "key1=value1&key2=value2")
  *
- * @param content The cursor containing the delimited entries
+ * @param content The content to parse
  * @param delimiter The delimiter cursor (e.g., ";" or "&")
  * @param out_entries List to populate with parsed aws_uri_param entries. Must be initialized by caller.
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */
 static int s_parse_delimited_entries(
-    struct aws_byte_cursor content,
+    const struct aws_byte_cursor content,
     const struct aws_byte_cursor *delimiter,
     struct aws_array_list *out_entries) {
 
     struct aws_byte_cursor equals_delim = aws_byte_cursor_from_c_str("=");
+    struct aws_byte_cursor working_content = content;
 
-    while (content.len > 0) {
+    while (working_content.len > 0) {
         struct aws_byte_cursor entry_cursor;
         struct aws_byte_cursor found_pos;
 
         /* Find the next delimiter */
-        if (aws_byte_cursor_find_exact(&content, delimiter, &found_pos) == AWS_OP_SUCCESS) {
-            entry_cursor.ptr = content.ptr;
-            entry_cursor.len = found_pos.ptr - content.ptr;
-            content.ptr = found_pos.ptr + delimiter->len;
-            content.len = content.len - entry_cursor.len - delimiter->len;
+        if (aws_byte_cursor_find_exact(&working_content, delimiter, &found_pos) == AWS_OP_SUCCESS) {
+            entry_cursor.ptr = working_content.ptr;
+            entry_cursor.len = found_pos.ptr - working_content.ptr;
+            working_content.ptr = found_pos.ptr + delimiter->len;
+            working_content.len = working_content.len - entry_cursor.len - delimiter->len;
         } else {
             /* No more delimiters, take the rest */
-            entry_cursor = content;
-            content.len = 0;
+            entry_cursor = working_content;
+            working_content.len = 0;
         }
 
         /* Parse key=value from entry_cursor */
@@ -129,18 +130,18 @@ static int s_parse_delimited_entries(
 /**
  * Merge new entries into an existing entries list without overwriting existing keys.
  *
- * @param existing_entries List of existing aws_uri_param entries (will be modified)
+ * @param existing_metadata_list List of existing aws_uri_param entries (will be modified)
  * @param new_entries Array of new entries to merge
  * @param new_entries_count Number of new entries
  */
-static void s_merge_entries_no_overwrite(
-    struct aws_array_list *existing_entries,
+static void s_merge_metadata_entries_no_overwrite(
+    struct aws_array_list *existing_metadata_list,
     const struct aws_mqtt_metadata_entry *new_entries,
     size_t new_entries_count) {
 
     for (size_t i = 0; i < new_entries_count; ++i) {
         const struct aws_mqtt_metadata_entry *new_entry = &new_entries[i];
-        s_add_param_if_not_exists(existing_entries, new_entry->key, new_entry->value);
+        s_add_param_if_not_exists(existing_metadata_list, new_entry->key, new_entry->value);
     }
 }
 
@@ -314,6 +315,33 @@ static int s_build_username_query(
     return AWS_OP_SUCCESS;
 }
 
+/**
+ * Appends SDK metrics to an MQTT username for IoT service telemetry.
+ *
+ * This function transforms a username by appending SDK metrics as query parameters.
+ * The IoT service uses the last '?' in the username to identify the metrics section.
+ *
+ * Step-by-step process:
+ * 1. Parse existing username: Find the last '?' in the original username and parse query params into params_list
+ * 2. Add "SDK" and "Platform" parameters (if not already present)
+ * 3. Handle Metadata entries (if new metadata provided)
+ *    a. Check if existing "Metadata" parameter exists in params_list
+ *    b. If existing Metadata found with valid format "(key1=val1;key2=val2)":
+ *       - Parse existing entries into merged_metadata_entries list
+ *       - Remove existing Metadata from params_list (will be rebuilt)
+ *       - Add new metadata entries (existing keys take precedence, won't be overwritten)
+ *       - Build new Metadata value string: "(key1=val1;key2=val2;...)"
+ *       - Add rebuilt Metadata parameter to params_list
+ *    c. else If existing Metadata has invalid format (not wrapped in parentheses):
+ *       - Log debug message and skip metadata merging
+ *       - Keep original Metadata value unchanged
+ * 4. Build final username from params_list
+ *
+ * Example transformation:
+ *   Input:  "myuser?existing=value"
+ *   Metrics: {library_name="MySDK/1.0", metadata=[{key="ver", value="1.0"}]}
+ *   Output: "myuser?existing=value&SDK=MySDK/1.0&Platform=Darwin&Metadata=(ver=1.0)"
+ */
 int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *original_username,
@@ -353,8 +381,8 @@ int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_byte_cursor platform_str = aws_byte_cursor_from_c_str("Platform");
     struct aws_byte_cursor metadata_str = aws_byte_cursor_from_c_str("Metadata");
 
-    struct aws_array_list params_list;
-    aws_array_list_init_dynamic(&params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
+    struct aws_array_list username_params_list;
+    aws_array_list_init_dynamic(&username_params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
 
     struct aws_byte_buf metadata_value_buf;
     AWS_ZERO_STRUCT(metadata_value_buf);
@@ -371,13 +399,15 @@ int aws_mqtt_append_sdk_metrics_to_username(
          * metrics metadata */
         while (AWS_OP_SUCCESS ==
                aws_byte_cursor_find_exact(&question_mark_find, &question_mark_str, &question_mark_find)) {
+            // Advance cursor to skip the "?" character
             aws_byte_cursor_advance(&question_mark_find, 1);
             found_query = true;
         }
 
         if (found_query) {
+            // Trim out the query delimiter from the base username
             base_username_length = question_mark_find.ptr - 1 - local_original_username.ptr;
-            aws_query_string_params(question_mark_find, &params_list);
+            aws_query_string_params(question_mark_find, &username_params_list);
         } else {
             base_username_length = local_original_username.len;
         }
@@ -386,16 +416,17 @@ int aws_mqtt_append_sdk_metrics_to_username(
     /* Add SDK parameter if not already present */
     struct aws_byte_cursor sdk_value =
         metrics->library_name.len > 0 ? metrics->library_name : aws_byte_cursor_from_c_str("IoTDeviceSDK/C");
-    s_add_param_if_not_exists(&params_list, sdk_str, sdk_value);
+    s_add_param_if_not_exists(&username_params_list, sdk_str, sdk_value);
 
     /* Add Platform parameter if not already present */
-    s_add_param_if_not_exists(&params_list, platform_str, aws_get_platform_build_os_string());
+    s_add_param_if_not_exists(&username_params_list, platform_str, aws_get_platform_build_os_string());
 
     /* Handle metadata entries: parse existing, merge with new, and rebuild */
     bool has_new_metadata = metrics->metadata_entries != NULL && metrics->metadata_count > 0;
 
     if (has_new_metadata) {
         struct aws_byte_cursor semicolon_delim = aws_byte_cursor_from_c_str(";");
+        bool should_merge_metadata = true;
 
         aws_array_list_init_dynamic(
             &merged_metadata_entries, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
@@ -403,7 +434,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
         /* Find existing Metadata parameter */
         size_t existing_metadata_index = 0;
         struct aws_uri_param *existing_metadata_param =
-            s_find_param_by_key(&params_list, &metadata_str, &existing_metadata_index);
+            s_find_param_by_key(&username_params_list, &metadata_str, &existing_metadata_index);
 
         if (existing_metadata_param != NULL && existing_metadata_param->value.len > 0) {
             /* Extract content without parentheses: (key1=value1;key2=value2) -> key1=value1;key2=value2 */
@@ -417,41 +448,50 @@ int aws_mqtt_append_sdk_metrics_to_username(
                 if (existing_content.len > 0) {
                     s_parse_delimited_entries(existing_content, &semicolon_delim, &merged_metadata_entries);
                 }
+
+                /* Remove existing Metadata from username_params_list - we'll merge and re-add */
+                aws_array_list_erase(&username_params_list, existing_metadata_index);
+            } else {
+                /* Wrong format: keep the original metadata value unchanged and don't append new metadata */
+                AWS_LOGF_DEBUG(
+                    AWS_LL_DEBUG,
+                    "Existing Metadata parameter has invalid format (expected parentheses). "
+                    "Keeping original value and skipping new metadata entries.");
+                should_merge_metadata = false;
             }
-            /* If wrong format, ignore the existing metadata value and start fresh */
-
-            /* Remove existing Metadata from params_list - we'll merge and re-add */
-            aws_array_list_erase(&params_list, existing_metadata_index);
         }
 
-        /* Merge new metadata entries (won't overwrite existing keys) */
-        s_merge_entries_no_overwrite(&merged_metadata_entries, metrics->metadata_entries, metrics->metadata_count);
+        if (should_merge_metadata) {
+            /* Merge new metadata entries (won't overwrite existing keys) */
+            s_merge_metadata_entries_no_overwrite(
+                &merged_metadata_entries, metrics->metadata_entries, metrics->metadata_count);
 
-        /* Calculate size needed for metadata value string first */
-        size_t metadata_value_size = 0;
-        s_build_metadata_value(&merged_metadata_entries, NULL, &metadata_value_size);
+            /* Calculate size needed for metadata value string first */
+            size_t metadata_value_size = 0;
+            s_build_metadata_value(&merged_metadata_entries, NULL, &metadata_value_size);
 
-        /* Initialize buffer and build the metadata value string */
-        if (aws_byte_buf_init(&metadata_value_buf, allocator, metadata_value_size)) {
-            goto cleanup;
+            /* Initialize buffer and build the metadata value string */
+            if (aws_byte_buf_init(&metadata_value_buf, allocator, metadata_value_size)) {
+                goto cleanup;
+            }
+
+            if (s_build_metadata_value(&merged_metadata_entries, &metadata_value_buf, NULL)) {
+                goto cleanup;
+            }
+
+            /* Add Metadata parameter to username_params_list */
+            struct aws_uri_param metadata_params = {
+                .key = metadata_str,
+                .value = aws_byte_cursor_from_buf(&metadata_value_buf),
+            };
+            aws_array_list_push_back(&username_params_list, &metadata_params);
         }
-
-        if (s_build_metadata_value(&merged_metadata_entries, &metadata_value_buf, NULL)) {
-            goto cleanup;
-        }
-
-        /* Add Metadata parameter to params_list */
-        struct aws_uri_param metadata_params = {
-            .key = metadata_str,
-            .value = aws_byte_cursor_from_buf(&metadata_value_buf),
-        };
-        aws_array_list_push_back(&params_list, &metadata_params);
     }
 
-    /* Rebuild metrics string from params_list */
+    /* Rebuild metrics string from username_params_list */
     // Calculate the final username size first.
     size_t total_size = 0;
-    s_build_username_query(&local_original_username, base_username_length, &params_list, NULL, &total_size);
+    s_build_username_query(&local_original_username, base_username_length, &username_params_list, NULL, &total_size);
 
     if (total_size > AWS_IOT_MAX_USERNAME_SIZE) {
         AWS_LOGF_ERROR(
@@ -465,7 +505,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     if (s_build_username_query(
-            &local_original_username, base_username_length, &params_list, output_username, out_full_username_size)) {
+            &local_original_username, base_username_length, &username_params_list, output_username, out_full_username_size)) {
         goto cleanup;
     }
 
@@ -473,7 +513,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
 cleanup:
     aws_byte_buf_clean_up(&metadata_value_buf);
-    aws_array_list_clean_up(&params_list);
+    aws_array_list_clean_up(&username_params_list);
     if (aws_array_list_is_valid(&merged_metadata_entries)) {
         aws_array_list_clean_up(&merged_metadata_entries);
     }
