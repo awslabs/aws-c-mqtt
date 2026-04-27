@@ -382,7 +382,8 @@ int aws_mqtt_append_sdk_metrics_to_username(
     struct aws_byte_cursor metadata_str = aws_byte_cursor_from_c_str("Metadata");
 
     struct aws_array_list username_params_list;
-    aws_array_list_init_dynamic(&username_params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
+    aws_array_list_init_dynamic(
+        &username_params_list, allocator, DEFAULT_QUERY_PARAM_COUNT, sizeof(struct aws_uri_param));
 
     struct aws_byte_buf metadata_value_buf;
     AWS_ZERO_STRUCT(metadata_value_buf);
@@ -505,7 +506,11 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     if (s_build_username_query(
-            &local_original_username, base_username_length, &username_params_list, output_username, out_full_username_size)) {
+            &local_original_username,
+            base_username_length,
+            &username_params_list,
+            output_username,
+            out_full_username_size)) {
         goto cleanup;
     }
 
