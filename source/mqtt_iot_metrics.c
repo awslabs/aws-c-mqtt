@@ -330,12 +330,13 @@ static int s_build_username_query(
  *  b. If existing Metadata found with valid format:
  *     - Parse existing entries into a key-value metadata_param_list
  *     - Remove existing Metadata from username_params_list (will be rebuilt later)
+ *  c. If existing Metadata has an invalid format:
+ *     - Log debug message and skip adding metrics metadata entries
+ *     - Keep original Metadata value unchanged, skip (d)
+ *  d. Append metrics metadata entries to metadata_param_list
  *     - Add new metadata entries into metadata_param_list (existing keys take precedence, won't be overwritten)
  *     - build metadata value string from metadata_param_list
  *     - Add Metadata parameter to username_params_list
- *  c. else If existing Metadata has an invalid format:
- *     - Log debug message and skip adding metrics metadata entries
- *     - Keep original Metadata value unchanged
  * 4. Build final username from username_params_list
  *
  * Example transformation:
