@@ -107,6 +107,7 @@ static int s_parse_delimited_entries(
             entry_param.key.len = equals_pos.ptr - entry_cursor.ptr;
             aws_byte_cursor_advance(&entry_cursor, entry_param.key.len + 1);
             entry_param.value.ptr = entry_cursor.ptr;
+            entry_param.value.len = entry_cursor.len;
         } else {
             /* No equals sign, treat entire entry as key */
             entry_param.key = entry_cursor;
