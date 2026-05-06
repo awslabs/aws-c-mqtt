@@ -28,15 +28,15 @@ const size_t DEFAULT_QUERY_PARAM_COUNT = 10;
  * @return Pointer to the found parameter, or NULL if not found
  */
 static struct aws_uri_param *s_find_param_by_key(
-    struct aws_array_list *params_list,
-    const struct aws_byte_cursor *key,
+    const struct aws_array_list params_list,
+    const struct aws_byte_cursor key,
     size_t *out_index) {
 
-    size_t params_count = aws_array_list_length(params_list);
+    size_t params_count = aws_array_list_length(&params_list);
     for (size_t i = 0; i < params_count; ++i) {
         struct aws_uri_param *param = NULL;
-        aws_array_list_get_at_ptr(params_list, (void **)&param, i);
-        if (aws_byte_cursor_eq(&param->key, key)) {
+        aws_array_list_get_at_ptr(&params_list, (void **)&param, i);
+        if (aws_byte_cursor_eq(&param->key, &key)) {
             if (out_index) {
                 *out_index = i;
             }
@@ -56,10 +56,10 @@ static struct aws_uri_param *s_find_param_by_key(
  */
 static bool s_add_param_if_not_exists(
     struct aws_array_list *params_list,
-    struct aws_byte_cursor key,
-    struct aws_byte_cursor value) {
+    const struct aws_byte_cursor key,
+    const struct aws_byte_cursor value) {
 
-    if (s_find_param_by_key(params_list, &key, NULL) != NULL) {
+    if (s_find_param_by_key(*params_list, key, NULL) != NULL) {
         return false;
     }
 
@@ -76,52 +76,43 @@ static bool s_add_param_if_not_exists(
  * Each entry is expected to be in the format "key=value" or just "key". (e.g., "key1=value1&key2=value2")
  *
  * @param content The content to parse
- * @param delimiter The delimiter cursor (e.g., ";" or "&")
+ * @param delimiter The delimiter cursor (e.g., ";" or "&"), length of delimiter must > 0.
  * @param out_entries List to populate with parsed aws_uri_param entries. Must be initialized by caller.
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */
 static int s_parse_delimited_entries(
     const struct aws_byte_cursor content,
-    const struct aws_byte_cursor *delimiter,
+    const struct aws_byte_cursor delimiter,
     struct aws_array_list *out_entries) {
 
+    AWS_ASSERT(delimiter.len > 0);
+
     struct aws_byte_cursor equals_delim = aws_byte_cursor_from_c_str("=");
-    struct aws_byte_cursor working_content = content;
+    struct aws_byte_cursor entry_cursor;
+    AWS_ZERO_STRUCT(entry_cursor);
 
-    while (working_content.len > 0) {
-        struct aws_byte_cursor entry_cursor;
-        struct aws_byte_cursor found_pos;
-
-        /* Find the next delimiter */
-        if (aws_byte_cursor_find_exact(&working_content, delimiter, &found_pos) == AWS_OP_SUCCESS) {
-            entry_cursor.ptr = working_content.ptr;
-            entry_cursor.len = found_pos.ptr - working_content.ptr;
-            working_content.ptr = found_pos.ptr + delimiter->len;
-            working_content.len = working_content.len - entry_cursor.len - delimiter->len;
-        } else {
-            /* No more delimiters, take the rest */
-            entry_cursor = working_content;
-            working_content.len = 0;
+    while (aws_byte_cursor_next_split_on_cursor(&content, delimiter, &entry_cursor)) {
+        /* Skip empty entries */
+        if (entry_cursor.len == 0) {
+            continue;
         }
 
         /* Parse key=value from entry_cursor */
-        if (entry_cursor.len > 0) {
-            struct aws_uri_param entry_param;
-            AWS_ZERO_STRUCT(entry_param);
+        struct aws_uri_param entry_param;
+        AWS_ZERO_STRUCT(entry_param);
 
-            struct aws_byte_cursor equals_pos;
-            if (aws_byte_cursor_find_exact(&entry_cursor, &equals_delim, &equals_pos) == AWS_OP_SUCCESS) {
-                entry_param.key.ptr = entry_cursor.ptr;
-                entry_param.key.len = equals_pos.ptr - entry_cursor.ptr;
-                entry_param.value.ptr = equals_pos.ptr + 1;
-                entry_param.value.len = (entry_cursor.ptr + entry_cursor.len) - entry_param.value.ptr;
-            } else {
-                /* No equals sign, treat entire entry as key */
-                entry_param.key = entry_cursor;
-            }
-
-            aws_array_list_push_back(out_entries, &entry_param);
+        struct aws_byte_cursor equals_pos;
+        if (aws_byte_cursor_find_exact(&entry_cursor, &equals_delim, &equals_pos) == AWS_OP_SUCCESS) {
+            entry_param.key.ptr = entry_cursor.ptr;
+            entry_param.key.len = equals_pos.ptr - entry_cursor.ptr;
+            aws_byte_cursor_advance(&entry_cursor, entry_param.key.len + 1);
+            entry_param.value.ptr = entry_cursor.ptr;
+        } else {
+            /* No equals sign, treat entire entry as key */
+            entry_param.key = entry_cursor;
         }
+
+        aws_array_list_push_back(out_entries, &entry_param);
     }
 
     return AWS_OP_SUCCESS;
@@ -136,11 +127,11 @@ static int s_parse_delimited_entries(
  */
 static void s_merge_metadata_entries_no_overwrite(
     struct aws_array_list *existing_metadata_list,
-    const struct aws_mqtt_metadata_entry *new_entries,
-    size_t new_entries_count) {
+    const struct aws_mqtt_metadata_entry *new_entries_list,
+    const size_t new_entries_list_count) {
 
-    for (size_t i = 0; i < new_entries_count; ++i) {
-        const struct aws_mqtt_metadata_entry *new_entry = &new_entries[i];
+    for (size_t i = 0; i < new_entries_list_count; ++i) {
+        const struct aws_mqtt_metadata_entry *new_entry = &new_entries_list[i];
         s_add_param_if_not_exists(existing_metadata_list, new_entry->key, new_entry->value);
     }
 }
@@ -161,16 +152,19 @@ static void s_merge_metadata_entries_no_overwrite(
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */
 static int s_build_delimited_params(
-    const struct aws_array_list *params_list,
+    const struct aws_array_list params_list,
     const struct aws_byte_cursor *prefix,
     const struct aws_byte_cursor *suffix,
-    const struct aws_byte_cursor *entry_delimiter,
+    const struct aws_byte_cursor entry_delimiter,
     struct aws_byte_buf *output_buf,
     size_t *out_size) {
 
+    AWS_ASSERT(entry_delimiter.len > 0)
+
+    size_t local_out_size = 0;
     struct aws_byte_cursor key_value_delim = aws_byte_cursor_from_c_str("=");
 
-    size_t params_count = aws_array_list_length(params_list);
+    size_t params_count = aws_array_list_length(&params_list);
 
     /* If params_list is empty, return empty string (no prefix/suffix) */
     if (params_count == 0) {
@@ -180,14 +174,11 @@ static int s_build_delimited_params(
         return AWS_OP_SUCCESS;
     }
 
-    if (out_size) {
-        *out_size = 0;
-        if (prefix) {
-            *out_size += prefix->len;
-        }
-        if (suffix) {
-            *out_size += suffix->len;
-        }
+    if (prefix) {
+        local_out_size += prefix->len;
+    }
+    if (suffix) {
+        local_out_size += suffix->len;
     }
 
     if (output_buf && prefix && prefix->len > 0) {
@@ -199,18 +190,16 @@ static int s_build_delimited_params(
     for (size_t i = 0; i < params_count; ++i) {
         struct aws_uri_param param;
         AWS_ZERO_STRUCT(param);
-        aws_array_list_get_at(params_list, &param, i);
+        aws_array_list_get_at(&params_list, &param, i);
 
         /* Add delimiter between entries (not before the first one) */
         if (i > 0) {
             if (output_buf) {
-                if (aws_byte_buf_append(output_buf, entry_delimiter)) {
+                if (aws_byte_buf_append(output_buf, &entry_delimiter)) {
                     return AWS_OP_ERR;
                 }
             }
-            if (out_size) {
-                *out_size += entry_delimiter->len;
-            }
+            local_out_size += entry_delimiter.len;
         }
 
         /* Append key */
@@ -219,9 +208,7 @@ static int s_build_delimited_params(
                 return AWS_OP_ERR;
             }
         }
-        if (out_size) {
-            *out_size += param.key.len;
-        }
+        local_out_size += param.key.len;
 
         /* Append =value if value exists */
         if (param.value.len > 0) {
@@ -231,9 +218,7 @@ static int s_build_delimited_params(
                     return AWS_OP_ERR;
                 }
             }
-            if (out_size) {
-                *out_size += 1 + param.value.len; /* '=' + value */
-            }
+            local_out_size += 1 + param.value.len; /* '=' + value */
         }
     }
 
@@ -241,6 +226,10 @@ static int s_build_delimited_params(
         if (aws_byte_buf_append(output_buf, suffix)) {
             return AWS_OP_ERR;
         }
+    }
+
+    if (out_size) {
+        *out_size = local_out_size;
     }
 
     return AWS_OP_SUCCESS;
@@ -256,7 +245,7 @@ static int s_build_delimited_params(
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */
 static int s_build_metadata_value(
-    const struct aws_array_list *entries,
+    const struct aws_array_list entries,
     struct aws_byte_buf *output_buf,
     size_t *out_size) {
 
@@ -264,7 +253,7 @@ static int s_build_metadata_value(
     struct aws_byte_cursor close_paren = aws_byte_cursor_from_c_str(")");
     struct aws_byte_cursor semicolon_delim = aws_byte_cursor_from_c_str(";");
 
-    return s_build_delimited_params(entries, &open_paren, &close_paren, &semicolon_delim, output_buf, out_size);
+    return s_build_delimited_params(entries, &open_paren, &close_paren, semicolon_delim, output_buf, out_size);
 }
 
 /**
@@ -279,18 +268,15 @@ static int s_build_metadata_value(
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */
 static int s_build_username_query(
-    const struct aws_byte_cursor *base_username,
-    size_t base_username_length,
-    const struct aws_array_list *params_list,
+    const struct aws_byte_cursor base_username,
+    const size_t base_username_length,
+    const struct aws_array_list params_list,
     struct aws_byte_buf *output_username,
     size_t *out_final_username_size) {
 
-    AWS_ASSERT(base_username);
-    AWS_ASSERT(params_list);
-
     /* Write base username first */
     if (output_username) {
-        if (!aws_byte_buf_write(output_username, base_username->ptr, base_username_length)) {
+        if (!aws_byte_buf_write(output_username, base_username.ptr, base_username_length)) {
             return AWS_OP_ERR;
         }
     }
@@ -304,7 +290,7 @@ static int s_build_username_query(
     struct aws_byte_cursor ampersand_delim = aws_byte_cursor_from_c_str("&");
 
     size_t params_size = 0;
-    if (s_build_delimited_params(params_list, &query_prefix, NULL, &ampersand_delim, output_username, &params_size)) {
+    if (s_build_delimited_params(params_list, &query_prefix, NULL, ampersand_delim, output_username, &params_size)) {
         return AWS_OP_ERR;
     }
 
@@ -437,7 +423,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
         /* Find existing Metadata parameter */
         size_t existing_metadata_index = 0;
         struct aws_uri_param *existing_metadata_param =
-            s_find_param_by_key(&username_params_list, &metadata_str, &existing_metadata_index);
+            s_find_param_by_key(username_params_list, metadata_str, &existing_metadata_index);
 
         if (existing_metadata_param != NULL && existing_metadata_param->value.len > 0) {
             /* Extract content without parentheses: (key1=value1;key2=value2) -> key1=value1;key2=value2 */
@@ -449,7 +435,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
                 /* Parse existing metadata entries */
                 if (existing_content.len > 0) {
-                    s_parse_delimited_entries(existing_content, &semicolon_delim, &metadata_param_list);
+                    s_parse_delimited_entries(existing_content, semicolon_delim, &metadata_param_list);
                 }
 
                 /* Remove existing Metadata from username_params_list - we'll merge and re-add */
@@ -471,14 +457,14 @@ int aws_mqtt_append_sdk_metrics_to_username(
 
             /* Calculate size needed for metadata value string first */
             size_t metadata_value_size = 0;
-            s_build_metadata_value(&metadata_param_list, NULL, &metadata_value_size);
+            s_build_metadata_value(metadata_param_list, NULL, &metadata_value_size);
 
             /* Initialize buffer and build the metadata value string */
             if (aws_byte_buf_init(&metadata_value_buf, allocator, metadata_value_size)) {
                 goto cleanup;
             }
 
-            if (s_build_metadata_value(&metadata_param_list, &metadata_value_buf, NULL)) {
+            if (s_build_metadata_value(metadata_param_list, &metadata_value_buf, NULL)) {
                 goto cleanup;
             }
 
@@ -494,7 +480,7 @@ int aws_mqtt_append_sdk_metrics_to_username(
     /* Rebuild metrics string from username_params_list */
     // Calculate the final username size first.
     size_t total_size = 0;
-    s_build_username_query(&local_original_username, base_username_length, &username_params_list, NULL, &total_size);
+    s_build_username_query(local_original_username, base_username_length, username_params_list, NULL, &total_size);
 
     if (total_size > AWS_IOT_MAX_USERNAME_SIZE) {
         AWS_LOGF_ERROR(
@@ -508,9 +494,9 @@ int aws_mqtt_append_sdk_metrics_to_username(
     }
 
     if (s_build_username_query(
-            &local_original_username,
+            local_original_username,
             base_username_length,
-            &username_params_list,
+            username_params_list,
             output_username,
             out_full_username_size)) {
         goto cleanup;
