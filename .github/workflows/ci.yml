@@ -6,7 +6,7 @@ on:
       - 'main'
 
 env:
-  BUILDER_VERSION: v0.9.73
+  BUILDER_VERSION: v0.9.92
   BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-mqtt
@@ -55,6 +55,7 @@ jobs:
           - clang-11
           - clang-15
           - clang-17
+          - clang-latest
           - gcc-4.8
           - gcc-5
           - gcc-6
