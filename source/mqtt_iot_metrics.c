@@ -159,7 +159,7 @@ static int s_build_delimited_params(
     struct aws_byte_buf *output_buf,
     size_t *out_size) {
 
-    AWS_ASSERT(entry_delimiter.len > 0)
+    AWS_ASSERT(entry_delimiter.len > 0);
 
     size_t local_out_size = 0;
     struct aws_byte_cursor key_value_delim = aws_byte_cursor_from_c_str("=");
