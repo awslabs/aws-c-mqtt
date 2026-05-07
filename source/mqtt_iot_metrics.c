@@ -101,11 +101,15 @@ static int s_parse_delimited_entries(
         struct aws_uri_param entry_param;
         AWS_ZERO_STRUCT(entry_param);
 
+        /* Use a copy to avoid modifying entry_cursor which tracks iteration state */
+        struct aws_byte_cursor working_cursor = entry_cursor;
         struct aws_byte_cursor equals_pos;
-        if (aws_byte_cursor_find_exact(&entry_cursor, &equals_delim, &equals_pos) == AWS_OP_SUCCESS) {
-            entry_param.key.ptr = entry_cursor.ptr;
-            entry_param.key.len = equals_pos.ptr - entry_cursor.ptr;
-            entry_param.value = aws_byte_cursor_advance(&entry_cursor, entry_param.key.len + 1);
+        if (aws_byte_cursor_find_exact(&working_cursor, &equals_delim, &equals_pos) == AWS_OP_SUCCESS) {
+            size_t equals_offset = equals_pos.ptr - working_cursor.ptr;
+            entry_param.key = aws_byte_cursor_advance(&working_cursor, equals_offset);
+            /* Skip the "=" delimiter */
+            aws_byte_cursor_advance(&working_cursor, 1);
+            entry_param.value = working_cursor;
         } else {
             /* No equals sign, treat entire entry as key */
             entry_param.key = entry_cursor;

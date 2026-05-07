@@ -573,16 +573,18 @@ static int s_test_mqtt_append_sdk_metrics_existing_metadata(struct aws_allocator
 
     /* Username already contains SDK, Platform, and Metadata fields */
     struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str(
-        "testuser?SDK=ExistingSDK&Platform=ExistingPlatform&Metadata=(ExistingKey=ExistingValue)");
+        "testuser?SDK=ExistingSDK&Platform=ExistingPlatform&Metadata=(ExistingKey1=ExistingValue1;ExistingKey2="
+        "ExistingValue2)");
 
     ASSERT_SUCCESS(
         aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
 
     struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
 
-    /* Verify the output contains merged metadata: (ExistingKey=ExistingValue;NewKey=NewValue) */
-    struct aws_byte_cursor merged_metadata =
-        aws_byte_cursor_from_c_str("Metadata=(ExistingKey=ExistingValue;NewKey=NewValue)");
+    /* Verify the output contains merged metadata:
+     * ((ExistingKey1=ExistingValue1;ExistingKey2=ExistingValue2;NewKey=NewValue) */
+    struct aws_byte_cursor merged_metadata = aws_byte_cursor_from_c_str(
+        "Metadata=(ExistingKey1=ExistingValue1;ExistingKey2=ExistingValue2;NewKey=NewValue)");
     struct aws_byte_cursor found;
 
     ASSERT_SUCCESS(aws_byte_cursor_find_exact(&output_cursor, &merged_metadata, &found));
