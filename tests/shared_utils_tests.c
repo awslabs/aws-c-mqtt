@@ -550,3 +550,90 @@ static int s_test_mqtt_iot_metrics_storage_empty_metadata(struct aws_allocator *
 }
 
 AWS_TEST_CASE(mqtt_iot_metrics_storage_empty_metadata, s_test_mqtt_iot_metrics_storage_empty_metadata)
+
+static int s_test_mqtt_append_sdk_metrics_existing_metadata(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    /* New metadata entries to add */
+    struct aws_mqtt_metadata_entry metadata_entries[] = {
+        {
+            .key = aws_byte_cursor_from_c_str("NewKey"),
+            .value = aws_byte_cursor_from_c_str("NewValue"),
+        },
+    };
+
+    struct aws_mqtt_iot_metrics metrics = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_count = AWS_ARRAY_SIZE(metadata_entries),
+        .metadata_entries = metadata_entries,
+    };
+
+    struct aws_byte_buf output_username;
+    AWS_ZERO_STRUCT(output_username);
+
+    /* Username already contains SDK, Platform, and Metadata fields */
+    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str(
+        "testuser?SDK=ExistingSDK&Platform=ExistingPlatform&Metadata=(ExistingKey1=ExistingValue1;ExistingKey2="
+        "ExistingValue2)");
+
+    ASSERT_SUCCESS(
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
+
+    struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
+
+    /* Verify the output contains merged metadata:
+     * ((ExistingKey1=ExistingValue1;ExistingKey2=ExistingValue2;NewKey=NewValue) */
+    struct aws_byte_cursor merged_metadata = aws_byte_cursor_from_c_str(
+        "Metadata=(ExistingKey1=ExistingValue1;ExistingKey2=ExistingValue2;NewKey=NewValue)");
+    struct aws_byte_cursor found;
+
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&output_cursor, &merged_metadata, &found));
+
+    /* Verify SDK and Platform are preserved (not duplicated) */
+    struct aws_byte_cursor sdk_check = aws_byte_cursor_from_c_str("SDK=ExistingSDK");
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&output_cursor, &sdk_check, &found));
+
+    struct aws_byte_cursor platform_check = aws_byte_cursor_from_c_str("Platform=ExistingPlatform");
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&output_cursor, &platform_check, &found));
+
+    aws_byte_buf_clean_up(&output_username);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_append_sdk_metrics_existing_metadata, s_test_mqtt_append_sdk_metrics_existing_metadata)
+
+static int s_test_mqtt_append_sdk_metrics_existing_metadata_no_new(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    /* No new metadata entries */
+    struct aws_mqtt_iot_metrics metrics = {
+        .library_name = aws_byte_cursor_from_c_str("TestSDK/1.0"),
+        .metadata_count = 0,
+        .metadata_entries = NULL,
+    };
+
+    struct aws_byte_buf output_username;
+    AWS_ZERO_STRUCT(output_username);
+
+    /* Username already contains Metadata field */
+    struct aws_byte_cursor original_username = aws_byte_cursor_from_c_str(
+        "testuser?SDK=ExistingSDK&Platform=ExistingPlatform&Metadata=(ExistingKey=ExistingValue)");
+
+    ASSERT_SUCCESS(
+        aws_mqtt_append_sdk_metrics_to_username(allocator, &original_username, &metrics, &output_username, NULL));
+
+    struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&output_username);
+
+    /* Verify the existing metadata is preserved */
+    struct aws_byte_cursor existing_metadata = aws_byte_cursor_from_c_str("Metadata=(ExistingKey=ExistingValue)");
+    struct aws_byte_cursor found;
+
+    ASSERT_SUCCESS(aws_byte_cursor_find_exact(&output_cursor, &existing_metadata, &found));
+
+    aws_byte_buf_clean_up(&output_username);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(mqtt_append_sdk_metrics_existing_metadata_no_new, s_test_mqtt_append_sdk_metrics_existing_metadata_no_new)
