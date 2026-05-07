@@ -105,8 +105,7 @@ static int s_parse_delimited_entries(
         if (aws_byte_cursor_find_exact(&entry_cursor, &equals_delim, &equals_pos) == AWS_OP_SUCCESS) {
             entry_param.key.ptr = entry_cursor.ptr;
             entry_param.key.len = equals_pos.ptr - entry_cursor.ptr;
-            aws_byte_cursor_advance(&entry_cursor, entry_param.key.len + 1);
-            entry_param.value = entry_cursor;
+            entry_param.value = aws_byte_cursor_advance(&entry_cursor, entry_param.key.len + 1);
         } else {
             /* No equals sign, treat entire entry as key */
             entry_param.key = entry_cursor;
