@@ -440,9 +440,6 @@ int aws_mqtt_append_sdk_metrics_to_username(
                 if (existing_content.len > 0) {
                     s_parse_delimited_entries(existing_content, semicolon_delim, &metadata_param_list);
                 }
-
-                /* Remove existing Metadata from username_params_list - we'll merge and re-add */
-                aws_array_list_erase(&username_params_list, existing_metadata_index);
             } else {
                 /* Wrong format: keep the original metadata value unchanged and don't append new metadata */
                 AWS_LOGF_DEBUG(
@@ -471,12 +468,17 @@ int aws_mqtt_append_sdk_metrics_to_username(
                 goto cleanup;
             }
 
-            /* Add Metadata parameter to username_params_list */
+            /* Add or replace Metadata parameter in username_params_list */
             struct aws_uri_param metadata_params = {
                 .key = metadata_str,
                 .value = aws_byte_cursor_from_buf(&metadata_value_buf),
             };
-            aws_array_list_push_back(&username_params_list, &metadata_params);
+            if (existing_metadata_param != NULL) {
+                /* Replace existing Metadata parameter at the same index */
+                aws_array_list_set_at(&username_params_list, &metadata_params, existing_metadata_index);
+            } else {
+                aws_array_list_push_back(&username_params_list, &metadata_params);
+            }
         }
     }
 
