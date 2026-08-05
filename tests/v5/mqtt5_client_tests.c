@@ -5529,7 +5529,7 @@ static int s_aws_mqtt5_server_send_aliased_publish_sequence(
 
     struct aws_mqtt5_packet_suback_view suback_view = {
         .packet_id = subscribe_view->packet_id,
-        .reason_code_count = 1,
+        .reason_code_count = subscribe_view->subscription_count,
         .reason_codes = s_alias_reason_codes,
     };
 
@@ -5727,7 +5727,7 @@ static int s_aws_mqtt5_server_send_aliased_publish_failure(
 
     struct aws_mqtt5_packet_suback_view suback_view = {
         .packet_id = subscribe_view->packet_id,
-        .reason_code_count = 1,
+        .reason_code_count = subscribe_view->subscription_count,
         .reason_codes = s_alias_reason_codes,
     };
 
