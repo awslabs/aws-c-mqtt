@@ -3895,7 +3895,7 @@ static int s_mqtt5_mock_server_handle_unsubscribe_unsuback_failure(
 
     struct aws_mqtt5_packet_unsuback_view unsuback_view = {
         .packet_id = unsubscribe_view->packet_id,
-        .reason_code_count = AWS_ARRAY_SIZE(mqtt5_unsuback_codes),
+        .reason_code_count = unsubscribe_view->topic_filter_count,
         .reason_codes = mqtt5_unsuback_codes,
     };
 
