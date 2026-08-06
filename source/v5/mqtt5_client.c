@@ -3512,6 +3512,28 @@ int aws_mqtt5_client_service_operational_state(struct aws_mqtt5_client_operation
     return AWS_OP_SUCCESS;
 }
 
+static bool s_aws_mqtt5_client_validate_ack_reason_code_count(
+    const struct aws_mqtt5_operation *operation,
+    enum aws_mqtt5_packet_type packet_type,
+    const void *packet_view) {
+
+    if (packet_type == AWS_MQTT5_PT_SUBACK) {
+        const struct aws_mqtt5_packet_subscribe_view *subscribe_view = operation->packet_view;
+        const struct aws_mqtt5_packet_suback_view *suback_view = packet_view;
+
+        return subscribe_view->subscription_count == suback_view->reason_code_count;
+    }
+
+    if (packet_type == AWS_MQTT5_PT_UNSUBACK) {
+        const struct aws_mqtt5_packet_unsubscribe_view *unsubscribe_view = operation->packet_view;
+        const struct aws_mqtt5_packet_unsuback_view *unsuback_view = packet_view;
+
+        return unsubscribe_view->topic_filter_count == unsuback_view->reason_code_count;
+    }
+
+    return true;
+}
+
 void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
@@ -3519,8 +3541,10 @@ void aws_mqtt5_client_operational_state_handle_ack(
     const void *packet_view,
     int error_code) {
 
+    struct aws_mqtt5_client *client = client_operational_state->client;
+
     if (packet_type == AWS_MQTT5_PT_PUBACK) {
-        aws_mqtt5_client_flow_control_state_on_puback(client_operational_state->client);
+        aws_mqtt5_client_flow_control_state_on_puback(client);
     }
 
     struct aws_hash_element *elem = NULL;
@@ -3530,15 +3554,11 @@ void aws_mqtt5_client_operational_state_handle_ack(
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT,
             "id=%p: received an ACK for an unknown operation with id %d",
-            (void *)client_operational_state->client,
+            (void *)client,
             (int)packet_id);
         return;
     } else {
-        AWS_LOGF_TRACE(
-            AWS_LS_MQTT5_CLIENT,
-            "id=%p: Processing ACK with id %d",
-            (void *)client_operational_state->client,
-            (int)packet_id);
+        AWS_LOGF_TRACE(AWS_LS_MQTT5_CLIENT, "id=%p: Processing ACK with id %d", (void *)client, (int)packet_id);
     }
 
     struct aws_mqtt5_operation *operation = elem->value;
@@ -3546,7 +3566,33 @@ void aws_mqtt5_client_operational_state_handle_ack(
     aws_linked_list_remove(&operation->node);
     aws_hash_table_remove(&client_operational_state->unacked_operations_table, &packet_id, NULL, NULL);
 
-    s_complete_operation(client_operational_state->client, operation, error_code, packet_type, packet_view);
+    if (!s_aws_mqtt5_client_validate_ack_reason_code_count(operation, packet_type, packet_view)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: received a %s with a reason code count that does not match the acknowledged request; treating as a "
+            "protocol error and disconnecting",
+            (void *)client,
+            aws_mqtt5_packet_type_to_c_string(packet_type));
+
+        /*
+         * We must complete the operation explicitly rather than relying on the shutdown's operational-state reset:
+         * a subscribe/unsubscribe is retainable under the default offline queue policy, so the reset would requeue it
+         * for retry, potentially producing an endless disconnect/reconnect/resubscribe loop against a misbehaving
+         * broker.
+         */
+        s_complete_operation(client, operation, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR, AWS_MQTT5_PT_NONE, NULL);
+
+        if (s_should_client_disconnect_cleanly(client)) {
+            s_aws_mqtt5_client_shutdown_channel_clean(
+                client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR, AWS_MQTT5_DRC_PROTOCOL_ERROR);
+        } else {
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        }
+
+        return;
+    }
+
+    s_complete_operation(client, operation, error_code, packet_type, packet_view);
 }
 
 bool aws_mqtt5_client_are_negotiated_settings_valid(const struct aws_mqtt5_client *client) {

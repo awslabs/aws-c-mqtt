@@ -3169,6 +3169,16 @@ static int s_mqtt5to3_adapter_subscribe_multi_oversized_suback_fn(struct aws_all
 
     s_wait_for_n_adapter_operation_events(&fixture, AWS_MQTT3_OET_SUBSCRIBE_COMPLETE, 1);
 
+    struct aws_mqtt3_operation_event expected_events[] = {
+        {
+            .type = AWS_MQTT3_OET_SUBSCRIBE_COMPLETE,
+            .error_code = AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR,
+        },
+    };
+
+    ASSERT_SUCCESS(s_aws_mqtt5_to_mqtt3_adapter_test_fixture_verify_operation_sequence_contains(
+        &fixture, AWS_ARRAY_SIZE(expected_events), expected_events));
+
     aws_mqtt5_to_mqtt3_adapter_test_fixture_clean_up(&fixture);
     aws_mqtt_library_clean_up();
 
@@ -3885,7 +3895,7 @@ static int s_mqtt5_mock_server_handle_unsubscribe_unsuback_failure(
 
     struct aws_mqtt5_packet_unsuback_view unsuback_view = {
         .packet_id = unsubscribe_view->packet_id,
-        .reason_code_count = AWS_ARRAY_SIZE(mqtt5_unsuback_codes),
+        .reason_code_count = unsubscribe_view->topic_filter_count,
         .reason_codes = mqtt5_unsuback_codes,
     };
 
