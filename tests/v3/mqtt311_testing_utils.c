@@ -324,7 +324,7 @@ int aws_test311_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx)
         &state_test_data->published_messages, allocator, 4, sizeof(struct received_publish_packet)));
     ASSERT_SUCCESS(aws_array_list_init_dynamic(
         &state_test_data->any_published_messages, allocator, 4, sizeof(struct received_publish_packet)));
-    ASSERT_SUCCESS(aws_array_list_init_dynamic(&state_test_data->qos_returned, allocator, 2, sizeof(uint8_t)));
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&state_test_data->qos_returned, allocator, 2, sizeof(enum aws_mqtt_qos)));
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_connection_termination_handler(
         state_test_data->mqtt_connection, aws_test311_on_connection_termination_fn, state_test_data));
