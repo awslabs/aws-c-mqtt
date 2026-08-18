@@ -1942,7 +1942,7 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             aws_mqtt5_callback_set_manager_on_publish_received(&client->callback_manager, publish_view);
 
             if (publish_view->qos != AWS_MQTT5_QOS_AT_MOST_ONCE) {
-                // Check if this PUBLSIH packet is manually controlled
+                // Check if this PUBLISH packet is manually controlled
                 struct aws_hash_element *elem = NULL;
                 aws_hash_table_find(
                     &client->operational_state.manual_pub_ack_packet_id_table, &publish_view->packet_id, &elem);
@@ -2646,7 +2646,7 @@ uint64_t aws_mqtt5_client_acquire_publish_acknowledgement(
         return 0;
     }
 
-    /* First check if the packet_id for the PUBLISH is already being controlled. This can potentialy be the case if a
+    /* First check if the packet_id for the PUBLISH is already being controlled. This can potentially be the case if a
      * PUBLISH that has its PUBACK acquired but hasn't been sent for long enough that the broker has sent the PUBLISH
      * packet again. */
     struct aws_hash_element *elem = NULL;
