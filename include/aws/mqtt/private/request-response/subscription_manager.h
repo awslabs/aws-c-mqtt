@@ -204,7 +204,7 @@ AWS_MQTT_API void aws_rr_subscription_manager_init(
 AWS_MQTT_API void aws_rr_subscription_manager_clean_up(struct aws_rr_subscription_manager *manager);
 
 /*
- * Requests the the subscription manager unsubscribe from all currently-unused subscriptions
+ * Requests the subscription manager unsubscribe from all currently-unused subscriptions
  */
 AWS_MQTT_API void aws_rr_subscription_manager_purge_unused(struct aws_rr_subscription_manager *manager);
 

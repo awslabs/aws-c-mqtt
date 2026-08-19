@@ -2093,12 +2093,11 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_helper(
             (*subscribe_op->on_multi_suback)(
                 &adapter->base, subscribe_op->base.id, NULL, error_code, subscribe_op->on_multi_suback_user_data);
         } else {
-            AWS_VARIABLE_LENGTH_ARRAY(
-                struct aws_mqtt_topic_subscription, multi_sub_subscription_buf, suback->reason_code_count);
-            AWS_VARIABLE_LENGTH_ARRAY(
-                struct aws_mqtt_topic_subscription *, multi_sub_subscription_ptr_buf, suback->reason_code_count);
-            struct aws_mqtt_topic_subscription *subscription_ptr =
-                (struct aws_mqtt_topic_subscription *)multi_sub_subscription_buf;
+            struct aws_mqtt_topic_subscription *multi_sub_subscription_buf = aws_mem_calloc(
+                adapter->allocator, suback->reason_code_count, sizeof(struct aws_mqtt_topic_subscription));
+            struct aws_mqtt_topic_subscription **multi_sub_subscription_ptr_buf = aws_mem_calloc(
+                adapter->allocator, suback->reason_code_count, sizeof(struct aws_mqtt_topic_subscription *));
+            struct aws_mqtt_topic_subscription *subscription_ptr = multi_sub_subscription_buf;
 
             struct aws_array_list multi_sub_list;
             aws_array_list_init_static(
@@ -2132,6 +2131,9 @@ static void s_aws_mqtt5_to_mqtt3_adapter_subscribe_completion_helper(
                 &multi_sub_list,
                 error_code,
                 subscribe_op->on_multi_suback_user_data);
+
+            aws_mem_release(adapter->allocator, multi_sub_subscription_buf);
+            aws_mem_release(adapter->allocator, multi_sub_subscription_ptr_buf);
         }
     }
 }
