@@ -240,8 +240,12 @@ static int s_mqtt_frame_and_decode_publish_fn(struct aws_allocator *allocator, v
 
         size_t publish_payload_size = payload_sizes[i];
 
-        /* Intentionally don't initialize so we have lots of garbage */
         uint8_t *raw_payload = aws_mem_acquire(allocator, publish_payload_size);
+        /* Initialize payload with non-trivial but deterministic data (mostly to not trigger MSAN, but also to be able
+         * to reproduce a failure). */
+        for (size_t k = 0; k < publish_payload_size; ++k) {
+            raw_payload[k] = (uint8_t)k;
+        }
 
         struct aws_mqtt_packet_publish publish_packet;
         ASSERT_SUCCESS(aws_mqtt_packet_publish_init(
