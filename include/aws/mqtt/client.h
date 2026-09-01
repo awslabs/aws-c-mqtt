@@ -24,6 +24,7 @@ struct aws_client_bootstrap;
 struct aws_http_header;
 struct aws_http_message;
 struct aws_http_proxy_options;
+struct aws_l4_proxy_config;
 struct aws_mqtt5_client;
 struct aws_socket_options;
 struct aws_tls_connection_options;
@@ -424,6 +425,14 @@ AWS_MQTT_API
 int aws_mqtt_client_connection_set_http_proxy_options(
     struct aws_mqtt_client_connection *connection,
     struct aws_http_proxy_options *proxy_options);
+
+/**
+ * Set l4 proxy options for the connection.
+ */
+AWS_MQTT_API
+int aws_mqtt_client_connection_set_l4_proxy_options(
+    struct aws_mqtt_client_connection *connection,
+    struct aws_l4_proxy_config *l4_proxy_config);
 
 /**
  * Set host resolution ooptions for the connection.

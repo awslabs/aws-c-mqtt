@@ -7,7 +7,7 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/rw_lock.h>
-
+#include <aws/io/l4_proxy.h>
 #include <aws/mqtt/private/mqtt_iot_metrics.h>
 #include <aws/mqtt/private/mqtt_subscription_set.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
@@ -1254,6 +1254,83 @@ static int s_aws_mqtt_client_connection_5_set_http_proxy_options(
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
             "id=%p: failed to create set http proxy options task, error code %d(%s)",
+            (void *)adapter,
+            error_code,
+            aws_error_debug_str(error_code));
+        return AWS_OP_ERR;
+    }
+
+    aws_event_loop_schedule_task_now(adapter->loop, &task->task);
+
+    return AWS_OP_SUCCESS;
+}
+
+struct aws_mqtt_set_l4_proxy_options_task {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_mqtt_client_connection_5_impl *adapter;
+
+    struct aws_l4_proxy_config *proxy_config;
+};
+
+static void s_set_l4_proxy_options_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_mqtt_set_l4_proxy_options_task *set_task = arg;
+    struct aws_mqtt_client_connection_5_impl *adapter = set_task->adapter;
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto done;
+    }
+
+    if (adapter->client->config->http_proxy_config != NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+            "id=%p: (http) proxy_options and l4_proxy_config cannot both be set.",
+            (void *)adapter);
+        goto done;
+    }
+
+    aws_l4_proxy_config_release(adapter->client->config->l4_proxy_config);
+    adapter->client->config->l4_proxy_config = aws_l4_proxy_config_acquire(set_task->proxy_config);
+
+done:
+
+    aws_ref_count_release(&adapter->internal_refs);
+
+    aws_l4_proxy_config_release(set_task->proxy_config);
+
+    aws_mem_release(set_task->allocator, set_task);
+}
+
+static struct aws_mqtt_set_l4_proxy_options_task *s_aws_mqtt_set_l4_proxy_options_task_new(
+    struct aws_allocator *allocator,
+    struct aws_mqtt_client_connection_5_impl *adapter,
+    struct aws_l4_proxy_config *l4_proxy_options) {
+
+    struct aws_mqtt_set_l4_proxy_options_task *set_task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_http_proxy_options_task));
+
+    aws_task_init(&set_task->task, s_set_l4_proxy_options_task_fn, (void *)set_task, "SetL4ProxyOptionsTask");
+    set_task->allocator = adapter->allocator;
+    set_task->adapter = (struct aws_mqtt_client_connection_5_impl *)aws_ref_count_acquire(&adapter->internal_refs);
+    set_task->proxy_config = aws_l4_proxy_config_acquire(l4_proxy_options);
+
+    return set_task;
+}
+
+static int s_aws_mqtt_client_connection_5_set_l4_proxy_options(
+    void *impl,
+    struct aws_l4_proxy_config *l4_proxy_options) {
+
+    struct aws_mqtt_client_connection_5_impl *adapter = impl;
+
+    struct aws_mqtt_set_l4_proxy_options_task *task =
+        s_aws_mqtt_set_l4_proxy_options_task_new(adapter->allocator, adapter, l4_proxy_options);
+    if (task == NULL) {
+        int error_code = aws_last_error();
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+            "id=%p: failed to create set l4 proxy options task, error code %d(%s)",
             (void *)adapter,
             error_code,
             aws_error_debug_str(error_code));
@@ -2960,6 +3037,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_5_v
     .set_login_fn = s_aws_mqtt_client_connection_5_set_login,
     .use_websockets_fn = s_aws_mqtt_client_connection_5_use_websockets,
     .set_http_proxy_options_fn = s_aws_mqtt_client_connection_5_set_http_proxy_options,
+    .set_l4_proxy_options_fn = s_aws_mqtt_client_connection_5_set_l4_proxy_options,
     .set_host_resolution_options_fn = s_aws_mqtt_client_connection_5_set_host_resolution_options,
     .set_reconnect_timeout_fn = s_aws_mqtt_client_connection_5_set_reconnect_timeout,
     .set_connection_result_handlers = s_aws_mqtt_client_connection_5_set_connection_result_handlers,

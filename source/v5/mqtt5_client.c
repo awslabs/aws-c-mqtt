@@ -946,6 +946,8 @@ void s_websocket_transform_complete_task_fn(struct aws_task *task, void *arg, en
             websocket_options.proxy_options = &client->config->http_proxy_options;
         }
 
+        websocket_options.l4_proxy_config = client->config->l4_proxy_config;
+
         if (client->vtable->websocket_connect_fn(&websocket_options)) {
             AWS_LOGF_ERROR(AWS_LS_MQTT5_CLIENT, "id=%p: Failed to initiate websocket connection.", (void *)client);
             error_code = aws_last_error();
@@ -1067,6 +1069,8 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
             result = (*client->vtable->http_proxy_new_socket_channel_fn)(
                 &channel_options, &client->config->http_proxy_options);
         }
+
+        channel_options.l4_proxy_config = client->config->l4_proxy_config;
     }
 
     if (result) {

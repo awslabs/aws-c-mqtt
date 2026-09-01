@@ -889,6 +889,8 @@ static void s_mqtt_client_connection_destroy_final(struct aws_mqtt_client_connec
         connection->http_proxy_config = NULL;
     }
 
+    connection->l4_proxy_config = aws_l4_proxy_config_release(connection->l4_proxy_config);
+
     /* Clean up metrics */
     if (connection->metrics_storage) {
         aws_mqtt_iot_metrics_storage_destroy(connection->metrics_storage);
@@ -1456,6 +1458,42 @@ static int s_aws_mqtt_client_connection_311_set_http_proxy_options(
     return result;
 }
 
+static int s_aws_mqtt_client_connection_311_set_l4_proxy_options(
+    void *impl,
+    struct aws_l4_proxy_config *l4_proxy_config) {
+    struct aws_mqtt_client_connection_311_impl *connection = impl;
+    int result = AWS_OP_ERR;
+
+    /* BEGIN CRITICAL SECTION */
+    mqtt_connection_lock_synced_data(connection);
+
+    /* Check state and modify connection under lock to ensure thread safety */
+    if (!s_is_valid_connection_state_for_configuration(connection)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: Connection is currently pending connect/disconnect. Unable to make configuration changes until "
+            "pending operation completes.",
+            (void *)connection);
+        result = aws_raise_error(AWS_ERROR_INVALID_STATE);
+    } else {
+        if (connection->http_proxy_config != NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: (http) proxy_options and l4_proxy_config cannot both be set.",
+                (void *)connection);
+            result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        } else {
+            aws_l4_proxy_config_release(connection->l4_proxy_config);
+            connection->l4_proxy_config = aws_l4_proxy_config_acquire(l4_proxy_config);
+        }
+    }
+
+    mqtt_connection_unlock_synced_data(connection);
+    /* END CRITICAL SECTION */
+
+    return result;
+}
+
 static int s_aws_mqtt_client_connection_311_set_host_resolution_options(
     void *impl,
     const struct aws_host_resolution_config *host_resolution_config) {
@@ -1666,6 +1704,8 @@ static void s_websocket_handshake_transform_complete(
         aws_http_proxy_options_init_from_config(&proxy_options, connection->http_proxy_config);
         websocket_options.proxy_options = &proxy_options;
     }
+
+    websocket_options.l4_proxy_config = connection->l4_proxy_config;
 
     if (aws_websocket_client_connect(&websocket_options)) {
         AWS_LOGF_ERROR(AWS_LS_MQTT_CLIENT, "id=%p: Failed to initiate websocket connection.", (void *)connection);
@@ -1943,6 +1983,8 @@ static int s_mqtt_client_connect(
             aws_http_proxy_options_init_from_config(&proxy_options, connection->http_proxy_config);
             result = aws_http_proxy_new_socket_channel(&channel_options, &proxy_options);
         }
+
+        channel_options.l4_proxy_config = connection->l4_proxy_config;
     }
 
     if (result) {
@@ -3672,6 +3714,7 @@ static struct aws_mqtt_client_connection_vtable s_aws_mqtt_client_connection_311
     .set_login_fn = s_aws_mqtt_client_connection_311_set_login,
     .use_websockets_fn = s_aws_mqtt_client_connection_311_use_websockets,
     .set_http_proxy_options_fn = s_aws_mqtt_client_connection_311_set_http_proxy_options,
+    .set_l4_proxy_options_fn = s_aws_mqtt_client_connection_311_set_l4_proxy_options,
     .set_host_resolution_options_fn = s_aws_mqtt_client_connection_311_set_host_resolution_options,
     .set_reconnect_timeout_fn = s_aws_mqtt_client_connection_311_set_reconnect_timeout,
     .set_connection_result_handlers = s_aws_mqtt_client_connection_311_set_connection_result_handlers,
