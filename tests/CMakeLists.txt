@@ -406,6 +406,8 @@ add_test_case(mqtt5_client_inbound_alias_failure_too_large_id)
 add_test_case(mqtt5_client_inbound_alias_failure_unbound_id)
 add_test_case(mqtt5_client_outbound_alias_manual_failure_empty_topic)
 
+add_test_case(mqtt5_client_sub_pub_unsub_qos1_through_socks5_tunnel)
+
 # a, b, c, r imply notation as the outbound resolver unit tests above
 add_test_case(mqtt5_client_outbound_alias_manual_success_a_b_ar_br)
 add_test_case(mqtt5_client_outbound_alias_lru_success_a_b_c_br_cr_a)

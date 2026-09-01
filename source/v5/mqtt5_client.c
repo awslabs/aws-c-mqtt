@@ -1062,6 +1062,7 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
         channel_options.user_data = client;
         channel_options.requested_event_loop = client->loop;
         channel_options.host_resolution_override_config = &client->config->host_resolution_override;
+        channel_options.l4_proxy_config = client->config->l4_proxy_config;
 
         if (client->config->http_proxy_config == NULL) {
             result = (*client->vtable->client_bootstrap_new_socket_channel_fn)(&channel_options);
@@ -1069,8 +1070,6 @@ static void s_change_current_state_to_connecting(struct aws_mqtt5_client *client
             result = (*client->vtable->http_proxy_new_socket_channel_fn)(
                 &channel_options, &client->config->http_proxy_options);
         }
-
-        channel_options.l4_proxy_config = client->config->l4_proxy_config;
     }
 
     if (result) {

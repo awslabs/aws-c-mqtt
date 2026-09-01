@@ -1197,6 +1197,25 @@ static void s_on_incoming_channel_shutdown_fn(
     (void)user_data;
 }
 
+void s_on_listener_setup(struct aws_server_bootstrap *bootstrap, int error_code, void *user_data) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = user_data;
+    aws_mutex_lock(&test_fixture->lock);
+    test_fixture->listener_setup = true;
+    aws_condition_variable_notify_one(&test_fixture->signal);
+    aws_mutex_unlock(&test_fixture->lock);
+}
+
+static bool s_is_listener_set_up(void *arg) {
+    struct aws_mqtt5_client_mock_test_fixture *test_fixture = arg;
+    return test_fixture->listener_setup;
+}
+
+static void s_wait_on_listener_set_up(struct aws_mqtt5_client_mock_test_fixture *test_fixture) {
+    aws_mutex_lock(&test_fixture->lock);
+    aws_condition_variable_wait_pred(&test_fixture->signal, &test_fixture->lock, s_is_listener_set_up, test_fixture);
+    aws_mutex_unlock(&test_fixture->lock);
+}
+
 static void s_on_listener_destroy(struct aws_server_bootstrap *bootstrap, void *user_data) {
     (void)bootstrap;
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = user_data;
@@ -1333,7 +1352,7 @@ int aws_mqtt5_client_mock_test_fixture_init(
 
     struct aws_socket_options socket_options = {
         .connect_timeout_ms = 1000,
-        .domain = AWS_SOCKET_LOCAL,
+        .domain = AWS_SOCKET_IPV4,
     };
 
     test_fixture->socket_options = socket_options;
@@ -1355,19 +1374,25 @@ int aws_mqtt5_client_mock_test_fixture_init(
 
     test_fixture->client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
-    aws_socket_endpoint_init_local_address_for_test(&test_fixture->endpoint);
+    // write "localhost" into the host address
+    strncpy(&test_fixture->endpoint.address[0], "127.0.0.1", AWS_ARRAY_SIZE(test_fixture->endpoint.address));
 
     struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
         .bootstrap = test_fixture->server_bootstrap,
         .host_name = test_fixture->endpoint.address,
-        .port = test_fixture->endpoint.port,
+        .port = 0,
         .socket_options = &test_fixture->socket_options,
+        .setup_callback = s_on_listener_setup,
         .incoming_callback = s_on_incoming_channel_setup_fn,
         .shutdown_callback = s_on_incoming_channel_shutdown_fn,
         .destroy_callback = s_on_listener_destroy,
         .user_data = test_fixture,
     };
     test_fixture->listener = aws_server_bootstrap_new_socket_listener(&server_bootstrap_options);
+
+    s_wait_on_listener_set_up(test_fixture);
+
+    test_fixture->endpoint.port = test_fixture->listener->local_endpoint.port;
 
     test_fixture->original_lifecycle_event_handler = options->client_options->lifecycle_event_handler;
     test_fixture->original_lifecycle_event_handler_user_data =
