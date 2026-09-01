@@ -3464,6 +3464,11 @@ static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqt
 
     aws_wait_for_connected_lifecycle_event(&test_context);
 
+    if (use_socks5_proxy) {
+        // make sure we're actually going through the proxy server
+        ASSERT_INT_EQUALS(1, aws_socks5_server_get_connection_count(socks5_server_context.server));
+    }
+
     struct aws_mqtt5_packet_subscribe_storage expected_subscribe_storage;
     AWS_ZERO_STRUCT(expected_subscribe_storage);
     struct aws_mqtt5_packet_publish_storage expected_publish_storage;
