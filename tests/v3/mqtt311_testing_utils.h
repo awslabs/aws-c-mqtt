@@ -57,6 +57,7 @@ struct mqtt_connection_state_test {
     bool connection_interrupted;
     bool connection_resumed;
     bool subscribe_completed;
+    bool listener_set_up;
     bool listener_destroyed;
     bool connection_terminated;
     int interruption_error;

@@ -34,6 +34,7 @@ static int s_test_mqtt_connect_disconnect_fn(struct aws_allocator *allocator, vo
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -91,6 +92,7 @@ static int s_test_mqtt_connect_set_will_login_fn(struct aws_allocator *allocator
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -213,6 +215,7 @@ static int s_test_mqtt_connection_interrupted_fn(struct aws_allocator *allocator
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -283,6 +286,7 @@ static int s_test_mqtt_connection_timeout_fn(struct aws_allocator *allocator, vo
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
@@ -323,6 +327,7 @@ static int s_test_mqtt_connection_any_publish_fn(struct aws_allocator *allocator
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -409,6 +414,7 @@ static int s_test_mqtt_connection_connack_timeout_fn(struct aws_allocator *alloc
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
@@ -441,6 +447,7 @@ static int s_test_mqtt_connection_failure_callback_fn(struct aws_allocator *allo
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
@@ -473,6 +480,7 @@ static int s_test_mqtt_connection_success_callback_fn(struct aws_allocator *allo
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -516,6 +524,7 @@ static int s_test_mqtt_subscribe_fn(struct aws_allocator *allocator, void *ctx) 
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -643,6 +652,7 @@ static int s_test_mqtt_subscribe_incoming_dup_fn(struct aws_allocator *allocator
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -780,6 +790,7 @@ static int s_test_mqtt_connect_subscribe_fail_from_broker_fn(struct aws_allocato
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -837,6 +848,7 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -988,6 +1000,7 @@ static int s_test_mqtt_unsubscribe_fn(struct aws_allocator *allocator, void *ctx
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -1158,6 +1171,7 @@ static int s_test_mqtt_resubscribe_fn(struct aws_allocator *allocator, void *ctx
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -1276,6 +1290,7 @@ static int s_test_mqtt_publish_fn(struct aws_allocator *allocator, void *ctx) {
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -1373,6 +1388,7 @@ static int s_test_mqtt_publish_payload_fn(struct aws_allocator *allocator, void 
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -1448,6 +1464,7 @@ static int s_test_mqtt_connection_offline_publish_fn(struct aws_allocator *alloc
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -1566,6 +1583,7 @@ static int s_test_mqtt_connection_disconnect_while_reconnecting(struct aws_alloc
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -1642,6 +1660,7 @@ static int s_test_mqtt_connection_closes_while_making_requests_fn(struct aws_all
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -1742,6 +1761,7 @@ static int s_test_mqtt_connection_resend_packets_fn(struct aws_allocator *alloca
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -1829,6 +1849,7 @@ static int s_test_mqtt_connection_not_retry_publish_QoS_0_fn(struct aws_allocato
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -1896,6 +1917,7 @@ static int s_test_mqtt_connection_consistent_retry_policy_fn(struct aws_allocato
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -1996,6 +2018,7 @@ static int s_test_mqtt_connection_not_resend_packets_on_healthy_connection_fn(
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2118,6 +2141,7 @@ static int s_test_mqtt_clean_session_not_retry_fn(struct aws_allocator *allocato
         .clean_session = true, /* make a clean_session connection */
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2187,6 +2211,7 @@ static int s_test_mqtt_clean_session_discard_previous_fn(struct aws_allocator *a
         .clean_session = true, /* make a clean_session connection */
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2257,6 +2282,7 @@ static int s_test_mqtt_clean_session_keep_next_session_fn(struct aws_allocator *
         .clean_session = true, /* make a clean_session connection */
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2329,6 +2355,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_fn(struct aws_allocator *
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2389,6 +2416,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_with_ping_fn(struct aws_a
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = 99,
@@ -2462,6 +2490,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_override_fn(struct aws_al
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2522,6 +2551,7 @@ static int s_test_mqtt_connection_unsubscribe_timeout_fn(struct aws_allocator *a
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2576,6 +2606,7 @@ static int s_test_mqtt_connection_unsubscribe_timeout_override_fn(struct aws_all
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2633,6 +2664,7 @@ static int s_test_mqtt_connection_subscribe_single_timeout_fn(struct aws_allocat
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2690,6 +2722,7 @@ static int s_test_mqtt_connection_subscribe_single_timeout_override_fn(struct aw
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2748,6 +2781,7 @@ static int s_test_mqtt_connection_subscribe_multi_timeout_fn(struct aws_allocato
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2823,6 +2857,7 @@ static int s_test_mqtt_connection_resubscribe_timeout_fn(struct aws_allocator *a
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2897,6 +2932,7 @@ static int s_test_mqtt_connection_publish_QoS1_timeout_connection_lost_reset_tim
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2983,6 +3019,7 @@ static int s_test_mqtt_connection_close_callback_simple_fn(struct aws_allocator 
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3025,6 +3062,7 @@ static int s_test_mqtt_connection_close_callback_interrupted_fn(struct aws_alloc
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3071,6 +3109,7 @@ static int s_test_mqtt_connection_close_callback_multi_fn(struct aws_allocator *
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3131,6 +3170,7 @@ static int s_test_mqtt_connection_close_callback_set_failure_fn(struct aws_alloc
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3178,6 +3218,7 @@ static int s_test_mqtt_connection_close_callback_set_during_connecting_fn(struct
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3214,6 +3255,7 @@ static int s_test_mqtt_connection_reconnection_backoff_stable(struct aws_allocat
 
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3271,6 +3313,7 @@ static int s_test_mqtt_connection_reconnection_backoff_unstable(struct aws_alloc
 
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3328,6 +3371,7 @@ static int s_test_mqtt_connection_reconnection_backoff_reset(struct aws_allocato
 
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3403,6 +3447,7 @@ static int s_test_mqtt_connection_reconnection_backoff_reset_after_disconnection
 
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3478,6 +3523,7 @@ static int s_test_mqtt_connection_ping_norm_fn(struct aws_allocator *allocator, 
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
@@ -3519,6 +3565,7 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
@@ -3588,6 +3635,7 @@ static int s_test_mqtt_connection_ping_noack_fn(struct aws_allocator *allocator,
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .keep_alive_time_secs = 1,
@@ -3662,6 +3710,7 @@ static int s_test_mqtt_connection_ping_basic_scenario_fn(struct aws_allocator *a
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .keep_alive_time_secs = 4,
@@ -3740,6 +3789,7 @@ static int s_test_mqtt_connection_ping_double_scenario_fn(struct aws_allocator *
         .clean_session = true,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .keep_alive_time_secs = 4,
@@ -3858,6 +3908,7 @@ static int s_test_mqtt_validation_failure_publish_qos_fn(struct aws_allocator *a
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3905,6 +3956,7 @@ static int s_test_mqtt_validation_failure_subscribe_empty_fn(struct aws_allocato
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3950,6 +4002,7 @@ static int s_test_mqtt_validation_failure_unsubscribe_null_fn(struct aws_allocat
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -3993,6 +4046,7 @@ static int s_test_mqtt_validation_failure_connect_invalid_client_id_utf8_fn(
         .clean_session = false,
         .client_id = s_bad_client_id_utf8,
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -4132,6 +4186,7 @@ static int s_create_mqtt_connection_and_set_metrics(
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
@@ -4302,6 +4357,7 @@ static int s_test_mqtt_connection_set_metrics_modify_on_reconnect_fn(struct aws_
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
     };
