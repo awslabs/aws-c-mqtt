@@ -1485,6 +1485,7 @@ static int s_aws_mqtt_client_connection_311_set_l4_proxy_options(
         } else {
             aws_l4_proxy_config_release(connection->l4_proxy_config);
             connection->l4_proxy_config = aws_l4_proxy_config_acquire(l4_proxy_config);
+            result = AWS_OP_SUCCESS;
         }
     }
 

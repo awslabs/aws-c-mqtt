@@ -9,8 +9,11 @@
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/host_resolver.h>
+#include <aws/io/l4_proxy.h>
+#include <aws/io/socks5.h>
 #include <aws/mqtt/private/client_impl.h>
 #include <aws/testing/aws_test_harness.h>
+#include <aws/testing/socks5_server.h>
 
 #include "mqtt_mock_server_handler.h"
 
@@ -316,6 +319,30 @@ int aws_test311_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx)
     s_wait_on_listener_set_up(state_test_data);
     state_test_data->endpoint.port = state_test_data->listener->local_endpoint.port;
 
+    if (state_test_data->use_socks5_proxy) {
+        state_test_data->socks5_server_test_context =
+            aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_server_test_context));
+
+        struct aws_socks5_server_test_context_options server_options = {
+            .fault_mode = AWS_SOCKS5_SFM_NONE,
+        };
+
+        aws_socks5_server_test_context_init(state_test_data->socks5_server_test_context, allocator, &server_options);
+        aws_socks5_server_test_context_wait_on_server_setup(state_test_data->socks5_server_test_context);
+
+        struct aws_socks5_proxy_negotiation_strategy *strategy =
+            aws_socks5_proxy_negotiation_strategy_new_no_auth(allocator);
+
+        struct aws_socks5_proxy_options socks5_options = {
+            .negotiation_strategy = strategy,
+            .proxy_host = aws_byte_cursor_from_c_str("127.0.0.1"),
+            .proxy_port = aws_socks5_server_get_listener_port(state_test_data->socks5_server_test_context->server),
+        };
+        state_test_data->l4_proxy_config = aws_l4_proxy_config_new_socks5(allocator, &socks5_options);
+
+        aws_socks5_proxy_negotiation_strategy_release(strategy);
+    }
+
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = state_test_data->el_group,
         .max_entries = 1,
@@ -360,6 +387,9 @@ int aws_test311_setup_mqtt_server_fn(struct aws_allocator *allocator, void *ctx)
     ASSERT_SUCCESS(aws_mqtt_client_connection_set_connection_termination_handler(
         state_test_data->mqtt_connection, aws_test311_on_connection_termination_fn, state_test_data));
 
+    ASSERT_SUCCESS(aws_mqtt_client_connection_set_l4_proxy_options(
+        state_test_data->mqtt_connection, state_test_data->l4_proxy_config));
+
     return AWS_OP_SUCCESS;
 }
 
@@ -390,6 +420,16 @@ int aws_test311_clean_up_mqtt_server_fn(struct aws_allocator *allocator, int set
         aws_mqtt_client_release(state_test_data->mqtt_client);
         aws_client_bootstrap_release(state_test_data->client_bootstrap);
         aws_host_resolver_release(state_test_data->host_resolver);
+
+        if (state_test_data->use_socks5_proxy) {
+            // make sure we used it
+            ASSERT_TRUE(
+                aws_socks5_server_get_connections_created(state_test_data->socks5_server_test_context->server) > 0);
+            aws_l4_proxy_config_release(state_test_data->l4_proxy_config);
+            aws_socks5_server_test_context_clean_up(state_test_data->socks5_server_test_context);
+            aws_mem_release(state_test_data->allocator, state_test_data->socks5_server_test_context);
+        }
+
         aws_server_bootstrap_destroy_socket_listener(state_test_data->server_bootstrap, state_test_data->listener);
         s_wait_on_listener_cleanup(state_test_data);
         aws_server_bootstrap_release(state_test_data->server_bootstrap);

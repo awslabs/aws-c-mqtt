@@ -50,6 +50,7 @@ add_test_case(mqtt_topic_validation)
 add_test_case(mqtt_topic_filter_validation)
 
 add_test_case(mqtt_connect_disconnect)
+add_test_case(mqtt_connect_disconnect_socks5)
 add_test_case(mqtt_connect_set_will_login)
 add_test_case(mqtt_connection_interrupted)
 add_test_case(mqtt_connection_any_publish)
