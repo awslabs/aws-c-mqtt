@@ -152,6 +152,8 @@ struct aws_mqtt5_client_options_storage {
     struct aws_http_proxy_options http_proxy_options;
     struct aws_http_proxy_config *http_proxy_config;
 
+    struct aws_l4_proxy_config *l4_proxy_config;
+
     aws_mqtt5_transform_websocket_handshake_fn *websocket_handshake_transform;
     void *websocket_handshake_transform_user_data;
 

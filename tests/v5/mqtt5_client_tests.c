@@ -10,12 +10,15 @@
 #include <aws/http/websocket.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/l4_proxy.h>
+#include <aws/io/socks5.h>
 #include <aws/mqtt/mqtt.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
 #include <aws/mqtt/v5/mqtt5_client.h>
 #include <aws/mqtt/v5/mqtt5_listener.h>
 
 #include <aws/testing/aws_test_harness.h>
+#include <aws/testing/socks5_server.h>
 
 #include <math.h>
 
@@ -3401,7 +3404,7 @@ static int s_mqtt5_client_sub_pub_unsub_publish(
     return AWS_OP_SUCCESS;
 }
 
-static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqtt5_qos qos) {
+static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqtt5_qos qos, bool use_socks5_proxy) {
     aws_mqtt_library_init(allocator);
 
     struct mqtt5_client_test_options test_options;
@@ -3412,6 +3415,32 @@ static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqt
         .test_fixture = &test_context,
     };
 
+    struct aws_socks5_server_test_context socks5_server_context;
+    AWS_ZERO_STRUCT(socks5_server_context);
+
+    struct aws_l4_proxy_config *l4_proxy_config = NULL;
+    if (use_socks5_proxy) {
+        struct aws_socks5_server_test_context_options server_options = {
+            .fault_mode = AWS_SOCKS5_SFM_NONE,
+        };
+
+        aws_socks5_server_test_context_init(&socks5_server_context, allocator, &server_options);
+        aws_socks5_server_test_context_wait_on_server_setup(&socks5_server_context);
+
+        struct aws_socks5_proxy_negotiation_strategy *strategy =
+            aws_socks5_proxy_negotiation_strategy_new_no_auth(allocator);
+
+        struct aws_socks5_proxy_options socks5_options = {
+            .negotiation_strategy = strategy,
+            .proxy_host = aws_byte_cursor_from_c_str("127.0.0.1"),
+            .proxy_port = aws_socks5_server_get_listener_port(socks5_server_context.server),
+        };
+        l4_proxy_config = aws_l4_proxy_config_new_socks5(allocator, &socks5_options);
+
+        aws_socks5_proxy_negotiation_strategy_release(strategy);
+    }
+
+    test_options.client_options.l4_proxy_config = l4_proxy_config;
     test_options.client_options.publish_received_handler = s_sub_pub_unsub_publish_received_fn;
     test_options.client_options.publish_received_handler_user_data = &full_test_context;
 
@@ -3434,6 +3463,11 @@ static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqt
     ASSERT_SUCCESS(aws_mqtt5_client_start(client));
 
     aws_wait_for_connected_lifecycle_event(&test_context);
+
+    if (use_socks5_proxy) {
+        // make sure we're actually going through the proxy server
+        ASSERT_INT_EQUALS(1, aws_socks5_server_get_connections_created(socks5_server_context.server));
+    }
 
     struct aws_mqtt5_packet_subscribe_storage expected_subscribe_storage;
     AWS_ZERO_STRUCT(expected_subscribe_storage);
@@ -3517,7 +3551,14 @@ static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqt
     aws_array_list_clean_up(&expected_packets);
 
     s_sub_pub_unsub_context_clean_up(&full_test_context);
+
+    aws_l4_proxy_config_release(l4_proxy_config);
+    if (use_socks5_proxy) {
+        aws_socks5_server_test_context_clean_up(&socks5_server_context);
+    }
+
     aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+
     aws_mqtt_library_clean_up();
 
     return AWS_OP_SUCCESS;
@@ -3526,7 +3567,7 @@ static int s_do_sub_pub_unsub_test(struct aws_allocator *allocator, enum aws_mqt
 static int s_mqtt5_client_sub_pub_unsub_qos0_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_do_sub_pub_unsub_test(allocator, AWS_MQTT5_QOS_AT_MOST_ONCE));
+    ASSERT_SUCCESS(s_do_sub_pub_unsub_test(allocator, AWS_MQTT5_QOS_AT_MOST_ONCE, false));
 
     return AWS_OP_SUCCESS;
 }
@@ -3536,12 +3577,24 @@ AWS_TEST_CASE(mqtt5_client_sub_pub_unsub_qos0, s_mqtt5_client_sub_pub_unsub_qos0
 static int s_mqtt5_client_sub_pub_unsub_qos1_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_do_sub_pub_unsub_test(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE));
+    ASSERT_SUCCESS(s_do_sub_pub_unsub_test(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, false));
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(mqtt5_client_sub_pub_unsub_qos1, s_mqtt5_client_sub_pub_unsub_qos1_fn)
+
+static int s_mqtt5_client_sub_pub_unsub_qos1_through_socks5_tunnel_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_do_sub_pub_unsub_test(allocator, AWS_MQTT5_QOS_AT_LEAST_ONCE, true));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_sub_pub_unsub_qos1_through_socks5_tunnel,
+    s_mqtt5_client_sub_pub_unsub_qos1_through_socks5_tunnel_fn)
 
 static enum aws_mqtt5_unsuback_reason_code s_unsubscribe_success_reason_codes[] = {
     AWS_MQTT5_UARC_NO_SUBSCRIPTION_EXISTED,

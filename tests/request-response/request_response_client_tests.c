@@ -720,6 +720,7 @@ static int s_aws_rr_client_test_fixture_init_from_mqtt311(
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(fixture->client_test_fixture.mqtt311_test_fixture.endpoint.address),
+        .port = fixture->client_test_fixture.mqtt311_test_fixture.endpoint.port,
         .socket_options = &fixture->client_test_fixture.mqtt311_test_fixture.socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,

@@ -16,6 +16,8 @@
 
 #include <inttypes.h>
 
+struct aws_socks5_server_test_context;
+
 #define TEST_LOG_SUBJECT 60000
 #define ONE_SEC 1000000000
 // The value is extract from aws-c-mqtt/source/client.c
@@ -57,6 +59,7 @@ struct mqtt_connection_state_test {
     bool connection_interrupted;
     bool connection_resumed;
     bool subscribe_completed;
+    bool listener_set_up;
     bool listener_destroyed;
     bool connection_terminated;
     int interruption_error;
@@ -82,6 +85,11 @@ struct mqtt_connection_state_test {
     int operation_set_result;
 
     size_t connection_termination_calls; /* How many times on_connection_termination has been called, should be 1 */
+
+    /* set to true before initialization in order to set up a socks5 proxy to run tests through */
+    bool use_socks5_proxy;
+    struct aws_l4_proxy_config *l4_proxy_config;
+    struct aws_socks5_server_test_context *socks5_server_test_context;
 };
 
 AWS_EXTERN_C_BEGIN

@@ -21,6 +21,7 @@
 
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
+#include <aws/io/l4_proxy.h>
 #include <aws/io/message_pool.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
@@ -231,6 +232,7 @@ struct aws_mqtt_client_connection_311_impl {
     struct aws_tls_connection_options tls_options;
     struct aws_socket_options socket_options;
     struct aws_http_proxy_config *http_proxy_config;
+    struct aws_l4_proxy_config *l4_proxy_config;
     struct aws_event_loop *loop;
     struct aws_host_resolution_config host_resolution_config;
 

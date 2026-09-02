@@ -50,6 +50,7 @@ add_test_case(mqtt_topic_validation)
 add_test_case(mqtt_topic_filter_validation)
 
 add_test_case(mqtt_connect_disconnect)
+add_test_case(mqtt_connect_disconnect_socks5)
 add_test_case(mqtt_connect_set_will_login)
 add_test_case(mqtt_connection_interrupted)
 add_test_case(mqtt_connection_any_publish)
@@ -405,6 +406,8 @@ add_test_case(mqtt5_client_inbound_alias_failure_zero_id)
 add_test_case(mqtt5_client_inbound_alias_failure_too_large_id)
 add_test_case(mqtt5_client_inbound_alias_failure_unbound_id)
 add_test_case(mqtt5_client_outbound_alias_manual_failure_empty_topic)
+
+add_test_case(mqtt5_client_sub_pub_unsub_qos1_through_socks5_tunnel)
 
 # a, b, c, r imply notation as the outbound resolver unit tests above
 add_test_case(mqtt5_client_outbound_alias_manual_success_a_b_ar_br)
