@@ -18,6 +18,10 @@
 
 #include <inttypes.h>
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4996) /* allow strncpy() */
+#endif
+
 int aws_mqtt5_test_verify_user_properties_raw(
     size_t property_count,
     const struct aws_mqtt5_user_property *properties,
@@ -1198,6 +1202,9 @@ static void s_on_incoming_channel_shutdown_fn(
 }
 
 void s_on_listener_setup(struct aws_server_bootstrap *bootstrap, int error_code, void *user_data) {
+    (void)bootstrap;
+    (void)error_code;
+
     struct aws_mqtt5_client_mock_test_fixture *test_fixture = user_data;
     aws_mutex_lock(&test_fixture->lock);
     test_fixture->listener_setup = true;
@@ -1335,6 +1342,8 @@ static void s_on_test_client_termination(void *user_data) {
     aws_condition_variable_notify_all(&test_fixture->signal);
 }
 
+static const char s_local_ipv4[] = "127.0.0.1";
+
 int aws_mqtt5_client_mock_test_fixture_init(
     struct aws_mqtt5_client_mock_test_fixture *test_fixture,
     struct aws_allocator *allocator,
@@ -1374,8 +1383,8 @@ int aws_mqtt5_client_mock_test_fixture_init(
 
     test_fixture->client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
-    // write "localhost" into the host address
-    strncpy(&test_fixture->endpoint.address[0], "127.0.0.1", AWS_ARRAY_SIZE(test_fixture->endpoint.address));
+    // write "127.0.0.1" into the host address
+    strncpy(&test_fixture->endpoint.address[0], s_local_ipv4, AWS_ARRAY_SIZE(s_local_ipv4));
 
     struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
         .bootstrap = test_fixture->server_bootstrap,
