@@ -1974,6 +1974,7 @@ static int s_mqtt_client_connect(
         channel_options.user_data = connection;
         channel_options.requested_event_loop = connection->loop;
         channel_options.host_resolution_override_config = &connection->host_resolution_config;
+        channel_options.l4_proxy_config = connection->l4_proxy_config;
 
         if (connection->http_proxy_config == NULL) {
             result = aws_client_bootstrap_new_socket_channel(&channel_options);
@@ -1984,8 +1985,6 @@ static int s_mqtt_client_connect(
             aws_http_proxy_options_init_from_config(&proxy_options, connection->http_proxy_config);
             result = aws_http_proxy_new_socket_channel(&channel_options, &proxy_options);
         }
-
-        channel_options.l4_proxy_config = connection->l4_proxy_config;
     }
 
     if (result) {
