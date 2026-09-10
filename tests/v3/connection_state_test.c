@@ -4433,7 +4433,7 @@ AWS_TEST_CASE_FIXTURE(
 // non-fixture-based so that we can tweak the input data
 
 static int s_test_mqtt_connect_disconnect_socks5_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)allocator;
+    (void)ctx;
     struct mqtt_connection_state_test state_test_data;
     AWS_ZERO_STRUCT(state_test_data);
 
