@@ -17,6 +17,10 @@
 
 #include "mqtt_mock_server_handler.h"
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4996) /* allow strncpy() */
+#endif
+
 static void s_on_incoming_channel_setup_fn(
     struct aws_server_bootstrap *bootstrap,
     int error_code,

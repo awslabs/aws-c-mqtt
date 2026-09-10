@@ -1440,16 +1440,24 @@ static int s_aws_mqtt_client_connection_311_set_http_proxy_options(
             (void *)connection);
         result = aws_raise_error(AWS_ERROR_INVALID_STATE);
     } else {
-        /* If there is existing proxy options, nuke em */
-        if (connection->http_proxy_config) {
-            aws_http_proxy_config_destroy(connection->http_proxy_config);
-            connection->http_proxy_config = NULL;
+        if (connection->l4_proxy_config != NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: (http) proxy_options and l4_proxy_config cannot both be set.",
+                (void *)connection);
+            result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        } else {
+            /* If there is existing proxy options, nuke em */
+            if (connection->http_proxy_config) {
+                aws_http_proxy_config_destroy(connection->http_proxy_config);
+                connection->http_proxy_config = NULL;
+            }
+
+            connection->http_proxy_config =
+                aws_http_proxy_config_new_tunneling_from_proxy_options(connection->allocator, proxy_options);
+
+            result = connection->http_proxy_config != NULL ? AWS_OP_SUCCESS : AWS_OP_ERR;
         }
-
-        connection->http_proxy_config =
-            aws_http_proxy_config_new_tunneling_from_proxy_options(connection->allocator, proxy_options);
-
-        result = connection->http_proxy_config != NULL ? AWS_OP_SUCCESS : AWS_OP_ERR;
     }
 
     mqtt_connection_unlock_synced_data(connection);

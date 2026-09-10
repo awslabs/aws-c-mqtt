@@ -1195,6 +1195,14 @@ static void s_set_http_proxy_options_task_fn(struct aws_task *task, void *arg, e
         goto done;
     }
 
+    if (adapter->client->config->l4_proxy_config != NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_TO_MQTT3_ADAPTER,
+            "id=%p: (http) proxy_options and l4_proxy_config cannot both be set.",
+            (void *)adapter);
+        goto done;
+    }
+
     /* we're in the mqtt5 client's event loop; it's safe to access internal state */
     aws_http_proxy_config_destroy(adapter->client->config->http_proxy_config);
 
@@ -1308,7 +1316,7 @@ static struct aws_mqtt_set_l4_proxy_options_task *s_aws_mqtt_set_l4_proxy_option
     struct aws_l4_proxy_config *l4_proxy_options) {
 
     struct aws_mqtt_set_l4_proxy_options_task *set_task =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_http_proxy_options_task));
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_mqtt_set_l4_proxy_options_task));
 
     aws_task_init(&set_task->task, s_set_l4_proxy_options_task_fn, (void *)set_task, "SetL4ProxyOptionsTask");
     set_task->allocator = adapter->allocator;
