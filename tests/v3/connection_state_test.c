@@ -808,7 +808,7 @@ static int s_test_mqtt_connect_subscribe_fail_from_broker_fn(struct aws_allocato
     /* Check the subscribe returned QoS is failure */
     size_t length = aws_array_list_length(&state_test_data->qos_returned);
     ASSERT_UINT_EQUALS(1, length);
-    uint8_t qos = 0;
+    enum aws_mqtt_qos qos = 0;
     ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 0));
     ASSERT_UINT_EQUALS(AWS_MQTT_QOS_FAILURE, qos);
 
@@ -878,7 +878,7 @@ static int s_test_mqtt_subscribe_multi_fn(struct aws_allocator *allocator, void 
     /* Check the subscribe returned QoS is expected */
     size_t length = aws_array_list_length(&state_test_data->qos_returned);
     ASSERT_UINT_EQUALS(2, length);
-    uint8_t qos = 0;
+    enum aws_mqtt_qos qos = 0;
     ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 0));
     ASSERT_UINT_EQUALS(AWS_MQTT_QOS_EXACTLY_ONCE, qos);
     ASSERT_SUCCESS(aws_array_list_get_at(&state_test_data->qos_returned, &qos, 1));
