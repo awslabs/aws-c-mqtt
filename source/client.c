@@ -2410,7 +2410,7 @@ static void s_subscribe_single_complete(
     aws_array_list_get_at(&task_arg->topics, &topic, 0);
     AWS_ASSUME(topic); /* There needs to be exactly 1 topic in this list */
     if (task_arg->on_suback.single) {
-        AWS_ASSUME(aws_string_is_valid(topic->filter));
+        AWS_ASSERT(aws_string_is_valid(topic->filter));
         aws_mqtt_suback_fn *suback = task_arg->on_suback.single;
         suback(
             &connection->base,
