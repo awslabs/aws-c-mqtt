@@ -3712,8 +3712,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->allocator = client->allocator;
     connection->base.vtable = s_aws_mqtt_client_connection_311_vtable_ptr;
     connection->base.impl = connection;
-    aws_ref_count_init(
-        &connection->ref_count, connection, (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
+    aws_ref_count_init(&connection->ref_count, connection, s_mqtt_client_connection_start_destroy);
     connection->client = aws_mqtt_client_acquire(client);
 
     AWS_ZERO_STRUCT(connection->synced_data);
