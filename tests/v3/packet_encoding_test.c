@@ -131,12 +131,18 @@ static int s_packet_test_after(struct aws_allocator *allocator, int setup_result
 }
 
 #define PACKET_TEST_NAME(e_type, t_name, s_name, i, t, e)                                                              \
+    static int mqtt_packet_##t_name##_encode(struct aws_byte_buf *buf, void *packet) {                                 \
+        return aws_mqtt_packet_##s_name##_encode(buf, packet);                                                         \
+    }                                                                                                                  \
+    static int mqtt_packet_##t_name##_decode(struct aws_byte_cursor *cur, void *packet) {                              \
+        return aws_mqtt_packet_##s_name##_decode(cur, packet);                                                         \
+    }                                                                                                                  \
     static struct packet_test_fixture mqtt_packet_##t_name##_fixture = {                                               \
         .type = AWS_MQTT_PACKET_##e_type,                                                                              \
         .size = sizeof(struct aws_mqtt_packet_##s_name),                                                               \
         .init = (i),                                                                                                   \
-        .encode = (packet_encode_fn *)&aws_mqtt_packet_##s_name##_encode,                                              \
-        .decode = (packet_decode_fn *)&aws_mqtt_packet_##s_name##_decode,                                              \
+        .encode = mqtt_packet_##t_name##_encode,                                                                       \
+        .decode = mqtt_packet_##t_name##_decode,                                                                       \
         .teardown = (t),                                                                                               \
         .equal = (e),                                                                                                  \
     };                                                                                                                 \
