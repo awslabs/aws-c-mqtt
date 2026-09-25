@@ -19,7 +19,6 @@
 #include <inttypes.h>
 
 #define MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE 50
-#define DEFAULT_PUBLISH_DELAY_MS 200
 
 struct aws_mqtt_request_operation_storage {
     struct aws_mqtt_request_operation_options options;
@@ -651,7 +650,8 @@ static void s_enqueue_request_publish(struct aws_mqtt_rr_client_operation *opera
     aws_high_res_clock_get_ticks(&now);
 
     operation->publish_timepoint_ns =
-        now + aws_timestamp_convert(DEFAULT_PUBLISH_DELAY_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+        now +
+        aws_timestamp_convert(AWS_MQTT_RR_DEFAULT_PUBLISH_DELAY_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     aws_linked_list_push_back(&operation->client_internal_ref->pending_publish_queue, &operation->node);
     s_change_operation_state(operation, AWS_MRROS_PENDING_PUBLISH);
     s_mqtt_request_response_client_reschedule_service(operation->client_internal_ref, operation->publish_timepoint_ns);
@@ -1440,11 +1440,12 @@ static void s_process_delayed_publishes(struct aws_mqtt_request_response_client 
             return;
         }
 
-        AWS_FATAL_ASSERT(front_operation->state == AWS_MRROS_PENDING_PUBLISH);
         aws_linked_list_pop_front(&client->pending_publish_queue);
 
-        s_change_operation_state(front_operation, AWS_MRROS_PENDING_RESPONSE);
-        s_make_mqtt_request(client, front_operation);
+        if (front_operation->state == AWS_MRROS_PENDING_PUBLISH) {
+            s_change_operation_state(front_operation, AWS_MRROS_PENDING_RESPONSE);
+            s_make_mqtt_request(client, front_operation);
+        }
     }
 }
 

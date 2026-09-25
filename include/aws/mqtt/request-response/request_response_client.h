@@ -14,6 +14,12 @@ struct aws_mqtt_client_connection;
 struct aws_mqtt5_client;
 
 /*
+ * Internal.  Delay to wait inbetween suback and publish on request-response operations.  Workaround for IoTCore
+ * eventual consistency issues.  Potentially removable in the future.
+ */
+#define AWS_MQTT_RR_DEFAULT_PUBLISH_DELAY_MS 100
+
+/*
  * A response path is a pair of values - MQTT topic and a JSON path - that describe where a response to
  * an MQTT-based request may arrive.  For a given request type, there may be multiple response paths and each
  * one is associated with a separate JSON schema for the response body.
