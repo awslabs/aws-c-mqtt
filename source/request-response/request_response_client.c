@@ -19,6 +19,7 @@
 #include <inttypes.h>
 
 #define MQTT_RR_CLIENT_OPERATION_TABLE_DEFAULT_SIZE 50
+#define DEFAULT_PUBLISH_DELAY_MS 200
 
 struct aws_mqtt_request_operation_storage {
     struct aws_mqtt_request_operation_options options;
@@ -52,7 +53,10 @@ enum aws_mqtt_request_response_operation_state {
     /* subscribing response from sub manager -> subscription success/failure event */
     AWS_MRROS_PENDING_SUBSCRIPTION,
 
-    /* (request only) subscription success -> (publish failure OR correlated response received) */
+    /* (request only) subscription success -> publish delay expiration */
+    AWS_MRROS_PENDING_PUBLISH,
+
+    /* (request only) publish delay expiration -> (publish failure OR correlated response received) */
     AWS_MRROS_PENDING_RESPONSE,
 
     /* (request only) the operation's destroy task has been scheduled but not yet executed */
@@ -75,6 +79,9 @@ const char *s_aws_mqtt_request_response_operation_state_to_c_str(enum aws_mqtt_r
 
         case AWS_MRROS_PENDING_SUBSCRIPTION:
             return "PENDING_SUBSCRIPTION";
+
+        case AWS_MRROS_PENDING_PUBLISH:
+            return "PENDING_PUBLISH";
 
         case AWS_MRROS_PENDING_RESPONSE:
             return "PENDING_RESPONSE";
@@ -174,6 +181,8 @@ struct aws_mqtt_rr_client_operation {
     uint64_t timeout_timepoint_ns;
     struct aws_priority_queue_node priority_queue_node;
 
+    uint64_t publish_timepoint_ns;
+
     /* Sometimes this is client->operation_queue, other times it is an entry in the client's topic_filter table */
     struct aws_linked_list_node node;
 
@@ -253,6 +262,8 @@ struct aws_mqtt_request_response_client {
     struct aws_atomic_var next_id;
 
     struct aws_linked_list operation_queue;
+
+    struct aws_linked_list pending_publish_queue;
 
     /* &operation->id -> &operation */
     struct aws_hash_table operations;
@@ -488,27 +499,36 @@ static void s_mqtt_request_response_client_external_shutdown_task_fn(
     aws_ref_count_release(&client->internal_ref_count);
 }
 
-static void s_mqtt_request_response_client_wake_service(struct aws_mqtt_request_response_client *client) {
-    uint64_t now = 0;
-    aws_high_res_clock_get_ticks(&now);
-
+static void s_mqtt_request_response_client_reschedule_service(
+    struct aws_mqtt_request_response_client *client,
+    uint64_t service_time) {
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     if (client->state != AWS_RRCS_ACTIVE) {
         return;
     }
 
-    if (client->scheduled_service_timepoint_ns == 0 || now < client->scheduled_service_timepoint_ns) {
-        if (now < client->scheduled_service_timepoint_ns) {
+    if (client->scheduled_service_timepoint_ns == 0 || service_time < client->scheduled_service_timepoint_ns) {
+        if (service_time < client->scheduled_service_timepoint_ns) {
             aws_event_loop_cancel_task(client->loop, &client->service_task);
         }
 
-        client->scheduled_service_timepoint_ns = now;
-        aws_event_loop_schedule_task_now(client->loop, &client->service_task);
+        client->scheduled_service_timepoint_ns = service_time;
+        aws_event_loop_schedule_task_future(client->loop, &client->service_task, service_time);
 
         AWS_LOGF_DEBUG(
-            AWS_LS_MQTT_REQUEST_RESPONSE, "id=%p: request-response client service task woke", (void *)client);
+            AWS_LS_MQTT_REQUEST_RESPONSE,
+            "id=%p: request-response client service task rescheduled for %llu",
+            (void *)client,
+            service_time);
     }
+}
+
+static void s_mqtt_request_response_client_wake_service(struct aws_mqtt_request_response_client *client) {
+    uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&now);
+
+    s_mqtt_request_response_client_reschedule_service(client, now);
 }
 
 struct aws_rrc_incomplete_publish {
@@ -621,6 +641,17 @@ static void s_aws_rr_subscription_status_event_task_delete(struct aws_rr_subscri
     aws_mem_release(task->allocator, task);
 }
 
+static void s_enqueue_request_publish(struct aws_mqtt_rr_client_operation *operation) {
+    uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&now);
+
+    operation->publish_timepoint_ns =
+        now + aws_timestamp_convert(DEFAULT_PUBLISH_DELAY_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    aws_linked_list_push_back(&operation->client_internal_ref->pending_publish_queue, &operation->node);
+    s_change_operation_state(operation, AWS_MRROS_PENDING_PUBLISH);
+    s_mqtt_request_response_client_reschedule_service(operation->client_internal_ref, operation->publish_timepoint_ns);
+}
+
 static void s_on_request_operation_subscription_status_event(
     struct aws_mqtt_rr_client_operation *operation,
     struct aws_byte_cursor topic_filter,
@@ -637,8 +668,7 @@ static void s_on_request_operation_subscription_status_event(
             if (operation->state == AWS_MRROS_PENDING_SUBSCRIPTION) {
                 --operation->pending_subscriptions;
                 if (operation->pending_subscriptions == 0) {
-                    s_change_operation_state(operation, AWS_MRROS_PENDING_RESPONSE);
-                    s_make_mqtt_request(operation->client_internal_ref, operation);
+                    s_enqueue_request_publish(operation);
                 }
             }
             break;
@@ -1103,6 +1133,7 @@ static struct aws_mqtt_request_response_client *s_aws_mqtt_request_response_clie
         NULL);
 
     aws_linked_list_init(&rr_client->operation_queue);
+    aws_linked_list_init(&rr_client->pending_publish_queue);
 
     aws_task_init(
         &rr_client->external_shutdown_task,
@@ -1173,6 +1204,8 @@ static void s_check_for_operation_timeouts(struct aws_mqtt_request_response_clie
 }
 
 static uint64_t s_mqtt_request_response_client_get_next_service_time(struct aws_mqtt_request_response_client *client) {
+    uint64_t next_service_time = UINT64_MAX;
+
     if (aws_priority_queue_size(&client->operations_by_timeout) > 0) {
         struct aws_mqtt_rr_client_operation **next_operation_by_timeout_ptr = NULL;
         aws_priority_queue_top(&client->operations_by_timeout, (void **)&next_operation_by_timeout_ptr);
@@ -1180,10 +1213,18 @@ static uint64_t s_mqtt_request_response_client_get_next_service_time(struct aws_
         struct aws_mqtt_rr_client_operation *next_operation_by_timeout = *next_operation_by_timeout_ptr;
         AWS_FATAL_ASSERT(next_operation_by_timeout != NULL);
 
-        return next_operation_by_timeout->timeout_timepoint_ns;
+        next_service_time = aws_min_u64(next_service_time, next_operation_by_timeout->timeout_timepoint_ns);
     }
 
-    return UINT64_MAX;
+    if (!aws_linked_list_empty(&client->pending_publish_queue)) {
+        struct aws_linked_list_node *front_node = aws_linked_list_front(&client->pending_publish_queue);
+        struct aws_mqtt_rr_client_operation *front_operation =
+            AWS_CONTAINER_OF(front_node, struct aws_mqtt_rr_client_operation, node);
+
+        next_service_time = aws_min_u64(next_service_time, front_operation->publish_timepoint_ns);
+    }
+
+    return next_service_time;
 }
 
 static int s_add_streaming_operation_to_subscription_topic_filter_table(
@@ -1381,6 +1422,27 @@ static void s_process_queued_operations(struct aws_mqtt_request_response_client 
     }
 }
 
+static void s_process_delayed_publishes(struct aws_mqtt_request_response_client *client) {
+    uint64_t now = 0;
+    aws_high_res_clock_get_ticks(&now);
+
+    while (!aws_linked_list_empty(&client->pending_publish_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_front(&client->pending_publish_queue);
+        struct aws_mqtt_rr_client_operation *front_operation =
+            AWS_CONTAINER_OF(node, struct aws_mqtt_rr_client_operation, node);
+
+        if (front_operation->publish_timepoint_ns > now) {
+            return;
+        }
+
+        AWS_FATAL_ASSERT(front_operation->state == AWS_MRROS_PENDING_PUBLISH);
+        aws_linked_list_pop_front(&client->pending_publish_queue);
+
+        s_change_operation_state(front_operation, AWS_MRROS_PENDING_RESPONSE);
+        s_make_mqtt_request(client, front_operation);
+    }
+}
+
 static void s_mqtt_request_response_service_task_fn(
     struct aws_task *task,
     void *arg,
@@ -1398,6 +1460,9 @@ static void s_mqtt_request_response_service_task_fn(
 
         // timeouts
         s_check_for_operation_timeouts(client);
+
+        // delayed publishes
+        s_process_delayed_publishes(client);
 
         // operation queue
         s_process_queued_operations(client);
