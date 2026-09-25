@@ -183,7 +183,12 @@ struct aws_mqtt_rr_client_operation {
 
     uint64_t publish_timepoint_ns;
 
-    /* Sometimes this is client->operation_queue, other times it is an entry in the client's topic_filter table */
+    /*
+     * All operations first wait in client->operation_queue.
+     * After that, request-response operations can briefly be in client->pending_publish_queue, while
+     * streaming operations can be in the client's topic_filter table.  These states cannot overlap, so we can
+     * safely use a single node.
+     */
     struct aws_linked_list_node node;
 
     enum aws_mqtt_request_response_operation_state state;
