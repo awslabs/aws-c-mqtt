@@ -518,7 +518,7 @@ static void s_mqtt_request_response_client_reschedule_service(
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
-            "id=%p: request-response client service task rescheduled for %llu",
+            "id=%p: request-response client service task rescheduled for %" PRIu64,
             (void *)client,
             service_time);
     }
