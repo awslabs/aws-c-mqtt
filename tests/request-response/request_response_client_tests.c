@@ -226,7 +226,12 @@ static int s_rrc_verify_request_completion(
             uint64_t delay = UINT64_MAX;
             aws_array_list_get_at(&delays, &delay, i);
 
-            ASSERT_TRUE(delay >= minimum_delay_nanos);
+            ASSERT_TRUE(
+                delay >= minimum_delay_nanos,
+                "Publish delay failure at index %d: %" PRIu64 ", %" PRIu64,
+                (int)i,
+                delay,
+                minimum_delay_nanos);
         }
 
         aws_array_list_clean_up(&delays);
