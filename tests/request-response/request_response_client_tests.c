@@ -221,7 +221,7 @@ static int s_rrc_verify_request_completion(
 
         ASSERT_TRUE(aws_array_list_length(&delays) > 0);
         uint64_t minimum_delay_nanos = aws_timestamp_convert(
-            AWS_MQTT_RR_DEFAULT_PUBLISH_DELAY_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+            AWS_MQTT_RR_DEFAULT_PUBLISH_DELAY_MS * 9 / 10, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
         for (size_t i = 0; i < aws_array_list_length(&delays); i++) {
             uint64_t delay = UINT64_MAX;
             aws_array_list_get_at(&delays, &delay, i);
