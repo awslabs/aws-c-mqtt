@@ -1339,7 +1339,7 @@ static void s_handle_operation_subscribe_result(
         s_streaming_operation_emit_streaming_subscription_event(
             operation, ARRSSET_SUBSCRIPTION_ESTABLISHED, AWS_ERROR_SUCCESS);
     } else {
-        s_make_mqtt_request(client, operation);
+        s_enqueue_request_publish(operation);
     }
 }
 
