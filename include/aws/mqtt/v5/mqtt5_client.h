@@ -17,6 +17,7 @@ struct aws_allocator;
 struct aws_client_bootstrap;
 struct aws_host_resolution_config;
 struct aws_http_message;
+struct aws_l4_proxy_config;
 struct aws_mqtt5_client;
 struct aws_mqtt5_client_lifecycle_event;
 struct aws_tls_connection_options;
@@ -568,6 +569,11 @@ struct aws_mqtt5_client_options {
      * (Optional) Http proxy options to use whenever this client establishes a connection
      */
     const struct aws_http_proxy_options *http_proxy_options;
+
+    /**
+     * (Optional) L4 proxy options to use whenever this client establishes a connection
+     */
+    struct aws_l4_proxy_config *l4_proxy_config;
 
     /**
      * (Optional) Websocket handshake transformation function and user data.  Websockets are used if the
