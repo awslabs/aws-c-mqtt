@@ -12,6 +12,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
+#include <aws/mqtt/private/request-response/request_response_client.h>
 #include <aws/mqtt/private/request-response/request_response_subscription_set.h>
 #include <aws/mqtt/private/request-response/subscription_manager.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
