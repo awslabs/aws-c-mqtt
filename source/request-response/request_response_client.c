@@ -259,6 +259,7 @@ struct aws_mqtt_request_response_client {
     struct aws_task external_shutdown_task;
     struct aws_task internal_shutdown_task;
 
+    bool needs_service;
     uint64_t scheduled_service_timepoint_ns;
     struct aws_task service_task;
 
@@ -504,36 +505,61 @@ static void s_mqtt_request_response_client_external_shutdown_task_fn(
     aws_ref_count_release(&client->internal_ref_count);
 }
 
-static void s_mqtt_request_response_client_reschedule_service(
-    struct aws_mqtt_request_response_client *client,
-    uint64_t service_time) {
+static uint64_t s_mqtt_request_response_client_get_next_service_time(struct aws_mqtt_request_response_client *client) {
+    uint64_t next_service_time = UINT64_MAX;
+
+    if (aws_priority_queue_size(&client->operations_by_timeout) > 0) {
+        struct aws_mqtt_rr_client_operation **next_operation_by_timeout_ptr = NULL;
+        aws_priority_queue_top(&client->operations_by_timeout, (void **)&next_operation_by_timeout_ptr);
+        AWS_FATAL_ASSERT(next_operation_by_timeout_ptr != NULL);
+        struct aws_mqtt_rr_client_operation *next_operation_by_timeout = *next_operation_by_timeout_ptr;
+        AWS_FATAL_ASSERT(next_operation_by_timeout != NULL);
+
+        next_service_time = aws_min_u64(next_service_time, next_operation_by_timeout->timeout_timepoint_ns);
+    }
+
+    if (!aws_linked_list_empty(&client->pending_publish_queue)) {
+        struct aws_linked_list_node *front_node = aws_linked_list_front(&client->pending_publish_queue);
+        struct aws_mqtt_rr_client_operation *front_operation =
+            AWS_CONTAINER_OF(front_node, struct aws_mqtt_rr_client_operation, node);
+
+        next_service_time = aws_min_u64(next_service_time, front_operation->publish_timepoint_ns);
+    }
+
+    if (client->needs_service) {
+        uint64_t now = UINT64_MAX;
+        aws_high_res_clock_get_ticks(&now);
+
+        next_service_time = aws_min_u64(next_service_time, now);
+    }
+
+    return next_service_time;
+}
+
+static void s_mqtt_request_response_client_reevaluate_service_schedule(
+    struct aws_mqtt_request_response_client *client) {
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     if (client->state != AWS_RRCS_ACTIVE) {
         return;
     }
 
-    if (client->scheduled_service_timepoint_ns == 0 || service_time < client->scheduled_service_timepoint_ns) {
-        if (service_time < client->scheduled_service_timepoint_ns) {
+    uint64_t next_service_time = s_mqtt_request_response_client_get_next_service_time(client);
+
+    if (client->scheduled_service_timepoint_ns == 0 || next_service_time < client->scheduled_service_timepoint_ns) {
+        if (next_service_time < client->scheduled_service_timepoint_ns) {
             aws_event_loop_cancel_task(client->loop, &client->service_task);
         }
 
-        client->scheduled_service_timepoint_ns = service_time;
-        aws_event_loop_schedule_task_future(client->loop, &client->service_task, service_time);
+        client->scheduled_service_timepoint_ns = next_service_time;
+        aws_event_loop_schedule_task_future(client->loop, &client->service_task, next_service_time);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
             "id=%p: request-response client service task rescheduled for %" PRIu64,
             (void *)client,
-            service_time);
+            next_service_time);
     }
-}
-
-static void s_mqtt_request_response_client_wake_service(struct aws_mqtt_request_response_client *client) {
-    uint64_t now = 0;
-    aws_high_res_clock_get_ticks(&now);
-
-    s_mqtt_request_response_client_reschedule_service(client, now);
 }
 
 struct aws_rrc_incomplete_publish {
@@ -655,7 +681,7 @@ static void s_enqueue_request_publish(struct aws_mqtt_rr_client_operation *opera
         aws_timestamp_convert(AWS_MQTT_RR_DEFAULT_PUBLISH_DELAY_MS, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     aws_linked_list_push_back(&operation->client_internal_ref->pending_publish_queue, &operation->node);
     s_change_operation_state(operation, AWS_MRROS_PENDING_PUBLISH);
-    s_mqtt_request_response_client_reschedule_service(operation->client_internal_ref, operation->publish_timepoint_ns);
+    s_mqtt_request_response_client_reevaluate_service_schedule(operation->client_internal_ref);
 }
 
 static void s_on_request_operation_subscription_status_event(
@@ -724,7 +750,8 @@ static void s_handle_subscription_status_event_task(struct aws_task *task, void 
     }
 
     if (event_task->type == ARRSET_UNSUBSCRIBE_COMPLETE || event_task->type == ARRSET_SUBSCRIPTION_EMPTY) {
-        s_mqtt_request_response_client_wake_service(event_task->rr_client);
+        event_task->rr_client->needs_service = true;
+        s_mqtt_request_response_client_reevaluate_service_schedule(event_task->rr_client);
         goto done;
     }
 
@@ -1209,30 +1236,6 @@ static void s_check_for_operation_timeouts(struct aws_mqtt_request_response_clie
     }
 }
 
-static uint64_t s_mqtt_request_response_client_get_next_service_time(struct aws_mqtt_request_response_client *client) {
-    uint64_t next_service_time = UINT64_MAX;
-
-    if (aws_priority_queue_size(&client->operations_by_timeout) > 0) {
-        struct aws_mqtt_rr_client_operation **next_operation_by_timeout_ptr = NULL;
-        aws_priority_queue_top(&client->operations_by_timeout, (void **)&next_operation_by_timeout_ptr);
-        AWS_FATAL_ASSERT(next_operation_by_timeout_ptr != NULL);
-        struct aws_mqtt_rr_client_operation *next_operation_by_timeout = *next_operation_by_timeout_ptr;
-        AWS_FATAL_ASSERT(next_operation_by_timeout != NULL);
-
-        next_service_time = aws_min_u64(next_service_time, next_operation_by_timeout->timeout_timepoint_ns);
-    }
-
-    if (!aws_linked_list_empty(&client->pending_publish_queue)) {
-        struct aws_linked_list_node *front_node = aws_linked_list_front(&client->pending_publish_queue);
-        struct aws_mqtt_rr_client_operation *front_operation =
-            AWS_CONTAINER_OF(front_node, struct aws_mqtt_rr_client_operation, node);
-
-        next_service_time = aws_min_u64(next_service_time, front_operation->publish_timepoint_ns);
-    }
-
-    return next_service_time;
-}
-
 static int s_add_streaming_operation_to_subscription_topic_filter_table(
     struct aws_mqtt_request_response_client *client,
     struct aws_mqtt_rr_client_operation *operation) {
@@ -1462,6 +1465,7 @@ static void s_mqtt_request_response_service_task_fn(
 
     struct aws_mqtt_request_response_client *client = arg;
     client->scheduled_service_timepoint_ns = 0;
+    client->needs_service = false;
 
     if (client->state == AWS_RRCS_ACTIVE) {
 
@@ -1474,10 +1478,7 @@ static void s_mqtt_request_response_service_task_fn(
         // operation queue
         s_process_queued_operations(client);
 
-        // schedule next service
-        client->scheduled_service_timepoint_ns = s_mqtt_request_response_client_get_next_service_time(client);
-        aws_event_loop_schedule_task_future(
-            client->loop, &client->service_task, client->scheduled_service_timepoint_ns);
+        s_mqtt_request_response_client_reevaluate_service_schedule(client);
 
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_REQUEST_RESPONSE,
@@ -1751,7 +1752,8 @@ static void s_mqtt_rr_client_submit_operation(struct aws_task *task, void *arg, 
 
     s_change_operation_state(operation, AWS_MRROS_QUEUED);
 
-    s_mqtt_request_response_client_wake_service(operation->client_internal_ref);
+    client->needs_service = true;
+    s_mqtt_request_response_client_reevaluate_service_schedule(operation->client_internal_ref);
 
 done:
 
