@@ -3507,7 +3507,7 @@ AWS_TEST_CASE_FIXTURE(
     &test_data)
 
 /**
- * Makes a CONNECT, with 1 second keep alive ping interval. Publish QOS1 message for 4.5 seconds and then ensure NO
+ * Makes a CONNECT, with 5 second keep alive ping interval. Publish QOS1 message for 10 seconds and then ensure NO
  * pings were sent. (The ping time will be push off on ack )
  */
 static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, void *ctx) {
@@ -3521,7 +3521,7 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
         .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
         .socket_options = &state_test_data->socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
-        .keep_alive_time_secs = 1,
+        .keep_alive_time_secs = 5,
         .ping_timeout_ms = 100,
     };
 
@@ -3535,7 +3535,7 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
     uint64_t elapsed_time = 0;
     uint64_t now = 0;
     aws_high_res_clock_get_ticks(&begin_timestamp);
-    uint64_t test_duration = (uint64_t)4 * AWS_TIMESTAMP_NANOS;
+    uint64_t test_duration = (uint64_t)10 * AWS_TIMESTAMP_NANOS;
 
     // Make sure we publish for 4 seconds;
     while (elapsed_time < test_duration) {
@@ -3550,20 +3550,20 @@ static int s_test_mqtt_connection_ping_no_fn(struct aws_allocator *allocator, vo
             state_test_data);
         ASSERT_TRUE(packet_id > 0);
 
-        aws_thread_current_sleep(500000000); /* Sleep 0.5 seconds to avoid spamming*/
+        aws_thread_current_sleep(100000000); /* Sleep a little to avoid spamming*/
 
         aws_high_res_clock_get_ticks(&now);
         elapsed_time = now - begin_timestamp;
     }
 
-    aws_thread_current_sleep(250000000); /* Sleep 0.25 seconds to consider jitter*/
-
-    /* Ensure the server got 0 PING packets */
-    ASSERT_INT_EQUALS(0, mqtt_mock_server_get_ping_count(state_test_data->mock_server));
+    size_t ping_count = mqtt_mock_server_get_ping_count(state_test_data->mock_server);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
     aws_test311_wait_for_disconnect_to_complete(state_test_data);
+
+    /* Ensure the server got 0 PING packets */
+    ASSERT_INT_EQUALS(0, ping_count);
 
     return AWS_OP_SUCCESS;
 }
