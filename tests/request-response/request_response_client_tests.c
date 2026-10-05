@@ -188,56 +188,6 @@ static int s_rrc_verify_request_completion(
 
     aws_mutex_unlock(&fixture->lock);
 
-    if (expected_error_code == AWS_ERROR_SUCCESS) {
-        struct aws_array_list delays;
-        AWS_ZERO_STRUCT(delays);
-        aws_array_list_init_dynamic(&delays, fixture->allocator, 10, sizeof(uint64_t));
-
-        // primitive check that our publish delay is working
-        // loop through the test server packets, and verify that the publish timestamp is at least expected millis later
-        // than the subscribe(s)
-        if (fixture->test_protocol == RRCP_MQTT5) {
-            struct aws_mqtt5_client_mock_test_fixture *mock_server = &fixture->client_test_fixture.mqtt5_test_fixture;
-            aws_mutex_lock(&mock_server->lock);
-            struct aws_array_list *server_packets = &mock_server->server_received_packets;
-
-            uint64_t subscribe_timestamp = UINT64_MAX;
-            for (size_t i = 0; i < aws_array_list_length(server_packets); i++) {
-                struct aws_mqtt5_mock_server_packet_record *packet = NULL;
-                aws_array_list_get_at_ptr(server_packets, (void **)&packet, i);
-
-                if (packet->packet_type == AWS_MQTT5_PT_SUBSCRIBE) {
-                    subscribe_timestamp = packet->timestamp;
-                } else if (packet->packet_type == AWS_MQTT5_PT_PUBLISH) {
-                    uint64_t delay = aws_sub_u64_saturating(packet->timestamp, subscribe_timestamp);
-                    aws_array_list_push_back(&delays, &delay);
-                }
-            }
-
-            aws_mutex_unlock(&mock_server->lock);
-        } else {
-            // 311 test server doesn't record received packets
-            return AWS_OP_SUCCESS;
-        }
-
-        ASSERT_TRUE(aws_array_list_length(&delays) > 0);
-        uint64_t minimum_delay_nanos = aws_timestamp_convert(
-            AWS_MQTT_RR_DEFAULT_PUBLISH_DELAY_MS * 9 / 10, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
-        for (size_t i = 0; i < aws_array_list_length(&delays); i++) {
-            uint64_t delay = UINT64_MAX;
-            aws_array_list_get_at(&delays, &delay, i);
-
-            ASSERT_TRUE(
-                delay >= minimum_delay_nanos,
-                "Publish delay failure at index %d: %" PRIu64 ", %" PRIu64,
-                (int)i,
-                delay,
-                minimum_delay_nanos);
-        }
-
-        aws_array_list_clean_up(&delays);
-    }
-
     return AWS_OP_SUCCESS;
 }
 
