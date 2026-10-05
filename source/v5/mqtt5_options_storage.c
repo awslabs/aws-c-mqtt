@@ -11,6 +11,7 @@
 #include <aws/common/uuid.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/l4_proxy.h>
 #include <aws/mqtt/private/mqtt_iot_metrics.h>
 #include <aws/mqtt/private/v5/mqtt5_client_impl.h>
 #include <aws/mqtt/private/v5/mqtt5_utils.h>
@@ -3437,6 +3438,11 @@ int aws_mqtt5_client_options_validate(const struct aws_mqtt5_client_options *opt
             AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "invalid proxy port in mqtt5 client configuration");
             return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
         }
+
+        if (options->l4_proxy_config != NULL) {
+            AWS_LOGF_ERROR(AWS_LS_MQTT5_GENERAL, "http proxy options and l4 proxy options cannot both be set");
+            return aws_raise_error(AWS_ERROR_MQTT5_CLIENT_OPTIONS_VALIDATION);
+        }
     }
 
     /* can't think of why you'd ever want an MQTT client without lifecycle event notifications */
@@ -3829,6 +3835,7 @@ void aws_mqtt5_client_options_storage_destroy(struct aws_mqtt5_client_options_st
 
     aws_tls_connection_options_clean_up(&options_storage->tls_options);
     aws_http_proxy_config_destroy(options_storage->http_proxy_config);
+    aws_l4_proxy_config_release(options_storage->l4_proxy_config);
 
     if (options_storage->connect != NULL) {
         aws_mqtt5_packet_connect_storage_clean_up(options_storage->connect);
@@ -3937,6 +3944,8 @@ struct aws_mqtt5_client_options_storage *aws_mqtt5_client_options_storage_new(
         aws_http_proxy_options_init_from_config(
             &options_storage->http_proxy_options, options_storage->http_proxy_config);
     }
+
+    options_storage->l4_proxy_config = aws_l4_proxy_config_acquire(options->l4_proxy_config);
 
     options_storage->websocket_handshake_transform = options->websocket_handshake_transform;
     options_storage->websocket_handshake_transform_user_data = options->websocket_handshake_transform_user_data;
