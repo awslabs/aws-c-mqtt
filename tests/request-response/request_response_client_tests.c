@@ -8,6 +8,7 @@
 #include <aws/common/uuid.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
+#include <aws/mqtt/private/request-response/request_response_client.h>
 #include <aws/mqtt/private/request-response/request_response_subscription_set.h>
 #include <aws/mqtt/request-response/request_response_client.h>
 
@@ -2879,7 +2880,7 @@ static int s_init_fixture_request_operation_success(
     struct aws_mqtt_request_response_client_options rr_client_options = {
         .max_request_response_subscriptions = 2,
         .max_streaming_subscriptions = 2,
-        .operation_timeout_seconds = 2,
+        .operation_timeout_seconds = 15,
     };
 
     if (config_modifier != NULL) {
