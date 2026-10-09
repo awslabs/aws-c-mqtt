@@ -12,6 +12,12 @@
 
 AWS_EXTERN_C_BEGIN
 
+/*
+ * Delay to wait inbetween suback and publish on request-response operations.  Workaround for IoTCore
+ * eventual consistency issues.  Potentially removable in the future.
+ */
+#define AWS_MQTT_RR_DEFAULT_PUBLISH_DELAY_MS 200
+
 struct aws_mqtt_request_response_client *aws_mqtt_request_response_client_acquire_internal(
     struct aws_mqtt_request_response_client *client);
 

@@ -8,6 +8,7 @@
 #include <aws/common/uuid.h>
 #include <aws/mqtt/private/client_impl_shared.h>
 #include <aws/mqtt/private/request-response/protocol_adapter.h>
+#include <aws/mqtt/private/request-response/request_response_client.h>
 #include <aws/mqtt/private/request-response/request_response_subscription_set.h>
 #include <aws/mqtt/request-response/request_response_client.h>
 
@@ -720,6 +721,7 @@ static int s_aws_rr_client_test_fixture_init_from_mqtt311(
         .clean_session = false,
         .client_id = aws_byte_cursor_from_c_str("client1234"),
         .host_name = aws_byte_cursor_from_c_str(fixture->client_test_fixture.mqtt311_test_fixture.endpoint.address),
+        .port = fixture->client_test_fixture.mqtt311_test_fixture.endpoint.port,
         .socket_options = &fixture->client_test_fixture.mqtt311_test_fixture.socket_options,
         .on_connection_complete = aws_test311_on_connection_complete_fn,
         .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
@@ -2878,7 +2880,7 @@ static int s_init_fixture_request_operation_success(
     struct aws_mqtt_request_response_client_options rr_client_options = {
         .max_request_response_subscriptions = 2,
         .max_streaming_subscriptions = 2,
-        .operation_timeout_seconds = 2,
+        .operation_timeout_seconds = 15,
     };
 
     if (config_modifier != NULL) {

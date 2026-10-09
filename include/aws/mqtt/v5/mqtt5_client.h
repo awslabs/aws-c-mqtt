@@ -17,6 +17,7 @@ struct aws_allocator;
 struct aws_client_bootstrap;
 struct aws_host_resolution_config;
 struct aws_http_message;
+struct aws_l4_proxy_config;
 struct aws_mqtt5_client;
 struct aws_mqtt5_client_lifecycle_event;
 struct aws_tls_connection_options;
@@ -680,6 +681,11 @@ struct aws_mqtt5_client_options {
      * IoT SDK metrics configuration
      */
     const struct aws_mqtt_iot_metrics *metrics;
+
+    /**
+     * (Optional) L4 proxy options to use whenever this client establishes a connection
+     */
+    struct aws_l4_proxy_config *l4_proxy_config;
 };
 
 AWS_EXTERN_C_BEGIN
