@@ -84,8 +84,8 @@ static void s_aws_mqtt_schedule_reconnect_task(struct aws_mqtt_client_connection
         (void *)connection->loop);
 }
 
-static void s_aws_mqtt_client_destroy(struct aws_mqtt_client *client) {
-
+static void s_aws_mqtt_client_destroy(void *user_data) {
+    struct aws_mqtt_client *client = user_data;
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "client=%p: Cleaning up MQTT client", (void *)client);
     aws_client_bootstrap_release(client->bootstrap);
 
@@ -913,7 +913,8 @@ static void s_on_final_disconnect(struct aws_mqtt_client_connection *connection,
     s_mqtt_client_connection_destroy_final(connection);
 }
 
-static void s_mqtt_client_connection_start_destroy(struct aws_mqtt_client_connection_311_impl *connection) {
+static void s_mqtt_client_connection_start_destroy(void *user_data) {
+    struct aws_mqtt_client_connection_311_impl *connection = user_data;
     bool call_destroy_final = false;
 
     AWS_LOGF_DEBUG(
@@ -3762,8 +3763,7 @@ struct aws_mqtt_client_connection *aws_mqtt_client_connection_new(struct aws_mqt
     connection->allocator = client->allocator;
     connection->base.vtable = s_aws_mqtt_client_connection_311_vtable_ptr;
     connection->base.impl = connection;
-    aws_ref_count_init(
-        &connection->ref_count, connection, (aws_simple_completion_callback *)s_mqtt_client_connection_start_destroy);
+    aws_ref_count_init(&connection->ref_count, connection, s_mqtt_client_connection_start_destroy);
     connection->client = aws_mqtt_client_acquire(client);
 
     AWS_ZERO_STRUCT(connection->synced_data);
