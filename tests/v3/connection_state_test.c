@@ -4488,6 +4488,10 @@ static int s_mqtt_publish_connect_with_bad_ack_fn(struct aws_allocator *allocato
     (void)allocator;
     struct mqtt_connection_state_test *state_test_data = ctx;
 
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
+
     struct aws_mqtt_connection_options connection_options = {
         .user_data = state_test_data,
         .clean_session = false,
@@ -4528,7 +4532,7 @@ static int s_mqtt_publish_connect_with_bad_ack_fn(struct aws_allocator *allocato
 
     // previously, we'd crash here because the publish would get inserted into a stack-based linked list and then
     // removed in a different context. Now we expect nothing to happen
-    aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+    aws_test311_wait_for_ops_completed(state_test_data);
 
     ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
         state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
