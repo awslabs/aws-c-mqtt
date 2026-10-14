@@ -43,6 +43,9 @@ struct mqtt_mock_server_handler {
 
         /* progress decoding from raw_packets to decoded_packets*/
         size_t decoded_index;
+
+        // reference must outlive server
+        struct aws_byte_cursor additional_post_connack_data;
     } synced;
 
     /* contains mqtt_decoded_packet* for each packet received
@@ -88,6 +91,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                 (long long unsigned)server->synced.connacks_avail);
             connacks_available = server->synced.connacks_avail > 0 ? server->synced.connacks_avail-- : 0;
             session_present = server->synced.session_present;
+            struct aws_byte_cursor additional_data = server->synced.additional_post_connack_data;
             aws_mutex_unlock(&server->synced.lock);
 
             if (connacks_available) {
@@ -97,6 +101,9 @@ static int s_mqtt_mock_server_handler_process_packet(
                 struct aws_mqtt_packet_connack conn_ack;
                 err |= aws_mqtt_packet_connack_init(&conn_ack, session_present, AWS_MQTT_CONNECT_ACCEPTED);
                 err |= aws_mqtt_packet_connack_encode(&connack_msg->message_data, &conn_ack);
+                if (additional_data.len > 0) {
+                    aws_byte_buf_append(&connack_msg->message_data, &additional_data);
+                }
                 if (aws_channel_slot_send_message(server->slot, connack_msg, AWS_CHANNEL_DIR_WRITE)) {
                     err |= 1;
                     AWS_LOGF_DEBUG(MOCK_LOG_SUBJECT, "Failed to send connack with error %d", aws_last_error());
@@ -488,6 +495,7 @@ void destroy_mqtt_mock_server(struct aws_channel_handler *handler) {
 
     aws_mutex_clean_up(&server->synced.lock);
     aws_condition_variable_clean_up(&server->synced.cvar);
+
     aws_mem_release(handler->alloc, server);
 }
 
@@ -504,6 +512,16 @@ void mqtt_mock_server_set_publish_reflection(struct aws_channel_handler *handler
 
     aws_mutex_lock(&server->synced.lock);
     server->synced.reflect_publishes = reflect_publishes;
+    aws_mutex_unlock(&server->synced.lock);
+}
+
+void mqtt_mock_server_set_additional_post_connack_data(
+    struct aws_channel_handler *handler,
+    struct aws_byte_cursor additional_post_connack_data) {
+    struct mqtt_mock_server_handler *server = handler->impl;
+
+    aws_mutex_lock(&server->synced.lock);
+    server->synced.additional_post_connack_data = additional_post_connack_data;
     aws_mutex_unlock(&server->synced.lock);
 }
 
