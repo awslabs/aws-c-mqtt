@@ -3556,6 +3556,14 @@ static bool s_is_valid_response_to_operation(
     }
 }
 
+static void s_fail_operation_and_shutdown_channel(
+    struct aws_mqtt5_client *client,
+    struct aws_mqtt5_operation *operation,
+    int error_code) {
+    s_complete_operation(client, operation, error_code, AWS_MQTT5_PT_NONE, NULL);
+    s_aws_mqtt5_client_shutdown_channel(client, error_code);
+}
+
 void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
@@ -3595,8 +3603,8 @@ void aws_mqtt5_client_operational_state_handle_ack(
             (void *)client,
             (int)packet_type,
             (int)packet_id);
-        s_complete_operation(client, operation, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR, AWS_MQTT5_PT_NONE, NULL);
-        s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+
+        s_fail_operation_and_shutdown_channel(client, operation, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
         return;
     }
 
@@ -3608,21 +3616,7 @@ void aws_mqtt5_client_operational_state_handle_ack(
             (void *)client,
             aws_mqtt5_packet_type_to_c_string(packet_type));
 
-        /*
-         * We must complete the operation explicitly rather than relying on the shutdown's operational-state reset:
-         * a subscribe/unsubscribe is retainable under the default offline queue policy, so the reset would requeue it
-         * for retry, potentially producing an endless disconnect/reconnect/resubscribe loop against a misbehaving
-         * broker.
-         */
-        s_complete_operation(client, operation, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR, AWS_MQTT5_PT_NONE, NULL);
-
-        if (s_should_client_disconnect_cleanly(client)) {
-            s_aws_mqtt5_client_shutdown_channel_clean(
-                client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR, AWS_MQTT5_DRC_PROTOCOL_ERROR);
-        } else {
-            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
-        }
-
+        s_fail_operation_and_shutdown_channel(client, operation, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
         return;
     }
 
