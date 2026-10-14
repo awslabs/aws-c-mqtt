@@ -2165,7 +2165,7 @@ int aws_mqtt_rr_client_operation_activate(struct aws_mqtt_rr_client_operation *o
     struct aws_atomic_var *activated = &operation->storage.streaming_storage.activated;
     size_t unactivated = 0;
     if (!aws_atomic_compare_exchange_int(activated, &unactivated, 1)) {
-        return aws_raise_error(AWS_ERROR_MQTT_REUQEST_RESPONSE_STREAM_ALREADY_ACTIVATED);
+        return aws_raise_error(AWS_ERROR_MQTT_REQUEST_RESPONSE_STREAM_ALREADY_ACTIVATED);
     }
 
     struct aws_mqtt_request_response_client *rr_client = operation->client_internal_ref;

@@ -3537,6 +3537,25 @@ static bool s_aws_mqtt5_client_validate_ack_reason_code_count(
     return true;
 }
 
+static bool s_is_valid_response_to_operation(
+    enum aws_mqtt5_packet_type operation_type,
+    enum aws_mqtt5_packet_type response_type) {
+    switch (response_type) {
+        case AWS_MQTT5_PT_SUBACK:
+            return operation_type == AWS_MQTT5_PT_SUBSCRIBE;
+
+        case AWS_MQTT5_PT_UNSUBACK:
+            return operation_type == AWS_MQTT5_PT_UNSUBSCRIBE;
+
+        // add PUBREC, PUBCMP, PUBREL later if needed
+        case AWS_MQTT5_PT_PUBACK:
+            return operation_type == AWS_MQTT5_PT_PUBLISH;
+
+        default:
+            return false;
+    }
+}
+
 void aws_mqtt5_client_operational_state_handle_ack(
     struct aws_mqtt5_client_operational_state *client_operational_state,
     aws_mqtt5_packet_id_t packet_id,
@@ -3568,6 +3587,18 @@ void aws_mqtt5_client_operational_state_handle_ack(
 
     aws_linked_list_remove(&operation->node);
     aws_hash_table_remove(&client_operational_state->unacked_operations_table, &packet_id, NULL, NULL);
+
+    if (!s_is_valid_response_to_operation(operation->packet_type, packet_type)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT5_CLIENT,
+            "id=%p: received an invalid response packet type (%d) for operation with packet id %d",
+            (void *)client,
+            (int)packet_type,
+            (int)packet_id);
+        s_complete_operation(client, operation, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR, AWS_MQTT5_PT_NONE, NULL);
+        s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
+        return;
+    }
 
     if (!s_aws_mqtt5_client_validate_ack_reason_code_count(operation, packet_type, packet_view)) {
         AWS_LOGF_ERROR(
