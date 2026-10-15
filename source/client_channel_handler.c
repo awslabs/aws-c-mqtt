@@ -1027,6 +1027,10 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
 
             // edge case where an ack can (incorrectly, protocol error) arrive before an operation
             // enters the ongoing_requests list
+            //
+            // It could be argued that we should shut down the connection in this case because the broker is behaving
+            // incrrectly, but there is a lot of risk in trying to do that due to the locking and shared state
+            // complexity in the client implementation.
             if (aws_linked_list_node_is_in_list(&request->list_node)) {
                 found_request = true;
                 on_complete = request->on_complete;
