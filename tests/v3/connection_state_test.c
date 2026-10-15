@@ -4476,3 +4476,74 @@ static int s_test_mqtt_connect_disconnect_socks5_fn(struct aws_allocator *alloca
 }
 
 AWS_TEST_CASE(mqtt_connect_disconnect_socks5, s_test_mqtt_connect_disconnect_socks5_fn)
+
+/*
+ * This test checks for a regression for a bug where a pending request (publish here) gets
+ * mishandled (and the client crashes) if an ack that matches the request is received in the same
+ * data frame as the CONNACK packet.
+ *
+ * Without the fix, it crashes when removing the publish request from its linked list (which is garbage).
+ */
+static int s_mqtt_publish_connect_with_bad_ack_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    aws_mutex_lock(&state_test_data->lock);
+    state_test_data->expected_ops_completed = 1;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+
+    // puback of packet id 1
+    uint8_t bad_ack[] = {
+        0x40,
+        0x02,
+        0x00,
+        0x01,
+    };
+
+    mqtt_mock_server_set_additional_post_connack_data(
+        state_test_data->mock_server, aws_byte_cursor_from_array(bad_ack, AWS_ARRAY_SIZE(bad_ack)));
+
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload_1 = aws_byte_cursor_from_c_str("Test Message 1");
+
+    uint16_t packet_id_1 = aws_mqtt_client_connection_publish(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload_1,
+        aws_test311_on_op_complete,
+        state_test_data);
+
+    ASSERT_INT_EQUALS(1, packet_id_1);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
+
+    // previously, we'd crash here because the publish would get inserted into a stack-based linked list and then
+    // removed in a different context. Now we expect nothing to happen
+    aws_test311_wait_for_ops_completed(state_test_data);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
+    aws_test311_wait_for_disconnect_to_complete(state_test_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_publish_connect_with_bad_ack,
+    s_setup_mqtt_server_fn,
+    s_mqtt_publish_connect_with_bad_ack_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)

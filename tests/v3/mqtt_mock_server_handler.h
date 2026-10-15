@@ -163,4 +163,12 @@ int mqtt_mock_server_decode_packets(struct aws_channel_handler *handler);
  */
 size_t mqtt_mock_server_get_ping_count(struct aws_channel_handler *handler);
 
+/**
+ * Sets any additional data that should be sent after a connack.  Used
+ * to repro a protocol failure test case.
+ */
+void mqtt_mock_server_set_additional_post_connack_data(
+    struct aws_channel_handler *handler,
+    struct aws_byte_cursor additional_post_connack_data);
+
 #endif /* MQTT_MOCK_SERVER_HANDLER_H */

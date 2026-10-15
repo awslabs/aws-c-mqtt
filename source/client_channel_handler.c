@@ -201,21 +201,16 @@ static int s_packet_handler_connack(struct aws_byte_cursor message_cursor, void 
         AWS_LOGF_TRACE(
             AWS_LS_MQTT_CLIENT, "id=%p: connection was accepted processing offline requests.", (void *)connection);
 
-        if (!aws_linked_list_empty(&requests)) {
+        while (!aws_linked_list_empty(&requests)) {
+            struct aws_linked_list_node *current = aws_linked_list_pop_front(&requests);
 
-            struct aws_linked_list_node *current = aws_linked_list_front(&requests);
-            const struct aws_linked_list_node *end = aws_linked_list_end(&requests);
-
-            do {
-                struct aws_mqtt_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_request, list_node);
-                AWS_LOGF_TRACE(
-                    AWS_LS_MQTT_CLIENT,
-                    "id=%p: processing offline request %" PRIu16,
-                    (void *)connection,
-                    request->packet_id);
-                aws_channel_schedule_task_now(connection->slot->channel, &request->outgoing_task);
-                current = current->next;
-            } while (current != end);
+            struct aws_mqtt_request *request = AWS_CONTAINER_OF(current, struct aws_mqtt_request, list_node);
+            AWS_LOGF_TRACE(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: processing offline request %" PRIu16,
+                (void *)connection,
+                request->packet_id);
+            aws_channel_schedule_task_now(connection->slot->channel, &request->outgoing_task);
         }
     } else {
         AWS_LOGF_ERROR(
@@ -1028,24 +1023,32 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
         struct aws_hash_element *elem = NULL;
         aws_hash_table_find(&connection->synced_data.outstanding_requests_table, &packet_id, &elem);
         if (elem != NULL) {
-            found_request = true;
-
             struct aws_mqtt_request *request = elem->value;
-            on_complete = request->on_complete;
-            on_complete_ud = request->on_complete_ud;
 
-            /* Set the status as complete */
-            aws_mqtt_connection_statistics_change_operation_statistic_state(
-                request->connection, request, AWS_MQTT_OSS_NONE);
+            // edge case where an ack can (incorrectly, protocol error) arrive before an operation
+            // enters the ongoing_requests list
+            //
+            // It could be argued that we should shut down the connection in this case because the broker is behaving
+            // incrrectly, but there is a lot of risk in trying to do that due to the locking and shared state
+            // complexity in the client implementation.
+            if (aws_linked_list_node_is_in_list(&request->list_node)) {
+                found_request = true;
+                on_complete = request->on_complete;
+                on_complete_ud = request->on_complete_ud;
 
-            if (error_code == AWS_OP_SUCCESS) {
-                s_pushoff_next_ping_time(connection, request->request_send_timestamp);
+                /* Set the status as complete */
+                aws_mqtt_connection_statistics_change_operation_statistic_state(
+                    request->connection, request, AWS_MQTT_OSS_NONE);
+
+                if (error_code == AWS_OP_SUCCESS) {
+                    s_pushoff_next_ping_time(connection, request->request_send_timestamp);
+                }
+                /* clean up request resources */
+                aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
+                /* remove the request from the list, which is thread_data.ongoing_requests_list */
+                aws_linked_list_remove(&request->list_node);
+                aws_memory_pool_release(&connection->synced_data.requests_pool, request);
             }
-            /* clean up request resources */
-            aws_hash_table_remove_element(&connection->synced_data.outstanding_requests_table, elem);
-            /* remove the request from the list, which is thread_data.ongoing_requests_list */
-            aws_linked_list_remove(&request->list_node);
-            aws_memory_pool_release(&connection->synced_data.requests_pool, request);
         }
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
