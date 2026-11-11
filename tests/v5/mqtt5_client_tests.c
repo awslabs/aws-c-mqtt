@@ -6980,3 +6980,111 @@ static int s_mqtt5_client_subscribe_failure_puback_fn(struct aws_allocator *allo
 }
 
 AWS_TEST_CASE(mqtt5_client_subscribe_failure_puback, s_mqtt5_client_subscribe_failure_puback_fn)
+
+static int s_aws_mqtt5_server_invalid_packets_on_connect(
+    void *packet,
+    struct aws_mqtt5_server_mock_connection_context *connection,
+    void *user_data) {
+
+    struct aws_mqtt5_packet_publish_view publish_view;
+    AWS_ZERO_STRUCT(publish_view);
+
+    publish_view.qos = AWS_MQTT5_QOS_AT_LEAST_ONCE;
+    publish_view.topic =
+        aws_byte_cursor_from_array(s_sub_pub_unsub_publish_topic, AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_topic) - 1);
+    publish_view.payload = aws_byte_cursor_from_array(
+        s_sub_pub_unsub_publish_payload, AWS_ARRAY_SIZE(s_sub_pub_unsub_publish_payload) - 1);
+    publish_view.packet_id = 1;
+
+    if (aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
+        return AWS_OP_ERR;
+    }
+
+    publish_view.packet_id = 2;
+
+    if (aws_mqtt5_mock_server_send_packet(connection, AWS_MQTT5_PT_PUBLISH, &publish_view)) {
+        return AWS_OP_ERR;
+    }
+
+    /*
+     * We intercept the CONNECT in order to correctly set the connack_sent test state.  Otherwise we risk sometimes
+     * sending the DISCONNECT before the CONNACK
+     */
+    if (aws_mqtt5_mock_server_handle_connect_always_succeed(packet, connection, user_data)) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_mqtt5_server_disconnect_test_context *test_context = user_data;
+    test_context->connack_sent = true;
+
+    return AWS_OP_SUCCESS;
+}
+
+/* Connection test where we send QoS 1 publishes, a connack, and then a delayed disconnect after connect receipt */
+static int s_mqtt5_client_connect_failure_invalid_packets_before_connack_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    aws_mqtt_library_init(allocator);
+
+    struct mqtt5_client_test_options test_options;
+    aws_mqtt5_client_test_init_default_options(&test_options);
+
+    /* mock server sends a DISCONNECT packet back to the client after a successful CONNECTION establishment */
+    test_options.server_function_table.service_task_fn = s_server_disconnect_service_fn;
+    test_options.server_function_table.packet_handlers[AWS_MQTT5_PT_CONNECT] =
+        s_aws_mqtt5_server_invalid_packets_on_connect;
+
+    struct aws_mqtt5_client_mock_test_fixture test_context;
+
+    struct aws_mqtt5_server_disconnect_test_context disconnect_context = {
+        .test_fixture = &test_context,
+        .disconnect_sent = false,
+    };
+
+    struct aws_mqtt5_client_mqtt5_mock_test_fixture_options test_fixture_options = {
+        .client_options = &test_options.client_options,
+        .server_function_table = &test_options.server_function_table,
+        .mock_server_user_data = &disconnect_context,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt5_client_mock_test_fixture_init(&test_context, allocator, &test_fixture_options));
+
+    struct aws_mqtt5_client *client = test_context.client;
+    ASSERT_SUCCESS(aws_mqtt5_client_start(client));
+
+    s_wait_for_connection_failure_lifecycle_event(&test_context);
+
+    ASSERT_SUCCESS(aws_mqtt5_client_stop(client, NULL, NULL));
+
+    aws_wait_for_stopped_lifecycle_event(&test_context);
+
+    struct aws_mqtt5_client_lifecycle_event expected_events[] = {
+        {
+            .event_type = AWS_MQTT5_CLET_ATTEMPTING_CONNECT,
+        },
+        {
+            .event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE,
+            .error_code = AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR,
+        },
+    };
+    ASSERT_SUCCESS(
+        s_verify_simple_lifecycle_event_sequence(&test_context, expected_events, AWS_ARRAY_SIZE(expected_events)));
+
+    enum aws_mqtt5_client_state expected_states[] = {
+        AWS_MCS_CONNECTING,
+        AWS_MCS_MQTT_CONNECT,
+        AWS_MCS_CHANNEL_SHUTDOWN,
+    };
+    ASSERT_SUCCESS(aws_verify_client_state_sequence(&test_context, expected_states, AWS_ARRAY_SIZE(expected_states)));
+
+    aws_mqtt5_client_mock_test_fixture_clean_up(&test_context);
+    aws_mqtt_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    mqtt5_client_connect_failure_invalid_packets_before_connack,
+    s_mqtt5_client_connect_failure_invalid_packets_before_connack_fn)
