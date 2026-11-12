@@ -355,7 +355,7 @@ static void s_aws_mqtt5_client_emit_final_lifecycle_event(
     AWS_ZERO_STRUCT(event);
 
     if (client->lifecycle_state == AWS_MQTT5_LS_CONNECTING) {
-        AWS_FATAL_ASSERT(disconnect_view == NULL);
+        disconnect_view = NULL;
         event.event_type = AWS_MQTT5_CLET_CONNECTION_FAILURE;
 
         AWS_LOGF_INFO(
@@ -366,7 +366,7 @@ static void s_aws_mqtt5_client_emit_final_lifecycle_event(
             aws_error_debug_str(error_code));
     } else {
         AWS_FATAL_ASSERT(client->lifecycle_state == AWS_MQTT5_LS_CONNECTED);
-        AWS_FATAL_ASSERT(connack_view == NULL);
+        connack_view = NULL;
         event.event_type = AWS_MQTT5_CLET_DISCONNECTION;
 
         AWS_LOGF_INFO(
@@ -1830,8 +1830,7 @@ static void s_aws_mqtt5_client_mqtt_connect_on_packet_received(
         AWS_LOGF_ERROR(
             AWS_LS_MQTT5_CLIENT, "id=%p: Invalid packet type received while in MQTT_CONNECT state", (void *)client);
 
-        s_aws_mqtt5_client_shutdown_channel_clean(
-            client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR, AWS_MQTT5_DRC_PROTOCOL_ERROR);
+        s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
     }
 }
 
@@ -1975,7 +1974,26 @@ static void s_aws_mqtt5_client_connected_on_packet_received(
             break;
         }
 
+        case AWS_MQTT5_PT_AUTH:
+        case AWS_MQTT5_PT_PUBREC:
+        case AWS_MQTT5_PT_PUBREL:
+        case AWS_MQTT5_PT_PUBCOMP:
+            AWS_LOGF_WARN(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: Unsupported packet type (%s) received while in %s state",
+                (void *)client,
+                aws_mqtt5_packet_type_to_c_string(type),
+                aws_mqtt5_client_state_to_c_string(client->current_state));
+            break;
+
         default:
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT5_CLIENT,
+                "id=%p: Invalid packet type (%s) received while in %s state",
+                (void *)client,
+                aws_mqtt5_packet_type_to_c_string(type),
+                aws_mqtt5_client_state_to_c_string(client->current_state));
+            s_aws_mqtt5_client_shutdown_channel(client, AWS_ERROR_MQTT5_DECODE_PROTOCOL_ERROR);
             break;
     }
 }
