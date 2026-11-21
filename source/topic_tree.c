@@ -225,7 +225,7 @@ void aws_mqtt_topic_tree_clean_up(struct aws_mqtt_topic_tree *tree) {
  ******************************************************************************/
 
 bool s_topic_node_is_subscription(const struct aws_mqtt_topic_node *node) {
-    return node->callback;
+    return node->callback != NULL;
 }
 
 struct topic_tree_iterate_context {
