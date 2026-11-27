@@ -34,6 +34,8 @@ struct mqtt_mock_server_handler {
         bool reflect_publishes;
         bool auto_ack;
         uint8_t suback_reason_code;
+        /* server's CONNACK, defaults to AWS_MQTT_CONNECT_ACCEPTED (0) */
+        enum aws_mqtt_connect_return_code connack_return_code;
 
         /* last ID used when sending PUBLISH (QoS1+) to client */
         uint16_t last_packet_id;
@@ -44,7 +46,7 @@ struct mqtt_mock_server_handler {
         /* progress decoding from raw_packets to decoded_packets*/
         size_t decoded_index;
 
-        // reference must outlive server
+        /* reference must outlive server */
         struct aws_byte_cursor additional_post_connack_data;
     } synced;
 
@@ -91,6 +93,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                 (long long unsigned)server->synced.connacks_avail);
             connacks_available = server->synced.connacks_avail > 0 ? server->synced.connacks_avail-- : 0;
             session_present = server->synced.session_present;
+            enum aws_mqtt_connect_return_code connack_return_code = server->synced.connack_return_code;
             struct aws_byte_cursor additional_data = server->synced.additional_post_connack_data;
             aws_mutex_unlock(&server->synced.lock);
 
@@ -99,7 +102,7 @@ static int s_mqtt_mock_server_handler_process_packet(
                     aws_channel_acquire_message_from_pool(server->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
 
                 struct aws_mqtt_packet_connack conn_ack;
-                err |= aws_mqtt_packet_connack_init(&conn_ack, session_present, AWS_MQTT_CONNECT_ACCEPTED);
+                err |= aws_mqtt_packet_connack_init(&conn_ack, session_present, connack_return_code);
                 err |= aws_mqtt_packet_connack_encode(&connack_msg->message_data, &conn_ack);
                 if (additional_data.len > 0) {
                     aws_byte_buf_append(&connack_msg->message_data, &additional_data);
@@ -522,6 +525,16 @@ void mqtt_mock_server_set_additional_post_connack_data(
 
     aws_mutex_lock(&server->synced.lock);
     server->synced.additional_post_connack_data = additional_post_connack_data;
+    aws_mutex_unlock(&server->synced.lock);
+}
+
+void mqtt_mock_server_set_connack_return_code(
+    struct aws_channel_handler *handler,
+    enum aws_mqtt_connect_return_code return_code) {
+    struct mqtt_mock_server_handler *server = handler->impl;
+
+    aws_mutex_lock(&server->synced.lock);
+    server->synced.connack_return_code = return_code;
     aws_mutex_unlock(&server->synced.lock);
 }
 

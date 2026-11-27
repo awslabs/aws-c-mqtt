@@ -4547,3 +4547,144 @@ AWS_TEST_CASE_FIXTURE(
     s_mqtt_publish_connect_with_bad_ack_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/*
+ * Encodes a CONNACK packet into dest (which must outlive the returned cursor) and returns a cursor over the encoded
+ * bytes.
+ */
+static struct aws_byte_cursor s_encode_connack(
+    struct aws_byte_buf *dest,
+    struct aws_allocator *allocator,
+    bool session_present,
+    enum aws_mqtt_connect_return_code return_code) {
+
+    struct aws_mqtt_packet_connack connack;
+    AWS_ZERO_STRUCT(connack);
+    aws_mqtt_packet_connack_init(&connack, session_present, return_code);
+    aws_byte_buf_init(dest, allocator, 16);
+    aws_mqtt_packet_connack_encode(dest, &connack);
+    return aws_byte_cursor_from_buf(dest);
+}
+
+/*
+ *A regression test for a case when a broker sends a second CONNACK on an already-connected 3.1.1 client.
+ */
+static int s_mqtt_connect_double_connack_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+        /* short keep-alive: on the unfixed client the corrupted ping fires quickly and crashes */
+        .keep_alive_time_secs = DEFAULT_TEST_KEEP_ALIVE_S,
+        .ping_timeout_ms = DEFAULT_TEST_PING_TIMEOUT_MS,
+    };
+
+    /* a second accepted CONNACK appended to the first inside the same frame */
+    struct aws_byte_buf second_connack_buf;
+    struct aws_byte_cursor second_connack =
+        s_encode_connack(&second_connack_buf, state_test_data->allocator, false, AWS_MQTT_CONNECT_ACCEPTED);
+
+    mqtt_mock_server_set_additional_post_connack_data(state_test_data->mock_server, second_connack);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
+
+    /* The second CONNACK is treated as a protocol error, which shuts the channel down and surfaces
+     * as a connection interruption. */
+    aws_test311_wait_for_interrupt_to_complete(state_test_data);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_disconnect(
+        state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data));
+    aws_test311_wait_for_disconnect_to_complete(state_test_data);
+
+    aws_byte_buf_clean_up(&second_connack_buf);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connect_double_connack,
+    s_setup_mqtt_server_fn,
+    s_mqtt_connect_double_connack_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+static bool s_connection_failed_or_interrupted(void *arg) {
+    struct mqtt_connection_state_test *state_test_data = arg;
+    return state_test_data->connection_failure || state_test_data->connection_interrupted;
+}
+
+/*
+ * A regression test that exercises the "rejected CONNACK followed by a second CONNACK in the same frame" gap. A correct
+ * client must treat the connection as failed: once the broker refuses with a rejection, any trailing CONNACK must not
+ * turn the attempt into a success.
+ */
+static int s_mqtt_connect_rejected_then_accepted_connack_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = true,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+
+    /* The server's own CONNACK is a rejection. */
+    mqtt_mock_server_set_connack_return_code(state_test_data->mock_server, AWS_MQTT_CONNECT_NOT_AUTHORIZED);
+    /* An accepted CONNACK follows immediately. */
+    struct aws_byte_buf accepted_connack_buf;
+    struct aws_byte_cursor accepted_connack =
+        s_encode_connack(&accepted_connack_buf, state_test_data->allocator, false, AWS_MQTT_CONNECT_ACCEPTED);
+    mqtt_mock_server_set_additional_post_connack_data(state_test_data->mock_server, accepted_connack);
+    /* Only the first CONNECT gets the crafted frame; reconnect attempts get nothing. */
+    mqtt_mock_server_set_max_connack(state_test_data->mock_server, 1);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+
+    /* Wait until the attempt settles into a terminal outcome (failure or interruption), then inspect which one. */
+    aws_mutex_lock(&state_test_data->lock);
+    aws_condition_variable_wait_for_pred(
+        &state_test_data->cvar,
+        &state_test_data->lock,
+        (int64_t)10 * ONE_SEC,
+        s_connection_failed_or_interrupted,
+        state_test_data);
+    bool failure = state_test_data->connection_failure;
+    bool interrupted = state_test_data->connection_interrupted;
+    bool resumed = state_test_data->connection_resumed;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    aws_byte_buf_clean_up(&accepted_connack_buf);
+
+    /* Best-effort teardown before asserting, so the test fails cleanly instead of hanging. */
+    if (aws_mqtt_client_connection_disconnect(
+            state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data) == AWS_OP_SUCCESS) {
+        aws_test311_wait_for_disconnect_to_complete(state_test_data);
+    }
+
+    /* The broker refused the connection, so the attempt must terminate as a failure. The trailing accepted
+     * CONNACK must be dropped: it must not resurrect the refused connection into an established one. */
+    ASSERT_TRUE(failure);
+    ASSERT_FALSE(interrupted);
+    ASSERT_FALSE(resumed);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_connect_rejected_then_accepted_connack,
+    s_setup_mqtt_server_fn,
+    s_mqtt_connect_rejected_then_accepted_connack_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
