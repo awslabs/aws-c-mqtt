@@ -171,6 +171,17 @@ static int s_packet_handler_connack(struct aws_byte_cursor message_cursor, void 
             return AWS_OP_SUCCESS;
         }
 
+        /* A CONNACK is only valid once per channel. A second CONNACK on the same channel is a protocol violation. */
+        if (connection->thread_data.connack_received) {
+            mqtt_connection_unlock_synced_data(connection);
+            AWS_LOGF_ERROR(
+                AWS_LS_MQTT_CLIENT,
+                "id=%p: unexpected additional CONNACK received on channel. Terminating connection.",
+                (void *)connection);
+            return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+        }
+        connection->thread_data.connack_received = true;
+
         was_reconnecting = connection->synced_data.state == AWS_MQTT_CLIENT_STATE_RECONNECTING;
         if (connack.connect_return_code == AWS_MQTT_CONNECT_ACCEPTED) {
             AWS_LOGF_DEBUG(

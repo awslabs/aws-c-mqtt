@@ -309,6 +309,9 @@ struct aws_mqtt_client_connection_311_impl {
 
         bool waiting_on_ping_response;
 
+        /* Set once a CONNACK has been handled on the current channel. */
+        bool connack_received;
+
         /* Keeps track of all open subscriptions */
         /* TODO: The subscriptions are liveing with the connection object. So if the connection disconnect from one
          * endpoint and connect with another endpoint, the subscription tree will still be the same as before. */
