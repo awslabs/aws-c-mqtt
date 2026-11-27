@@ -581,6 +581,7 @@ static void s_mqtt_client_init(
     }
 
     aws_mqtt311_decoder_reset_for_new_connection(&connection->thread_data.decoder);
+    connection->thread_data.connack_received = false;
 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: Connection successfully opened, sending CONNECT packet", (void *)connection);

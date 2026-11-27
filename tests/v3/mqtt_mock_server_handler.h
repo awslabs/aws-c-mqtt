@@ -89,6 +89,13 @@ void mqtt_mock_server_set_max_ping_resp(struct aws_channel_handler *handler, siz
 void mqtt_mock_server_set_max_connack(struct aws_channel_handler *handler, size_t connack_avail);
 
 /**
+ * Sets the return code the mock server sends in its CONNACK (defaults to AWS_MQTT_CONNECT_ACCEPTED).
+ */
+void mqtt_mock_server_set_connack_return_code(
+    struct aws_channel_handler *handler,
+    enum aws_mqtt_connect_return_code return_code);
+
+/**
  * Disable the automatically response (suback/unsuback/puback) to the client
  */
 void mqtt_mock_server_disable_auto_ack(struct aws_channel_handler *handler);
