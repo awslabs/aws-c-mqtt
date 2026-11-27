@@ -373,9 +373,29 @@ static int s_packet_handler_puback(struct aws_byte_cursor message_cursor, void *
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
-    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
+    if (mqtt_request_complete(connection, AWS_ERROR_SUCCESS, AWS_MQTT_PACKET_PUBACK, ack.packet_identifier)) {
+        return AWS_OP_ERR;
+    }
 
     return AWS_OP_SUCCESS;
+}
+
+static bool s_is_valid_response_to_operation(
+    enum aws_mqtt_packet_type operation_type,
+    enum aws_mqtt_packet_type response_type) {
+    switch (response_type) {
+        case AWS_MQTT_PACKET_SUBACK:
+            return operation_type == AWS_MQTT_PACKET_SUBSCRIBE;
+
+        case AWS_MQTT_PACKET_UNSUBACK:
+            return operation_type == AWS_MQTT_PACKET_UNSUBSCRIBE;
+
+        case AWS_MQTT_PACKET_PUBACK:
+            return operation_type == AWS_MQTT_PACKET_PUBLISH;
+
+        default:
+            return true;
+    }
 }
 
 static int s_packet_handler_suback(struct aws_byte_cursor message_cursor, void *user_data) {
@@ -418,6 +438,16 @@ static int s_packet_handler_suback(struct aws_byte_cursor message_cursor, void *
         goto done;
     }
 
+    if (!s_is_valid_response_to_operation(request->packet_type, AWS_MQTT_PACKET_SUBACK)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: received a SUBACK for packet id %" PRIu16 " that is not an outstanding SUBSCRIBE. ",
+            (void *)connection,
+            suback.packet_identifier);
+        aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+        goto error;
+    }
+
     struct subscribe_task_arg *task_arg = request->on_complete_ud;
     size_t request_topics_len = aws_array_list_length(&task_arg->topics);
     size_t suback_return_code_len = aws_array_list_length(&suback.return_codes);
@@ -435,7 +465,9 @@ static int s_packet_handler_suback(struct aws_byte_cursor message_cursor, void *
     }
 
 done:
-    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, suback.packet_identifier);
+    if (mqtt_request_complete(connection, AWS_ERROR_SUCCESS, AWS_MQTT_PACKET_SUBACK, suback.packet_identifier)) {
+        goto error;
+    }
     aws_mqtt_packet_suback_clean_up(&suback);
     return AWS_OP_SUCCESS;
 error:
@@ -459,7 +491,9 @@ static int s_packet_handler_unsuback(struct aws_byte_cursor message_cursor, void
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
-    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
+    if (mqtt_request_complete(connection, AWS_ERROR_SUCCESS, AWS_MQTT_PACKET_UNSUBACK, ack.packet_identifier)) {
+        return AWS_OP_ERR;
+    }
     return AWS_OP_SUCCESS;
 }
 
@@ -560,7 +594,9 @@ static int s_packet_handler_pubcomp(struct aws_byte_cursor message_cursor, void 
     AWS_LOGF_DEBUG(
         AWS_LS_MQTT_CLIENT, "id=%p: received ack for message id %" PRIu16, (void *)connection, ack.packet_identifier);
 
-    mqtt_request_complete(connection, AWS_ERROR_SUCCESS, ack.packet_identifier);
+    if (mqtt_request_complete(connection, AWS_ERROR_SUCCESS, AWS_MQTT_PACKET_PUBCOMP, ack.packet_identifier)) {
+        return AWS_OP_ERR;
+    }
     return AWS_OP_SUCCESS;
 }
 
@@ -879,6 +915,7 @@ static void s_request_outgoing_task(struct aws_channel_task *task, void *arg, en
 
 uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection_311_impl *connection,
+    enum aws_mqtt_packet_type packet_type,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
     aws_mqtt_op_complete_fn *on_complete,
@@ -975,6 +1012,7 @@ uint16_t mqtt_create_request(
         next_request->connection = connection;
         next_request->initiated = false;
         next_request->retryable = !noRetry;
+        next_request->packet_type = packet_type;
         next_request->send_request = send_request;
         next_request->send_request_ud = send_request_ud;
         next_request->on_complete = on_complete;
@@ -1016,7 +1054,11 @@ uint16_t mqtt_create_request(
     return next_request->packet_id;
 }
 
-void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connection, int error_code, uint16_t packet_id) {
+int mqtt_request_complete(
+    struct aws_mqtt_client_connection_311_impl *connection,
+    int error_code,
+    enum aws_mqtt_packet_type response_packet_type,
+    uint16_t packet_id) {
 
     AWS_LOGF_TRACE(
         AWS_LS_MQTT_CLIENT,
@@ -1026,6 +1068,8 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
         error_code);
 
     bool found_request = false;
+    bool type_mismatch = false;
+    enum aws_mqtt_packet_type operation_type = AWS_MQTT_PACKET_NONE;
     aws_mqtt_op_complete_fn *on_complete = NULL;
     void *on_complete_ud = NULL;
 
@@ -1036,13 +1080,15 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
         if (elem != NULL) {
             struct aws_mqtt_request *request = elem->value;
 
-            // edge case where an ack can (incorrectly, protocol error) arrive before an operation
-            // enters the ongoing_requests list
-            //
-            // It could be argued that we should shut down the connection in this case because the broker is behaving
-            // incrrectly, but there is a lot of risk in trying to do that due to the locking and shared state
-            // complexity in the client implementation.
-            if (aws_linked_list_node_is_in_list(&request->list_node)) {
+            if (response_packet_type != AWS_MQTT_PACKET_NONE &&
+                !s_is_valid_response_to_operation(request->packet_type, response_packet_type)) {
+                type_mismatch = true;
+                operation_type = request->packet_type;
+            } else if (aws_linked_list_node_is_in_list(&request->list_node)) {
+                // A correctly-typed ack can still (incorrectly, a protocol error) arrive before its operation has
+                // entered the ongoing_requests list. We tolerate that race by dropping the ack (the branch below is
+                // not taken) rather than shutting down: completing an operation that is mid-transition carries a lot
+                // of risk given the locking and shared-state complexity here.
                 found_request = true;
                 on_complete = request->on_complete;
                 on_complete_ud = request->on_complete_ud;
@@ -1064,6 +1110,18 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
         mqtt_connection_unlock_synced_data(connection);
     } /* END CRITICAL SECTION */
 
+    if (type_mismatch) {
+        AWS_LOGF_ERROR(
+            AWS_LS_MQTT_CLIENT,
+            "id=%p: received response packet type %d for packet id %" PRIu16 " that is not a valid response to the "
+            "outstanding operation (packet type %d).",
+            (void *)connection,
+            (int)response_packet_type,
+            packet_id,
+            (int)operation_type);
+        return aws_raise_error(AWS_ERROR_MQTT_PROTOCOL_ERROR);
+    }
+
     if (!found_request) {
         AWS_LOGF_DEBUG(
             AWS_LS_MQTT_CLIENT,
@@ -1072,13 +1130,15 @@ void mqtt_request_complete(struct aws_mqtt_client_connection_311_impl *connectio
             "already completed.",
             (void *)connection,
             packet_id);
-        return;
+        return AWS_OP_SUCCESS;
     }
 
     /* Invoke the complete callback. */
     if (on_complete) {
         on_complete(&connection->base, packet_id, error_code, on_complete_ud);
     }
+
+    return AWS_OP_SUCCESS;
 }
 
 struct mqtt_shutdown_task {

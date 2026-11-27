@@ -110,7 +110,8 @@ static void s_request_timeout(struct aws_channel_task *channel_task, void *arg, 
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (timeout_task_arg->task_arg_wrapper != NULL) {
-            mqtt_request_complete(connection, AWS_ERROR_MQTT_TIMEOUT, timeout_task_arg->packet_id);
+            mqtt_request_complete(
+                connection, AWS_ERROR_MQTT_TIMEOUT, AWS_MQTT_PACKET_NONE, timeout_task_arg->packet_id);
         }
     }
 
@@ -2393,6 +2394,7 @@ static uint16_t s_aws_mqtt_client_connection_311_subscribe_multiple(
 
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
+        AWS_MQTT_PACKET_SUBSCRIBE,
         &s_subscribe_send,
         task_arg,
         &s_subscribe_complete,
@@ -2561,6 +2563,7 @@ uint16_t aws_mqtt_client_connection_311_subscribe(
 
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
+        AWS_MQTT_PACKET_SUBSCRIBE,
         &s_subscribe_send,
         task_arg,
         &s_subscribe_single_complete,
@@ -2860,6 +2863,7 @@ static uint16_t s_aws_mqtt_311_resubscribe_existing_topics(
 
     uint16_t packet_id = mqtt_create_request(
         task_arg->connection,
+        AWS_MQTT_PACKET_SUBSCRIBE,
         &s_resubscribe_send,
         task_arg,
         &s_resubscribe_complete,
@@ -3097,6 +3101,7 @@ uint16_t aws_mqtt_client_connection_311_unsubscribe(
 
     uint16_t packet_id = mqtt_create_request(
         connection,
+        AWS_MQTT_PACKET_UNSUBSCRIBE,
         &s_unsubscribe_send,
         task_arg,
         s_unsubscribe_complete,
@@ -3393,8 +3398,15 @@ uint16_t aws_mqtt_client_connection_311_publish(
     uint64_t publish_packet_size = 4 + arg->topic.len + arg->payload.len;
 
     bool retry = qos == AWS_MQTT_QOS_AT_MOST_ONCE;
-    uint16_t packet_id =
-        mqtt_create_request(connection, &s_publish_send, arg, &s_publish_complete, arg, retry, publish_packet_size);
+    uint16_t packet_id = mqtt_create_request(
+        connection,
+        AWS_MQTT_PACKET_PUBLISH,
+        &s_publish_send,
+        arg,
+        &s_publish_complete,
+        arg,
+        retry,
+        publish_packet_size);
 
     if (packet_id == 0) {
         /* bummer, we failed to make a new request */
@@ -3517,8 +3529,8 @@ int aws_mqtt_client_connection_ping(struct aws_mqtt_client_connection_311_impl *
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping", (void *)connection);
 
-    uint16_t packet_id =
-        mqtt_create_request(connection, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ 0);
+    uint16_t packet_id = mqtt_create_request(
+        connection, AWS_MQTT_PACKET_PINGREQ, &s_pingreq_send, connection, NULL, NULL, true, /* noRetry */ 0);
 
     AWS_LOGF_DEBUG(AWS_LS_MQTT_CLIENT, "id=%p: Starting ping with packet id %" PRIu16, (void *)connection, packet_id);
 

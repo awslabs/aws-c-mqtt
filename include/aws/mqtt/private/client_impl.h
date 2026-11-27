@@ -146,6 +146,7 @@ struct aws_mqtt_request {
     uint64_t packet_size;
 
     uint16_t packet_id;
+    enum aws_mqtt_packet_type packet_type;
     bool retryable;
     bool initiated;
     aws_mqtt_send_request_fn *send_request;
@@ -403,11 +404,12 @@ void mqtt_connection_set_state(
 /**
  * This function registers a new outstanding request and returns the message identifier to use (or 0 on error).
  * send_request will be called from request_timeout_task if everything succeed. Not called with error.
- * on_complete will be called once the request completed, either either in success or error.
+ * on_complete will be called once the request completed, either in success or error.
  * noRetry is true for the packets will never be retried or offline queued.
  */
 AWS_MQTT_API uint16_t mqtt_create_request(
     struct aws_mqtt_client_connection_311_impl *connection,
+    enum aws_mqtt_packet_type packet_type,
     aws_mqtt_send_request_fn *send_request,
     void *send_request_ud,
     aws_mqtt_op_complete_fn *on_complete,
@@ -415,10 +417,18 @@ AWS_MQTT_API uint16_t mqtt_create_request(
     bool noRetry,
     uint64_t packet_size);
 
-/* Call when an ack packet comes back from the server. */
-AWS_MQTT_API void mqtt_request_complete(
+/**
+ * Call when an ack packet comes back from the server, or when an operation is completed internally (e.g. on timeout).
+ *
+ * `response_packet_type` is the MQTT packet type of the incoming response, used to verify it is a valid response for
+ * the outstanding operation; pass AWS_MQTT_PACKET_NONE for internal completions that carry no response (validation is
+ * then skipped). Returns AWS_OP_ERR (raising AWS_ERROR_MQTT_PROTOCOL_ERROR) if the response does not match the
+ * operation.
+ */
+AWS_MQTT_API int mqtt_request_complete(
     struct aws_mqtt_client_connection_311_impl *connection,
     int error_code,
+    enum aws_mqtt_packet_type response_packet_type,
     uint16_t packet_id);
 
 /* Call to close the connection with an error code */

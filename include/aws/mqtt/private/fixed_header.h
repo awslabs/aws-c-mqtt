@@ -12,6 +12,8 @@
 
 /* Represents the types of the MQTT control packets [MQTT-2.2.1]. */
 enum aws_mqtt_packet_type {
+    /* not a real MQTT packet type, internal value for "no packet" */
+    AWS_MQTT_PACKET_NONE = -1,
     /* reserved = 0, */
     AWS_MQTT_PACKET_CONNECT = 1,
     AWS_MQTT_PACKET_CONNACK,
