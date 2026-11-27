@@ -4688,3 +4688,214 @@ AWS_TEST_CASE_FIXTURE(
     s_mqtt_connect_rejected_then_accepted_connack_fn,
     s_clean_up_mqtt_server_fn,
     &test_data)
+
+/*
+ * A regression test for a case when SUBACK arrives instead of PUBACK.
+ */
+static int s_mqtt_suback_for_publish_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        /* false: keep the pending publish across connect so it is in the outstanding table when the
+         * injected SUBACK arrives. */
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+
+    /* SUBACK with packet id 1, appended to the CONNACK so it arrives in the same frame right after the connection is
+     * established. */
+    uint8_t suback_bytes[] = {
+        0x90,
+        0x03,
+        0x00,
+        0x01,
+        0x00,
+    };
+    mqtt_mock_server_set_additional_post_connack_data(
+        state_test_data->mock_server, aws_byte_cursor_from_array(suback_bytes, AWS_ARRAY_SIZE(suback_bytes)));
+    /* Only the first CONNECT gets the crafted frame; reconnect attempts get nothing. */
+    mqtt_mock_server_set_max_connack(state_test_data->mock_server, 1);
+
+    /* Queue the QoS1 publish before connecting so it is already an outstanding request when the injected SUBACK is
+     * processed. */
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("");
+    uint16_t packet_id = aws_mqtt_client_connection_publish(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload,
+        aws_test311_on_op_complete,
+        state_test_data);
+    ASSERT_INT_EQUALS(1, packet_id);
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+
+    /* Wait until the mismatched SUBACK has been handled with the connection interrupted. */
+    aws_mutex_lock(&state_test_data->lock);
+    aws_condition_variable_wait_for_pred(
+        &state_test_data->cvar,
+        &state_test_data->lock,
+        (int64_t)10 * ONE_SEC,
+        s_connection_failed_or_interrupted,
+        state_test_data);
+    bool interrupted = state_test_data->connection_interrupted;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    if (aws_mqtt_client_connection_disconnect(
+            state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data) == AWS_OP_SUCCESS) {
+        aws_test311_wait_for_disconnect_to_complete(state_test_data);
+    }
+
+    ASSERT_TRUE(interrupted);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_suback_for_publish,
+    s_setup_mqtt_server_fn,
+    s_mqtt_suback_for_publish_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/*
+ * A regression test for a case when PUBACK arrives for an outstanding SUBSCRIBE (wrong response type).
+ * The client must reject it as a protocol error and drop the connection rather than completing the
+ * subscribe off an unrelated ack.
+ */
+static int s_mqtt_puback_for_subscribe_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
+
+    /* Drive the response manually so the SUBSCRIBE is in flight (in the outstanding list) when the wrong
+     * ack arrives, then answer it with a PUBACK instead of a SUBACK. */
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    struct aws_byte_cursor sub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    uint16_t packet_id = aws_mqtt_client_connection_subscribe(
+        state_test_data->mqtt_connection,
+        &sub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        aws_test311_on_publish_received,
+        state_test_data,
+        NULL,
+        aws_test311_on_suback,
+        state_test_data);
+    ASSERT_TRUE(packet_id > 0);
+
+    ASSERT_SUCCESS(mqtt_mock_server_send_puback(state_test_data->mock_server, packet_id));
+
+    aws_mutex_lock(&state_test_data->lock);
+    aws_condition_variable_wait_for_pred(
+        &state_test_data->cvar,
+        &state_test_data->lock,
+        (int64_t)10 * ONE_SEC,
+        s_connection_failed_or_interrupted,
+        state_test_data);
+    bool interrupted = state_test_data->connection_interrupted;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    if (aws_mqtt_client_connection_disconnect(
+            state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data) == AWS_OP_SUCCESS) {
+        aws_test311_wait_for_disconnect_to_complete(state_test_data);
+    }
+
+    ASSERT_TRUE(interrupted);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_puback_for_subscribe,
+    s_setup_mqtt_server_fn,
+    s_mqtt_puback_for_subscribe_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
+
+/*
+ * A regression test for a case when UNSUBACK arrives for an outstanding PUBLISH (wrong response type).
+ * The client must reject it as a protocol error and drop the connection rather than completing the
+ * publish off an unrelated ack.
+ */
+static int s_mqtt_unsuback_for_publish_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    struct mqtt_connection_state_test *state_test_data = ctx;
+
+    struct aws_mqtt_connection_options connection_options = {
+        .user_data = state_test_data,
+        .clean_session = false,
+        .client_id = aws_byte_cursor_from_c_str("client1234"),
+        .host_name = aws_byte_cursor_from_c_str(state_test_data->endpoint.address),
+        .port = state_test_data->endpoint.port,
+        .socket_options = &state_test_data->socket_options,
+        .on_connection_complete = aws_test311_on_connection_complete_fn,
+    };
+
+    ASSERT_SUCCESS(aws_mqtt_client_connection_connect(state_test_data->mqtt_connection, &connection_options));
+    aws_test311_wait_for_connection_to_complete(state_test_data);
+
+    /* Drive the response manually so the PUBLISH is in flight (in the outstanding list) when the wrong ack
+     * arrives, then answer it with an UNSUBACK instead of a PUBACK. */
+    mqtt_mock_server_disable_auto_ack(state_test_data->mock_server);
+
+    struct aws_byte_cursor pub_topic = aws_byte_cursor_from_c_str("/test/topic");
+    struct aws_byte_cursor payload = aws_byte_cursor_from_c_str("hello");
+    uint16_t packet_id = aws_mqtt_client_connection_publish(
+        state_test_data->mqtt_connection,
+        &pub_topic,
+        AWS_MQTT_QOS_AT_LEAST_ONCE,
+        false,
+        &payload,
+        aws_test311_on_op_complete,
+        state_test_data);
+    ASSERT_TRUE(packet_id > 0);
+
+    ASSERT_SUCCESS(mqtt_mock_server_send_unsuback(state_test_data->mock_server, packet_id));
+
+    aws_mutex_lock(&state_test_data->lock);
+    aws_condition_variable_wait_for_pred(
+        &state_test_data->cvar,
+        &state_test_data->lock,
+        (int64_t)10 * ONE_SEC,
+        s_connection_failed_or_interrupted,
+        state_test_data);
+    bool interrupted = state_test_data->connection_interrupted;
+    aws_mutex_unlock(&state_test_data->lock);
+
+    if (aws_mqtt_client_connection_disconnect(
+            state_test_data->mqtt_connection, aws_test311_on_disconnect_fn, state_test_data) == AWS_OP_SUCCESS) {
+        aws_test311_wait_for_disconnect_to_complete(state_test_data);
+    }
+
+    ASSERT_TRUE(interrupted);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE_FIXTURE(
+    mqtt_unsuback_for_publish,
+    s_setup_mqtt_server_fn,
+    s_mqtt_unsuback_for_publish_fn,
+    s_clean_up_mqtt_server_fn,
+    &test_data)
